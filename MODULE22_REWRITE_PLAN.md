@@ -195,55 +195,55 @@ sources/22. Вопросы и ответы с собеседований по Go
 
 **Новые вопросы:** Q11 (weak.Pointer)
 
-- [ ] **Эпиграф** (о модели памяти — Ритчи или Кернигановский)
-- [ ] **Mermaid:** Stack vs Heap — решение escape analysis (flowchart)
-- [ ] **Mermaid:** Goroutine stack growth (segmented → contiguous, копирование)
-- [ ] **Mermaid:** Слабые ссылки `weak.Pointer` — жизненный цикл с GC
-- [ ] ASCII-схема: структура виртуального адресного пространства процесса Go
-- [ ] **Callout `[!TIP]`:** как читать `go build -gcflags="-m"` — escape analysis output
-- [ ] Интегрировать: Q11 (weak.Pointer — новый тип Go 1.24)
+- [x] **Эпиграф** (о модели памяти — Ритчи или Кернигановский)
+- [x] **Mermaid:** Stack vs Heap — решение escape analysis (flowchart)
+- [x] **Mermaid:** Goroutine stack growth (segmented → contiguous, копирование)
+- [x] **Mermaid:** Слабые ссылки `weak.Pointer` — жизненный цикл с GC
+- [x] ASCII-схема: структура виртуального адресного пространства процесса Go
+- [x] **Callout `[!TIP]`:** как читать `go build -gcflags="-m"` — escape analysis output
+- [x] Интегрировать: Q11 (weak.Pointer — новый тип Go 1.24)
 
 ### Файл 07: Runtime Go. Общая архитектура
 
-- [ ] **Эпиграф** (о рантайм-системах)
-- [ ] **Mermaid:** Архитектура рантайма Go (G, M, P + netpoller + GC goroutines)
-- [ ] **Mermaid:** Инициализация рантайма (m0, g0, schedinit sequence)
-- [ ] **Callout `[!NOTE]`:** Как рантайм встроен в бинарник (static linking)
-- [ ] Таблица: компоненты рантайма и их файлы в `src/runtime/`
+- [x] **Эпиграф** (о рантайм-системах)
+- [x] **Mermaid:** Архитектура рантайма Go (G, M, P + netpoller + GC goroutines)
+- [x] **Mermaid:** Инициализация рантайма (m0, g0, schedinit sequence)
+- [x] **Callout `[!NOTE]`:** Как рантайм встроен в бинарник (static linking)
+- [x] Таблица: компоненты рантайма и их файлы в `src/runtime/`
 
 ### Файл 08: Сборщик мусора GC
 
 **Новые вопросы:** Q17 (экспериментальный GC 1.25), Q22 (Green Tea GC 1.26), Q28 (size-specialized allocation 1.27)
 
-- [ ] **Эпиграф** (о сборке мусора — автоматизация vs контроль)
-- [ ] **Mermaid:** Фазы GC-цикла (mark setup STW → concurrent mark → mark termination STW → sweep)
-- [ ] **Mermaid:** Tri-color marking — переходы состояний (белый → серый → чёрный)
-- [ ] **Mermaid:** Эволюция GC Go: от Go 1.0 до 1.27 (timeline)
-- [ ] **Mermaid:** Green Tea GC vs классический — сравнение path для малых объектов
-- [ ] ASCII-схема: mspan структура в куче (page → mspan → mcache → mcentral → mheap)
-- [ ] **Callout `[!INTERVIEW]`:** «Объясните tri-color invariant за 60 секунд»
-- [ ] **Callout `[!WARNING]`:** когда GOMEMLIMIT может вызвать GC thrashing
-- [ ] Интегрировать: Q17, Q22, Q28 — блок «Эволюция GC в 2024–2026»
-- [ ] **Таблица:** Параметры настройки GC (GOGC, GOMEMLIMIT, GODEBUG=gctrace) с примерами
+- [x] **Эпиграф** (о сборке мусора — автоматизация vs контроль)
+- [x] **Mermaid:** Фазы GC-цикла (mark setup STW → concurrent mark → mark termination STW → sweep)
+- [x] **Mermaid:** Tri-color marking — переходы состояний (белый → серый → чёрный)
+- [x] **Mermaid:** Эволюция GC Go: от Go 1.0 до 1.27 (timeline)
+- [x] **Mermaid:** Green Tea GC vs классический — сравнение path для малых объектов
+- [x] ASCII-схема: mspan структура в куче (page → mspan → mcache → mcentral → mheap)
+- [x] **Callout `[!INTERVIEW]`:** «Объясните tri-color invariant за 60 секунд»
+- [x] **Callout `[!WARNING]`:** когда GOMEMLIMIT может вызвать GC thrashing
+- [x] Интегрировать: Q17, Q22, Q28 — блок «Эволюция GC в 2024–2026»
+- [x] **Таблица:** Параметры настройки GC (GOGC, GOMEMLIMIT, GODEBUG=gctrace) с примерами
 
 ### Файл 09: Планировщик и GMP модель
 
 **Новые вопросы:** Q18 (Container-aware GOMAXPROCS)
 
-- [ ] **Эпиграф** (о многозадачности и кооперативности)
-- [ ] **Mermaid:** GMP модель — состояния и переходы горутины (runnable → running → waiting → dead)
-- [ ] **Mermaid:** Work stealing алгоритм (локальная очередь → steal → global queue)
-- [ ] **Mermaid:** Syscall handling (handoff P, netpoller integration)
-- [ ] **Callout `[!TIP]`:** GOMAXPROCS tuning — контейнеры vs bare metal
-- [ ] Интегрировать: Q18 (Container-aware GOMAXPROCS, cgroups v2)
-- [ ] **Физическая аналогия:** Механическое сочувствие — P как станки ЧПУ, G как задания, M как рабочие
+- [x] **Эпиграф** (о многозадачности и кооперативности)
+- [x] **Mermaid:** GMP модель — состояния и переходы горутины (runnable → running → waiting → dead)
+- [x] **Mermaid:** Work stealing алгоритм (локальная очередь → steal → global queue)
+- [x] **Mermaid:** Syscall handling (handoff P, netpoller integration)
+- [x] **Callout `[!TIP]`:** GOMAXPROCS tuning — контейнеры vs bare metal
+- [x] Интегрировать: Q18 (Container-aware GOMAXPROCS, cgroups v2)
+- [x] **Физическая аналогия:** Механическое сочувствие — P как станки ЧПУ, G как задания, M как рабочие
 
 ### Критерии приёмки этапа 2:
-- [ ] `python3 builder/build_all.py --all` → exit 0
-- [ ] `python3 builder/audit_all.py` → 0 errors
-- [ ] Каждый файл: эпиграф + минимум 2 Mermaid с цветами
-- [ ] Все новые вопросы Q11, Q17, Q18, Q22, Q28 интегрированы
-- [ ] Коммит: `refactor(module22): этап 2 — память, Runtime, GC, планировщик (файлы 06–09)`
+- [x] `python3 builder/build_all.py --all` → exit 0
+- [x] `python3 builder/audit_all.py` → 0 errors
+- [x] Каждый файл: эпиграф + минимум 2 Mermaid с цветами
+- [x] Все новые вопросы Q11, Q17, Q18, Q22, Q28 интегрированы
+- [x] Коммит: `refactor(module22): этап 2 — память, Runtime, GC, планировщик (файлы 06–09)`
 
 ---
 
