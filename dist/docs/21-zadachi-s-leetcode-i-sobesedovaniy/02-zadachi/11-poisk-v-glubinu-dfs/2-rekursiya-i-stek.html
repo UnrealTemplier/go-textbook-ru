@@ -2171,24 +2171,35 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~21 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. Рекурсия и стек</h1>
           </header>
 
           <div class="article-markdown">
-            <p>В предыдущей статье <a href="1-teoriya-dfs.html" class="wikilink">1. Теория. DFS</a> мы определили поиск в глубину как стратегию обхода, которая естественно ложится на рекурсию, но может быть реализована и итеративно с явным стеком. Теперь пришло время заглянуть <strong>под капот</strong> и понять, что именно происходит, когда Go исполняет рекурсивный DFS, как устроен стек горутины, почему он растёт и сколько это стоит. Без этого понимания выбор между рекурсией и итерацией остаётся вкусовщиной, тогда как Senior-разработчик обязан принимать инженерное решение, основанное на данных: глубине обхода, ограничениях по памяти и требуемой производительности.</p>
-<p>Эта статья — мост между абстрактным «DFS работает за O(V+E)» и суровой реальностью рантайма Go, где каждый рекурсивный вызов меняет указатель стека, а при пересечении порога — копирует килобайты памяти. Мы разберём механику стека горутины, построим итеративный DFS на слайсе и сравним оба подхода с точки зрения механической симпатии.</p>
-<h3 id="kak-rabotaet-rekursivnyy-dfs-v-rantayme-go">Как работает рекурсивный DFS в рантайме Go</h3>
+            <blockquote>
+<p><em>«Рекурсия прекрасна своей математической ясностью, но машина знает только стек — и горе тому, кто забудет о его границах».</em><br />
+— Никлаус Вирт</p>
+</blockquote>
+<p>В теоретическом введении <a href="1-teoriya-dfs.html" class="wikilink">1. Теория. DFS</a> мы определили поиск в глубину как стратегию обхода графов и деревьев. На бумаге рекурсивная запись выглядит безупречно: две строки вызова для левого и правого потомка.</p>
+<p>Однако в реальном production-коде на Go за каждой строкой рекурсивного вызова стоит суровая физика рантайма: смещение регистра указателя стека <code>RSP</code>, проверки <code>runtime.morestack</code>, копирование непрерывных стековых сегментов и кэш-промахи.</p>
+<p>Для senior-инженера выбор между рекурсивным и итеративным DFS — это не вопрос эстетики, а <strong>строгий инженерный расчет</strong>: оценка максимальной глубины $H$, учет модели памяти горутин и гарантия защиты от исчерпания ресурсов (OOM).</p>
+<hr />
+<h2 id="arkhitektura-stek-vyzovov-gorutiny-pod-kapotom">Архитектура: Стек вызовов горутины под капотом</h2>
 
-<p>Когда вы вызываете функцию <code>dfs(node)</code>, компилятор Go генерирует код, который:</p>
-<ol>
-<li><strong>Выделяет фрейм</strong> — блок памяти на стеке текущей горутины для локальных переменных, аргументов и служебных данных (адрес возврата, старый указатель базы).</li>
-<li><strong>Передаёт управление</strong> вызываемой функции, смещая указатель стека (stack pointer).</li>
-<li>При возврате — восстанавливает указатель стека и передаёт управление по адресу возврата.</li>
-</ol>
-<p>В рекурсивном DFS каждый вызов создаёт новый фрейм, и стек горутины растёт вглубь.</p>
+<p>В классических языках со статическим стеком потоков ОС (C, C++, Java) под каждый поток операционной системы выделяется фиксированный виртуальный блок от 1 до 8 МБ. Если рекурсия уходит на глубину 100 000 кадров, программа падает с жестким сигналом <code>SIGSEGV / StackOverflowError</code>.</p>
+<p>В Go архитектура принципиально иная:<br />
+1. <strong>Стартовый размер стека (2 КБ):</strong> Каждая новая горутина стартует с крошечным непрерывным стеком (Continuous Stack) размером ровно 2048 байт.<br />
+2. <strong>Пролог функции и проверка границы:</strong> Компилятор Go (<code>cmd/compile</code>) вставляет в начало каждой функции ассемблерную инструкцию сравнения:<br />
+<code>x86asm
+   CMPQ SP, 16(R14)   ; Сравнение текущего SP со stackguard0 в структуре горутины g
+   JBE  morestack      ; Если места мало — прыжок в рантайм</code><br />
+3. <strong>Удвоение и копирование (<code>runtime.morestack</code>):</strong> Если текущего стекового фрейма недостаточно:<br />
+   - Рантайм аллоцирует новый непрерывный блок памяти вдвое большего размера (4 КБ, затем 8 КБ, 16 КБ и т.д. вплоть до 1 ГБ на 64-битных системах).<br />
+   - Все стековые кадры физически копируются в новый блок.<br />
+   - Рантайм обходит все указатели на стеке и корректирует их адреса (<code>runtime.adjustpointers</code>).<br />
+   - Старый сегмент освобождается.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2202,42 +2213,33 @@
     </button>
   </div>
   <pre class="mermaid">
-sequenceDiagram
-participant Caller as Начальный фрейм
-participant G as Рантайм Go
-participant Stack as Стек горутины
-Caller-&gt;&gt;Stack: Фрейм dfs(0)
-Stack-&gt;&gt;Stack: Фрейм dfs(1)
-Stack-&gt;&gt;Stack: Фрейм dfs(2)
-Note over G,Stack: При превышении лимита&lt;br&gt;(2 КБ по умолчанию)&lt;br&gt;рантайм копирует стек&lt;br&gt;в новый, больший сегмент
-Stack-&gt;&gt;Stack: Фрейм dfs(3) ... dfs(k)
+flowchart TD
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+
+Start[&quot;Старт рекурсии: Стек 2 КБ&quot;]:::entry --&gt; Call[&quot;Рекурсивный спуск: dfs(node.Left)&quot;]:::process
+Call --&gt; Check{&quot;SP &lt; stackguard0?&lt;br&gt;(Стек заполнен?)&quot;}:::warning
+
+Check --&gt;|&quot;Нет&quot;| Exec[&quot;Мгновенное выделение кадра&lt;br&gt;SUBQ $size, SP&quot;]:::success
+Check --&gt;|&quot;Да&quot;| MoreStack[&quot;Вызов runtime.morestack&quot;]:::warning
+
+MoreStack --&gt; Alloc[&quot;Аллокация 2x блока в куче&lt;br&gt;Копирование всех кадров&quot;]:::process
+Alloc --&gt; Fix[&quot;adjustpointers: Коррекция указателей&quot;]:::process
+Fix --&gt; Resume[&quot;Возобновление рекурсии в новом стеке&quot;]:::success
   </pre>
 </div>
 
 
-<p><strong>Стек горутины</strong> в Go — это сегментированная структура. Начиная с Go 1.4, стек растёт динамически: когда текущий сегмент заполняется, рантайм выделяет новый сегмент в 2 раза большего размера, <strong>копирует</strong> туда весь старый стек, обновляет указатели и освобождает старый сегмент. Начальный размер стека — 2 КБ. При глубокой рекурсии расширения происходят многократно, и каждое копирование занимает время, пропорциональное текущему размеру стека.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>За расширение стека отвечает функция <code>runtime.morestack</code> (описана в <code>runtime/stack.go</code>). Она вызывается прологом каждой функции, если компилятор вставил проверку «достаточно ли места на стеке?». Когда места не хватает, <code>morestack</code> выделяет новый сегмент, копирует все фреймы и обновляет указатели. Для глубины 10⁵ это произойдёт порядка 17 раз с суммарным копированием нескольких мегабайт. Сама по себе операция занимает микросекунды, но в высоконагруженных системах может быть заметна.</p>
-  </div>
-</div>
+<hr />
+<h2 id="iterativnyy-dfs-emulyatsiya-steka-na-sreze-zero-copy">Итеративный DFS: Эмуляция стека на срезе (Zero-Copy)</h2>
 
-<p><strong>Преимущества рекурсивного подхода:</strong><br />
-- <strong>Лаконичность и читаемость.</strong> Код выглядит точно так же, как описание алгоритма: «обойти левое поддерево, обойти правое».<br />
-- <strong>Автоматический возврат в предыдущее состояние.</strong> Стек вызовов сам хранит путь и восстанавливает контекст при возврате — не нужно вручную управлять фреймами.<br />
-- <strong>Естественная поддержка preorder/inorder/postorder.</strong> Рекурсия позволяет легко разместить код обработки узла до, между или после рекурсивных вызовов.</p>
-<p><strong>Недостатки:</strong><br />
-- <strong>Глубина ограничена размерами стека горутины.</strong> Хотя стек растёт, для глубины 10⁷ он может занять сотни мегабайт и вызвать ошибку <code>runtime: out of memory</code>, а копирование стека начнёт занимать ощутимое время.<br />
-- <strong>Неконтролируемое потребление памяти.</strong> Вы не можете предсказать, сколько памяти займёт стек при неочевидной структуре графа (например, вырожденное дерево).<br />
-- <strong>Сложность с промежуточными состояниями.</strong> Если нужно сохранить состояние обхода (например, итератор), рекурсивный код требует преобразования в итеративный.</p>
-<h3 id="iterativnyy-dfs-emulyatsiya-steka-cherez-slays">Итеративный DFS: эмуляция стека через слайс</h3>
+<p>Если граф представляет собой вырожденную цепочку из $10^6$ вершин (например, граф транзакций в блокчейне или глубокая иерархия зависимостей пакетов), рекурсивный DFS заставит рантайм Go выполнить десятки реаллокаций стека горутины, раздув его до сотен мегабайт.</p>
+<p><strong>Итеративный подход</strong> переносит управление состоянием в пользовательский срез <code>stack := make([]T, 0, capacity)</code>.</p>
+<h3 id="1-iterativnyy-preorder-pryamoy-obkhod">1. Итеративный Preorder (Прямой обход)</h3>
 
-<p>Итеративный подход заменяет стек вызовов на <strong>явный стек</strong>, реализованный на обычном слайсе <code>[]T</code>. Это даёт полный контроль над памятью и глубиной обхода.</p>
-<p>Рассмотрим обход бинарного дерева в preorder:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2247,18 +2249,28 @@ Stack-&gt;&gt;Stack: Фрейм dfs(3) ... dfs(k)
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func preorderIterative(root *TreeNode) []int {
+  <pre class="language-go"><code class="language-go">package main
+
+// PreorderTraversalIterative обходит дерево в порядке Узел -&gt; Левый -&gt; Правый
+func PreorderTraversalIterative(root *TreeNode) []int {
     if root == nil {
         return nil
     }
-    var res []int
-    stack := []*TreeNode{root}
+
+    var result []int
+    // Стек с предварительно выделенной емкостью
+    stack := make([]*TreeNode, 0, 64)
+    stack = append(stack, root)
+
     for len(stack) &gt; 0 {
-        // Pop
-        node := stack[len(stack)-1]
-        stack = stack[:len(stack)-1]
-        res = append(res, node.Val)
-        // Push: сначала правый, чтобы левый обработался раньше (LIFO)
+        // Pop: извлечение вершины стека
+        n := len(stack) - 1
+        node := stack[n]
+        stack = stack[:n]
+
+        result = append(result, node.Val)
+
+        // LIFO: сначала кладем правого, чтобы левый обработался первым!
         if node.Right != nil {
             stack = append(stack, node.Right)
         }
@@ -2266,12 +2278,14 @@ Stack-&gt;&gt;Stack: Фрейм dfs(3) ... dfs(k)
             stack = append(stack, node.Left)
         }
     }
-    return res
+
+    return result
 }
 </code></pre>
 </div>
 
-<p>Для графа общего вида необходимо, как и в рекурсивной версии, отслеживать посещённые вершины. Итеративный DFS с полным контролем над порядком использует <strong>стек фреймов</strong>, аналогичный стеку вызовов:</p>
+<h3 id="2-iterativnyy-inorder-levyy-uzel-pravyy">2. Итеративный Inorder (Левый -> Узел -> Правый)</h3>
+<p>Для Binary Search Tree центрированный обход возвращает элементы строго по возрастанию:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2281,142 +2295,131 @@ Stack-&gt;&gt;Stack: Фрейм dfs(3) ... dfs(k)
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">type frame struct {
-    v   int
-    idx int // индекс следующего соседа для обработки
-}
+  <pre class="language-go"><code class="language-go">package main
 
-func dfsIterativeGraph(adj [][]int, start int) {
-    n := len(adj)
-    visited := make([]bool, n)
-    stack := []frame{{v: start, idx: 0}}
-    visited[start] = true
-    // Preorder: обрабатываем start здесь при желании
+// InorderTraversalIterative возвращает элементы дерева в отсортированном порядке
+func InorderTraversalIterative(root *TreeNode) []int {
+    var result []int
+    stack := make([]*TreeNode, 0, 64)
+    curr := root
 
-    for len(stack) &gt; 0 {
-        top := &amp;stack[len(stack)-1]
-        if top.idx &lt; len(adj[top.v]) {
-            neighbor := adj[top.v][top.idx]
-            top.idx++
-            if !visited[neighbor] {
-                visited[neighbor] = true
-                // Обработка соседа (preorder)
-                stack = append(stack, frame{v: neighbor, idx: 0})
-            }
-        } else {
-            // Все соседи обработаны — postorder
-            stack = stack[:len(stack)-1]
+    for curr != nil || len(stack) &gt; 0 {
+        // Шаг 1: Спуск до упора влево
+        for curr != nil {
+            stack = append(stack, curr)
+            curr = curr.Left
         }
+
+        // Шаг 2: Извлечение самого глубокого левого узла
+        n := len(stack) - 1
+        curr = stack[n]
+        stack = stack[:n]
+
+        result = append(result, curr.Val)
+
+        // Шаг 3: Переход в правое поддерево
+        curr = curr.Right
     }
+
+    return result
 }
 </code></pre>
 </div>
 
-<p><strong>Ключевые моменты идиоматичного Go:</strong><br />
-- Стек реализован на слайсе. Выделение <code>make([]frame, 0, maxDepth)</code> с предварительной вместимостью исключает переаллокации внутри цикла.<br />
-- Операция <code>pop</code> — срез <code>stack = stack[:len(stack)-1]</code> — не копирует данные, а лишь уменьшает длину заголовка слайса.<br />
-- Явный фрейм хранит <code>idx</code>, чтобы знать, с какого соседа продолжать после возврата из глубины. Это эмулирует счётчик команд в машинном фрейме.<br />
-- <code>visited</code> помечается <strong>до добавления в стек</strong>, чтобы избежать многократного помещения одной вершины.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Явный стек <code>[]frame</code> размещается в куче (если создан через <code>make</code>). Однако это одна аллокация на весь обход. В отличие от рекурсивного стека, который растёт и копируется, объём явного стека фиксирован и известен заранее (или ограничен). Никакого копирования стека не происходит, указатели не обновляются. Для графа с глубиной 10⁶ явный стек потребует слайс из 10⁶ фреймов — это ~16 МБ памяти, предсказуемо.</p>
-  </div>
-</div>
+<hr />
+<h2 id="vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</h2>
 
-<h3 id="sravnenie-rekursiya-vs-iteratsiya-s-tochki-zreniya-mechanical-sympathy">Сравнение: рекурсия vs итерация с точки зрения Mechanical Sympathy</h3>
+<h3 id="1-pochemu-stack-stacklenstack-1-ne-allotsiruet-pamyat">1. Почему `stack = stack[:len(stack)-1]` не аллоцирует память</h3>
+<p>В итеративном DFS операция Pop уменьшает длину слайса, сохраняя <code>cap</code>.<br />
+Пока глубина обхода укладывается в предварительно выделенную емкость, операции <code>append</code> и <code>pop</code> происходят строго in-place:<br />
+- Никаких вызовов <code>runtime.newobject</code><br />
+- Никакого давления на GC<br />
+- Непрерывный массив <code>stack</code> целиком кэшируется в L1d-кэше ядра CPU.</p>
+<h3 id="2-sravnitelnyy-benchmark-rekursiya-vs-iteratsiya">2. Сравнительный бенчмарк: Рекурсия vs Итерация</h3>
 
 <div class="table-container"><table>
 <thead>
 <tr>
-<th>Характеристика</th>
+<th>Параметр</th>
 <th>Рекурсивный DFS</th>
-<th>Итеративный DFS (слайс)</th>
+<th>Итеративный DFS (<code>[]*TreeNode</code>)</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Память под стек</strong></td>
-<td>Стек горутины, растёт динамически копированием</td>
-<td>Слайс в куче, фиксированного размера</td>
+<td><strong>Вызовы функций</strong></td>
+<td><code>CALL</code> / <code>RET</code> на каждый узел</td>
+<td>1 вызов функции, плоский цикл <code>for</code></td>
 </tr>
 <tr>
-<td><strong>Аллокации</strong></td>
-<td>Нет в куче при нормальном ходе (стек – не куча)</td>
-<td><code>make</code> для стека — одна аллокация</td>
+<td><strong>Проверка переполнения</strong></td>
+<td>Проверка <code>CMPQ SP</code> в прологе</td>
+<td>Проверка <code>len(stack) &gt; 0</code></td>
 </tr>
 <tr>
-<td><strong>Расширение стека</strong></td>
-<td>Копирование всего стека при переполнении (дорого при глубине &gt; 10⁴)</td>
-<td>Не происходит (capacity задан)</td>
+<td><strong>Память на узел</strong></td>
+<td>Стековый кадр ($\sim 32-48$ байт)</td>
+<td>8 байт (один указатель в срезе)</td>
 </tr>
 <tr>
-<td><strong>Управление глубиной</strong></td>
-<td>Неявное, ограничено памятью горутины</td>
-<td>Явное, можно задать максимальную глубину</td>
+<td><strong>Поведение при $H = 100\,000$</strong></td>
+<td>Копирование стека $\approx 16$ раз</td>
+<td>1 аллокация при создании среза</td>
 </tr>
 <tr>
-<td><strong>Читаемость</strong></td>
-<td>Высокая для pre/in/postorder</td>
-<td>Ниже, особенно при эмуляции всех трёх порядков</td>
-</tr>
-<tr>
-<td><strong>Кэш-локальность</strong></td>
-<td>Фреймы в стеке могут фрагментироваться после копирования? Нет, после копирования стек снова непрерывен</td>
-<td>Слайс непрерывен в куче, максимум попаданий в L1/L2</td>
-</tr>
-<tr>
-<td><strong>Поддержка отката/backtracking</strong></td>
-<td>Автоматически через возврат</td>
-<td>Вручную через индексы</td>
+<td><strong>Приостановка (Итератор)</strong></td>
+<td>Сложно (требует горутины и каналов)</td>
+<td>Тривиально (сохранение состояния в структуре)</td>
 </tr>
 </tbody>
 </table></div>
-<p><strong>Когда выбирать рекурсию:</strong><br />
-- Глубина обхода не превышает ~10⁴ (типичные деревья, лабиринты).<br />
-- Важна читаемость и быстрое прототипирование.<br />
-- Задача естественно выражается в терминах pre/in/postorder (например, <a href="5-path-sum.html" class="wikilink">5. Path Sum</a>, <a href="7-lowest-common-ancestor.html" class="wikilink">7. Lowest Common Ancestor</a>).</p>
-<p><strong>Когда выбирать итерацию:</strong><br />
-- Глубина может быть очень большой (вырожденное дерево с 10⁵+ узлами, граф-цепочка).<br />
-- Требуется жёсткий контроль памяти (встраиваемые системы, ограниченные контейнеры).<br />
-- Нужно приостанавливать и возобновлять обход (итератор).</p>
-<div class="callout callout-interview">
+<hr />
+<h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
+
+<div class="callout callout-warning">
   <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Ловушка: Утечка памяти при Pop указателей</span>
   </div>
   <div class="callout-body">
-    <p>Вопрос: «Почему вы не использовали рекурсию для обхода графа из миллиона вершин?»<br />
-Ответ: «Рекурсивный DFS опирается на стек горутины, который растёт копированием. При глубине 10⁶ потребуется около 16 МБ только под фреймы, и несколько расширений стека скопируют мегабайты памяти. Итеративный стек на слайсе с предвыделенной вместимостью даёт ту же память, но без дорогих копирований и с предсказуемой производительностью. Для миллиона вершин я предпочту итеративный подход».</p>
+    <p>Если срез хранит не просто примитивы, а тяжелые структуры по значению, операция <code>stack = stack[:len(stack)-1]</code> оставляет данные в физической памяти нижележащего массива до следующего <code>append</code>.<br />
+Если обход завершен, а стек долго удерживается в памяти, обнуляйте отсеченный элемент:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">stack[len(stack)-1] = nil // Даем GC очистить узел
+stack = stack[:len(stack)-1]
+</code></pre>
+</div>
+
   </div>
 </div>
 
-<h3 id="tipichnye-oshibki-i-ikh-predotvrashchenie">Типичные ошибки и их предотвращение</h3>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования: Превращение рекурсии в хвостовую (Tail Call Optimization)</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Поддерживает ли компилятор Go оптимизацию хвостовой рекурсии (TCO)?<br />
+<strong>Ответ:</strong> Нет, компилятор Go (<code>gc</code>) намеренно не выполняет автоматическую оптимизацию хвостовой рекурсии, чтобы сохранять точные и консистентные трассировки стека (Stack Traces) при паниках и профилировании (<code>pprof</code>). Любой алгоритм, требующий $O(1)$ стека, в Go обязан переписываться на явный цикл <code>for</code>.</p>
+  </div>
+</div>
 
-<ol>
-<li>
-<p><strong>Забытый <code>visited</code> в графе.</strong> Даже если граф ацикличен, но есть несколько путей к вершине, без <code>visited</code> вы посетите её экспоненциальное число раз. Правило: <code>visited[neighbor] = true</code> перед <code>push</code> в стек (или рекурсивным вызовом).</p>
-</li>
-<li>
-<p><strong>Неправильный порядок push в итеративном preorder.</strong> Чтобы обработать левого потомка раньше правого, в LIFO-стек нужно положить сначала правого, потом левого (как в коде выше). Если перепутать, порядок станет обратным.</p>
-</li>
-<li>
-<p><strong>Итеративный inorder/postorder без фреймов.</strong> Эмуляция этих порядков требует либо двух стеков, либо фреймов с состоянием, как в примере с графом. Новички часто пытаются обойтись одним стеком и попадают в ловушку бесконечного цикла.</p>
-</li>
-<li>
-<p><strong>Переполнение стека горутины в рекурсии.</strong> В Go стек растёт, поэтому классического stack overflow не будет, но при глубине &gt; 10⁷ может закончиться память. На собеседовании Senior упомянет, что для глубины &gt; 10⁵ он перейдёт на итеративный подход.</p>
-</li>
-<li>
-<p><strong>Аллокация стека в цикле.</strong> Если итеративный стек создаётся внутри функции через <code>make</code> без capacity, при каждом <code>append</code> вне capacity будет переаллокация. Всегда задавайте <code>make([]frame, 0, expectedDepth)</code>.</p>
-</li>
-</ol>
-<h3 id="zaklyuchenie">Заключение</h3>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
-<p>Выбор между рекурсивным и итеративным DFS — это не вопрос вкуса, а инженерный trade-off между читаемостью и контролем над памятью. Рекурсия элегантна и использует встроенный механизм стека горутины, который хорошо работает для умеренных глубин. Итеративный подход на слайсе даёт предсказуемую память, избегает копирования стека и незаменим для глубоких или контролируемых обходов. Senior Go-разработчик осознанно выбирает инструмент, понимая, как каждый из них взаимодействует с рантаймом.</p>
-<p>Теперь, вооружившись этим знанием, мы переходим к первой практической задаче кластера — <strong>Number of Islands</strong>, где DFS на матрице станет основным инструментом для подсчёта компонент связности. <a href="3-number-of-islands.html" class="wikilink">3. Number of Islands</a></p>
+<p>Понимание взаимосвязи рекурсии и стека формирует зрелый инженерный подход:<br />
+- Рекурсия идеальна для сбалансированных деревьев и коротких путей ($H \le 10^4$).<br />
+- Итеративный стек на слайсе незаменим для глубоких графов и системных компонентов ядра.<br />
+- Предвыделение емкости среза полностью устраняет аллокации в цикле обхода.</p>
+<p>Теперь мы готовы перейти к практическому решению задач на поиск в глубину. Начнем с классики подсчета компонент связности на матрицах: <a href="3-number-of-islands.html" class="wikilink">3. Number of Islands</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2444,7 +2447,7 @@ func dfsIterativeGraph(adj [][]int, start int) {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#kak-rabotaet-rekursivnyy-dfs-v-rantayme-go">Как работает рекурсивный DFS в рантайме Go</a></li><li class="toc-item toc-h3"><a href="#iterativnyy-dfs-emulyatsiya-steka-cherez-slays">Итеративный DFS: эмуляция стека через слайс</a></li><li class="toc-item toc-h3"><a href="#sravnenie-rekursiya-vs-iteratsiya-s-tochki-zreniya-mechanical-sympathy">Сравнение: рекурсия vs итерация с точки зрения Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-i-ikh-predotvrashchenie">Типичные ошибки и их предотвращение</a></li><li class="toc-item toc-h3"><a href="#zaklyuchenie">Заключение</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-stek-vyzovov-gorutiny-pod-kapotom">Архитектура: Стек вызовов горутины под капотом</a></li><li class="toc-item toc-h2"><a href="#iterativnyy-dfs-emulyatsiya-steka-na-sreze-zero-copy">Итеративный DFS: Эмуляция стека на срезе (Zero-Copy)</a></li><li class="toc-item toc-h3"><a href="#1-iterativnyy-preorder-pryamoy-obkhod">1. Итеративный Preorder (Прямой обход)</a></li><li class="toc-item toc-h3"><a href="#2-iterativnyy-inorder-levyy-uzel-pravyy">2. Итеративный Inorder (Левый -&gt; Узел -&gt; Правый)</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#1-pochemu-stack-stacklenstack-1-ne-allotsiruet-pamyat">1. Почему stack = stack[:len(stack)-1] не аллоцирует память</a></li><li class="toc-item toc-h3"><a href="#2-sravnitelnyy-benchmark-rekursiya-vs-iteratsiya">2. Сравнительный бенчмарк: Рекурсия vs Итерация</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

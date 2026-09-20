@@ -2178,27 +2178,46 @@
           </header>
 
           <div class="article-markdown">
-            <p>Задача Minimum Depth of Binary Tree (LeetCode 111) — это классический пример того, как правильный выбор алгоритма радикально меняет производительность системы. Если в <a href="3-binary-tree-level-order-traversal.html" class="wikilink">3. Binary Tree Level Order Traversal</a> мы обходили всё дерево ради статистики по слоям, то здесь наша цель — найти кратчайший путь от корня до ближайшего листа. И здесь BFS раскрывается во всей красе как алгоритм поиска кратчайшего пути.</p>
-<p><strong>Условие:</strong> Найти минимальную глубину бинарного дерева. Минимальная глубина — это количество узлов на кратчайшем пути от корневого узла до ближайшего листового узла.</p>
-<p>В бэкенде это моделирует задачу поиска ближайшего доступного ресурса в иерархии (например, поиск свободного воркера в дереве кластеров: Root -&gt; Rack -&gt; Server -&gt; Worker), где мы хотим остановиться, как только найдем первый валидный endpoint.</p>
-<h2 id="dfs-vs-bfs-tsena-polnogo-obkhoda">DFS vs BFS: Цена полного обхода</h2>
+            <blockquote>
+<p><em>«Преждевременная оптимизация — корень всех зол, однако умение остановиться в тот самый момент, когда цель достигнута, отличает выдающегося инженера от посредственного».</em><br />
+— Дональд Кнут</p>
+</blockquote>
+<p><strong>LeetCode 111. Minimum Depth of Binary Tree.</strong> Дано бинарное дерево. Требуется найти его <strong>минимальную глубину</strong> — количество узлов на кратчайшем пути от корневого узла до ближайшего листового узла (узла, у которого нет ни левого, ни правого потомка).</p>
+<p>Эта задача — хрестоматийный пример того, как выбор парадигмы обхода графа кардинально меняет вычислительную сложность и задержку (Latency) системы. Если для задачи подсчета максимальной глубины дерева одинаково хорошо подходят как DFS, так и BFS, то в задаче о минимальной глубине <strong>поиск в ширину (BFS) безоговорочно доминирует</strong> благодаря возможности мгновенного раннего завершения (<strong>Early Exit</strong>).</p>
+<hr />
+<h3 id="1-arkhitekturnyy-batl-bfs-protiv-dfs">1. Архитектурный батл: BFS против DFS</h3>
 
-<p>Эту задачу можно решить двумя способами:<br />
-1. <strong>DFS (Поиск в глубину):</strong> Обойти всё дерево, вычислить глубину каждого листа и взять минимум. Сложность: строго $O(N)$ времени и $O(H)$ памяти (где $H$ — высота дерева).<br />
-2. <strong>BFS (Поиск в ширину):</strong> Обходить дерево по уровням. Как только мы встречаем первый листовой узел, мы <strong>немедленно возвращаем ответ</strong>.</p>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+<p>Представьте несбалансированное дерево из $1\,000\,000$ узлов, у которого на глубине 3 находится лист, а правая ветвь уходит на миллион узлов вниз.</p>
+
+<div class="code-block" data-lang="text">
+  <div class="code-header">
+    <span class="code-lang-tag">TEXT</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p>Если интервьюер просит решить задачу на минимальную глубину, всегда предлагайте BFS и объясняйте почему. В сбалансированном дереве с 1000 узлов DFS посетит все 1000. BFS найдет лист на 3-м уровне, посетив всего $1 + 2 + 4 = 7$ узлов. Это $O(\log N)$ против $O(N)$. В высоконагруженных системах раннее завершение (Early Exit) — это экономия CPU и памяти.</p>
-  </div>
+  <pre class="language-text"><code class="language-text">                  [ 1 ]               Уровень 1
+                 /     \
+              [ 2 ]   [ 3 ]           Уровень 2
+             /            \
+          [ 4 ] (ЛИСТ!)  [ 5 ]        Уровень 3: НАЙДЕН ЛИСТ! ВЫХОД!
+                          /
+                        ... (еще 999 995 узлов вниз)
+</code></pre>
 </div>
 
-<h2 id="idiomatichnyy-go-bfs-s-early-exit">Идиоматичный Go: BFS с Early Exit</h2>
+<ul>
+<li><strong>Подход DFS (Поиск в глубину):</strong><br />
+  Обязан обойти <strong>все $1\,000\,000$ узлов</strong> дерева, спускаясь до самого дна каждого поддерева, чтобы вычислить <code>min(leftDepth, rightDepth)</code>. Сложность: строго $O(N)$ времени, $10^6$ вызовов функций, сотни килобайт стека.</li>
+<li><strong>Подход BFS (Поиск в ширину):</strong><br />
+  Двигаясь концентрическими кругами от корня, алгоритм проверит узел 1, затем узлы 2 и 3, и на 3-м уровне наткнется на узел 4 без потомков.<br />
+  Алгоритм <strong>немедленно возвращает 3 и завершает работу</strong>, посетив всего $1 + 2 + 2 = 5$ узлов вместо миллиона! Сложность: $O(2^{\text{minDepth}}) \ll O(N)$.</li>
+</ul>
+<hr />
+<h3 id="2-kovarnaya-lovushka-formulirovki-chto-schitaetsya-listom">2. Коварная ловушка формулировки: что считается листом?</h3>
 
-<p>Применим наш проверенный паттерн со слайс-очередью и индексом <code>head</code>, добавив логику остановки при обнаружении первого листа.</p>
+<p>Большинство кандидатов на собеседованиях совершают классическую ошибку при попытке написать рекурсивный DFS:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2208,12 +2227,70 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">type TreeNode struct {
+  <pre class="language-go"><code class="language-go">// ГРУБАЯ ОШИБКА: Так писать нельзя!
+func minDepthWrong(root *TreeNode) int {
+    if root == nil {
+        return 0
+    }
+    // Если у узла есть только правый потомок, minDepth(root.Left) вернет 0,
+    // и функция ошибочно решит, что глубина равна 0 + 1 = 1!
+    return 1 + min(minDepthWrong(root.Left), minDepthWrong(root.Right))
+}
+</code></pre>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-header">
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Определение листа в теории графов:</strong><br />
+Лист — это узел, у которого <strong>нет ни одного ребенка</strong> (<code>node.Left == nil &amp;&amp; node.Right == nil</code>).<br />
+Если у корня нет левого ребенка, но есть правая ветка из 100 узлов, путь не может закончиться в пустом левом поддереве! Минимальная глубина такого дерева равна 101, а ошибочный DFS-код выше вернёт 1.</p>
+  </div>
+</div>
+
+<p><strong>Преимущество BFS:</strong> Алгоритм поиска в ширину полностью защищён от этой ловушки, так как проверка на лист выполняется прямо и декларативно:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">if node.Left == nil &amp;&amp; node.Right == nil {
+    return depth // Нашли первый же лист!
+}
+</code></pre>
+</div>
+
+<hr />
+<h3 id="3-idiomaticheskaya-realizatsiya-na-go-bfs-early-exit">3. Идиоматическая реализация на Go (BFS Early Exit)</h3>
+
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package main
+
+// TreeNode представляет узел бинарного дерева.
+type TreeNode struct {
     Val   int
     Left  *TreeNode
     Right *TreeNode
 }
 
+// minDepth находит минимальную глубину дерева с помощью BFS.
+// Временная сложность: O(V_visited) &lt;= O(N), в лучшем случае O(1).
+// Пространственная сложность: O(W) — ширина очереди на уровне найденного листа.
 func minDepth(root *TreeNode) int {
     if root == nil {
         return 0
@@ -2221,18 +2298,20 @@ func minDepth(root *TreeNode) int {
 
     queue := []*TreeNode{root}
     head := 0
-    depth := 1 // Корень уже считается за уровень
+    depth := 1 // Корень дерева находится на глубине 1
 
     for head &lt; len(queue) {
-        levelSize := len(queue)
+        levelSize := len(queue) - head
 
-        // Обрабатываем текущий уровень целиком
-        for i := head; i &lt; levelSize; i++ {
-            node := queue[i]
+        // Сканируем текущий слой
+        for i := 0; i &lt; levelSize; i++ {
+            node := queue[head]
+            queue[head] = nil // Помогаем GC
+            head++
 
-            // Проверка на лист: нет ни левого, ни правого ребенка
+            // ПРОВЕРКА НА ЛИСТ: если потомков нет, это ближайший лист!
             if node.Left == nil &amp;&amp; node.Right == nil {
-                return depth // Early Exit!
+                return depth // Мгновенный выход!
             }
 
             if node.Left != nil {
@@ -2243,8 +2322,6 @@ func minDepth(root *TreeNode) int {
             }
         }
 
-        // Если на этом уровне листьев не нашлось, идем глубже
-        head = levelSize
         depth++
     }
 
@@ -2252,6 +2329,9 @@ func minDepth(root *TreeNode) int {
 }
 </code></pre>
 </div>
+
+<hr />
+<h3 id="4-vizualizatsiya-volnovogo-poiska-s-rannim-vykhodom">4. Визуализация волнового поиска с ранним выходом</h3>
 
 
 <div class="mermaid-wrapper">
@@ -2267,19 +2347,47 @@ func minDepth(root *TreeNode) int {
   </div>
   <pre class="mermaid">
 flowchart TD
-A[&quot;Уровень 1 - Корень 1&quot;] --&gt; B[&quot;Уровень 2 - Узлы 2 и 3&quot;]
-B --&gt; C{&quot;Узел 2 - Лист?&quot;}
-C -- &quot;Да! left=nil, right=nil&quot; --&gt; D[&quot;return depth = 2&lt;br&gt;Останавливаем обход!&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
 
-style D fill:#064e3b,stroke:#2e7d32,stroke-width:2px,color:#f8fafc
+Start[&quot;Старт: queue=[root], depth=1&quot;]:::entry --&gt; CheckEmpty{&quot;head &lt; len(queue)?&quot;}:::warning
+
+CheckEmpty -- &quot;Да&quot; --&gt; Snapshot[&quot;levelSize = len(queue) - head&quot;]:::accent
+Snapshot --&gt; InnerLoop[&quot;Внутренний цикл: i &lt; levelSize&quot;]:::process
+
+InnerLoop --&gt; FetchNode[&quot;node = queue[head]; head++&quot;]:::process
+FetchNode --&gt; CheckLeaf{&quot;node.Left == nil&lt;br&gt;&amp;&amp; node.Right == nil?&quot;}:::warning
+
+CheckLeaf -- &quot;Да: Первый лист найден!&quot; --&gt; EarlyExit[&quot;return depth // МГНОВЕННЫЙ ВЫХОД&quot;]:::success
+CheckLeaf -- &quot;Нет&quot; --&gt; AppendKids[&quot;Добавить существующих детей в queue&quot;]:::process
+
+AppendKids --&gt; LoopCheck{&quot;i == levelSize?&quot;}:::warning
+LoopCheck -- &quot;Нет&quot; --&gt; InnerLoop
+LoopCheck -- &quot;Да&quot; --&gt; IncDepth[&quot;depth++&quot;]:::accent
+IncDepth --&gt; CheckEmpty
   </pre>
 </div>
 
 
-<h2 id="lovushka-dfs-odnostoronnie-derevya">Ловушка DFS: Односторонние деревья</h2>
+<hr />
+<h3 id="5-mekhanicheskaya-simpatiya-ekonomiya-resursov-cpu-i-ram">5. Механическая симпатия: Экономия ресурсов CPU и RAM</h3>
 
-<p>Хотя DFS не оптимален для этой задачи, на собеседовании вас могут попросить написать именно его. И здесь кроется классическая ловушка.</p>
-<p>Многие пишут рекурсивный DFS так:</p>
+<ol>
+<li><strong>Экономия тактов CPU на вызовах функций:</strong><br />
+   В DFS каждый уровень рекурсии требует инструкций процессора <code>CALL</code>, сохранения регистров и проверки границ стека (<code>runtime.morestack</code>). В BFS цикл плоский, компилируется в простые инструкции безусловного перехода <code>JMP</code>, а при срабатывании <code>return depth</code> выполнение немедленно завершается.</li>
+<li><strong>Мгновенное освобождение кучи:</strong><br />
+   Когда срабатывает ранний выход <code>return depth</code>, функция выходит, и срез <code>queue</code> становится недостижимым. Сборщик мусора Go забирает маленький массив очереди за доли микросекунды, так как мы даже не успели выделить память под миллионы глубоких узлов.</li>
+<li><strong>Hardware Prefetcher Friendly:</strong><br />
+   Поскольку мы читаем узлы из очереди подряд, предвыборщик процессора (Hardware Prefetcher) заранее подтягивает элементы очереди в кэш-линии L1/L2.</li>
+</ol>
+<hr />
+<h3 id="6-sobesedovanie-kak-pravilno-napisat-dfs-esli-nastoyal-intervyuer">6. Собеседование: Как правильно написать DFS (если настоял интервьюер)</h3>
+
+<p>Если интервьюер говорит: <em>«Отлично, BFS оптимален. А теперь напишите корректный DFS»</em>, покажите класс:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2289,74 +2397,59 @@ style D fill:#064e3b,stroke:#2e7d32,stroke-width:2px,color:#f8fafc
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// ОШИБОЧНОЕ РЕШЕНИЕ DFS
-func minDepth(node *TreeNode) int {
-    if node == nil { return 0 }
-    return 1 + min(minDepth(node.Left), minDepth(node.Right))
+  <pre class="language-go"><code class="language-go">func minDepthDFS(root *TreeNode) int {
+    if root == nil {
+        return 0
+    }
+    // Если левого поддерева нет — ищем лист только в правом!
+    if root.Left == nil {
+        return 1 + minDepthDFS(root.Right)
+    }
+    // Если правого поддерева нет — ищем лист только в левом!
+    if root.Right == nil {
+        return 1 + minDepthDFS(root.Left)
+    }
+    // Есть оба потомка — берем минимум из двух путей
+    return 1 + min(minDepthDFS(root.Left), minDepthDFS(root.Right))
 }
 </code></pre>
 </div>
 
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Этот код ломается на односторонних деревьях (например, когда есть только правые дети). Если у узла есть правый ребенок, но нет левого (<code>node.Left == nil</code>), формула посчитает, что левая ветка имеет глубину 0, и вернет 1. Но узел, у которого есть дети, <strong>не является листом</strong>! Путь обязан заканчиваться строго на листе.</p>
-<p>Правильный DFS должен явно проверять наличие детей:</p>
+<hr />
+<h3 id="rezyume-dlya-intervyu">Резюме для интервью</h3>
 
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">if node.Left == nil { return 1 + minDepth(node.Right) }
-if node.Right == nil { return 1 + minDepth(node.Left) }
-return 1 + min(minDepth(node.Left), minDepth(node.Right))
-</code></pre>
-</div>
-
-<p>BFS полностью избавлен от этого класса ошибок, так как он проверяет статус "листа" напрямую перед добавлением в очередь.</p>
-  </div>
-</div>
-
-<h2 id="mechanical-sympathy-mgnovennyy-sbros-ocheredi">Mechanical Sympathy: Мгновенный сброс очереди</h2>
-
-<p>Что происходит на уровне операционной системы и рантайма Go, когда мы делаем <code>return depth</code> внутри цикла BFS?</p>
-<p>В этот момент слайс <code>queue</code> всё ещё содержит указатели на узлы дерева, которые мы добавили на предыдущих уровнях, а также базовый массив (underlying array) зарезервированной памяти. </p>
-<p>Поскольку мы возвращаемся из функции <code>minDepth</code>, фрейм этой функции на стеке горутины разрушается. Все локальные переменные (<code>queue</code>, <code>head</code>, <code>depth</code>) перестают существовать. Указатель на базовый массив слайса теряется.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>В этот момент включается Garbage Collector Go. Поскольку мы использовали BFS с Early Exit, мы не успели загадить память указателями на все узлы дерева. GC нужно очистить только те узлы, что успели попасть в <code>queue</code>. </p>
-<p>Если бы мы использовали DFS и дерево было вырождено в связный список длиной 1 000 000, стек горутины разросся бы до мегабайта, и при возврате GC пришлось бы рекурсивно помечать миллион объектов. BFS с ранним выходом потребляет память пропорционально ширине самого мелкого уровня, что делает работу GC мгновенной.</p>
-  </div>
-</div>
-
-<h2 id="system-design-circuit-breaker-i-poisk-instansa">System Design: Circuit Breaker и Поиск инстанса</h2>
-
-<p>В распределенных системах поиска (Service Discovery) архитектура часто выглядит как дерево. Запрос приходит в Load Balancer (корень), который знает о нескольких Availability Zones (уровень 2), которые знают о серверах (уровень 3), которые знают о воркерах (уровень 4).</p>
-<p>Когда нам нужно найти <em>любой</em> живой воркер для выполнения задачи, мы не обходим всё дерево (DFS), чтобы составить полный список. Мы делаем BFS:<br />
-1. Спрашиваем AZ.<br />
-2. Спрашиваем серверы в первой AZ.<br />
-3. Находим первого живого воркера — <strong>Early Exit</strong>.</p>
-<p>Если на уровне 3 сервер сообщает, что он жив (но мы еще не дошли до воркеров), мы не останавливаемся — он не "лист" (не конечный исполнитель). Мы останавливаемся только на "листе" — конкретном воркере. Этот алгоритм гарантирует, что мы найдем ближайшего (в терминах сетевой топологии) доступного исполнителя за минимальное количество хопов.</p>
-<h2 id="itog">Итог</h2>
-
-<ol>
-<li><strong>BFS для кратчайшего пути:</strong> Задачи на минимальное расстояние в невзвешенных графах и деревьях — естественная среда обитания BFS.</li>
-<li><strong>Early Exit:</strong> Главное преимущество BFS — возможность остановить выполнение, как только найден первый лист, экономя огромное количество процессорного времени.</li>
-<li><strong>Ловушка DFS:</strong> Если пишете DFS, помните, что узел с одним ребенком — это не лист. Глубина пустого поддерева не может учитываться.</li>
-<li><strong>Профилирование памяти:</strong> BFS с ранним выходом радикально снижает нагрузку на Garbage Collector, так как объекты в очереди не успевают накопиться.</li>
-</ol>
-<p>В следующей статье мы выйдем за рамки бинарных деревьев и применим BFS к поиску кратчайшего пути в словесных графах: <a href="5-word-ladder.html" class="wikilink">5. Word Ladder</a>.</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Характеристика</th>
+<th>Поиск в ширину (BFS)</th>
+<th>Поиск в глубину (DFS)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Время в лучшем случае</strong></td>
+<td>$O(1)$ (если корень или его ребенок — лист)</td>
+<td>$O(N)$ (обязан обойти всё дерево)</td>
+</tr>
+<tr>
+<td><strong>Время в худшем случае</strong></td>
+<td>$O(N)$ (лист на самом глубоком уровне)</td>
+<td>$O(N)$</td>
+</tr>
+<tr>
+<td><strong>Память в худшем случае</strong></td>
+<td>$O(W) \le O(N/2)$</td>
+<td>$O(H) \le O(N)$</td>
+</tr>
+<tr>
+<td><strong>Риск ошибки в определении листа</strong></td>
+<td>Нулевой (явная проверка <code>Left == nil &amp;&amp; Right == nil</code>)</td>
+<td>Высокий (нужно обрабатывать <code>nil</code>-ветви)</td>
+</tr>
+</tbody>
+</table></div>
+<p>В следующей задаче — <a href="5-word-ladder.html" class="wikilink">5. Word Ladder</a> — мы покинем мир деревьев и погрузимся в графы словарных состояний, где BFS решает сложнейшую комбинаторную задачу поиска кратчайшей цепочки мутаций.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2384,7 +2477,7 @@ return 1 + min(minDepth(node.Left), minDepth(node.Right))
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#dfs-vs-bfs-tsena-polnogo-obkhoda">DFS vs BFS: Цена полного обхода</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-bfs-s-early-exit">Идиоматичный Go: BFS с Early Exit</a></li><li class="toc-item toc-h2"><a href="#lovushka-dfs-odnostoronnie-derevya">Ловушка DFS: Односторонние деревья</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-mgnovennyy-sbros-ocheredi">Mechanical Sympathy: Мгновенный сброс очереди</a></li><li class="toc-item toc-h2"><a href="#system-design-circuit-breaker-i-poisk-instansa">System Design: Circuit Breaker и Поиск инстанса</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h3"><a href="#1-arkhitekturnyy-batl-bfs-protiv-dfs">1. Архитектурный батл: BFS против DFS</a></li><li class="toc-item toc-h3"><a href="#2-kovarnaya-lovushka-formulirovki-chto-schitaetsya-listom">2. Коварная ловушка формулировки: что считается листом?</a></li><li class="toc-item toc-h3"><a href="#3-idiomaticheskaya-realizatsiya-na-go-bfs-early-exit">3. Идиоматическая реализация на Go (BFS Early Exit)</a></li><li class="toc-item toc-h3"><a href="#4-vizualizatsiya-volnovogo-poiska-s-rannim-vykhodom">4. Визуализация волнового поиска с ранним выходом</a></li><li class="toc-item toc-h3"><a href="#5-mekhanicheskaya-simpatiya-ekonomiya-resursov-cpu-i-ram">5. Механическая симпатия: Экономия ресурсов CPU и RAM</a></li><li class="toc-item toc-h3"><a href="#6-sobesedovanie-kak-pravilno-napisat-dfs-esli-nastoyal-intervyuer">6. Собеседование: Как правильно написать DFS (если настоял интервьюер)</a></li><li class="toc-item toc-h3"><a href="#rezyume-dlya-intervyu">Резюме для интервью</a></li>
   </ul>
 </aside>
 

@@ -2171,61 +2171,58 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~16 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">5. Word Ladder</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Задача Word Ladder (LeetCode 127) — это классический переход от простых BFS на деревьях к реальным BFS на графах. Если в <a href="4-minimum-depth-of-binary-tree.html" class="wikilink">4. Minimum Depth of Binary Tree</a> структура была задана явно (указатели <code>Left</code>/<code>Right</code>), то здесь граф <strong>неявный</strong>. Мы должны построить его на лету, и то, как мы это сделаем, определит, получит ли наше решение Time Limit Exceeded (TLE) или пройдет с запасом.</p>
-<p><strong>Условие:</strong> Даны два слова, <code>beginWord</code> и <code>endWord</code>, и словарь <code>wordList</code>. Все слова одной длины. За один шаг можно изменить одну букву в слове так, чтобы новое слово было в словаре. Найти длину кратчайшей последовательности трансформаций от <code>beginWord</code> к <code>endWord</code>.</p>
-<p>В бэкенде это моделирует задачи поиска минимального количества мутаций (например, генетических или трансформаций конфигурационных файлов), а также лежит в основе алгоритмов автокоррекции и поиска синонимов в поисковых движках.</p>
-<h2 id="problema-neyavnogo-grafa-on2-l-vs-on-l2">Проблема неявного графа: O(N^2 * L) vs O(N * L^2)</h2>
+            <blockquote>
+<p><em>«Программирование — это искусство находить ясность среди лабиринта возможностей. Если пространство вариантов разрастается с пугающей скоростью, начните двигаться навстречу цели с обоих концов одновременно».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p><strong>LeetCode 127. Word Ladder.</strong> Даны два слова <code>beginWord</code> и <code>endWord</code>, а также словарь допустимых слов <code>wordList</code>. Все слова имеют одинаковую длину $L$ и состоят только из строчных букв латинского алфавита. За один ход разрешается заменить ровно одну букву так, чтобы получившееся слово присутствовало в <code>wordList</code>. Требуется найти <strong>минимальное количество слов</strong> в цепочке превращений от <code>beginWord</code> до <code>endWord</code>. Если такой путь не существует, вернуть <code>0</code>.</p>
+<p>Если в задачах на деревья (<a href="3-binary-tree-level-order-traversal.html" class="wikilink">3. Binary Tree Level Order Traversal</a>, <a href="4-minimum-depth-of-binary-tree.html" class="wikilink">4. Minimum Depth of Binary Tree</a>) топология графа была явно задана указателями, то в задаче «Лестница слов» перед инженером встаёт <strong>неявный граф состояний</strong> (Implicit State Graph). То, как именно мы будем исследовать этот граф, определяет грань между немедленным падением по таймауту (Time Limit Exceeded) и молниеносным решением за доли миллисекунд.</p>
+<hr />
+<h3 id="1-arkhitektura-prostranstva-sostoyaniy-naivnyy-perebor-protiv-generatsii-sosedey">1. Архитектура пространства состояний: наивный перебор против генерации соседей</h3>
 
-<p>Самая большая ошибка — пытаться построить граф полным перебором: сравнивать каждое слово с каждым другим словом в словаре, чтобы найти отличающиеся на одну букву пары. Для словаря из 5000 слов это 25 миллионов сравнений.</p>
-<p><strong>Инсайт:</strong> Вместо того чтобы искать соседей для слова, мы можем генерировать <strong>промежуточные маски (wildcards)</strong>.<br />
-Для слова <code>hot</code> маски будут: <code>*ot</code>, <code>h*t</code>, <code>ho*</code>.<br />
-Если два слова отличаются на одну букву, они обязательно будут иметь общую маску. Мы можем заранее построить <code>map[mask][]words</code>, и тогда поиск всех соседей для слова займет генерацию $L$ масок (где $L$ — длина слова), что невероятно быстро.</p>
+<p>Пусть $N$ — размер словаря ($N \le 5000$), а $L$ — длина слова ($L \le 10$).</p>
+<ul>
+<li><strong>Наивный подход ($O(N^2 \cdot L)$):</strong><br />
+  Сравнить каждую пару слов словаря, вычисляя расстояние Хэмминга. Для словаря в $5000$ слов это потребует $5000 \times 5000 \times 10 \approx 250\,000\,000$ операций сравнения байтов ещё до запуска самого поиска. Это гарантированный TLE.</li>
+<li><strong>Генерация соседей на лету ($O(N \cdot L \cdot 26)$):</strong><br />
+  Поместим словарь в хеш-таблицу <code>map[string]struct{}</code> с проверкой за $O(1)$. Для текущего слова мы последовательно подставляем все $26$ букв английского алфавита в каждую из $L$ позиций ($L \times 26$ вариантов) и проверяем наличие мутации в словаре. Для слова длины $5$ это всего $5 \times 26 = 130$ быстрых поисков по хешу!</li>
+</ul>
+<hr />
+<h3 id="2-vershina-masterstva-dvunapravlennyy-bfs-bidirectional-bfs">2. Вершина мастерства: Двунаправленный BFS (Bidirectional BFS)</h3>
 
-<div class="code-block" data-lang="go">
+<p>Классический поиск в ширину расширяет волновой фронт исключительно от стартового слова <code>beginWord</code>. Если ветвистость графа составляет в среднем $B$, а длина кратчайшего пути равна $D$, то классический BFS будет вынужден просканировать $O(B^D)$ узлов. При $B = 5$ и $D = 8$ это порядка $5^8 \approx 390\,625$ вершин.</p>
+<p><strong>Двунаправленный BFS</strong> запускает два встречных фронта:<br />
+1. Прямая волна из <code>beginWord</code>.<br />
+2. Обратная волна из <code>endWord</code>.</p>
+
+<div class="code-block" data-lang="ascii">
   <div class="code-header">
-    <span class="code-lang-tag">Go</span>
+    <span class="code-lang-tag">DIAGRAM</span>
     <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// Построение словаря масок
-adj := make(map[string][]string)
-for _, word := range wordList {
-    chars := []byte(word)
-    for i := range chars {
-        original := chars[i]
-        chars[i] = '*'
-        mask := string(chars)
-        adj[mask] = append(adj[mask], word)
-        chars[i] = original
-    }
-}
+  <pre class="language-ascii"><code class="language-ascii">Прямой BFS:            [Старт] ───────► ◯ ───► ◯ ───► ◯ ───► ◯ ───► [Финиш]
+                       Площадь поиска ~ O(B^D)
+
+Двунаправленный BFS:   [Старт] ───► ◯ ───► ⦿ ◄─── ◯ ◄─── [Финиш]
+                       Площадь поиска ~ O(2 * B^(D/2))
 </code></pre>
 </div>
 
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Конвертация <code>string(chars)</code> в Go создает новую строку в куче. На каждый шаг генерации масок мы делаем $L$ аллокаций. Для больших словарей это создает колоссальное давление на GC. В production-системах (например, в поиске по словарю БД) часто используют хеширование масок (например, CRC32 или FNV от массива байт), чтобы использовать в качестве ключа мапы <code>uint64</code> вместо <code>string</code>. Это радикально снижает оверхед аллокаций.</p>
-  </div>
-</div>
+<p>Встреча фронтов происходит посередине. Сложность падает с $O(B^D)$ до $O(2 \cdot B^{D/2})$! Для $B=5, D=8$ это всего $2 \times 5^4 = 1\,250$ проверок — <strong>ускорение в 300 раз!</strong></p>
+<p>Ключевой трюк: на каждом шаге мы всегда <strong>расширяем меньший из двух фронтов</strong>, удерживая размер памяти и число аллокаций на минимально возможном уровне.</p>
+<hr />
+<h3 id="3-idiomaticheskaya-realizatsiya-na-go">3. Идиоматическая реализация на Go</h3>
 
-<h2 id="optimizatsiya-senior-urovnya-dvunapravlennyy-bfs-bidirectional-bfs">Оптимизация Senior-уровня: Двунаправленный BFS (Bidirectional BFS)</h2>
-
-<p>Классический BFS расширяет фронт волны только со стороны старта. Если кратчайший путь имеет длину $D$, а каждое слово имеет в среднем $B$ соседей (ветвистость графа), BFS посетит $O(B^D)$ узлов. Для глубоких трансформаций это число экспоненциально.</p>
-<p><strong>Двунаправленный BFS</strong> запускает две волны одновременно: от <code>beginWord</code> и от <code>endWord</code>. Как только эти два фронта пересекаются (находят общее слово), путь найден.<br />
-Математически это снижает количество посещенных узлов с $O(B^D)$ до $O(2 \cdot B^{D/2})$. Для $D=10$ и $B=10$ это разница между 10 миллиардами и 200 тысячами узлов!</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2235,25 +2232,34 @@ for _, word := range wordList {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func ladderLength(beginWord string, endWord string, wordList []string) int {
-    wordSet := make(map[string]struct{})
+  <pre class="language-go"><code class="language-go">package main
+
+// ladderLength находит кратчайшую цепочку трансформации слов с помощью Bidirectional BFS.
+// Временная сложность: O(N * L * 26) в худшем случае, на практике O(B^(D/2)).
+// Пространственная сложность: O(N * L) — хранение словаря и фронтов волны.
+func ladderLength(beginWord string, endWord string, wordList []string) int {
+    // 1. Помещаем словарь в zero-alloc Set
+    dict := make(map[string]struct{}, len(wordList))
     for _, w := range wordList {
-        wordSet[w] = struct{}{}
+        dict[w] = struct{}{}
     }
 
-    if _, exists := wordSet[endWord]; !exists {
-        return 0 // endWord нет в словаре, путь невозможен
+    // Если целевого слова нет в словаре — трансформации не существует
+    if _, exists := dict[endWord]; !exists {
+        return 0
     }
 
-    // Два множества для встречных волн
+    // 2. Инициализируем два встречных фронта
     beginSet := map[string]struct{}{beginWord: {}}
     endSet := map[string]struct{}{endWord: {}}
-    visited := map[string]struct{}{beginWord: {}, endWord: {}}
 
-    level := 1
+    // Посещенные слова удаляем прямо из словаря dict, исключая повторные заходы
+    delete(dict, beginWord)
+
+    step := 1 // Цепочка начинается с beginWord
 
     for len(beginSet) &gt; 0 &amp;&amp; len(endSet) &gt; 0 {
-        // Оптимизация: всегда расширяем МЕНЬШИЙ фронт
+        // ОПТИМИЗАЦИЯ: всегда шагаем от меньшего фронта к большему
         if len(beginSet) &gt; len(endSet) {
             beginSet, endSet = endSet, beginSet
         }
@@ -2262,38 +2268,46 @@ for _, word := range wordList {
 
         for word := range beginSet {
             chars := []byte(word)
-            for i := 0; i &lt; len(chars); i++ {
-                original := chars[i]
-                for c := byte('a'); c &lt;= byte('z'); c++ {
-                    if c == original { continue }
-                    chars[i] = c
-                    newWord := string(chars)
 
-                    // Если новое слово во встречном фронте — нашли!
-                    if _, ok := endSet[newWord]; ok {
-                        return level + 1
+            // Перебираем каждую позицию слова
+            for i := 0; i &lt; len(chars); i++ {
+                orig := chars[i]
+
+                // Перебираем 26 вариантов символов
+                for c := byte('a'); c &lt;= byte('z'); c++ {
+                    if c == orig {
+                        continue
+                    }
+                    chars[i] = c
+                    candidate := string(chars)
+
+                    // Фронты встретились! Кратчайший путь найден
+                    if _, found := endSet[candidate]; found {
+                        return step + 1
                     }
 
-                    // Если слово в словаре и еще не посещено
-                    if _, ok := wordSet[newWord]; ok {
-                        if _, vis := visited[newWord]; !vis {
-                            nextSet[newWord] = struct{}{}
-                            visited[newWord] = struct{}{}
-                        }
+                    // Если кандидат есть в словаре — продвигаем фронт
+                    if _, found := dict[candidate]; found {
+                        nextSet[candidate] = struct{}{}
+                        delete(dict, candidate) // Помечаем посещенным (удаляем из словаря)
                     }
                 }
-                chars[i] = original // откат
+
+                chars[i] = orig // Восстанавливаем символ перед следующей позицией
             }
         }
 
         beginSet = nextSet
-        level++
+        step++
     }
 
     return 0
 }
 </code></pre>
 </div>
+
+<hr />
+<h3 id="4-vizualizatsiya-stolknoveniya-volnovykh-frontov">4. Визуализация столкновения волновых фронтов</h3>
 
 
 <div class="mermaid-wrapper">
@@ -2309,69 +2323,97 @@ for _, word := range wordList {
   </div>
   <pre class="mermaid">
 flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Фронт Start&lt;br&gt;hit&quot;]:::entry --&gt; B[&quot;Фронт Start L1&lt;br&gt;hot&quot;]
-C[&quot;Фронт End&lt;br&gt;cog&quot;]:::success --&gt; D[&quot;Фронт End L1&lt;br&gt;dog, log&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
 
-B --&gt; E{&quot;Следующий шаг&lt;br&gt;Генерируем соседей hot&quot;}
-D --&gt; F{&quot;Следующий шаг&lt;br&gt;Генерируем соседей dog и log&quot;}
+subgraph FrontA[&quot;Фронт Начала (beginSet)&quot;]
+S1[&quot;hit&quot;]:::entry --&gt; S2[&quot;hot&quot;]:::process
+end
 
-E --&gt; G[&quot;dot, lot&quot;]
-F --&gt; G
+subgraph MeetPoint[&quot;Точка пересечения&quot;]
+M[&quot;dot / lot&quot;]:::success
+end
 
-G --&gt; H[&quot;Пересечение!&lt;br&gt;dot и lot найдены&lt;br&gt;Путь найден&quot;]
+subgraph FrontB[&quot;Фронт Конца (endSet)&quot;]
+E1[&quot;cog&quot;]:::accent --&gt; E2[&quot;dog / log&quot;]:::process
+end
+
+S2 --&gt; M
+E2 --&gt; M
   </pre>
 </div>
 
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Обратите внимание на блок <code>if len(beginSet) &gt; len(endSet)</code>. Мы всегда расширяем меньший фронт волны. Это гарантирует, что площадь поиска (количество узлов в памяти) остается минимальной. В терминах Go, это означает, что наши мапы <code>beginSet</code> и <code>visited</code> будут самого маленького возможного размера, что ускоряет хеширование и снижает количество аллокаций при добавлении новых ключей.<br />
-Также мы используем <code>map[string]struct{}</code> вместо <code>map[string]bool</code>. <code>struct{}</code> занимает 0 байт памяти, тогда как <code>bool</code> занимает 1 байт. Для миллионов узлов разница в потреблении RAM может составлять мегабайты.</p>
-  </div>
-</div>
+<hr />
+<h3 id="5-mekhanicheskaya-simpatiya-pamyat-srezy-bayt-i-zero-size-struct">5. Механическая симпатия: Память, Срезы байт и Zero-Size Struct</h3>
 
-<h2 id="system-design-poisk-po-slovaryu-v-poiskovykh-dvizhkakh">System Design: Поиск по словарю в поисковых движках</h2>
+<ol>
+<li><strong><code>map[string]struct{}</code> против <code>map[string]bool</code>:</strong><br />
+   Пустая структура <code>struct{}</code> в Go имеет размер ровно <strong>0 байт</strong> (<code>unsafe.Sizeof(struct{}{}) == 0</code>). Значение <code>bool</code> занимает 1 байт. Внутренняя хеш-таблица <code>runtime.hmap</code> для пустой структуры не выделяет память под значения в бакетах, что экономит десятки килобайт и ускоряет сканирование бакетов кэшем процессора.</li>
+<li><strong>In-place мутация <code>[]byte</code>:</strong><br />
+   Мы создаем срез байтов <code>chars := []byte(word)</code> один раз на слово. Затем заменяем <code>chars[i] = c</code>, формируем строку <code>candidate := string(chars)</code> и откатываем <code>chars[i] = orig</code>. Это минимизирует аллокации промежуточных срезов.</li>
+<li><strong>Удаление из <code>dict</code> вместо массива <code>visited</code>:</strong><br />
+   Удаляя слово из словаря функцией <code>delete(dict, candidate)</code>, мы совмещаем проверку доступности и проверку посещенности в одной хеш-таблице. Это освобождает память прямо по ходу выполнения программы.</li>
+</ol>
+<hr />
+<h3 id="6-sobesedovanie-glubokie-voprosy">6. Собеседование: глубокие вопросы</h3>
 
-<p>В реальных системах (например, ElasticSearch или системы поиска опечаток в поисковиках) граф из миллионов слов невозможно держать в памяти целиком.</p>
-<p>Вместо генерации 26 вариантов на каждую позицию ($O(L \cdot 26)$) в лоб, используют <strong>Finite State Transducers (FST)</strong> или <strong>Levenshtein Automata</strong>. </p>
-<p>Алгоритм Левенштейна (о котором мы поговорим в разделе DP) можно превратить в конечный автомат. Вместо того чтобы генерировать слова и проверять их наличие в словаре, мы "прогоняем" весь словарь (обычно хранящийся в виде Trie / префиксного дерева) через автомат, который за $O(1)$ отсекает ветви, не способные дать дистанцию редактирования $\le 1$. Это позволяет искать соседей в словаре из 100 миллионов слов за микросекунды без аллокаций.</p>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Если вы решаете эту задачу, ваш путь к "Strong Hire":<br />
-1. Объясните, почему наивный граф $O(N^2)$ не подходит.<br />
-2. Напишите классический BFS с генерацией масок <code>*ot</code> / <code>h*t</code> (или генерацией 26 букв). Это покажет, что вы умеете строить графы на лету.<br />
-3. Улучшите решение до <strong>Bidirectional BFS</strong>. Объясните математическую разницу $O(B^D)$ и $O(B^{D/2})$.<br />
-4. Скажите: <em>"В production я бы использовал <code>struct{}</code> для Set, хеши масок вместо строк для снижения GC pressure, и если бы словарь был огромным — Levenshtein Automata поверх Trie"</em>.</p>
+    <p><strong>Вопрос интервьюера:</strong> «Почему мы меняем местами <code>beginSet</code> и <code>endSet</code>, если <code>len(beginSet) &gt; len(endSet)</code>?»<br />
+<strong>Ответ кандидата:</strong> «Это фундаментальная оптимизация двунаправленного поиска. Если один фронт содержит 100 слов, а второй — всего 2 слова, то генерация мутаций для 100 слов создаст $100 \times 130 = 13\,000$ кандидатов. А если мы сделаем шаг от меньшего фронта, мы сгенерируем всего $2 \times 130 = 260$ кандидатов! Всегда шагая от меньшего множества к большему, мы минимизируем суммарное число операций».</p>
   </div>
 </div>
 
-<h2 id="itog">Итог</h2>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос интервьюера:</strong> «Как эта задача решается в распределенных поисковых движках (ElasticSearch, Lucene) для поиска похожих слов при опечатках?»<br />
+<strong>Ответ кандидата:</strong> «В поисковых движках словарь из сотен миллионов слов хранится в виде конечного автомата — <strong>FST (Finite State Transducer)</strong>. Поисковый запрос компилируется в <strong>автомат Левенштейна</strong> (Levenshtein Automaton). Пересечение двух автоматов позволяет за микросекунды найти все слова с расстоянием редактирования $\le 2$ без полного перебора словаря».</p>
+  </div>
+</div>
 
-<ol>
-<li><strong>Неявные графы:</strong> Если граф не дан, его ребра можно вычислять динамически (On-the-fly). Генерация соседей через замену символа на <code>*</code> снижает сложность построения от $O(N^2)$ до $O(N \cdot L)$.</li>
-<li><strong>Двунаправленный BFS:</strong> Главный инструмент для поиска кратчайшего пути в неявных графах. Снижает экспоненциальный рост посещенных узлов до корня из них.</li>
-<li><strong>Zero-size Set:</strong> Используйте <code>map[T]struct{}</code> для множеств в Go. Это экономит память и избавляет от лишних аллокаций по сравнению с <code>bool</code>.</li>
-<li><strong>Аллокации строк:</strong> Конвертация <code>[]byte</code> в <code>string</code> в горячем цикле — враг номер один для GC. В системах с высокой нагрузкой заменяйте строковые ключи на числовые хеши.</li>
-</ol>
-<p>В следующей статье мы разберем еще одну классическую задачу, где BFS используется для моделирования распространения состояния по сетке (мультиисточниковый BFS): <a href="6-rotting-oranges.html" class="wikilink">6. Rotting Oranges</a>.</p>
+<hr />
+<h3 id="rezyume-dlya-intervyu">Резюме для интервью</h3>
+
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Параметр</th>
+<th>Значение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Алгоритм</strong></td>
+<td>Bidirectional BFS (Двунаправленный поиск в ширину)</td>
+</tr>
+<tr>
+<td><strong>Сложность по времени</strong></td>
+<td>$O(N \cdot L \cdot 26)$, на практике $O(B^{D/2})$</td>
+</tr>
+<tr>
+<td><strong>Сложность по памяти</strong></td>
+<td>$O(N \cdot L)$ на хеш-таблицы состояний</td>
+</tr>
+<tr>
+<td><strong>Ключевой приём</strong></td>
+<td>Динамическое чередование меньшего и большего волновых фронтов</td>
+</tr>
+</tbody>
+</table></div>
+<p>В следующей задаче — <a href="6-rotting-oranges.html" class="wikilink">6. Rotting Oranges</a> — мы рассмотрим ещё один мощный вариант BFS: поиск с множественными источниками (Multi-Source BFS).</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2399,7 +2441,7 @@ G --&gt; H[&quot;Пересечение!&lt;br&gt;dot и lot найдены&lt;b
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#problema-neyavnogo-grafa-on2-l-vs-on-l2">Проблема неявного графа: O(N^2  L) vs O(N  L^2)</a></li><li class="toc-item toc-h2"><a href="#optimizatsiya-senior-urovnya-dvunapravlennyy-bfs-bidirectional-bfs">Оптимизация Senior-уровня: Двунаправленный BFS (Bidirectional BFS)</a></li><li class="toc-item toc-h2"><a href="#system-design-poisk-po-slovaryu-v-poiskovykh-dvizhkakh">System Design: Поиск по словарю в поисковых движках</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h3"><a href="#1-arkhitektura-prostranstva-sostoyaniy-naivnyy-perebor-protiv-generatsii-sosedey">1. Архитектура пространства состояний: наивный перебор против генерации соседей</a></li><li class="toc-item toc-h3"><a href="#2-vershina-masterstva-dvunapravlennyy-bfs-bidirectional-bfs">2. Вершина мастерства: Двунаправленный BFS (Bidirectional BFS)</a></li><li class="toc-item toc-h3"><a href="#3-idiomaticheskaya-realizatsiya-na-go">3. Идиоматическая реализация на Go</a></li><li class="toc-item toc-h3"><a href="#4-vizualizatsiya-stolknoveniya-volnovykh-frontov">4. Визуализация столкновения волновых фронтов</a></li><li class="toc-item toc-h3"><a href="#5-mekhanicheskaya-simpatiya-pamyat-srezy-bayt-i-zero-size-struct">5. Механическая симпатия: Память, Срезы байт и Zero-Size Struct</a></li><li class="toc-item toc-h3"><a href="#6-sobesedovanie-glubokie-voprosy">6. Собеседование: глубокие вопросы</a></li><li class="toc-item toc-h3"><a href="#rezyume-dlya-intervyu">Резюме для интервью</a></li>
   </ul>
 </aside>
 

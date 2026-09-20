@@ -2171,118 +2171,28 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~21 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~12 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">4. Clone Graph</h1>
           </header>
 
           <div class="article-markdown">
-            <p><strong>LeetCode 133. Clone Graph.</strong> Дан указатель на вершину связного неориентированного графа. Каждая вершина имеет уникальное целочисленное значение и список соседей. Требуется создать <strong>глубокую копию</strong> графа — новый граф, структурно идентичный исходному, но не разделяющий с ним узлы. Возвращается указатель на копию стартовой вершины.</p>
-<p>После обхода сеток в <a href="3-number-of-islands.html" class="wikilink">3. Number of Islands</a> мы переходим к графам общего вида. Если там DFS применялся для «затопления» неявного графа, то здесь он решает более тонкую задачу: <strong>одновременный обход и конструирование</strong>. Нельзя просто рекурсивно создавать новые узлы, натыкаясь на соседей, — граф содержит циклы, и без запоминания уже созданных копий мы уйдём в бесконечную рекурсию или создадим дубликаты. Для Senior Go-разработчика задача раскрывает важные аспекты: выбор между рекурсивным DFS и итеративным BFS, работа с <code>map</code> для отображения оригинал→копия, нюансы указателей и escape analysis, а также предотвращение утечек памяти через early exit.</p>
-<h3 id="formulirovka-i-utochneniya">Формулировка и уточнения</h3>
+            <blockquote>
+<p><em>«Истинное клонирование структуры состоит не в копировании узлов, а в точном воспроизведении взаимосвязей между ними».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>Задача <strong>Clone Graph</strong> (LeetCode 133) — классический водораздел между простым обходом структур данных и их архитектурным конструированием.</p>
+<p><strong>Условие:</strong> Дан указатель на вершину связного неориентированного графа. Каждая вершина содержит целочисленное значение <code>Val</code> и список смежных вершин <code>Neighbors []*Node</code>. Требуется вернуть глубокую копию (Deep Copy) графа — полностью новый граф с идентичной топологией, не разделяющий с оригиналом ни одного указателя.</p>
+<p>Если при обходе деревьев мы двигались строго от корня к листьям в отсутствие циклов, то в графах общего вида ребра образуют двусторонние петли и циклы ($A \leftrightarrow B$). Попытка наивного рекурсивного создания узлов моментально обрушит рантайм в бесконечную рекурсию.</p>
+<hr />
+<h2 id="arkhitektura-slovar-klonov-kak-invariant-razresheniya-tsiklov">Архитектура: Словарь клонов как инвариант разрешения циклов</h2>
 
-<p><strong>Условие:</strong> функция <code>cloneGraph(node *Node) *Node</code>. Тип <code>Node</code> определён как:</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">type Node struct {
-    Val       int
-    Neighbors []*Node
-}
-</code></pre>
-</div>
-
-<p>Граф связный, значения узлов уникальны в пределах графа. Количество узлов до 100.</p>
-<p><strong>Вопросы интервьюеру (Senior-стиль):</strong><br />
-- <em>Может ли <code>node</code> быть <code>nil</code>?</em> Да, тогда возвращаем <code>nil</code>.<br />
-- <em>Допустимы ли петли (ребро из узла в самого себя)?</em> Да, сосед может ссылаться на сам узел.<br />
-- <em>Можно ли модифицировать исходный граф?</em> Нет, мы его не изменяем.<br />
-- <em>Нужно ли сохранять порядок соседей?</em> Обычно не регламентируется, но для точности копии желательно сохранить.</p>
-<p>Ответы определяют стратегию: используем обход (DFS или BFS) и словарь <code>visited</code> (или <code>cloned</code>), где ключ — указатель на исходный узел, а значение — указатель на его копию. Это решает проблему циклов: при встрече уже скопированного узла мы просто возвращаем готовую копию, не заходя в рекурсию повторно.</p>
-<h3 id="naivnoe-reshenie-rekursivnoe-kopirovanie-bez-pamyati">Наивное решение: рекурсивное копирование без памяти</h3>
-
-<p>Простейшая идея — рекурсивно создавать новый узел и для каждого соседа вызывать <code>cloneGraph</code>. Без проверки на уже скопированные узлы это мгновенно приводит к бесконечной рекурсии для графа с циклами или к множественному созданию узлов для графа с общими соседями (например, два узла ссылаются на один и тот же третий — он будет скопирован дважды, и граф потеряет структуру).</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Наивный код — ведёт к бесконечной рекурсии при циклах
-func cloneGraphNaive(node *Node) *Node {
-    if node == nil {
-        return nil
-    }
-    clone := &amp;Node{Val: node.Val}
-    for _, neighbor := range node.Neighbors {
-        clone.Neighbors = append(clone.Neighbors, cloneGraphNaive(neighbor))
-    }
-    return clone
-}
-</code></pre>
-</div>
-
-<p>Узкое место очевидно: нужна «память» о том, что узел уже скопирован. Это классический случай применения <code>map</code> как <code>visited</code>-множества и кэша копий одновременно.</p>
-<h3 id="optimalnoe-reshenie-dfs-s-map">Оптимальное решение: DFS с map</h3>
-
-<p><strong>Идея.</strong> Запускаем рекурсивный DFS от стартового узла. Поддерживаем <code>cloned := map[*Node]*Node{}</code>, где ключ — оригинальный узел, значение — его копия. При заходе в узел:<br />
-1. Если <code>node == nil</code>, возвращаем <code>nil</code>.<br />
-2. Если узел уже есть в <code>cloned</code>, сразу возвращаем его копию (это предотвращает бесконечную рекурсию и сохраняет общие ссылки).<br />
-3. Иначе создаём новый узел-копию, сохраняем в <code>cloned</code>, и для каждого соседа рекурсивно получаем его копию (через тот же DFS) и добавляем в список соседей копии.</p>
-<p><strong>Инвариант:</strong> после завершения DFS для узла <code>v</code> все узлы, достижимые из <code>v</code>, скопированы и помещены в <code>cloned</code>. Сам <code>v</code> также скопирован. При повторном обращении к <code>v</code> (через другой путь) <code>cloned</code> немедленно возвращает готовую копию.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func cloneGraph(node *Node) *Node {
-    if node == nil {
-        return nil
-    }
-    cloned := make(map[*Node]*Node)
-    var dfs func(*Node) *Node
-    dfs = func(n *Node) *Node {
-        if n == nil {
-            return nil
-        }
-        // Если узел уже скопирован, возвращаем копию
-        if clone, ok := cloned[n]; ok {
-            return clone
-        }
-        // Создаём копию и запоминаем
-        copyNode := &amp;Node{Val: n.Val}
-        cloned[n] = copyNode
-        // Рекурсивно копируем соседей
-        for _, neighbor := range n.Neighbors {
-            copyNode.Neighbors = append(copyNode.Neighbors, dfs(neighbor))
-        }
-        return copyNode
-    }
-    return dfs(node)
-}
-</code></pre>
-</div>
-
-<p><strong>Go-идиомы и комментарии:</strong><br />
-- <code>cloned := make(map[*Node]*Node)</code> — одна аллокация под map. Поскольку число узлов ≤ 100, можно не предвыделять capacity, но Senior может добавить <code>make(map[*Node]*Node, expectedSize)</code> при желании.<br />
-- Проверка <code>if clone, ok := cloned[n]; ok</code> — классический comma-ok паттерн.<br />
-- Замыкание <code>dfs</code> захватывает <code>cloned</code>, что упрощает сигнатуру.<br />
-- <code>copyNode.Neighbors = append(...)</code> — строит слайс соседей. Поскольку мы добавляем результаты DFS, слайс формируется корректно.<br />
-- Отсутствие явного <code>visited</code> для предотвращения зацикливания — его роль выполняет сам <code>cloned</code>: узел добавляется в map <strong>до</strong> обработки соседей, поэтому при попытке соседа сослаться обратно мы сразу возвращаем уже созданную копию, не уходя в бесконечную рекурсию.</p>
+<p>Ключевой архитектурный инструмент глубокого копирования — хеш-таблица сопоставления:</p>
+<p>$$\text{cloned} : \text{map}[<em>\text{Node}]</em>\text{Node}$$</p>
+<p>Она одновременно выполняет две критические функции:<br />
+1. <strong>Множество <code>visited</code>:</strong> предотвращает повторный заход в уже обработанные вершины.<br />
+2. <strong>Таблица разрешения ссылок (Memoization):</strong> хранит соответствие между оригинальным указателем и вновь созданным объектом в куче.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2297,32 +2207,29 @@ func cloneGraphNaive(node *Node) *Node {
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;dfs(node):::warning&quot;] --&gt; B{&quot;node == nil?&quot;}
-B --&gt;|&quot;Да&quot;| C[&quot;return nil&quot;]
-B --&gt;|&quot;Нет&quot;| D{&quot;node уже в cloned?&quot;}
-D --&gt;|&quot;Да&quot;| E[&quot;return cloned[node]&quot;]
-D --&gt;|&quot;Нет&quot;| F[&quot;Создать copyNode&lt;br&gt;cloned[node] = copyNode&quot;]
-F --&gt; G[&quot;Для каждого соседа neighbor&quot;]
-G --&gt; H[&quot;copyNode.Neighbors = append&lt;br&gt;dfs(neighbor)&quot;]
-H --&gt; G
-G --&gt;|&quot;Все соседи обработаны&quot;| I[&quot;return copyNode&quot;]
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+
+Start[&quot;dfs(node)&quot;]:::entry --&gt; CheckNull{&quot;node == nil?&quot;}:::warning
+CheckNull --&gt;|&quot;Да&quot;| ReturnNil[&quot;return nil&quot;]:::process
+
+CheckNull --&gt;|&quot;Нет&quot;| CheckMap{&quot;node есть в map?&quot;}:::warning
+CheckMap --&gt;|&quot;Да (Узел уже скопирован)&quot;| ReturnClone[&quot;return cloned[node]&lt;br&gt;(Разрыв цикла!)&quot;]:::success
+
+CheckMap --&gt;|&quot;Нет (Первый визит)&quot;| Create[&quot;1. Создать copy := &amp;Node{Val: node.Val}&lt;br&gt;2. Записать cloned[node] = copy (ДО соседей!)&quot;]:::process
+
+Create --&gt; Loop[&quot;Для каждого соседа nb в node.Neighbors:&quot;]:::process
+Loop --&gt; Recurse[&quot;copy.Neighbors = append(copy.Neighbors, dfs(nb))&quot;]:::process
+Recurse --&gt; ReturnCopy[&quot;return copy&quot;]:::success
   </pre>
 </div>
 
 
-<h3 id="alternativnoe-reshenie-bfs-s-map">Альтернативное решение: BFS с map</h3>
+<hr />
+<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
 
-<p>Аналогичный результат даёт поиск в ширину. Вместо рекурсии используется очередь (слайс). BFS также помещает узел в <code>cloned</code> при первом обнаружении и обрабатывает соседей, копируя их. Преимущество BFS — отсутствие риска глубокой рекурсии (хотя при 100 узлах это не проблема), недостаток — чуть больше кода для управления очередью.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2332,84 +2239,124 @@ G --&gt;|&quot;Все соседи обработаны&quot;| I[&quot;return co
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func cloneGraphBFS(node *Node) *Node {
+  <pre class="language-go"><code class="language-go">package main
+
+type Node struct {
+    Val       int
+    Neighbors []*Node
+}
+
+// cloneGraph создает полную глубокую копию графа с сохранением циклических связей.
+// Временная сложность: O(V + E) — посещаем каждую вершину и ребро ровно один раз
+// Пространственная сложность: O(V) под хеш-таблицу и стек вызовов
+func cloneGraph(node *Node) *Node {
     if node == nil {
         return nil
     }
+
+    // Словарь для связывания оригиналов с клонами
     cloned := make(map[*Node]*Node)
-    cloned[node] = &amp;Node{Val: node.Val}
-    queue := []*Node{node}
-    for len(queue) &gt; 0 {
-        n := queue[0]
-        queue = queue[1:]
-        for _, neighbor := range n.Neighbors {
-            if _, ok := cloned[neighbor]; !ok {
-                cloned[neighbor] = &amp;Node{Val: neighbor.Val}
-                queue = append(queue, neighbor)
-            }
-            cloned[n].Neighbors = append(cloned[n].Neighbors, cloned[neighbor])
+
+    var dfs func(n *Node) *Node
+    dfs = func(n *Node) *Node {
+        if n == nil {
+            return nil
         }
+
+        // Если узел уже был склонирован ранее — немедленно возвращаем клон
+        if clone, exists := cloned[n]; exists {
+            return clone
+        }
+
+        // ВАЖНО: Регистрируем клон в map ДО рекурсивного обхода соседей!
+        // Это гарантирует корректный возврат указателя при обратных ребрах.
+        copyNode := &amp;Node{
+            Val:       n.Val,
+            Neighbors: make([]*Node, 0, len(n.Neighbors)),
+        }
+        cloned[n] = copyNode
+
+        // Рекурсивно клонируем все смежные вершины
+        for _, neighbor := range n.Neighbors {
+            copyNode.Neighbors = append(copyNode.Neighbors, dfs(neighbor))
+        }
+
+        return copyNode
     }
-    return cloned[node]
+
+    return dfs(node)
 }
 </code></pre>
 </div>
 
-<p>На собеседовании Senior продемонстрирует оба подхода и объяснит выбор: DFS проще и естественен для рекурсивного обхода графа, BFS гарантирует отсутствие рекурсии. При 100 узлах разница только в стиле.</p>
-<h3 id="edge-cases">Edge Cases</h3>
+<hr />
+<h2 id="vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</h2>
 
-<ul>
-<li><strong>Пустой граф:</strong> <code>node == nil</code> → возвращаем <code>nil</code>.</li>
-<li><strong>Один узел без соседей:</strong> создаётся копия узла с пустым слайсом <code>Neighbors</code>. Корректно.</li>
-<li><strong>Один узел с петлёй:</strong> <code>node.Neighbors = [node]</code>. При обработке соседей мы вызываем <code>dfs(node)</code>, но он уже в <code>cloned</code>, поэтому сразу возвращается копия, и <code>Neighbors</code> копии будет содержать ссылку на саму копию. Корректно.</li>
-<li><strong>Два узла, ссылающихся друг на друга:</strong> классический цикл. При копировании первого узла мы рекурсивно заходим во второй, а второй видит первого уже в <code>cloned</code> и добавляет ссылку на его копию. Всё согласованно.</li>
-</ul>
-<h3 id="analiz-slozhnosti">Анализ сложности</h3>
+<h3 id="1-kheshirovanie-ukazateley-v-mapnodenode">1. Хеширование указателей в `map[*Node]*Node`</h3>
+<p>В Go тип ключа <code>*Node</code> является 64-битным адресом памяти:<br />
+- Для хеширования указателей рантайм использует сверхбыструю функцию <code>memhash64</code> (прямое перемешивание 8 байт адреса через регистры ALU).<br />
+- Сравнение ключей при коллизиях — это простая инструкция <code>CMPQ</code> двух чисел, без разыменования указателей и без чтения полей структуры.<br />
+- Сложность поиска <code>cloned[n]</code> составляет $O(1)$ с минимальной константой процессорного времени.</p>
+<h3 id="2-sborka-musora-i-tsiklicheskie-ssylki-gc-tracing-vs-refcounting">2. Сборка мусора и циклические ссылки (GC Tracing vs Refcounting)</h3>
+<p>В языках со счетчиками ссылок (Python <code>PyObject</code>, C++ <code>std::shared_ptr</code>) взаимные ссылки двух узлов ($A \leftrightarrow B$) создают классическую утечку памяти (Memory Leak), требуя вмешательства тяжелого cycle detector'а.<br />
+В Go сборщик мусора использует алгоритм <strong>Tri-color Mark &amp; Sweep</strong>:<br />
+- GC начинает трассировку исключительно с корневых объектов (Root Set: глобальные переменные, стек горутины).<br />
+- Если на граф больше нет внешних ссылок из активных горутин, весь циклический граф признается недостижимым и целиком освобождается за один проход сборщика.</p>
+<hr />
+<h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
 
-<ul>
-<li><strong>Время:</strong> O(V + E), где V — количество узлов, E — количество рёбер. Каждый узел посещается один раз (проверка в map), каждое ребро просматривается один раз при копировании соседей.</li>
-<li><strong>Память:</strong> O(V) для <code>cloned</code> map (хранение копий всех узлов) и стека рекурсии (глубина до V) или очереди BFS. Плюс память под сам скопированный граф (выходные данные).</li>
-</ul>
-<h3 id="mechanical-sympathy-map-ukazateley-i-escape-analysis">Mechanical Sympathy: map указателей и escape analysis</h3>
-
-<ul>
-<li><strong><code>map[*Node]*Node</code>:</strong> ключом является указатель на оригинальный узел. Хеширование указателя в Go — это прямое использование битов адреса, быстрая операция. Значение — указатель на копию. Каждая вставка в map добавляет запись в бакет, что вызывает аллокацию внутри map. При V ≤ 100 это пренебрежимо.</li>
-<li><strong>Указатели и GC:</strong> копии узлов создаются в куче (потому что они возвращаются из функции). Исходный граф также в куче. Сборщик мусора будет отслеживать оба графа. Никаких проблем с циклическими ссылками — Go GC обрабатывает циклы корректно.</li>
-<li><strong>Отсутствие утечек:</strong> <code>cloned</code> map живёт только во время работы <code>cloneGraph</code>. После возврата он становится недостижимым и очищается GC. Копия графа ссылается сама на себя через указатели, что нормально.</li>
-<li><strong>Кэш-локальность:</strong> при DFS мы идём вглубь по соседям; порядок обхода непредсказуем, но для малых графов всё в L1/L2. BFS с очередью может дать чуть лучшую локальность при обходе «волной».</li>
-</ul>
-<div class="callout callout-info">
+<div class="callout callout-warning">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Ловушка: Порядок регистрации в `cloned`</span>
   </div>
   <div class="callout-body">
-    <p>В рекурсивном DFS каждое замыкание <code>dfs</code> — это функция, которая хранится в переменной. Вызов <code>dfs(neighbor)</code> происходит через указатель на функцию, что немного медленнее прямого вызова, но для 100 узлов незаметно. Escape analysis: переменная <code>copyNode</code> «убегает» в <code>cloned</code> map и в результат, поэтому размещается в куче.</p>
+    <p>Если написать создание копии так:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">copyNode := &amp;Node{Val: n.Val}
+for _, nb := range n.Neighbors {
+    copyNode.Neighbors = append(copyNode.Neighbors, dfs(nb))
+}
+cloned[n] = copyNode // ПОЗДНО! Бесконечная рекурсия
+</code></pre>
+</div>
+
+<p>При первом же цикле (например, узел $A$ ссылается на $B$, а $B$ ссылается на $A$) рекурсия из $B$ вызовет <code>dfs(A)</code>. Поскольку $A$ еще не добавлен в <code>cloned</code>, алгоритм создаст второй клон $A'$, затем второй клон $B'$ и упадет с паникой переполнения памяти! Запись <code>cloned[n] = copyNode</code> обязана предшествовать циклу обхода соседей.</p>
   </div>
 </div>
 
-<h3 id="alternativy-i-trade-off">Альтернативы и trade-off</h3>
-
-<ul>
-<li><strong>BFS</strong> — итеративен, не использует стек вызовов, более предсказуем по памяти стека. Немного больше кода для очереди.</li>
-<li><strong>Итеративный DFS с явным стеком</strong> — компромисс между рекурсией и BFS, но здесь избыточен.</li>
-<li><strong>Глубокое копирование через сериализацию</strong> — можно сериализовать в <code>[]byte</code> и восстановить, но это сложнее и медленнее.</li>
-</ul>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования: Клонирование без рекурсии (BFS)</span>
   </div>
   <div class="callout-body">
-    <p>Вопрос: «Почему вы добавляете узел в <code>cloned</code> до обработки соседей, а не после?»<br />
-Ответ: «Это принципиально для предотвращения бесконечной рекурсии. Если узел A ссылается на B, а B на A, и мы добавим A в map только после обработки соседей, то при обработке соседа B мы снова вызовем DFS для A, который ещё не в map, и уйдём в бесконечную рекурсию. Добавление до обработки гарантирует, что при любых циклических ссылках мы немедленно возвращаем уже созданную копию».</p>
+    <p><strong>Вопрос:</strong> Как реализовать глубокое клонирование графа через очередь (BFS)?<br />
+<strong>Ответ:</strong> <br />
+1. Помещаем стартовый узел в очередь <code>queue := []*Node{node}</code> и регистрируем в <code>cloned[node] = &amp;Node{Val: node.Val}</code>.<br />
+2. В цикле <code>len(queue) &gt; 0</code> извлекаем <code>curr</code>.<br />
+3. Для каждого соседа <code>nb</code>: если его еще нет в <code>cloned</code>, создаем клон, пишем в <code>cloned[nb]</code> и кладем <code>nb</code> в очередь.<br />
+4. Добавляем <code>cloned[nb]</code> в список соседей <code>cloned[curr].Neighbors</code>.<br />
+BFS гарантирует отсутствие глубокого стека вызовов при одинаковой асимптотике $O(V + E)$.</p>
   </div>
 </div>
 
-<h3 id="itog">Итог</h3>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
-<p>Clone Graph — это элегантная задача на применение DFS (или BFS) для глубокого копирования графа с циклами. Ключевой инсайт — использование <code>map</code> для отображения оригинал→копия, что одновременно решает проблему циклов и общих ссылок. В Go решение пишется лаконично, используя замыкания и comma-ok, и демонстрирует понимание указателей, аллокаций и работы GC.</p>
-<p>Следующая задача — <strong>Path Sum</strong> — перенесёт нас от копирования графов к поиску пути в бинарном дереве с заданной суммой, где DFS проявит себя в классическом preorder-обходе с накоплением состояния. <a href="5-path-sum.html" class="wikilink">5. Path Sum</a></p>
+<p><strong>Clone Graph</strong> учит технике изоморфного воспроизведения графов:<br />
+- Хеш-таблица сопоставления указателей <code>map[*Node]*Node</code> разрушает циклы.<br />
+- Регистрация клона в словаре <em>до</em> перехода к соседям — обязательный инвариант корректности.<br />
+- Рантайм Go эффективно работает с циклическими графами в куче благодаря трехцветной маркировке GC.</p>
+<p>В следующей задаче мы возвращаемся к деревьям и исследуем накопление числовых инвариантов вдоль ветвей: <a href="5-path-sum.html" class="wikilink">5. Path Sum</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2437,7 +2384,7 @@ G --&gt;|&quot;Все соседи обработаны&quot;| I[&quot;return co
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#formulirovka-i-utochneniya">Формулировка и уточнения</a></li><li class="toc-item toc-h3"><a href="#naivnoe-reshenie-rekursivnoe-kopirovanie-bez-pamyati">Наивное решение: рекурсивное копирование без памяти</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-dfs-s-map">Оптимальное решение: DFS с map</a></li><li class="toc-item toc-h3"><a href="#alternativnoe-reshenie-bfs-s-map">Альтернативное решение: BFS с map</a></li><li class="toc-item toc-h3"><a href="#edge-cases">Edge Cases</a></li><li class="toc-item toc-h3"><a href="#analiz-slozhnosti">Анализ сложности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-map-ukazateley-i-escape-analysis">Mechanical Sympathy: map указателей и escape analysis</a></li><li class="toc-item toc-h3"><a href="#alternativy-i-trade-off">Альтернативы и trade-off</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-slovar-klonov-kak-invariant-razresheniya-tsiklov">Архитектура: Словарь клонов как инвариант разрешения циклов</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#1-kheshirovanie-ukazateley-v-mapnodenode">1. Хеширование указателей в map[Node]Node</a></li><li class="toc-item toc-h3"><a href="#2-sborka-musora-i-tsiklicheskie-ssylki-gc-tracing-vs-refcounting">2. Сборка мусора и циклические ссылки (GC Tracing vs Refcounting)</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

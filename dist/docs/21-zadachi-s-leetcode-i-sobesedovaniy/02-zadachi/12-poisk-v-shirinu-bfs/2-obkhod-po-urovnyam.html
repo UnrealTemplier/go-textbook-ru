@@ -2171,25 +2171,60 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~16 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. Обход по уровням</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Обход по уровням (Level Order Traversal) — это каноническое применение BFS для деревьев. Если в <a href="1-teoriya-bfs.html" class="wikilink">1. Теория. BFS</a> мы обсуждали общие принципы волнового обхода графов, то здесь мы сталкиваемся с конкретной инженерной задачей: как не просто обойти узлы, но и сохранить информацию о том, к какому уровню (слою) они принадлежат.</p>
-<p>Для бэкенд-инженера этот паттерн моделирует обработку иерархических данных: от каталогов товаров (категории -&gt; подкатегории -&gt; товары) до распространения прав доступа (Root -&gt; Admin -&gt; User) и вычисления агрегированных метрик по слоям организации.</p>
-<h2 id="glavnaya-problema-kak-otdelit-urovni">Главная проблема: Как отделить уровни?</h2>
+            <blockquote>
+<p><em>«Структуры данных определяют алгоритмы, а не наоборот. Правильно организованные уровни абстракции делают код простым и самоочевидным».</em><br />
+— Роб Пайк</p>
+</blockquote>
+<p>Обход по уровням (<strong>Level Order Traversal</strong>) — канонический архитектурный паттерн применения поиска в ширину (<a href="1-teoriya-bfs.html" class="wikilink">BFS</a>) к древовидным структурам. Если базовый BFS последовательно «выплёвывает» элементы в один плоский поток, то в подавляющем большинстве реальных задач требуется сохранить топологическую структуру слоёв: сгруппировать вершины по глубине <code>&lt;span class="wikilink-unresolved" title="Заметка в разработке"&gt;1], [2, 3], [4, 5, 6, 7&lt;/span&gt;</code>.</p>
+<p>В архитектуре распределённых бэкенд-систем этот паттерн отражает обработку любых иерархических моделей:<br />
+- <strong>Организационные структуры и RBAC:</strong> каскадное распространение политик доступа от головных подразделений к дочерним отделам.<br />
+- <strong>Пакетные запросы к базам данных (Batching / DataLoaders):</strong> решение проблемы $N+1$ запросов. Вместо того чтобы для каждого узла отправлять отдельный SQL-запрос за его детьми, мы делаем один агрегирующий запрос <code>WHERE parent_id IN (...)</code> сразу для всех узлов текущего слоя.<br />
+- <strong>Модель Bulk Synchronous Parallel (BSP):</strong> послойная параллельная обработка графов в Apache Spark (GraphX) и Google Pregel.</p>
+<hr />
+<h3 id="1-arkhitekturnaya-dilemma-kak-elegantno-razdelyat-urovni">1. Архитектурная дилемма: как элегантно разделять уровни?</h3>
 
-<p>Стандартный BFS с очередью просто выплевывает узлы один за другим. В итоге получается плоский массив: <code>[1, 2, 3, 4, 5, 6, 7]</code>. Но нам нужна структура <code>&lt;span class="wikilink-unresolved" title="Заметка в разработке"&gt;1], [2, 3], [4, 5, 6, 7&lt;/span&gt;</code>.</p>
-<p>Существует три подхода:<br />
-1. <strong>Две очереди:</strong> Хранить текущий уровень в одной очереди, а детей складывать в другую. По окончании текущего уровня меняем их местами. (Плохо: двойной оверхед).<br />
-2. <strong>Сентинел (Divider):</strong> Добавлять <code>nil</code> маркер в очередь, сигнализирующий о конце уровня. (Плохо: засоряет очередь пустыми значениями, требует приведения типов в универсальных реализациях).<br />
-3. <strong>Снимок размера очереди (Размер уровня):</strong> Перед началом обработки уровня мы сохраняем текущий размер очереди <code>size := len(queue)</code>. Это и есть количество узлов на текущем уровне. Затем мы делаем ровно <code>size</code> итераций. Это самый элегантный и производительный подход.</p>
-<h2 id="idiomatichnyy-go-slays-s-indeksom-head">Идиоматичный Go: Слайс с индексом `head`</h2>
+<p>Исторически инженеры пытались решить задачу разделения уровней тремя способами:</p>
+<ol>
+<li><strong>Две раздельные очереди (Ping-Pong Buffers):</strong><br />
+   Чтение узлов ведётся из очереди <code>currentLevel</code>, а их потомки складываются в очередь <code>nextLevel</code>. По завершении слоя очереди меняются местами.<br />
+<em>Минус:</em> удвоенные накладные расходы на управление структурами данных и лишние аллокации.</li>
+<li><strong>Использование служебных маркеров-разделителей (Sentinels):</strong><br />
+   В очередь помещается специальное значение <code>nil</code>, обозначающее границу слоя.<br />
+<em>Минус:</em> загрязняет типизированную очередь искусственными значениями и требует разветвлённых проверок <code>if node == nil</code>.</li>
+<li><strong>Паттерн «Снимок размера очереди» (Queue Snapshot — Золотой стандарт):</strong><br />
+   В начале каждого внешнего шага цикла мы фиксируем моментальный размер очереди: <code>levelSize := len(queue)</code>. Затем выполняем внутренний цикл ровно <code>levelSize</code> раз. Все дети, добавляемые в процессе, попадают в конец очереди и <strong>не влияют на границу текущего слоя</strong>.</li>
+</ol>
 
-<p>Как мы обсуждали в предыдущей статье, использование <code>queue = queue[1:]</code> ведет к утечке памяти (memory leak) из-за особенностей устройства слайсов в Go. Здесь мы применим паттерн со сдвигом индекса <code>head</code>, который идеально ложится в концепцию "снимка размера уровня".</p>
+<div class="code-block" data-lang="ascii">
+  <div class="code-header">
+    <span class="code-lang-tag">DIAGRAM</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-ascii"><code class="language-ascii">Итерация 1:
+   Очередь: [ 1 ]             ──► levelSize = 1, обрабатываем 1 узел, добавляем [2, 3]
+
+Итерация 2:
+   Очередь: [ 2, 3 ]          ──► levelSize = 2, обрабатываем 2 узла, добавляем [4, 5, 6, 7]
+
+Итерация 3:
+   Очередь: [ 4, 5, 6, 7 ]    ──► levelSize = 4, обрабатываем 4 узла...
+</code></pre>
+</div>
+
+<hr />
+<h3 id="2-idiomaticheskaya-realizatsiya-na-go-srez-so-skolzyashchey-golovoy">2. Идиоматическая реализация на Go: Срез со скользящей головой</h3>
+
+<p>Чтобы избежать скрытой утечки памяти от выражения <code>queue = queue[1:]</code> (подробно разобранной в <a href="1-teoriya-bfs.html" class="wikilink">1. Теория. BFS</a>), в высокопроизводительном Go-коде мы используем непрерывный срез со смещением индекса головы <code>head</code>.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2199,30 +2234,41 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">type TreeNode struct {
+  <pre class="language-go"><code class="language-go">package main
+
+// TreeNode представляет узел бинарного дерева.
+type TreeNode struct {
     Val   int
     Left  *TreeNode
     Right *TreeNode
 }
 
+// levelOrder выполняет послойную группировку узлов дерева.
+// Временная сложность: O(N) — каждый узел обрабатывается ровно 1 раз.
+// Пространственная сложность: O(N) — максимальная ширина слоя W &lt;= N/2.
 func levelOrder(root *TreeNode) [][]int {
     if root == nil {
         return nil
     }
 
-    // Используем слайс как очередь, без удаления из начала
+    // Очередь на базе плоского среза
     queue := []*TreeNode{root}
-    head := 0 // Индекс &quot;головы&quot; очереди
-    result := [][]int{}
+    head := 0
+    result := make([][]int, 0, 16)
 
     for head &lt; len(queue) {
-        // КРИТИЧЕСКИ ВАЖНО: снимок размера текущего уровня
-        levelSize := len(queue) 
-        level := make([]int, 0, levelSize) // Предаллоцируем слайс уровня
+        // КЛЮЧЕВОЙ МОМЕНТ: фиксируем размер текущего уровня
+        levelSize := len(queue) - head
 
-        // Обрабатываем ровно levelSize узлов
-        for i := head; i &lt; levelSize; i++ {
-            node := queue[i]
+        // Предаллоцируем срез под элементы слоя точно заданного размера
+        level := make([]int, 0, levelSize)
+
+        // Обрабатываем строго элементы текущего слоя
+        for i := 0; i &lt; levelSize; i++ {
+            node := queue[head]
+            queue[head] = nil // Очищаем ссылку, помогая GC
+            head++
+
             level = append(level, node.Val)
 
             if node.Left != nil {
@@ -2233,9 +2279,6 @@ func levelOrder(root *TreeNode) [][]int {
             }
         }
 
-        // Сдвигаем голову очереди на следующий уровень
-        head = levelSize
-
         result = append(result, level)
     }
 
@@ -2243,6 +2286,9 @@ func levelOrder(root *TreeNode) [][]int {
 }
 </code></pre>
 </div>
+
+<hr />
+<h3 id="3-vizualizatsiya-poshagovoy-raboty-algoritma">3. Визуализация пошаговой работы алгоритма</h3>
 
 
 <div class="mermaid-wrapper">
@@ -2258,101 +2304,70 @@ func levelOrder(root *TreeNode) [][]int {
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Очередь - 1&lt;br&gt;head = 0&quot;]:::data --&gt; B{&quot;levelSize = 1&quot;}
-B --&gt; C[&quot;Обрабатываем 1 узел&lt;br&gt;Добавляем 2 и 3&quot;]
-C --&gt; D[&quot;head = 1&lt;br&gt;Очередь - 1, 2, 3&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
 
-D --&gt; E{&quot;levelSize = 3&quot;}
-E --&gt; F[&quot;Обрабатываем 2 узла - с индекса 1 до 3&lt;br&gt;Добавляем 4, 5, 6&quot;]
-F --&gt; G[&quot;head = 3&lt;br&gt;Очередь - 1, 2, 3, 4, 5, 6&quot;]
+Start[&quot;Старт: queue=[1], head=0&quot;]:::entry --&gt; CheckEmpty{&quot;head &lt; len(queue)?&quot;}:::warning
+
+CheckEmpty -- &quot;Нет&quot; --&gt; ReturnResult[&quot;return result&quot;]:::success
+CheckEmpty -- &quot;Да&quot; --&gt; TakeSnapshot[&quot;levelSize = len(queue) - head&lt;br&gt;level = make([]int, 0, levelSize)&quot;]:::accent
+
+TakeSnapshot --&gt; InnerLoop[&quot;Внутренний цикл: i от 0 до levelSize&quot;]:::process
+InnerLoop --&gt; DequeueNode[&quot;node = queue[head]; head++&lt;br&gt;level.append(node.Val)&quot;]:::process
+DequeueNode --&gt; EnqueueChildren[&quot;Добавить node.Left и node.Right в queue&quot;]:::process
+
+EnqueueChildren --&gt; LoopCheck{&quot;i == levelSize?&quot;}:::warning
+LoopCheck -- &quot;Нет&quot; --&gt; InnerLoop
+LoopCheck -- &quot;Да&quot; --&gt; AppendLevel[&quot;result.append(level)&quot;]:::accent
+AppendLevel --&gt; CheckEmpty
   </pre>
 </div>
 
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Почему <code>level := make([]int, 0, levelSize)</code> лучше, чем <code>var level []int</code>?<br />
-Когда вы делаете <code>append</code> в слайс с нулевой емкостью, рантайм Go вынужден аллоцировать новый базовый массив при каждом переполнении. Для узлов на уровне <code>i</code> может потребоваться до нескольких аллокаций на уровень. Задавая емкость <code>levelSize</code> заранее, мы говорим рантайму: "Выдели память один раз". Это сокращает количество аллокаций в куче (heap allocations) и вызовов GC ровно в <code>N</code> раз (где <code>N</code> — количество уровней дерева).</p>
-  </div>
-</div>
+<hr />
+<h3 id="4-mekhanicheskaya-simpatiya-pamyat-gc-i-predallokatsiya">4. Механическая симпатия: Память, GC и Предаллокация</h3>
 
-<h2 id="mechanical-sympathy-pointer-chasing-i-prefetching">Mechanical Sympathy: Pointer Chasing и prefetching</h2>
+<ol>
+<li><strong>Эффект <code>make([]int, 0, levelSize)</code>:</strong><br />
+   Если инициализировать срез без указания емкости (<code>var level []int</code>), Go начинает с емкости 0, затем при росте последовательно аллоцирует блоки на 1, 2, 4, 8 элементов. При обходе слоя из $1024$ узлов рантайм выполнит около 10 реаллокаций и копирований памяти в куче. Точная передача емкости <code>levelSize</code> сокращает число аллокаций до <strong>ровно одной на весь слой</strong>.</li>
+<li><strong>Зануление ссылок <code>queue[head] = nil</code>:</strong><br />
+   Поскольку базовый массив среза <code>queue</code> живет в течение всего времени работы функции, без зануления пройденных ячеек все узлы дерева удерживались бы в памяти вплоть до финального выхода из функции. Зануление позволяет GC освобождать узлы верхних слоев еще до завершения обхода всего дерева.</li>
+<li><strong>Амортизированная сложность среза очереди:</strong><br />
+   Срез <code>queue</code> удваивает свою емкость при исчерпании, что гарантирует амортизированную стоимость добавления $O(1)$ за операцию <code>append</code>.</li>
+</ol>
+<hr />
+<h3 id="5-semeystvo-zadach-na-baze-patterna-level-order">5. Семейство задач на базе паттерна Level Order</h3>
 
-<p>В структуре <code>TreeNode</code> поля <code>Left</code> и <code>Right</code> — это указатели. Обход деревьев в Go — это классический <strong>Pointer Chasing</strong>. Узлы разбросаны по куче (heap) случайным образом.</p>
-<p>Когда алгоритм BFS извлекает узел 2 и добавляет в очередь указатели на его детей 4 и 5, процессор вынужден идти в оперативную память (Cache Miss). </p>
-<p>Однако, у BFS есть скрытое преимущество перед DFS перед подсчетом метрик. Если мы обходим дерево уровнями, и на уровне 100 узлов, мы можем обработать их "пачкой". Современные процессоры и компиляторы умеют векторизовать (SIMD) простые операции над массивами. Если ваша бизнес-логика на уровне (например, сумма значений) не имеет зависимостей по данным, теоретически её можно распараллелить. В Go для этого можно передать слайс <code>level</code> в горутину (Worker Pool), чего нельзя сделать при DFS, пока вы не спуститесь до самого дна.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Если вы используете классический подход с <code>queue = queue[1:]</code>, будьте осторожны со сборщиком мусора. Если дерево огромное, базовый массив очереди будет расти до размера самого широкого уровня дерева и <em>никогда не уменьшится</em>, удерживая указатели на уже пройденные узлы. GC не сможет очистить память от пройденных узлов, пока на них ссылается базовый массив очереди. Подход с индексом <code>head</code> решает эту проблему: старые указатели в начале слайса могут быть перезаписаны (в идеале), но до тех пор они просто недоступны для логики, хотя память массива всё еще занята. Для production систем лучше использовать кольцевой буфер (Ring Buffer) поверх слайса.</p>
-  </div>
-</div>
+<p>Освоив послойный снимок, вы мгновенно решаете целый спектр олимпиадных и прикладных задач:</p>
+<ul>
+<li><strong>Zigzag Level Order:</strong> обход «змейкой» (слой слева направо, следующий справа налево).<br />
+<em>Решение:</em> собираем уровень стандартно, а для нечётных уровней разворачиваем срез за $O(K)$ на месте двумя указателями.</li>
+<li><strong>Right Side View (Вид дерева справа):</strong><br />
+<em>Решение:</em> в каждом слое берем последний элемент: <code>level[len(level)-1]</code>.</li>
+<li><strong>Average of Levels (Среднее значение на слое):</strong><br />
+<em>Решение:</em> суммируем элементы в рамках внутреннего цикла и делим на <code>levelSize</code>.</li>
+<li><strong>Maximum Width of Binary Tree:</strong><br />
+<em>Решение:</em> помещаем в очередь пару <code>(node, index)</code>, вычисляя ширину слоя как <code>lastIndex - firstIndex + 1</code>.</li>
+</ul>
+<hr />
+<h3 id="rezyume-dlya-intervyu">Резюме для интервью</h3>
 
-<h2 id="system-design-mapreduce-i-ierarkhii">System Design: MapReduce и Иерархии</h2>
-
-<p>В распределенных системах данные часто организованы иерархически. Например, AWS IAM политики: если право выдано корневой организационной единице (OU), оно каскадно распространяется вниз.</p>
-<p>Если вам нужно посчитать бюджет для каждого слоя компании, вы используете Level Order Traversal. В распределенной среде (если дерево хранится в БД или распределенном кэше) один сервер не может обойти всё дерево в памяти.</p>
-<p>Паттерн "снимок размера уровня" ложится на парадигму <strong>Bulk Synchronous Parallel (BSP)</strong> / MapReduce:<br />
-1. На шаге <code>N</code> мы запрашиваем из БД все узлы текущего слоя (Map).<br />
-2. Агрегируем их данные.<br />
-3. На основе их ID формируем批量 (batch) запрос в БД для получения всех детей уровня <code>N+1</code>.</p>
-<p>Это позволяет избежать боли N+1 запросов (когда вы делаете запрос в БД на каждого ребенка каждого узла), собирая всех детей одного уровня одним SQL <code>IN (...)</code> запросом.</p>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Если вы решили задачу Level Order, интервьюер почти гарантированно попросит вас сделать <strong>Zigzag Level Order</strong> (зигзагообразный обход: слева направо, затем справа налево).</p>
-<p>Неправильный подход: использовать Deque или менять порядок добавления детей (это ломает логику BFS).<br />
-Правильный подход: обходить дерево всегда строго слева направо (классический BFS). Единственное, что меняется — это формирование слайса <code>level</code>. Если уровень нечетный, вы просто разворачиваете его: </p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">if len(result) % 2 == 1 {
-    for l, r := 0, len(level)-1; l &lt; r; l, r = l+1, r-1 {
-        level[l], level[r] = level[r], level[l]
-    }
-}
-</code></pre>
-</div>
-
-<p>Это сохраняет сложность $O(N)$ по времени и не ломает очередь.</p>
+    <p><strong>Каверзный вопрос:</strong> «Зачем нужен внутренний цикл <code>for i := 0; i &lt; levelSize; i++</code>, если можно обойтись одним внешним циклом <code>while len(queue) &gt; 0</code> и счетчиком глубины?»<br />
+<strong>Ответ:</strong> «Использование двух вложенных циклов разделяет ответственности: внешний цикл отвечает за смену уровней, а внутренний — за изолированную обработку элементов одного слоя. Это позволяет предаллоцировать память под конкретный слой <code>make([]int, 0, levelSize)</code>, атомарно зафиксировать его границы и производить агрегации (сумма, минимум, разворот) прямо по месту, не загромождая алгоритм дополнительными структурами данных».</p>
   </div>
 </div>
 
-<h2 id="itog">Итог</h2>
-
-<ol>
-<li><strong>Снимок размера:</strong> Ключ к обходу по уровням — фиксация <code>len(queue)</code> перед обработкой уровня. Это избавляет от нужды в сентинах и вторых очередях.</li>
-<li><strong>Утечка памяти:</strong> Избегайте <code>queue = queue[1:]</code>. Используйте индекс <code>head</code> для имитации очереди на базе слайса.</li>
-<li><strong>Предаллокация:</strong> Всегда резервируйте емкость для слайса уровня: <code>make([]int, 0, levelSize)</code>. Это экономит аллокации.</li>
-<li><strong>Масштабирование:</strong> Паттерн обхода по уровням идеально ложится на пакетные запросы (Batching) в распределенных БД и архитектуру MapReduce.</li>
-</ol>
-<p>В следующей статье мы закрепим этот паттерн на классической задаче LeetCode: <a href="3-binary-tree-level-order-traversal.html" class="wikilink">3. Binary Tree Level Order Traversal</a>.</p>
+<p>В следующей практической статье мы закрепим этот паттерн на канонической задаче: <a href="3-binary-tree-level-order-traversal.html" class="wikilink">3. Binary Tree Level Order Traversal</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2380,7 +2395,7 @@ F --&gt; G[&quot;head = 3&lt;br&gt;Очередь - 1, 2, 3, 4, 5, 6&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#glavnaya-problema-kak-otdelit-urovni">Главная проблема: Как отделить уровни?</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-slays-s-indeksom-head">Идиоматичный Go: Слайс с индексом head</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-pointer-chasing-i-prefetching">Mechanical Sympathy: Pointer Chasing и prefetching</a></li><li class="toc-item toc-h2"><a href="#system-design-mapreduce-i-ierarkhii">System Design: MapReduce и Иерархии</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h3"><a href="#1-arkhitekturnaya-dilemma-kak-elegantno-razdelyat-urovni">1. Архитектурная дилемма: как элегантно разделять уровни?</a></li><li class="toc-item toc-h3"><a href="#2-idiomaticheskaya-realizatsiya-na-go-srez-so-skolzyashchey-golovoy">2. Идиоматическая реализация на Go: Срез со скользящей головой</a></li><li class="toc-item toc-h3"><a href="#3-vizualizatsiya-poshagovoy-raboty-algoritma">3. Визуализация пошаговой работы алгоритма</a></li><li class="toc-item toc-h3"><a href="#4-mekhanicheskaya-simpatiya-pamyat-gc-i-predallokatsiya">4. Механическая симпатия: Память, GC и Предаллокация</a></li><li class="toc-item toc-h3"><a href="#5-semeystvo-zadach-na-baze-patterna-level-order">5. Семейство задач на базе паттерна Level Order</a></li><li class="toc-item toc-h3"><a href="#rezyume-dlya-intervyu">Резюме для интервью</a></li>
   </ul>
 </aside>
 

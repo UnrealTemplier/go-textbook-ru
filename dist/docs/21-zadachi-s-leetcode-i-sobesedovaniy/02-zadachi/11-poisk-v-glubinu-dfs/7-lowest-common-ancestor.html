@@ -2171,50 +2171,68 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~20 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~17 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">7. Lowest Common Ancestor</h1>
           </header>
 
           <div class="article-markdown">
-            <p><strong>LeetCode 236. Lowest Common Ancestor of a Binary Tree.</strong> Дано бинарное дерево и два узла <code>p</code> и <code>q</code>, гарантированно присутствующие в дереве. Требуется найти их <strong>наименьшего общего предка (LCA)</strong> — самый глубокий узел, который является предком одновременно для <code>p</code> и для <code>q</code>. Узел может быть предком самого себя (т.е. если <code>p</code> является предком <code>q</code>, то <code>p</code> и будет LCA).</p>
-<p>После задачи о максимальном пути (<a href="6-binary-tree-maximum-path-sum.html" class="wikilink">6. Binary Tree Maximum Path Sum</a>), где postorder DFS использовался для комбинации результатов снизу вверх, мы снова обращаемся к этой же стратегии обхода, но с иной целью: теперь снизу вверх передаётся не числовое значение, а <strong>факт обнаружения</strong> искомых узлов. Для Senior Go-разработчика задача является каноническим примером того, как один рекурсивный проход без дополнительной памяти заменяет наивные решения с хранением путей или мап родителей, а понимание «нулевого значения» указателя (<code>nil</code>) и его роли в сигнализации становится ключом к лаконичному коду.</p>
-<h3 id="formulirovka-i-utochneniya">Формулировка и уточнения</h3>
+            <blockquote>
+<p><em>«Простота — необходимое условие надежности».</em><br />
+— Эдсгер Вибе Дейкстра</p>
+</blockquote>
+<p><strong>LeetCode 236. Lowest Common Ancestor of a Binary Tree.</strong> Дано бинарное дерево и два различных узла $p$ и $q$, гарантированно присутствующие в нём. Требуется найти их <strong>наименьшего общего предка</strong> (Lowest Common Ancestor, LCA) — наиболее глубокий узел в дереве, для которого как $p$, так и $q$ являются потомками (при этом узел считается потомком самого себя).</p>
+<p>После решения задачи о максимальной сумме пути (<a href="6-binary-tree-maximum-path-sum.html" class="wikilink">6. Binary Tree Maximum Path Sum</a>) мы продолжаем исследовать мощь обратного обхода (<strong>Postorder DFS</strong>). Но если в предыдущей задаче мы передавали снизу вверх числовые суммы, то в задаче о наименьшем общем предке наверх транслируются <strong>топологические маркеры обнаружения</strong>.</p>
+<p>Для Senior Go-разработчика эта задача — эталон чистоты рекурсивного мышления: элегантный код в 12 строк без вспомогательных структур данных и без единой аллокации в куче заменяет громоздкие решения с сохранением путей и родительских указателей.</p>
+<hr />
+<h3 id="1-arkhitekturnaya-ideya-voskhodyashchiy-sbor-signalov">1. Архитектурная идея: восходящий сбор сигналов</h3>
 
-<p><strong>Условие:</strong> функция <code>lowestCommonAncestor(root, p, q *TreeNode) *TreeNode</code>. Тип <code>TreeNode</code> стандартный. Все значения узлов уникальны, <code>p != q</code>, оба узла есть в дереве.</p>
-<p><strong>Вопросы интервьюеру (Senior-стиль):</strong><br />
-- <em>Может ли <code>root</code> быть <code>nil</code>?</em> Если <code>root == nil</code>, то по условию <code>p</code> и <code>q</code> не существуют, но формально можно вернуть <code>nil</code>.<br />
-- <em>Может ли <code>p</code> или <code>q</code> совпадать с <code>root</code>?</em> Да, тогда <code>root</code> — ответ.<br />
-- <em>Могут ли значения быть любыми?</em> Значения не влияют на алгоритм, используются только ссылки.<br />
-- <em>Можно ли модифицировать дерево?</em> Нет, только читаем.</p>
-<p>Ответы фиксируют стратегию: рекурсивный обход снизу вверх, который возвращает <code>p</code>, <code>q</code> или их общего предка, используя <code>nil</code> как сигнал «ничего не найдено».</p>
-<h3 id="naivnoe-reshenie-khranenie-putey">Наивное решение: хранение путей</h3>
+<p>Вместо того чтобы строить пути от корня к узлам $p$ и $q$ и затем искать их расхождение, мы используем естественную топологию дерева. Запустим рекурсию в поддеревья и сформулируем строгий контракт функции:</p>
+<blockquote>
+<p><strong>Инвариант <code>lowestCommonAncestor(node, p, q)</code>:</strong><br />
+1. Если в поддереве <code>node</code> <strong>нет ни $p$, ни $q$</strong> $\rightarrow$ возвращает <code>nil</code>.<br />
+2. Если в поддереве <code>node</code> найден <strong>ровно один</strong> из искомых узлов $\rightarrow$ возвращает указатель на этот узел ($p$ или $q$).<br />
+3. Если в поддереве <code>node</code> найдены <strong>оба узла</strong> $\rightarrow$ возвращает их <strong>наименьшего общего предка</strong>.</p>
+</blockquote>
 
-<p>Можно найти путь от корня до <code>p</code> и путь до <code>q</code>, сохранив их в слайсах, а затем найти последний общий узел в этих путях. Это требует O(N) времени и O(H) памяти на каждый путь, а также два полных обхода. Senior сразу предложит однопроходное рекурсивное решение, которое не хранит пути явно.</p>
-
-<div class="code-block" data-lang="go">
+<div class="code-block" data-lang="text">
   <div class="code-header">
-    <span class="code-lang-tag">Go</span>
+    <span class="code-lang-tag">TEXT</span>
     <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// Наивный код — два поиска пути с сохранением слайсов, затем сравнение.
+  <pre class="language-text"><code class="language-text">              Случай 1: Разделение ветвей               Случай 2: Один предок другого
+                       [ Node (LCA) ]                                [ p (LCA) ]
+                       /            \                                     \
+                   ...                ...                                 ...
+                   /                    \                                   \
+                 [p]                    [q]                                 [q]
+          left != nil &amp;&amp; right != nil                      left == nil, right == q (или наоборот)
+           -&gt; Node и есть ответ!                            -&gt; p возвращается сразу наверх!
 </code></pre>
 </div>
 
-<h3 id="optimalnoe-reshenie-rekursivnyy-postorder-dfs">Оптимальное решение: рекурсивный postorder DFS</h3>
+<h4 id="pochemu-korrektno-ne-spuskatsya-glubzhe-pri-node-p-node-q">Почему корректно не спускаться глубже при `node == p || node == q`?</h4>
+<p>Если мы дошли до узла <code>p</code>, мы сразу возвращаем <code>p</code> родителю, даже не заглядывая в его детей. Почему?<br />
+- <strong>Если $q$ лежит в поддереве $p$:</strong> по определению, узел является предком самого себя, значит $p$ и есть искомый LCA! Нам не нужно искать $q$ внутри.<br />
+- <strong>Если $q$ лежит в другой ветке дерева:</strong> рекурсивный поиск в другой ветке найдет $q$, а их общий предок выше объединит результаты <code>left != nil &amp;&amp; right != nil</code> и вернет истинный LCA.</p>
+<hr />
+<h3 id="2-voprosy-intervyueru-pered-realizatsiey">2. Вопросы интервьюеру перед реализацией</h3>
 
-<p><strong>Идея.</strong> Рекурсивная функция <code>dfs(node)</code> возвращает:<br />
-- <code>nil</code>, если в поддереве <code>node</code> нет ни <code>p</code>, ни <code>q</code>;<br />
-- <code>p</code>, если в поддереве найден <code>p</code>;<br />
-- <code>q</code>, если найден <code>q</code>;<br />
-- сам <code>node</code>, если в его поддереве обнаружены оба узла, и этот узел является их LCA (то есть <code>p</code> и <code>q</code> находятся в разных поддеревьях, либо один из них — сам <code>node</code>).</p>
-<p>Обход снизу вверх (postorder) гарантирует, что первый узел, получивший из левого и правого поддеревьев ненулевые результаты (один — <code>p</code>, другой — <code>q</code>), является искомым наименьшим предком. Если же одно из поддеревьев уже вернуло общего предка, он просто пробрасывается наверх без изменений.</p>
-<p><strong>Инвариант:</strong><br />
-Рекурсивный вызов <code>dfs(node)</code> возвращает не-<code>nil</code> тогда и только тогда, когда поддерево <code>node</code> содержит хотя бы один из искомых узлов (<code>p</code> или <code>q</code>). Если поддерево содержит оба узла, возвращается их LCA (который может быть самим <code>node</code> или находиться глубже).</p>
+<ul>
+<li><strong>Гарантируется ли наличие обоих узлов в дереве?</strong><br />
+<em>Ответ:</em> В стандартной задаче LeetCode 236 — да, $p$ и $q$ всегда присутствуют и $p \neq q$. (Если узлы не гарантированы — см. раздел «Собеседование» ниже).</li>
+<li><strong>Могут ли узлы дублироваться по значению?</strong><br />
+<em>Ответ:</em> Все значения узлов уникальны, однако наш алгоритм сравнивает <strong>указатели на узлы</strong>, а не их значения, поэтому он инвариантен к значениям.</li>
+<li><strong>Разрешено ли мутировать узлы дерева (добавлять указатель на родителя)?</strong><br />
+<em>Ответ:</em> Нет, дерево неизменяемо (read-only).</li>
+</ul>
+<hr />
+<h3 id="3-idiomaticheskaya-realizatsiya-na-go">3. Идиоматическая реализация на Go</h3>
+
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2224,25 +2242,36 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func lowestCommonAncestor(root, p, q *TreeNode) *TreeNode {
-    if root == nil {
-        return nil
-    }
-    // Если нашли один из искомых узлов, возвращаем его (нет смысла идти глубже)
-    if root == p || root == q {
+  <pre class="language-go"><code class="language-go">package main
+
+// TreeNode представляет узел бинарного дерева.
+type TreeNode struct {
+    Val   int
+    Left  *TreeNode
+    Right *TreeNode
+}
+
+// lowestCommonAncestor находит наименьшего общего предка для узлов p и q.
+// Временная сложность: O(N) в худшем случае (посещаем каждый узел один раз).
+// Пространственная сложность: O(H) — глубина рекурсивного стека, где H — высота дерева.
+func lowestCommonAncestor(root, p, q *TreeNode) *TreeNode {
+    // Базовый случай: пустое дерево или один из искомых узлов найден.
+    if root == nil || root == p || root == q {
         return root
     }
 
+    // Пост-обход (Postorder): сначала ищем в поддеревьях.
     left := lowestCommonAncestor(root.Left, p, q)
     right := lowestCommonAncestor(root.Right, p, q)
 
-    // Если оба поддерева вернули не-nil, значит p и q в разных ветвях,
-    // и текущий root является их LCA.
+    // Развилка: если оба вызова вернули не-nil, то p и q находятся
+    // в разных поддеревьях относительно текущего root. Значит, root — их LCA!
     if left != nil &amp;&amp; right != nil {
         return root
     }
 
-    // Иначе пробрасываем наверх тот не-nil результат, который есть
+    // Если один из вызовов вернул результат (а второй nil),
+    // пробрасываем найденный узел (или уже найденный LCA) выше по стеку.
     if left != nil {
         return left
     }
@@ -2251,11 +2280,9 @@
 </code></pre>
 </div>
 
-<p><strong>Go-идиомы и комментарии:</strong><br />
-- Функция чиста и не использует замыканий — рекурсивные вызовы возвращают указатели.<br />
-- <code>root == p || root == q</code> — проверка на совпадение по ссылке, а не по значению, что корректно, так как узлы гарантированно уникальны и доступны по указателю.<br />
-- Лакончиная обработка: <code>if left != nil &amp;&amp; right != nil</code> — ключевое условие LCA.<br />
-- Проброс результата через <code>if left != nil { return left }</code> — элегантно и без лишних переменных.</p>
+<hr />
+<h3 id="4-vizualizatsiya-logiki-prinyatiya-resheniy">4. Визуализация логики принятия решений</h3>
+
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2270,90 +2297,136 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;dfs(node):::warning&quot;] --&gt; B{&quot;node == nil&lt;br&gt;или node == p&lt;br&gt;или node == q?&quot;}
-B --&gt;|&quot;Да&quot;| C[&quot;return node&quot;]
-B --&gt;|&quot;Нет&quot;| D[&quot;left = dfs(node.Left)&quot;]
-D --&gt; E[&quot;right = dfs(node.Right)&quot;]
-E --&gt; F{&quot;left != nil&lt;br&gt;и right != nil?&quot;}
-F --&gt;|&quot;Да&quot;| G[&quot;return node // LCA&quot;]
-F --&gt;|&quot;Нет&quot;| H{&quot;left != nil?&quot;}
-H --&gt;|&quot;Да&quot;| I[&quot;return left&quot;]
-H --&gt;|&quot;Нет&quot;| J[&quot;return right&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+
+Start[&quot;Вход: LCA(root, p, q)&quot;]:::entry --&gt; BaseCheck{&quot;root == nil&lt;br&gt;|| root == p&lt;br&gt;|| root == q?&quot;}:::warning
+
+BaseCheck -- &quot;Да&quot; --&gt; ReturnRoot[&quot;return root&quot;]:::accent
+BaseCheck -- &quot;Нет&quot; --&gt; SearchChildren[&quot;left = LCA(root.Left, p, q)&lt;br&gt;right = LCA(root.Right, p, q)&quot;]:::process
+
+SearchChildren --&gt; CheckBoth{&quot;left != nil&lt;br&gt;&amp;&amp; right != nil?&quot;}:::warning
+
+CheckBoth -- &quot;Да: развилка обнаружена&quot; --&gt; FoundLCA[&quot;return root // текущий узел и есть LCA&quot;]:::success
+CheckBoth -- &quot;Нет&quot; --&gt; CheckLeft{&quot;left != nil?&quot;}:::warning
+
+CheckLeft -- &quot;Да&quot; --&gt; ReturnLeft[&quot;return left&quot;]:::process
+CheckLeft -- &quot;Нет&quot; --&gt; ReturnRight[&quot;return right&quot;]:::process
   </pre>
 </div>
 
 
-<h3 id="pochemu-eto-rabotaet-invariant-i-postobkhod">Почему это работает: инвариант и постобход</h3>
+<hr />
+<h3 id="5-sravnenie-podkhodov-rekursivnyy-dfs-vs-roditelskiy-slovar">5. Сравнение подходов: Рекурсивный DFS vs Родительский словарь</h3>
 
-<p>Алгоритм использует факт, что дерево обходится снизу вверх. Возможны три ситуации для узла <code>node</code>:<br />
-1. <strong>Один из искомых узлов (<code>p</code> или <code>q</code>) найден в поддереве.</strong> Тогда узел <code>node</code> пробрасывает этот указатель наверх. На этом уровне LCA ещё не определён, потому что второй узел может находиться в другой ветви выше.<br />
-2. <strong>Оба узла найдены в разных поддеревьях <code>node</code>.</strong> Тогда <code>left</code> и <code>right</code> оба не-<code>nil</code>, и <code>node</code> является первым общим предком — его и возвращаем. Поскольку обход снизу вверх, это будет <strong>наименьший</strong> общий предок.<br />
-3. <strong>Оба узла уже найдены в одном поддереве глубже.</strong> Тогда один из рекурсивных вызовов уже вернул их LCA (некоторый узел <code>z</code>), а второй вызов вернул <code>nil</code>. В этом случае мы просто пробрасываем <code>z</code> наверх (возвращаем <code>left</code> или <code>right</code>).</p>
-<p>Это гарантирует, что самый первый узел, который получит <code>left != nil &amp;&amp; right != nil</code>, и есть ответ.</p>
-<h3 id="edge-cases">Edge Cases</h3>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Критерий</th>
+<th>Рекурсивный DFS (наш выбор)</th>
+<th>Хранение родителей (<code>map[*TreeNode]*TreeNode</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Аллокации в куче</strong></td>
+<td><strong>0 B/op (чистый стек)</strong></td>
+<td>Сотни КБ на хеш-таблицу связей</td>
+</tr>
+<tr>
+<td><strong>Сложность по памяти</strong></td>
+<td>$O(H)$ (глубина стека)</td>
+<td>$O(N)$ (каждый узел в map)</td>
+</tr>
+<tr>
+<td><strong>Количество проходов</strong></td>
+<td>1 проход</td>
+<td>2 прохода (построение дерева + подъём от предков)</td>
+</tr>
+<tr>
+<td><strong>Идиоматичность Go</strong></td>
+<td>Высокая, минимум кода</td>
+<td>Избыточная сложность, давление на GC</td>
+</tr>
+</tbody>
+</table></div>
+<p>В варианте с хеш-таблицей родителей (<code>parentMap := make(map[*TreeNode]*TreeNode)</code>) приходится заполнять словарь на $N$ элементов, а затем строить <code>visited := make(map[*TreeNode]bool)</code> для подъёма от $p$ к корню. Это порождает паразитное выделение памяти в куче и нагружает GC. Рекурсивное решение работает исключительно на стеке горутины.</p>
+<hr />
+<h3 id="6-mekhanicheskaya-simpatiya-go-ukazateli-i-registry-abi">6. Механическая симпатия Go: указатели и регистры ABI</h3>
+
+<ol>
+<li><strong>Регистровый ABI (Go 1.17+):</strong><br />
+   Параметры <code>root, p, q</code> — это три 64-битных указателя (<code>*TreeNode</code>). Они передаются напрямую через регистры CPU (например, <code>RAX, RBX, RCX</code> на amd64), исключая обращения к памяти для передачи аргументов функции.</li>
+<li><strong>Сравнение указателей в железе:</strong><br />
+   Проверка <code>root == p</code> компилируется в одну ассемблерную инструкцию <code>CMPQ reg1, reg2</code>. Это мгновенное сравнение двух целочисленных адресов памяти без разыменования указателей.</li>
+<li><strong>Отсутствие Escape Analysis:</strong><br />
+   Поскольку функция оперирует исключительно адресами существующих узлов и не создаёт новых переменных в куче, рантайм Go выполняет её со стоимостью <strong>0 B/op</strong>.</li>
+</ol>
+<hr />
+<h3 id="7-granichnye-sluchai-edge-cases">7. Граничные случаи (Edge Cases)</h3>
 
 <ul>
-<li><strong>Пустое дерево:</strong> <code>root == nil</code> → вернётся <code>nil</code>. По условию <code>p</code> и <code>q</code> гарантированы, но функция корректна.</li>
-<li><strong><code>p</code> является предком <code>q</code>:</strong> при обходе наткнёмся на <code>p</code>, и согласно условию <code>root == p || root == q</code> сразу вернём <code>p</code>, не проверяя потомков. Это корректно, так как <code>q</code> находится в поддереве <code>p</code>, и <code>p</code> является LCA. Мы не потеряем <code>q</code>, потому что LCA уже определён.</li>
-<li><strong><code>p</code> и <code>q</code> — один и тот же узел?</strong> По условию <code>p != q</code>, но если бы они совпадали, возврат <code>root == p</code> также корректен.</li>
-<li><strong>Дерево из двух узлов, <code>p</code> и <code>q</code> — дети корня:</strong> <code>left</code> вернёт <code>p</code>, <code>right</code> вернёт <code>q</code>, корень увидит оба не-<code>nil</code> и вернёт себя.</li>
-</ul>
-<h3 id="analiz-slozhnosti">Анализ сложности</h3>
-
-<ul>
-<li><strong>Время:</strong> O(N). Каждый узел посещается не более одного раза. Обход полный в худшем случае (если <code>p</code> и <code>q</code> находятся глубоко).</li>
-<li><strong>Память:</strong> O(H) для стека рекурсии, где H — высота дерева. Дополнительная память O(1) (кроме рекурсивных фреймов).</li>
-</ul>
-<h3 id="mechanical-sympathy-ukazateli-nil-i-stek-gorutiny">Mechanical Sympathy: указатели, nil и стек горутины</h3>
-
-<ul>
-<li><strong>Сравнение указателей:</strong> <code>root == p</code> — это сравнение двух указателей, которое выполняется за одну инструкцию CMP на уровне процессора. Значения узлов не проверяются, что даёт независимость от данных.</li>
-<li><strong>Отсутствие аллокаций в куче:</strong> функция не создаёт слайсы, map’ы или новые узлы. Только рекурсивные вызовы, которые используют стек горутины. Escape analysis оставляет всё на стеке.</li>
-<li><strong>Глубина рекурсии:</strong> в сбалансированном дереве O(log N) — великолепно. В вырожденном — O(N). Для N до 10⁵ это может вызвать копирование стека горутины, но не является критичным. Senior упомянет возможность итеративного решения с явным стеком для экстремально глубоких деревьев.</li>
-<li><strong>Кэш-локальность:</strong> указатели на узлы могут быть разбросаны по куче (дерево аллоцировано динамически). При обходе возможны промахи мимо кэша, но это неизбежно для древовидных структур. Алгоритм, однако, не усугубляет ситуацию лишними обходами.</li>
-</ul>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>В Go указатель <code>*TreeNode</code> — это машинное слово, содержащее адрес памяти. Сравнение <code>root == p</code> — прямое сравнение адресов. Нулевое значение указателя <code>nil</code> представлено как 0, что тоже быстро проверяется. Рекурсивная функция <code>lowestCommonAncestor</code> не замыкается, а вызывается напрямую, что минимизирует накладные расходы на вызов (прямой вызов вместо косвенного через функциональную переменную). Для ещё более быстрого выполнения можно рассмотреть передачу <code>p</code> и <code>q</code> через замыкание, но это не обязательно.</p>
-  </div>
-</div>
-
-<h3 id="alternativnye-podkhody-i-trade-off">Альтернативные подходы и trade-off</h3>
-
-<ul>
-<li><strong>Итеративный DFS с сохранением родительских указателей.</strong> Можно обойти дерево один раз (в BFS или DFS), сохранив для каждого узла ссылку на родителя в <code>map[*TreeNode]*TreeNode</code>. Затем подняться от <code>p</code> до корня, запоминая всех предков в <code>set</code>, и подниматься от <code>q</code>, пока не встретится узел из этого множества. Время O(N), память O(N) (map и set). Решение полностью итеративно и не зависит от глубины рекурсии, но требует дополнительной памяти и менее элегантно.</li>
-<li><strong>Поиск путей со слайсами.</strong> Аналогично, хранит пути явно, O(N) памяти.</li>
-<li><strong>Рекурсивный DFS с возвратом состояния.</strong> Описанный выше подход — золотой стандарт, не требующий дополнительной памяти и работающий за один проход.</li>
+<li><strong>$p$ является прямым родителем $q$:</strong><br />
+  Алгоритм встретит $p$, сработает базовый случай <code>root == p</code>, и $p$ немедленно вернется наверх. Правая/левая ветки под $p$ даже не будут обходиться. Ответ $p$ корректен.</li>
+<li><strong>Узлы находятся в противоположных концах дерева:</strong><br />
+  Корень увидит <code>left != nil</code> из одного дальнего листа и <code>right != nil</code> из другого дальнего листа. Результат <code>root</code> вернется на самом верху дерева.</li>
+<li><strong>Вырожденное дерево-список глубины $N$:</strong><br />
+  Стек горутины плавно вырастет до необходимого размера за счет динамического реаллоцирования страниц стека (<code>runtime.morestack</code>).</li>
 </ul>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Вопрос: «Что если <code>p</code> или <code>q</code> не гарантированно присутствует в дереве?»<br />
-Ответ: «Тогда алгоритм нужно модифицировать: возвращать не только узел, но и флаг, были ли найдены оба узла. Можно обернуть результат в структуру или использовать два возвращаемых значения. Если один из узлов отсутствует, LCA не определён, и функция должна вернуть <code>nil</code>. Это стандартное расширение задачи».</p>
+    <p><strong>Каверзный вопрос с собеседования:</strong><br />
+<em>«Что если один из узлов ($p$ или $q$) может отсутствовать в дереве? Сработает ли наш алгоритм?»</em>  </p>
+<p><strong>Ответ:</strong><br />
+«Нет! Если узел $p$ есть в дереве, а узла $q$ вообще не существует, наш текущий алгоритм всё равно вернёт $p$ (приняв его за кандидата).<br />
+Чтобы корректно обработать отсутствие узлов, необходимо либо:<br />
+1. Сделать предварительный проход валидации наличия обоих узлов.<br />
+2. Либо возвращать кортеж <code>(lca *TreeNode, count int)</code>, где <code>count</code> равен количеству найденных целевых узлов (0, 1 или 2). Ответ признаётся валидным LCA только в том случае, если финальный <code>count == 2</code>».</p>
   </div>
 </div>
 
-<h3 id="itog">Итог</h3>
+<hr />
+<h3 id="rezyume-dlya-intervyu">Резюме для интервью</h3>
 
-<p>Lowest Common Ancestor — это элегантная демонстрация мощи postorder DFS. Один рекурсивный проход без дополнительной памяти находит общего предка, используя <code>nil</code> как сигнал отсутствия искомого узла в поддереве. В Go решение кристально чисто благодаря прямым сравнениям указателей и отсутствию аллокаций. Senior Go-разработчик не просто воспроизводит этот алгоритм, но и объясняет инвариант, анализирует глубину рекурсии и сравнивает с альтернативами на случай отсутствия узлов.</p>
-<p>Следующая задача — <strong>Flood Fill</strong> — перенесёт нас от деревьев обратно к матрицам, где DFS будет использоваться для «заливки» области, как в классическом графическом редакторе. <a href="8-flood-fill.html" class="wikilink">8. Flood Fill</a></p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Параметр</th>
+<th>Значение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Алгоритм</strong></td>
+<td>Postorder DFS (снизу вверх)</td>
+</tr>
+<tr>
+<td><strong>Временная сложность</strong></td>
+<td>$O(N)$ — худший случай при полном обходе</td>
+</tr>
+<tr>
+<td><strong>Пространственная сложность</strong></td>
+<td>$O(H)$ — глубина дерева в стеке вызовов ($O(\log N)$ в сбалансированном)</td>
+</tr>
+<tr>
+<td><strong>Память в куче</strong></td>
+<td>0 B/op (zero-alloc)</td>
+</tr>
+<tr>
+<td><strong>Ключевой трюк</strong></td>
+<td><code>left != nil &amp;&amp; right != nil</code> означает, что мы стоим в точке наименьшего предка</td>
+</tr>
+</tbody>
+</table></div>
+<p>В следующей задаче — <a href="8-flood-fill.html" class="wikilink">8. Flood Fill</a> — мы завершим кластер DFS, перейдя от древовидных структур к матрицам и алгоритмам растровой заливки.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2381,7 +2454,7 @@ H --&gt;|&quot;Нет&quot;| J[&quot;return right&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#formulirovka-i-utochneniya">Формулировка и уточнения</a></li><li class="toc-item toc-h3"><a href="#naivnoe-reshenie-khranenie-putey">Наивное решение: хранение путей</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-rekursivnyy-postorder-dfs">Оптимальное решение: рекурсивный postorder DFS</a></li><li class="toc-item toc-h3"><a href="#pochemu-eto-rabotaet-invariant-i-postobkhod">Почему это работает: инвариант и постобход</a></li><li class="toc-item toc-h3"><a href="#edge-cases">Edge Cases</a></li><li class="toc-item toc-h3"><a href="#analiz-slozhnosti">Анализ сложности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-ukazateli-nil-i-stek-gorutiny">Mechanical Sympathy: указатели, nil и стек горутины</a></li><li class="toc-item toc-h3"><a href="#alternativnye-podkhody-i-trade-off">Альтернативные подходы и trade-off</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h3"><a href="#1-arkhitekturnaya-ideya-voskhodyashchiy-sbor-signalov">1. Архитектурная идея: восходящий сбор сигналов</a></li><li class="toc-item toc-h4"><a href="#pochemu-korrektno-ne-spuskatsya-glubzhe-pri-node-p-node-q">Почему корректно не спускаться глубже при node == p || node == q?</a></li><li class="toc-item toc-h3"><a href="#2-voprosy-intervyueru-pered-realizatsiey">2. Вопросы интервьюеру перед реализацией</a></li><li class="toc-item toc-h3"><a href="#3-idiomaticheskaya-realizatsiya-na-go">3. Идиоматическая реализация на Go</a></li><li class="toc-item toc-h3"><a href="#4-vizualizatsiya-logiki-prinyatiya-resheniy">4. Визуализация логики принятия решений</a></li><li class="toc-item toc-h3"><a href="#5-sravnenie-podkhodov-rekursivnyy-dfs-vs-roditelskiy-slovar">5. Сравнение подходов: Рекурсивный DFS vs Родительский словарь</a></li><li class="toc-item toc-h3"><a href="#6-mekhanicheskaya-simpatiya-go-ukazateli-i-registry-abi">6. Механическая симпатия Go: указатели и регистры ABI</a></li><li class="toc-item toc-h3"><a href="#7-granichnye-sluchai-edge-cases">7. Граничные случаи (Edge Cases)</a></li><li class="toc-item toc-h3"><a href="#rezyume-dlya-intervyu">Резюме для интервью</a></li>
   </ul>
 </aside>
 

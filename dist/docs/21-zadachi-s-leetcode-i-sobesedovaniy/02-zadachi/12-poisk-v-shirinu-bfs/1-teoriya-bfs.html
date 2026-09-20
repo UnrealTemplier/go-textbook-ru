@@ -2171,20 +2171,50 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
+              <span class="meta-tag read-time">⏱ ~18 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">1. Теория. BFS</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Поиск в ширину (Breadth-First Search, BFS) — это фундаментальный алгоритм обхода графа, который чаще всего ассоциируется с поиском кратчайшего пути в невзвешенном графе. Если DFS (Поиск в глубину) идет до упора по одной ветке, то BFS распространяется "волнами" или "кольцами" от стартовой точки, послойно обходя всех соседей, прежде чем углубляться дальше.</p>
-<p>Для бэкенд-инженера BFS — это не просто способ найти выход из лабиринта. Это алгоритм, лежащий в основе маршрутизации (OSPF), поиска ближайших доступных узлов в балансировщиках нагрузки, обхода файловых систем и даже работы сборщика мусора (GC) в некоторых языках.</p>
-<h2 id="anatomiya-bfs-ochered-i-pometki">Анатомия BFS: Очередь и Пометки</h2>
+            <blockquote>
+<p><em>«Простейшие методы часто оказываются самыми глубокими: исследуя мир концентрическими кругами, мы находим кратчайший путь прежде, чем успеем заблудиться в лабиринте».</em><br />
+— Эдсгер Вибе Дейкстра</p>
+</blockquote>
+<p>Поиск в ширину (<strong>Breadth-First Search, BFS</strong>) — фундаментальный алгоритм теории графов, исследующий вершины по принципу концентрических волн. Если поиск в глубину (<a href="../11-poisk-v-glubinu-dfs/1-teoriya-dfs.html" class="wikilink">DFS</a>) устремляется вглубь по первой попавшейся ветке до самого тупика, то BFS методично проверяет всех непосредственных соседей стартовой точки (шаг 1), затем соседей соседей (шаг 2) и так далее.</p>
+<p>В архитектуре высоконагруженных бэкенд-систем BFS — это не просто инструмент обхода лабиринтов на алгоритмических секциях. На принципах BFS построены:<br />
+- <strong>Сетевая маршрутизация (OSPF, Dijkstra):</strong> поиск кратчайших сетевых путей с минимальным числом транзитных узлов (хопов).<br />
+- <strong>Service Discovery &amp; Load Balancing:</strong> распространение gossip-протоколов (HashiCorp Memberlist / Consul) и поиск ближайших реплик в топологии ЦОД.<br />
+- <strong>Распределенные социальные графы:</strong> поиск графа связей через $K$ рукопожатий (LinkedIn, Facebook).<br />
+- <strong>Сборка мусора в рантаймах (Tracing GC):</strong> волновой обход живых объектов в алгоритмах трёхцветной маркировки (Tri-color marking), где плотная очередь гарантирует отличную пространственную локальность кэша процессора.</p>
+<hr />
+<h3 id="1-anatomiya-algoritma-fifo-ochered-i-markirovka-fronta">1. Анатомия алгоритма: FIFO-очередь и маркировка фронта</h3>
 
-<p>Классический BFS опирается на две структуры данных:<br />
-1. <strong>Очередь (Queue):</strong> Хранит узлы, которые нужно посетить. Мы извлекаем узел из начала очереди, а его непосещенных соседей добавляем в конец. Это гарантирует, что узлы будут обработаны в порядке их удаленности от старта.<br />
-2. <strong>Множество посещенных (Visited Set):</strong> Предотвращает зацикливание и повторную обработку узлов в графах с циклами.</p>
+<p>Классический алгоритм BFS опирается на строгий инвариант: <strong>вершины извлекаются в порядке неубывания их расстояния от начальной вершины</strong>. Для этого используется очередь первого входа — первого выхода (<strong>FIFO</strong>).</p>
+
+<div class="code-block" data-lang="ascii">
+  <div class="code-header">
+    <span class="code-lang-tag">DIAGRAM</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-ascii"><code class="language-ascii">  Волна 0 (Старт)          Волна 1 (Шаг 1)            Волна 2 (Шаг 2)
+      [ S ]       ───►      [ A ]   [ B ]     ───►     [ C ] [ D ] [ E ]
+   дистанция: 0              дистанция: 1                дистанция: 2
+</code></pre>
+</div>
+
+<h4 id="kanonicheskiy-volnovoy-invariant-bfs">Канонический волновой инвариант BFS</h4>
+<ol>
+<li>В момент, когда обрабатывается вершина на расстоянии $d$, в очереди могут находиться только вершины на расстоянии $d$ и $d + 1$.</li>
+<li>В невзвешенном графе (где вес каждого ребра равен $1$) первый момент достижения целевой вершины $T$ гарантирует нахождение <strong>кратчайшего пути</strong>.</li>
+</ol>
+<hr />
+<h3 id="2-vizualizatsiya-volnovogo-fronta-bfs">2. Визуализация волнового фронта BFS</h3>
+
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2199,28 +2229,42 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Старт - узел 1&quot;]:::entry --&gt; B[&quot;Очередь - 1&quot;]
-B --&gt; C[&quot;Извлекаем 1&lt;br&gt;Добавляем соседей 2 и 3&quot;]
-C --&gt; D[&quot;Очередь - 2, 3&quot;]
-D --&gt; E[&quot;Извлекаем 2&lt;br&gt;Добавляем соседа 4&quot;]
-E --&gt; F[&quot;Очередь - 3, 4&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+
+subgraph Level0[&quot;Уровень 0 (Старт)&quot;]
+S[&quot;S (Старт)&quot;]:::entry
+end
+
+subgraph Level1[&quot;Уровень 1 (Волна 1)&quot;]
+A[&quot;Узел A&quot;]:::process
+B[&quot;Узел B&quot;]:::process
+end
+
+subgraph Level2[&quot;Уровень 2 (Волна 2)&quot;]
+C[&quot;Узел C&quot;]:::accent
+D[&quot;Узел D&quot;]:::accent
+E[&quot;Узел E (Цель)&quot;]:::success
+end
+
+S --&gt; A
+S --&gt; B
+A --&gt; C
+A --&gt; D
+B --&gt; D
+B --&gt; E
   </pre>
 </div>
 
 
-<h2 id="mechanical-sympathy-utechka-pamyati-v-go-pri-rabote-s-ocheredyami">Mechanical Sympathy: Утечка памяти в Go при работе с очередями</h2>
+<hr />
+<h3 id="3-mechanical-sympathy-v-go-lovushka-queue-queue1">3. Mechanical Sympathy в Go: Ловушка `queue = queue[1:]`</h3>
 
-<p>Главная ловушка при написании BFS на Go кроется в реализации очереди. В C++ есть <code>std::queue</code>, в Java — <code>LinkedList</code> или <code>ArrayDeque</code>. Разработчики, приходящие в Go, часто пытаются использовать слайс в качестве очереди:</p>
+<p>При реализации очереди в Go разработчики нередко совершают грубейшую ошибку, наивно отрезая первый элемент слайса:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2230,28 +2274,40 @@ E --&gt; F[&quot;Очередь - 3, 4&quot;]
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// АНТИПАТТЕРН: Утечка памяти
-queue := []int{1, 2, 3}
-// Извлечение элемента из начала очереди
-elem := queue[0]
-queue = queue[1:] // ОШИБКА!
+  <pre class="language-go"><code class="language-go">// АНТИПАТТЕРН: Скрытая утечка памяти и деградация GC!
+queue := []*Node{root}
+
+for len(queue) &gt; 0 {
+    curr := queue[0]
+    queue = queue[1:] // ОПАСНО!
+    // ...
+}
 </code></pre>
 </div>
 
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
   </div>
   <div class="callout-body">
-    <p>Выражение <code>queue = queue[1:]</code> не освобождает память! В Go слайс — это merely view (окно просмотра) над базовым массивом (underlying array). Когда вы делаете <code>queue[1:]</code>, вы просто сдвигаете указатель начала слайса на один элемент. Сам базовый массив всё ещё находится в куче, и первые элементы (которые вы уже "извлекли") продолжают занимать память.</p>
-<p>В BFS на графе с 1 миллионом узлов вы создадите базовый массив на миллион элементов, и он будет жить в куче до конца работы алгоритма, создавая колоссальное давление на Garbage Collector (GC). Если в узлах хранятся указатели, GC не сможет очистить даже "пройденные" элементы.</p>
+    <p><strong>Почему <code>queue[1:]</code> приводит к утечке памяти?</strong><br />
+Срез в Go — это заголовок (<code>SliceHeader</code>) из трёх машинных слов: указатель на базовый массив (<code>Data</code>), длина (<code>Len</code>) и вместимость (<code>Cap</code>).<br />
+Выражение <code>queue = queue[1:]</code> лишь сдвигает указатель <code>Data</code> вправо на 8 байт и уменьшает <code>Len</code> и <code>Cap</code>. Базовый массив в куче <strong>не освобождается</strong>, а указатели на уже «удалённые» узлы остаются в памяти до тех пор, пока жив хотя бы один срез, ссылающийся на этот массив!<br />
+В результате сборщик мусора Go (GC) <strong>не может освободить из памяти ни один пройденный узел</strong>, удерживаемый старыми ячейками массива. При обходе графа на $1\,000\,000$ узлов это приводит к стремительному раздуванию кучи (Heap Bloat) и OOM-панике.</p>
   </div>
 </div>
 
-<h3 id="kak-pravilno-ochered-na-slayse-s-indeksom">Как правильно: Очередь на слайсе с индексом</h3>
+<h4 id="kak-realizovat-ochered-v-go-effektivno-tri-podkhoda">Как реализовать очередь в Go эффективно: три подхода</h4>
 
-<p>Самый производительный и идиоматичный подход для алгоритмических задач на Go — использовать слайс, но не сдвигать начало, а двигать индекс "головы" (<code>head</code>). Когда очередь пустеет, мы просто сбрасываем слайс.</p>
+<ol>
+<li><strong>Сдвиг индекса головы (<code>head</code> pointer):</strong><br />
+   Самый простой и быстрый способ для алгоритмических задач. Срез растёт через <code>append</code>, а чтение идёт по индексу <code>head</code>. При исчерпании очереди базовый массив можно переиспользовать через <code>queue = queue[:0]</code>.</li>
+<li><strong>Зануление пройденных указателей:</strong><br />
+   Если в очереди лежат указатели (<code>*Node</code>), перед сдвигом <code>head</code> ячейку обнуляют: <code>queue[head] = nil</code>, чтобы GC мог забрать пройденный узел.</li>
+<li><strong>Кольцевой буфер (Ring Buffer):</strong><br />
+   Производственный стандарт для бесконечных очередей фиксированной емкости, исключающий любые аллокации в цикле.</li>
+</ol>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2261,78 +2317,195 @@ queue = queue[1:] // ОШИБКА!
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">type Queue struct {
-    data []int
+  <pre class="language-go"><code class="language-go">package main
+
+// Queue представляет zero-alloc очередь на базе среза с занулением ссылок.
+type Queue[T any] struct {
+    data []T
     head int
 }
 
-func (q *Queue) Enqueue(v int) {
-    q.data = append(q.data, v)
+func NewQueue[T any](initialCap int) *Queue[T] {
+    return &amp;Queue[T]{
+        data: make([]T, 0, initialCap),
+    }
 }
 
-func (q *Queue) Dequeue() int {
-    if q.IsEmpty() {
-        panic(&quot;queue is empty&quot;)
-    }
-    v := q.data[q.head]
+func (q *Queue[T]) Push(val T) {
+    q.data = append(q.data, val)
+}
+
+func (q *Queue[T]) Pop() T {
+    val := q.data[q.head]
+    var zero T
+    q.data[q.head] = zero // Зануляем ячейку для помощи Garbage Collector
     q.head++
-    // Очистка базового массива, если очередь стала пустой
+
+    // Если вся очередь вычитана, сбрасываем указатели в начало
     if q.head == len(q.data) {
         q.data = q.data[:0]
         q.head = 0
     }
-    return v
+    return val
 }
 
-func (q *Queue) IsEmpty() bool {
+func (q *Queue[T]) Len() int {
+    return len(q.data) - q.head
+}
+
+func (q *Queue[T]) IsEmpty() bool {
     return q.head == len(q.data)
 }
 </code></pre>
 </div>
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+<hr />
+<h3 id="4-pochemu-nepreryvnyy-slays-prevoskhodit-containerlist">4. Почему непрерывный слайс превосходит `container/list`</h3>
+
+<p>В стандартной библиотеке Go есть пакет <code>container/list</code>, реализующий классический двусвязный список. Однако в высокопроизводительном коде его использовать <strong>категорически не рекомендуется</strong>:</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Характеристика</th>
+<th><code>container/list</code> (Двусвязный список)</th>
+<th>Очередь на базе <code>[]T</code> (Срез Go)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Аллокации в куче</strong></td>
+<td>$1$ аллокация <code>Element</code> на каждый <code>PushBack</code></td>
+<td>$0$ аллокаций после амортизации емкости</td>
+</tr>
+<tr>
+<td><strong>Кэш-локальность L1</strong></td>
+<td>Ужасная (узлы хаотично разбросаны в куче)</td>
+<td>Превосходная (непрерывный блок памяти)</td>
+</tr>
+<tr>
+<td><strong>Pointer Chasing</strong></td>
+<td>Каждый шаг — прыжок по указателям <code>prev</code>/<code>next</code></td>
+<td>Прямая индексация через <code>base + offset</code></td>
+</tr>
+<tr>
+<td><strong>Удар по GC</strong></td>
+<td>Миллион мелких объектов в куче</td>
+<td>Один непрерывный массив под срез</td>
+</tr>
+</tbody>
+</table></div>
+<p>Современный процессор за один такт загружает из оперативной памяти в кэш-линию L1 блок размером 64 байта (8 указателей или целых чисел). При чтении последовательного среза следующие 7 элементов уже находятся в L1d кэше с нулевой задержкой!</p>
+<hr />
+<h3 id="5-sravnenie-fundamentalnykh-kharakteristik-bfs-vs-dfs">5. Сравнение фундаментальных характеристик: BFS vs DFS</h3>
+
+
+<div class="mermaid-wrapper">
+  <div class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p>Почему слайс лучше <code>container/list</code>?<br />
-Стандартный пакет <code>container/list</code> реализует двусвязный список. Каждый <code>PushBack</code> аллоцирует новый узел в куче (heap allocation). Для BFS с миллионом узлов это миллион аллокаций и миллион объектов для GC. Кроме того, элементы связного списка разбросаны по памяти, что вызывает <strong>Pointer Chasing</strong> и промахи кэша (Cache Miss).</p>
-<p>Слайс <code>[]int</code> — это непрерывный блок памяти. Процессор загружает элементы пачками по 64 байта (Cache Line). Dequeue из слайса с индексом <code>head</code> работает в сотни раз быстрее, чем обход связного списка, и создает нулевое давление на GC.</p>
-  </div>
+  <pre class="mermaid">
+flowchart LR
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+
+subgraph BFS[&quot;Поиск в ширину (BFS)&quot;]
+direction TB
+B1[&quot;Структура данных: Очередь (FIFO)&quot;]:::entry
+B2[&quot;Гарантирует кратчайший путь в 1-графах&quot;]:::success
+B3[&quot;Память: O(W) — ширина графа&quot;]:::warning
+end
+
+subgraph DFS[&quot;Поиск в глубину (DFS)&quot;]
+direction TB
+D1[&quot;Структура данных: Стек (LIFO)&quot;]:::accent
+D2[&quot;Не гарантирует кратчайший путь&quot;]:::error
+D3[&quot;Память: O(H) — глубина/высота&quot;]:::process
+end
+  </pre>
 </div>
 
-<h2 id="kratchayshiy-put-pochemu-bfs-vsegda-nakhodit-ego">Кратчайший путь: Почему BFS всегда находит его?</h2>
 
-<p>В невзвешенном графе (где каждое ребро имеет вес 1) BFS гарантированно находит кратчайший путь. Почему? </p>
-<p>Потому что BFS расширяет фронт поиска равномерно. Когда мы впервые достигаем узла <code>V</code>, мы делаем это через минимально возможное количество ребер от старта. Любой другой путь к <code>V</code> прошел бы через большее или равное количество узлов, но BFS уже посетил бы <code>V</code> раньше.</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Параметр</th>
+<th>Поиск в ширину (BFS)</th>
+<th>Поиск в глубину (DFS)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Структура памяти</strong></td>
+<td>Очередь (FIFO)</td>
+<td>Стек вызовов или явный срез (LIFO)</td>
+</tr>
+<tr>
+<td><strong>Кратчайший путь</strong></td>
+<td>Всегда находит первым в невзвешенном графе</td>
+<td>Не гарантирует (может блуждать по длинной ветке)</td>
+</tr>
+<tr>
+<td><strong>Пространственная сложность</strong></td>
+<td>$O(W)$, где $W$ — максимальная ширина слоя</td>
+<td>$O(H)$, где $H$ — максимальная глубина дерева</td>
+</tr>
+<tr>
+<td><strong>Расход памяти на сбалансированном дереве</strong></td>
+<td>$O(N/2) = O(N)$ на последнем слое</td>
+<td>$O(\log N)$ на фреймы рекурсии</td>
+</tr>
+<tr>
+<td><strong>Применение</strong></td>
+<td>Кратчайшие расстояния, волновые алгоритмы, уровни</td>
+<td>Бэктрекинг, топологическая сортировка, поиск компонент</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h3 id="6-sobesedovanie-klyuchevye-voprosy-i-lovushki">6. Собеседование: ключевые вопросы и ловушки</h3>
+
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Интервьюер часто спрашивает: <em>"А что если граф взвешенный (ребра имеют разный вес)?"</em><br />
-Ответ: BFS не найдет кратчайший путь. Для взвешенных графов используется Алгоритм Дейкстры (с приоритетной очередью / Min-Heap). По сути, Дейкстра — это обобщение BFS, где вместо обычной очереди (FIFO) используется очередь с приоритетом, чтобы всегда вытаскивать ближайший по стоимости узел.</p>
+    <p><strong>Вопрос интервьюера:</strong> «Что произойдёт с BFS, если граф взвешенный (длины рёбер различны)? Найдёт ли он кратчайший путь?»<br />
+<strong>Ответ:</strong> «Нет! BFS опирается на предположение, что каждый переход стоит ровно $1$. Если ребро $S \rightarrow B$ имеет вес $10$, а путь $S \rightarrow A \rightarrow B$ суммарно стоит $1 + 1 = 2$, классический BFS сначала пойдет в $B$ напрямую за $1$ шаг и ошибочно зафиксирует вес $10$. Для взвешенных графов BFS обобщается до <strong>алгоритма Дейкстры</strong>, где FIFO-очередь заменяется на очередь с приоритетом (Min-Heap)».</p>
   </div>
 </div>
 
-<h2 id="system-design-gde-bfs-v-bekende">System Design: Где BFS в бэкенде?</h2>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос интервьюера:</strong> «В какой момент узел графа должен помечаться в <code>visited</code> — при добавлении в очередь или при извлечении из неё?»<br />
+<strong>Ответ:</strong> «Строго в момент <strong>добавления в очередь</strong>! Если отложить маркировку до момента извлечения из очереди, несколько соседних узлов добавят одну и ту же не посещённую вершину в очередь множество раз. Это вызовет лавинообразный рост размера очереди и деградацию памяти до $O(V^2)$ или экспоненты».</p>
+  </div>
+</div>
+
+<hr />
+<h3 id="rezyume">Резюме</h3>
 
 <ol>
-<li><strong>Социальные графы:</strong> Поиск "друзей друзей" (Mutual Friends). Чтобы найти людей на расстоянии 2-х рукопожатий, мы запускаем BFS от пользователя и останавливаемся на 2-м уровне (уровень = количество переходов).</li>
-<li><strong>Service Discovery (Consul, Eureka):</strong> При поиске здорового инстанса микросервиса в топологии сети используется BFS-подобный поиск ближайшего узла с минимальным сетевым хопом.</li>
-<li><strong>Сборщик мусора (Tracing GC):</strong> Современные GC (включая Go) используют модифицированный BFS (часто называемый "tri-color marking") для обхода графа объектов от корней (stack, globals). BFS удобнее для кэша процессора при обходе больших графов в куче, чем DFS, так как он обходит смежные объекты (которые часто лежат рядом в памяти) последовательно.</li>
+<li><strong>Инвариант BFS:</strong> Послойное волновое расширение фронта гарантирует поиск кратчайшего пути в невзвешенных графах за $O(V + E)$ времени.</li>
+<li><strong>Очередь в Go:</strong> Избегайте наивного <code>queue[1:]</code>. Используйте скользящий индекс <code>head</code> с занулением ссылок для бережного отношения к GC.</li>
+<li><strong>Память:</strong> Потребление памяти пропорционально ширине графа ($O(W)$). На полных бинарных деревьях на последнем уровне скапливается до $50\%$ всех узлов дерева.</li>
 </ol>
-<h2 id="itog">Итог</h2>
-
-<ol>
-<li><strong>Алгоритм:</strong> BFS обходит граф волнами, используя очередь. Гарантирует кратчайший путь в невзвешенных графах.</li>
-<li><strong>Очередь в Go:</strong> Никогда не используйте <code>queue = queue[1:]</code> для извлечения элементов. Это вызывает утечку памяти. Используйте индекс <code>head</code> или кольцевой буфер.</li>
-<li><strong>Кэш процессора:</strong> Использование непрерывного слайса для очереди радикально превосходит <code>container/list</code> по производительности из-за локальности кэша (Cache Locality).</li>
-<li><strong>Графы:</strong> В отличие от DFS, BFS требует памяти $O(W)$, где $W$ — максимальная ширина графа. В дереве с миллионом узлов ширина может быть огромной, учитывайте это при оценке Memory Complexity.</li>
-</ol>
-<p>В следующей статье мы разберем самую частую задачу на BFS — обход деревьев горизонтальными слоями: <a href="2-obkhod-po-urovnyam.html" class="wikilink">2. Обход по уровням</a>.</p>
+<p>В следующей статье мы подробно изучим ключевой паттерн решения задач на деревья — послойную обработку: <a href="2-obkhod-po-urovnyam.html" class="wikilink">2. Обход по уровням</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2360,7 +2533,7 @@ func (q *Queue) IsEmpty() bool {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#anatomiya-bfs-ochered-i-pometki">Анатомия BFS: Очередь и Пометки</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-utechka-pamyati-v-go-pri-rabote-s-ocheredyami">Mechanical Sympathy: Утечка памяти в Go при работе с очередями</a></li><li class="toc-item toc-h3"><a href="#kak-pravilno-ochered-na-slayse-s-indeksom">Как правильно: Очередь на слайсе с индексом</a></li><li class="toc-item toc-h2"><a href="#kratchayshiy-put-pochemu-bfs-vsegda-nakhodit-ego">Кратчайший путь: Почему BFS всегда находит его?</a></li><li class="toc-item toc-h2"><a href="#system-design-gde-bfs-v-bekende">System Design: Где BFS в бэкенде?</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h3"><a href="#1-anatomiya-algoritma-fifo-ochered-i-markirovka-fronta">1. Анатомия алгоритма: FIFO-очередь и маркировка фронта</a></li><li class="toc-item toc-h4"><a href="#kanonicheskiy-volnovoy-invariant-bfs">Канонический волновой инвариант BFS</a></li><li class="toc-item toc-h3"><a href="#2-vizualizatsiya-volnovogo-fronta-bfs">2. Визуализация волнового фронта BFS</a></li><li class="toc-item toc-h3"><a href="#3-mechanical-sympathy-v-go-lovushka-queue-queue1">3. Mechanical Sympathy в Go: Ловушка queue = queue[1:]</a></li><li class="toc-item toc-h4"><a href="#kak-realizovat-ochered-v-go-effektivno-tri-podkhoda">Как реализовать очередь в Go эффективно: три подхода</a></li><li class="toc-item toc-h3"><a href="#4-pochemu-nepreryvnyy-slays-prevoskhodit-containerlist">4. Почему непрерывный слайс превосходит container/list</a></li><li class="toc-item toc-h3"><a href="#5-sravnenie-fundamentalnykh-kharakteristik-bfs-vs-dfs">5. Сравнение фундаментальных характеристик: BFS vs DFS</a></li><li class="toc-item toc-h3"><a href="#6-sobesedovanie-klyuchevye-voprosy-i-lovushki">6. Собеседование: ключевые вопросы и ловушки</a></li><li class="toc-item toc-h3"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

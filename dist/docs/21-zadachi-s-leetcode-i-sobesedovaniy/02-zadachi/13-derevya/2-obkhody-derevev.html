@@ -2171,23 +2171,22 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~12 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. Обходы деревьев</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="strategii-obkhoda-derevev-vglub-i-vshir">Стратегии обхода деревьев: Вглубь и Вширь</h2>
-
-<p>В предыдущей статье <a href="1-teoriya-derevya.html" class="wikilink">1. Теория. Деревья</a> мы выяснили, что дерево в памяти Go — это граф разбросанных по куче (Heap) аллокаций, объединенных указателями. Процессору больно обходить такие структуры из-за постоянных кэш-промахов (Cache Misses). Тем не менее, обходить деревья нужно.</p>
-<p>Глобально существует два алгоритмических подхода к обходу любого графа (и дерева в частности): <strong>DFS (Depth-First Search — поиск в глубину)</strong> и <strong>BFS (Breadth-First Search — поиск в ширину)</strong>.</p>
-<p>Выбор между ними на собеседовании — это не вопрос вкуса. Это инженерный компромисс между использованием оперативной памяти, паттернами доступа к кэшу и архитектурой стека вызовов горутины.</p>
+            <blockquote>
+<p><em>«Рекурсия — это великолепный мыслительный инструмент, однако подлинное мастерство инженера проверяется способностью подчинить стек вычислительной машины явным структурам данных».</em><br />
+— Никлаус Вирт</p>
+</blockquote>
+<p>Обход дерева — это методичный процесс посещения каждого узла иерархической структуры ровно один раз. Как мы выяснили в теоретическом введении (<a href="1-teoriya-derevya.html" class="wikilink">1. Теория. Деревья</a>), узлы дерева разбросаны в куче Go, а переходы по указателям неизбежно порождают промахи кэша процессора.</p>
+<p>На инженерных собеседованиях уровня Senior выбор между алгоритмами обхода — это не эстетический вопрос. Это осознанный выбор между <strong>глубиной рекурсивного стека горутины, шириной очереди в куче и нагрузкой на сборщик мусора (GC)</strong>.</p>
 <hr />
-<h2 id="1-poisk-v-glubinu-dfs">1. Поиск в глубину (DFS)</h2>
+<h3 id="1-arkhitekturnaya-karta-obkhodov-dfs-protiv-bfs">1. Архитектурная карта обходов: DFS против BFS</h3>
 
-<p>При DFS мы идем по ветке дерева максимально глубоко вниз, пока не упремся в лист (nil), после чего возвращаемся на шаг назад (backtrack) и идем в соседнюю ветку.</p>
-<p>Существует три классических порядка обхода в глубину. Они отличаются только тем, в какой момент мы "обрабатываем" (читаем значение) текущего узла:</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2201,75 +2200,57 @@
     </button>
   </div>
   <pre class="mermaid">
-graph TD
-A[&quot;A - Корень&quot;] --&gt; B[&quot;B - Левое&quot;]
-A --&gt; C[&quot;C - Правое&quot;]
+flowchart TD
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
 
-style A fill:#2e1065,stroke:#c084fc,stroke-width:2px,color:#f8fafc
-style B fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-style C fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
+Traversals[&quot;Стратегии обхода дерева&quot;]:::entry --&gt; DFS[&quot;1. Поиск в глубину (DFS)&lt;br&gt;Стек (LIFO) • Память O(H)&quot;]:::process
+Traversals --&gt; BFS[&quot;2. Поиск в ширину (BFS)&lt;br&gt;Очередь (FIFO) • Память O(W)&quot;]:::accent
 
-subgraph &quot;Порядки DFS&quot;
-P1[&quot;Pre-order - Прямой&lt;br&gt;Корень - Лево - Право&lt;br&gt;A, B, C&quot;]
-P2[&quot;In-order - Симметричный&lt;br&gt;Лево - Корень - Право&lt;br&gt;B, A, C&quot;]
-P3[&quot;Post-order - Обратный&lt;br&gt;Лево - Право - Корень&lt;br&gt;B, C, A&quot;]
-end
+DFS --&gt; Pre[&quot;Preorder (Прямой)&lt;br&gt;Root -&gt; Left -&gt; Right&quot;]:::process
+DFS --&gt; In[&quot;Inorder (Центрированный)&lt;br&gt;Left -&gt; Root -&gt; Right&quot;]:::success
+DFS --&gt; Post[&quot;Postorder (Обратный)&lt;br&gt;Left -&gt; Right -&gt; Root&quot;]:::process
+
+BFS --&gt; Level[&quot;Level-Order (По слоям)&lt;br&gt;Снимок уровня levelSize&quot;]:::accent
   </pre>
 </div>
 
 
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Где какой обход применяется?</strong><br />
-1 - <strong>Pre-order</strong>: Копирование дерева, сериализация дерева в строку.<br />
-2 - <strong>In-order</strong>: Получение отсортированного массива из бинарного дерева поиска (BST).<br />
-3 - <strong>Post-order</strong>: Удаление дерева (сначала удаляем детей, потом корень), вычисление размера папок в ФС.</p>
-  </div>
-</div>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Стратегия</th>
+<th>Структура памяти</th>
+<th>Потребление RAM</th>
+<th>Применение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>DFS (Глубина)</strong></td>
+<td>Стек вызовов или срез (LIFO)</td>
+<td>$O(H)$ (высота дерева)</td>
+<td>Валидация BST, поиск путей, сериализация, агрегаты</td>
+</tr>
+<tr>
+<td><strong>BFS (Ширина)</strong></td>
+<td>Очередь на срезе (FIFO)</td>
+<td>$O(W)$ (ширина слоя)</td>
+<td>Кратчайшие расстояния, послойная группировка</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h3 id="2-poisk-v-glubinu-dfs-rekursiya-protiv-iteratsii-na-sreze">2. Поиск в глубину (DFS): Рекурсия против Итерации на срезе</h3>
 
-<h3 id="dfs-rekursiya-vs-iteratsiya">DFS: Рекурсия vs Итерация</h3>
-
-<p>Самый простой способ написать DFS — использовать рекурсию.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func inorderTraversal(root *TreeNode) {
-    if root == nil {
-        return
-    }
-    inorderTraversal(root.Left)
-    fmt.Println(root.Val)
-    inorderTraversal(root.Right)
-}
-</code></pre>
-</div>
-
-<p>Но как Senior-инженер, вы должны понимать цену этих 8 строк кода.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом: Стек горутины</span>
-  </div>
-  <div class="callout-body">
-    <p>Когда вы вызываете функцию рекурсивно, Go помещает в стек горутины новый <strong>фрейм</strong> (содержащий аргумент <code>root</code> и адрес возврата). <br />
-Начальный размер стека горутины в современном Go — <strong>2 КБ</strong>. <br />
-Если дерево вырождено в связный список (например, 100 000 узлов только вправо), глубина рекурсии составит 100 000 вызовов. Стек неизбежно переполнится.</p>
-<p>В этот момент рантайм Go приостановит горутину, выделит новый кусок памяти в 2 раза больше (stack growth), <strong>скопирует</strong> туда все данные старого стека, обновит все внутренние указатели и продолжит работу. Это крайне дорогая операция. В языках с Tail Call Optimization (TCO) компилятор мог бы свернуть рекурсию в цикл, но <strong>компилятор Go не делает TCO</strong> принципиально (для сохранения чистоты stack trace при паниках).</p>
-  </div>
-</div>
-
-<p>Поэтому на хардовых секциях вас попросят написать <strong>итеративный DFS</strong>. Для этого мы эмулируем стек вызовов (Call Stack) в куче с помощью обычного Go-слайса.</p>
-<h3 id="idiomatichnyy-iterativnyy-in-order-dfs">Идиоматичный итеративный In-order DFS</h3>
+<p>Рекурсивный DFS пишется в 5 строк, но в высоконагруженных системах скрывает риск деградации:<br />
+- Компилятор Go <strong>не выполняет TCO (хвостовую оптимизацию)</strong>.<br />
+- При вырождении дерева в цепочку глубина стека достигнет $N$. Рантайм вызовет каскадное копирование стека (<code>runtime.morestack</code>).</p>
+<h4 id="idiomatichnyy-iterativnyy-inorder-dfs-etalon-dlya-sobesedovaniya">Идиоматичный итеративный Inorder DFS (эталон для собеседования)</h4>
 
 
 <div class="code-block" data-lang="go">
@@ -2280,34 +2261,39 @@ end
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">type TreeNode struct {
+  <pre class="language-go"><code class="language-go">package main
+
+type TreeNode struct {
     Val   int
     Left  *TreeNode
     Right *TreeNode
 }
 
+// inorderTraversalIterative выполняет центрированный обход без рекурсии.
+// Временная сложность: O(N).
+// Пространственная сложность: O(H) — стек на базе плоского среза.
 func inorderTraversalIterative(root *TreeNode) []int {
-    var result []int
-    // Используем slice как LIFO стек
-    var stack []*TreeNode 
+    result := make([]int, 0, 32)
+    // Используем срез Go как LIFO-стек указателей
+    stack := make([]*TreeNode, 0, 32)
     curr := root
 
-    // Крутимся, пока есть текущий узел или стек не пуст
     for curr != nil || len(stack) &gt; 0 {
-        // Уходим максимально влево, сохраняя узлы в стек
+        // 1. Спускаемся до упора влево, складируя предков в стек
         for curr != nil {
             stack = append(stack, curr)
             curr = curr.Left
         }
 
-        // Достаем последний узел из стека (Pop)
+        // 2. Извлекаем вершину стека (Pop)
         curr = stack[len(stack)-1]
+        stack[len(stack)-1] = nil // Помогаем GC!
         stack = stack[:len(stack)-1]
 
-        // Обрабатываем значение
+        // 3. Обрабатываем значение узла
         result = append(result, curr.Val)
 
-        // Переходим к правому поддереву
+        // 4. Переходим в правое поддерево
         curr = curr.Right
     }
 
@@ -2316,18 +2302,10 @@ func inorderTraversalIterative(root *TreeNode) []int {
 </code></pre>
 </div>
 
-<p><strong>Сложность:</strong><br />
-- Время: <code>O(N)</code> — каждый узел посещается ровно один раз.<br />
-- Память: <code>O(H)</code>, где <code>H</code> — высота дерева. В худшем случае (вырожденное дерево) <code>O(N)</code>, в лучшем (сбалансированное) <code>O(log N)</code>.</p>
 <hr />
-<h2 id="2-poisk-v-shirinu-bfs">2. Поиск в ширину (BFS)</h2>
+<h3 id="3-poisk-v-shirinu-bfs-posloynaya-obrabotka-bez-utechek-pamyati">3. Поиск в ширину (BFS): Послойная обработка без утечек памяти</h3>
 
-<p>При BFS мы обходим дерево по уровням: сначала корень (уровень 0), затем все его дети (уровень 1), затем все внуки (уровень 2) и так далее. <br />
-Этот алгоритм незаменим, когда нужно найти <strong>кратчайший путь</strong> (в графах) или обработать иерархию по слоям.</p>
-<p>В отличие от DFS, который использует стек (LIFO), BFS требует <strong>очереди (FIFO)</strong>. В Go нет встроенной структуры данных Queue, поэтому её обычно реализуют через <code>slice</code>.</p>
-<h3 id="idiomatichnyy-bfs-level-order-traversal">Идиоматичный BFS (Level-Order Traversal)</h3>
-
-<p>Эта структура кода — золотой стандарт для задач на BFS. Мы не просто кидаем узлы в очередь, а обрабатываем их <strong>пачками (бачами)</strong> по уровням.</p>
+<p>Как мы установили в главе о BFS (<a href="../12-poisk-v-shirinu-bfs/2-obkhod-po-urovnyam.html" class="wikilink">2. Обход по уровням</a>), обход по слоям строится на паттерне <strong>Queue Snapshot</strong>:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2337,29 +2315,27 @@ func inorderTraversalIterative(root *TreeNode) []int {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func levelOrder(root *TreeNode) [][]int {
+  <pre class="language-go"><code class="language-go">// levelOrder выполняет послойный обход с защитой от утечек памяти в GC.
+func levelOrder(root *TreeNode) [][]int {
     if root == nil {
         return nil
     }
 
-    var result [][]int
-    // Инициализируем очередь корнем
     queue := []*TreeNode{root}
+    head := 0
+    result := make([][]int, 0, 16)
 
-    for len(queue) &gt; 0 {
-        // Фиксируем количество узлов на текущем уровне
-        levelSize := len(queue)
-        var currentLevel []int
+    for head &lt; len(queue) {
+        levelSize := len(queue) - head
+        level := make([]int, 0, levelSize)
 
-        // Обрабатываем ровно levelSize элементов
         for i := 0; i &lt; levelSize; i++ {
-            // Dequeue: берем первый элемент
-            node := queue[0]
-            queue = queue[1:] // Внимание! Тут кроется подвох
+            node := queue[head]
+            queue[head] = nil // Защита от удержания объектов в GC
+            head++
 
-            currentLevel = append(currentLevel, node.Val)
+            level = append(level, node.Val)
 
-            // Enqueue: добавляем детей в конец очереди
             if node.Left != nil {
                 queue = append(queue, node.Left)
             }
@@ -2368,7 +2344,7 @@ func inorderTraversalIterative(root *TreeNode) []int {
             }
         }
 
-        result = append(result, currentLevel)
+        result = append(result, level)
     }
 
     return result
@@ -2376,49 +2352,54 @@ func inorderTraversalIterative(root *TreeNode) []int {
 </code></pre>
 </div>
 
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Утечка памяти в слайсе-очереди</span>
-  </div>
-  <div class="callout-body">
-    <p>Обратите внимание на строку <code>queue = queue[1:]</code>. В рамках LeetCode это работает отлично. Но в Production-коде это <strong>потенциальная утечка памяти (Memory Leak)</strong>.</p>
-<p>Слайс в Go — это структура <code>reflect.SliceHeader</code> (указатель <code>Data</code>, <code>Len</code>, <code>Cap</code>). Когда мы делаем <code>queue = queue[1:]</code>, мы просто сдвигаем указатель <code>Data</code> на один элемент вправо. Базовый массив (backing array) <strong>остается в памяти целиком</strong>. Сборщик мусора (GC) не может удалить отработанные узлы в начале массива, потому что на этот массив всё еще ссылается активный слайс <code>queue</code>.</p>
-<p><strong>Как это лечат в Production?</strong> <br />
-Если очередь живет долго и перегоняет через себя миллионы элементов, используют кольцевой буфер (Ring Buffer) или затирают ссылку перед сдвигом: </p>
+<hr />
+<h3 id="4-vysshiy-pilotazh-obkhod-morrisa-morris-traversal-o1-pamyati">4. Высший пилотаж: Обход Морриса (Morris Traversal — $O(1)$ памяти)</h3>
 
-<div class="code-block" data-lang="go">
+<p>Если на интервью в топовую компанию (Google, Meta) интервьюер задаёт вопрос:<br />
+<em>«Можно ли обойти дерево в порядке Inorder за время $O(N)$, используя ровно $O(1)$ дополнительной памяти (без стека рекурсии и без явного среза-стека)?»</em></p>
+<p>Правильный ответ: <strong>Алгоритм Морриса (Morris Traversal)</strong>.<br />
+Идея заключается в <strong>прошивке дерева</strong> (Threading): пустые правые указатели листьев временно связываются с их преемниками по Inorder-обходу (Inorder Predecessor), создавая обратные временные мосты для подъёма наверх без стека.</p>
+
+<div class="code-block" data-lang="ascii">
   <div class="code-header">
-    <span class="code-lang-tag">Go</span>
+    <span class="code-lang-tag">DIAGRAM</span>
     <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">queue[0] = nil // Помогаем GC: убираем ссылку на узел
-queue = queue[1:]
+  <pre class="language-ascii"><code class="language-ascii">Временная прошивка (Thread):
+           [ 2 ]  ◄───────┐
+          /     \         │ (мост из правого листа наверх!)
+       [ 1 ]    [ 3 ]     │
+         \                │
+         [nil] ───────────┘
 </code></pre>
 </div>
 
-  </div>
-</div>
-
-<h3 id="mechanical-sympathy-pamyat-pri-bfs">Mechanical Sympathy: Память при BFS</h3>
-
-<p>На собеседовании вас могут спросить: <em>"Что потребляет больше памяти: DFS или BFS?"</em></p>
-<p>Ответ зависит от топологии дерева.<br />
-DFS хранит в стеке узлы только текущего пути — сложность <code>O(H)</code> (Высота дерева).<br />
-BFS хранит в очереди все узлы текущего уровня. В идеальном сбалансированном бинарном дереве на последнем уровне находится <code>N/2</code> узлов. Следовательно, максимальный размер очереди будет <code>O(W)</code> (Ширина дерева), что в худшем случае стремится к <code>O(N)</code>.</p>
-<p><strong>Итог:</strong> Для широких и неглубоких деревьев BFS сожрет уйму памяти. Для узких и глубоких деревьев DFS убьет стек горутины. Инженерия — это всегда трейдоффы.</p>
+<p>После завершения обхода алгоритм Морриса восстанавливает исходную структуру дерева, удаляя временные ссылки <code>right = nil</code>.</p>
 <hr />
-<h2 id="rezyume-dlya-intervyu">Резюме для интервью</h2>
+<h3 id="5-mekhanicheskaya-simpatiya-pamyat-pri-dfs-protiv-bfs">5. Механическая симпатия: Память при DFS против BFS</h3>
 
-<ol>
-<li><strong>DFS (В глубину)</strong> — идеален для полного обхода, поиска в BST (In-order), сериализации. Легко пишется рекурсией, но на хардовых секциях нужно уметь писать через стек (slice).</li>
-<li><strong>BFS (В ширину)</strong> — идеален для поиска кратчайшего пути и работы по уровням. Реализуется через очередь (slice). Помните про сдвиг слайса <code>queue[1:]</code> и то, как он взаимодействует с Garbage Collector.</li>
-<li><strong>Escape Analysis</strong>: Узлы дерева и слайсы, используемые как стек/очередь внутри функции, могут аллоцироваться в куче, создавая работу для GC. Для сверх-оптимизации <code>currentLevel</code> слайс можно переиспользовать через <code>sync.Pool</code>, хотя для LeetCode это оверкилл.</li>
-</ol>
-<p>Теперь, когда мы вооружились инструментами обхода, самое время применить их к классической алгоритмической задаче, которую часто дают для разминки: <a href="3-maximum-depth-of-binary-tree.html" class="wikilink">3. Maximum Depth of Binary Tree</a>.</p>
+<p>На собеседовании вас обязательно спросят: <em>«Что потребляет больше памяти — DFS или BFS?»</em></p>
+<p>Инженерный ответ:<br />
+1. <strong>DFS потребляет $O(H)$ памяти</strong>, где $H$ — высота дерева.<br />
+   - В сбалансированном дереве $H \approx \log_2 N$. При миллионе узлов в стеке будет всего 20 фреймов ($\approx 1$ КБ).<br />
+   - В вырожденном дереве $H = N$. Память $O(N)$.<br />
+2. <strong>BFS потребляет $O(W)$ памяти</strong>, где $W$ — максимальная ширина слоя.<br />
+   - В полном бинарном дереве последний слой содержит $\lceil N/2 \rceil$ узлов (50% всех узлов дерева!).<br />
+   - Для дерева из миллиона узлов в очереди BFS одновременно будет находиться $500\,000$ элементов. Это мегабайты кучи.</p>
+<p><strong>Вывод:</strong> Для сбалансированных деревьев DFS экспоненциально экономнее по памяти, чем BFS ($O(\log N)$ против $O(N)$).</p>
+<hr />
+<h3 id="rezyume-dlya-intervyu">Резюме для интервью</h3>
+
+<ul>
+<li><strong>Preorder:</strong> Корень обрабатывается первым. Идеален для глубокого клонирования и сериализации.</li>
+<li><strong>Inorder:</strong> Обходит BST строго по возрастанию значений.</li>
+<li><strong>Postorder:</strong> Корень обрабатывается последним. Идеален для деструкторов, удаления деревьев и подсчета размеров поддеревьев снизу вверх.</li>
+<li><strong>Зануление ячеек в LIFO/FIFO:</strong> При извлечении из стека или очереди всегда зануляйте указатель (<code>stack[top] = nil</code>, <code>queue[head] = nil</code>), чтобы предотвратить утечки памяти в Garbage Collector.</li>
+</ul>
+<p>В следующей статье мы применим технику постобхода для вычисления глубины дерева: <a href="3-maximum-depth-of-binary-tree.html" class="wikilink">3. Maximum Depth of Binary Tree</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2446,7 +2427,7 @@ BFS хранит в очереди все узлы текущего уровня
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#strategii-obkhoda-derevev-vglub-i-vshir">Стратегии обхода деревьев: Вглубь и Вширь</a></li><li class="toc-item toc-h2"><a href="#1-poisk-v-glubinu-dfs">1. Поиск в глубину (DFS)</a></li><li class="toc-item toc-h3"><a href="#dfs-rekursiya-vs-iteratsiya">DFS: Рекурсия vs Итерация</a></li><li class="toc-item toc-h3"><a href="#idiomatichnyy-iterativnyy-in-order-dfs">Идиоматичный итеративный In-order DFS</a></li><li class="toc-item toc-h2"><a href="#2-poisk-v-shirinu-bfs">2. Поиск в ширину (BFS)</a></li><li class="toc-item toc-h3"><a href="#idiomatichnyy-bfs-level-order-traversal">Идиоматичный BFS (Level-Order Traversal)</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-pamyat-pri-bfs">Mechanical Sympathy: Память при BFS</a></li><li class="toc-item toc-h2"><a href="#rezyume-dlya-intervyu">Резюме для интервью</a></li>
+    <li class="toc-item toc-h3"><a href="#1-arkhitekturnaya-karta-obkhodov-dfs-protiv-bfs">1. Архитектурная карта обходов: DFS против BFS</a></li><li class="toc-item toc-h3"><a href="#2-poisk-v-glubinu-dfs-rekursiya-protiv-iteratsii-na-sreze">2. Поиск в глубину (DFS): Рекурсия против Итерации на срезе</a></li><li class="toc-item toc-h4"><a href="#idiomatichnyy-iterativnyy-inorder-dfs-etalon-dlya-sobesedovaniya">Идиоматичный итеративный Inorder DFS (эталон для собеседования)</a></li><li class="toc-item toc-h3"><a href="#3-poisk-v-shirinu-bfs-posloynaya-obrabotka-bez-utechek-pamyati">3. Поиск в ширину (BFS): Послойная обработка без утечек памяти</a></li><li class="toc-item toc-h3"><a href="#4-vysshiy-pilotazh-obkhod-morrisa-morris-traversal-o1-pamyati">4. Высший пилотаж: Обход Морриса (Morris Traversal — $O(1)$ памяти)</a></li><li class="toc-item toc-h3"><a href="#5-mekhanicheskaya-simpatiya-pamyat-pri-dfs-protiv-bfs">5. Механическая симпатия: Память при DFS против BFS</a></li><li class="toc-item toc-h3"><a href="#rezyume-dlya-intervyu">Резюме для интервью</a></li>
   </ul>
 </aside>
 

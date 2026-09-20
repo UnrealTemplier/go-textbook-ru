@@ -2171,24 +2171,27 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~24 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">1. Теория. DFS</h1>
           </header>
 
           <div class="article-markdown">
-            <p><strong>Поиск в глубину (Depth-First Search, DFS)</strong> — это стратегия обхода графа или дерева, при которой мы, начав с некоторой вершины, идём «вперёд» по одному из путей, пока не упрёмся в тупик (лист, уже посещённую вершину или отсутствие потомков), после чего возвращаемся назад и пробуем другой путь. Если поиск в ширину (BFS), который мы будем изучать в следующем кластере, напоминает волну, заливающую уровни, то DFS — это упорное путешествие вглубь, вплоть до исчерпания всех возможностей.</p>
-<p>После того как мы освоили backtracking — обход пространства состояний с построением и откатом решений, — DFS воспринимается как его естественное продолжение. Backtracking и есть DFS на дереве решений, но DFS как самостоятельный паттерн применяется не только к комбинаторным объектам, а к <strong>конкретным структурам данных</strong>: деревьям, графам, матрицам. Здесь состояние — это вершина (или клетка), а переходы — рёбра (или соседние клетки). Для Senior Go-разработчика DFS — это ещё и выбор между рекурсивным и итеративным обходом, понимание работы стека горутины, умение заменить рекурсию на явный стек на слайсе и осознание того, как порядок обхода влияет на кэш-локальность и аллокации.</p>
-<h3 id="chto-takoe-dfs-tri-poryadka-obkhoda-dereva">Что такое DFS: три порядка обхода дерева</h3>
+            <blockquote>
+<p><em>«Чтобы понять глубину проблемы, нужно идти до самого дна, не отвлекаясь на боковые тропы, пока путь не исчерпает себя».</em><br />
+— Роберт Тарьян</p>
+</blockquote>
+<p><strong>Поиск в глубину (Depth-First Search, DFS)</strong> — это фундаментальная стратегия исследования связных структур данных (деревьев, графов, пространственных матриц). В отличие от поиска в ширину (BFS), который распространяется концентрическими волнами, DFS упорно движется вперед вдоль выбранного ребра до тех пор, пока не упрется в лист, тупик или ранее посещенную вершину, после чего откатывается назад к ближайшей развилке.</p>
+<p>В предыдущем кластере <a href="../10-backtracking/1-teoriya-backtracking.html" class="wikilink">1. Теория. Backtracking</a> мы применяли поиск с возвратом к неявным деревьям комбинаторных решений. DFS — это проекция той же парадигмы на <strong>физические топологии</strong>: структуры <code>*TreeNode</code>, списки смежности графов <code>[][]int</code> и двумерные координатные сетки <code>[][]byte</code>.</p>
+<p>Для senior-разработчика на Go алгоритм DFS — это не просто рекурсивный обход, а точный выбор между стеком горутины и явным срезом-стеком, контроль над расходом памяти $O(H)$ против $O(W)$ и понимание механизмов предотвращения циклов.</p>
+<hr />
+<h2 id="arkhitektura-tri-poryadka-obkhoda-dereva-i-neyavnyy-stek">Архитектура: Три порядка обхода дерева и неявный стек</h2>
 
-<p>Наиболее наглядно DFS проявляется при обходе <strong>бинарного дерева</strong>. В зависимости от того, когда мы обрабатываем текущий узел относительно его потомков, различают три классических порядка:</p>
-<ul>
-<li><strong>Preorder:</strong> узел → левый потомок → правый потомок.</li>
-<li><strong>Inorder:</strong> левый потомок → узел → правый потомок (для BST даёт отсортированный вывод).</li>
-<li><strong>Postorder:</strong> левый потомок → правый потомок → узел.</li>
-</ul>
-<p>Для графов общего вида порядок сводится к preorder: посетили вершину, отметили её, затем рекурсивно обошли всех непосещённых соседей.</p>
+<p>В бинарных деревьях DFS естественным образом распадается на три канонических порядка в зависимости от момента обработки значения родительского узла относительно его потомков:<br />
+1. <strong>Preorder (Прямой обход):</strong> <code>Узел</code> $\rightarrow$ <code>Левый</code> $\rightarrow$ <code>Правый</code> (клонирование дерева, сериализация).<br />
+2. <strong>Inorder (Центрированный обход):</strong> <code>Левый</code> $\rightarrow$ <code>Узел</code> $\rightarrow$ <code>Правый</code> (для Binary Search Tree возвращает строго отсортированную последовательность).<br />
+3. <strong>Postorder (Обратный обход):</strong> <code>Левый</code> $\rightarrow$ <code>Правый</code> $\rightarrow$ <code>Узел</code> (удаление дерева, вычисление высоты, топологическая сортировка, снизу вверх).</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2203,39 +2206,79 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-Root[&quot;Корень&quot;]:::process --&gt; Left[&quot;Левый потомок&quot;]
-Root --&gt; Right[&quot;Правый потомок&quot;]
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
 
-subgraph Preorder
-P1[&quot;1\. Корень&quot;]:::process --&gt; P2[&quot;2\. Левый&quot;]
-P2 --&gt; P3[&quot;3\. Правый&quot;]
-end
-subgraph Inorder
-I1[&quot;1\. Левый&quot;]:::process --&gt; I2[&quot;2\. Корень&quot;]
-I2 --&gt; I3[&quot;3\. Правый&quot;]
-end
-subgraph Postorder
-Po1[&quot;1\. Левый&quot;]:::process --&gt; Po2[&quot;2\. Правый&quot;]
-Po2 --&gt; Po3[&quot;3\. Корень&quot;]
+Root[&quot;Корень: 1&quot;]:::entry --&gt; L[&quot;Левый: 2&quot;]:::process
+Root --&gt; R[&quot;Правый: 3&quot;]:::process
+
+L --&gt; L1[&quot;Лист: 4&quot;]:::success
+L --&gt; L2[&quot;Лист: 5&quot;]:::success
+
+subgraph Стек рекурсии: Preorder обход (1 -&gt; 2 -&gt; 4 -&gt; 5 -&gt; 3)
+direction TB
+S1[&quot;Push(1) -&gt; Обработка 1&quot;]:::process
+S2[&quot;Push(2) -&gt; Обработка 2&quot;]:::process
+S3[&quot;Push(4) -&gt; Обработка 4 -&gt; Pop(4)&quot;]:::process
+S4[&quot;Push(5) -&gt; Обработка 5 -&gt; Pop(5) -&gt; Pop(2)&quot;]:::process
+S5[&quot;Push(3) -&gt; Обработка 3 -&gt; Pop(3) -&gt; Pop(1)&quot;]:::success
 end
   </pre>
 </div>
 
 
-<p>Для обхода графа мы дополнительно ведём <strong>множество посещённых вершин</strong> (<code>visited</code>), чтобы не зациклиться. В дереве циклов нет, поэтому <code>visited</code> не нужен (хотя для задач с родительскими ссылками может быть полезен).</p>
-<h3 id="rekursivnyy-dfs-kanonicheskiy-karkas-na-go">Рекурсивный DFS: канонический каркас на Go</h3>
+<hr />
+<h2 id="fundamentalnoe-sravnenie-dfs-protiv-bfs">Фундаментальное сравнение: DFS против BFS</h2>
 
-<p>Рекурсивная реализация DFS — самая естественная и читаемая. Для дерева она выглядит так:</p>
+<p>Выбор между поиском в глубину и ширину определяет архитектуру подсистем ядра, сборщиков мусора и сетевых анализаторов:</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Критерий</th>
+<th>Поиск в глубину (DFS)</th>
+<th>Поиск в ширину (BFS)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Базовая структура</strong></td>
+<td><strong>LIFO Стек</strong> (стек вызовов или срез <code>[]T</code>)</td>
+<td><strong>FIFO Очередь</strong> (кольцевой буфер <code>[]T</code>)</td>
+</tr>
+<tr>
+<td><strong>Расход памяти</strong></td>
+<td>$O(H)$ — пропорционален <strong>высоте дерева</strong></td>
+<td>$O(W)$ — пропорционален <strong>максимальной ширине</strong></td>
+</tr>
+<tr>
+<td><strong>Память в сбалансированном дереве</strong></td>
+<td>$O(\log N)$ (крошечный объем)</td>
+<td>$O(N/2) = O(N)$ (весь нижний слой листьев)</td>
+</tr>
+<tr>
+<td><strong>Кратчайший путь (невзвешенный)</strong></td>
+<td>Не гарантирован (требует обхода всех путей)</td>
+<td><strong>Строго гарантирован</strong> по числу ребер</td>
+</tr>
+<tr>
+<td><strong>Поиск циклов и топосорт</strong></td>
+<td>Естественен через цвета вершин / Postorder</td>
+<td>Алгоритм Кана (Kahn's Algorithm) через входящие степени</td>
+</tr>
+<tr>
+<td><strong>Нагрузка на рантайм Go</strong></td>
+<td>Вызовы функций на Continuous Stack (дешево)</td>
+<td>Частые реаллокации очереди в куче (heap pressure)</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="idiomatichnye-realizatsii-na-go">Идиоматичные реализации на Go</h2>
+
+<h3 id="1-rekursivnyy-dfs-preorder">1. Рекурсивный DFS (Preorder)</h3>
+<p>Рекурсивный обход компактен, выразителен и использует непрерывный стек горутины:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2245,77 +2288,61 @@ end
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">type TreeNode struct {
+  <pre class="language-go"><code class="language-go">package main
+
+type TreeNode struct {
     Val   int
     Left  *TreeNode
     Right *TreeNode
 }
 
-func dfsRecursive(node *TreeNode) {
-    if node == nil {
-        return
-    }
-    // Обработка текущего узла (preorder)
-    fmt.Println(node.Val)
-    dfsRecursive(node.Left)
-    dfsRecursive(node.Right)
-}
-</code></pre>
-</div>
-
-<p>Для графа добавляется массив <code>visited</code> и, возможно, дополнительный контекст:</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func dfsGraph(adj [][]int, v int, visited []bool) {
-    visited[v] = true
-    // Обработка вершины v
-    for _, neighbor := range adj[v] {
-        if !visited[neighbor] {
-            dfsGraph(adj, neighbor, visited)
-        }
-    }
-}
-</code></pre>
-</div>
-
-<p><strong>Инвариант рекурсивного DFS:</strong> после возврата из вызова для узла <code>v</code> все вершины, достижимые из <code>v</code> по непосещённым ранее путям, теперь помечены как посещённые. Именно этот инвариант позволяет решать задачи типа «количество островов» (<a href="3-number-of-islands.html" class="wikilink">3. Number of Islands</a>) — после вызова DFS для одной клетки суши все связанные с ней клетки становятся посещёнными, и мы считаем один остров.</p>
-<p><strong>Преимущества рекурсивного подхода:</strong><br />
-- Лаконичность, читаемость.<br />
-- Стек вызовов автоматически хранит путь от корня до текущей вершины.<br />
-- Не нужно вручную управлять стеком.</p>
-<p><strong>Недостаток:</strong> глубина рекурсии ограничена ёмкостью стека горутины. В Go стек горутины динамически растёт (начинается с 2 КБ, увеличивается копированием), поэтому для глубины 10⁴ проблем нет, но для 10⁶ и более могут быть накладные расходы на многократное копирование стека, а в экстремальных случаях — риск исчерпания памяти. В таких ситуациях Senior-разработчик переходит к итеративному DFS.</p>
-<h3 id="iterativnyy-dfs-emulyatsiya-steka-cherez-slays">Итеративный DFS: эмуляция стека через слайс</h3>
-
-<p>Итеративная реализация заменяет стек вызовов на <strong>явный стек</strong>, реализованный на слайсе. Это даёт полный контроль над памятью и позволяет обходить структуры, глубина которых может быть опасна для рекурсии.</p>
-<p><strong>Каркас итеративного DFS для дерева (preorder):</strong></p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func dfsIterative(root *TreeNode) {
+// dfsRecursive выполняет прямой обход дерева
+// Временная сложность: O(N)
+// Пространственная сложность: O(H) памяти стека
+func dfsRecursive(root *TreeNode, visit func(int)) {
     if root == nil {
         return
     }
-    stack := []*TreeNode{root}
+    visit(root.Val)                  // Preorder: обработка узла
+    dfsRecursive(root.Left, visit)   // Рекурсивный спуск влево
+    dfsRecursive(root.Right, visit)  // Рекурсивный спуск вправо
+}
+</code></pre>
+</div>
+
+<h3 id="2-iterativnyy-dfs-na-ploskom-slayse-zero-allocations">2. Итеративный DFS на плоском слайсе (Zero Allocations)</h3>
+<p>Если глубина графа неизвестна и может превышать $10^5$ (риск исчерпания памяти стека горутины), идиоматично использовать явный стек на срезе с предвыделенной емкостью:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package main
+
+// dfsIterative эмулирует стек вызовов без рекурсии
+func dfsIterative(root *TreeNode, visit func(int)) {
+    if root == nil {
+        return
+    }
+
+    // Стек указателей на узлы с предвыделенной емкостью под высоту дерева
+    stack := make([]*TreeNode, 0, 64)
+    stack = append(stack, root)
+
     for len(stack) &gt; 0 {
-        // Pop
-        node := stack[len(stack)-1]
-        stack = stack[:len(stack)-1]
-        // Обработать узел
-        fmt.Println(node.Val)
-        // Push потомков (правого первым, чтобы левый обработался раньше)
+        // Pop из вершины стека за O(1)
+        idx := len(stack) - 1
+        node := stack[idx]
+        stack = stack[:idx]
+
+        visit(node.Val)
+
+        // В LIFO стеке правый потомок добавляется ПЕРВЫМ,
+        // чтобы левый потомок извлекся и обработался РЬШЕ!
         if node.Right != nil {
             stack = append(stack, node.Right)
         }
@@ -2327,141 +2354,52 @@ func dfsRecursive(node *TreeNode) {
 </code></pre>
 </div>
 
-<p>Для графа необходимо явно хранить состояние обхода (посещённые вершины, а иногда и итератор по соседям). Классический итеративный DFS для графа использует стек пар <code>(v, index)</code>, где <code>index</code> — следующий непосещённый сосед, которого нужно обработать. Это имитирует точку возврата в рекурсивной версии.</p>
+<hr />
+<h2 id="vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</h2>
 
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func dfsIterativeGraph(adj [][]int, start int) {
-    n := len(adj)
-    visited := make([]bool, n)
-    // Стек хранит пары: вершина и индекс следующего соседа для обработки
-    type frame struct {
-        v   int
-        idx int
-    }
-    stack := []frame{{v: start, idx: 0}}
-    visited[start] = true
-    // Обработка стартовой вершины (preorder)
-    for len(stack) &gt; 0 {
-        top := &amp;stack[len(stack)-1]
-        if top.idx &lt; len(adj[top.v]) {
-            neighbor := adj[top.v][top.idx]
-            top.idx++
-            if !visited[neighbor] {
-                visited[neighbor] = true
-                // Обработка соседа (preorder)
-                stack = append(stack, frame{v: neighbor, idx: 0})
-            }
-        } else {
-            // Все соседи обработаны — выход из вершины (postorder)
-            stack = stack[:len(stack)-1]
-        }
-    }
-}
-</code></pre>
-</div>
+<h3 id="1-nepreryvnyy-stek-gorutiny-i-runtime-morestack">1. Непрерывный стек горутины и `runtime.morestack`</h3>
+<p>В Go каждая горутина создается с минимальным стеком размером <strong>2 КБ</strong>.<br />
+- Когда рекурсивный DFS углубляется, компилятор на прологе каждой функции выполняет проверку исчерпания стека (<code>CMPQ SP, 16(R14)</code>).<br />
+- Если 2 КБ недостаточно, вызывается рантайм-функция <code>runtime.morestack</code>, которая аллоцирует блок памяти в 4 КБ, копирует существующие стековые кадры и сдвигает указатели.<br />
+- Для сбалансированного дерева глубины $H \le 64$ стек горутины даже не превысит стартовые 2 КБ! Вся рекурсия выполняется в горячем кэше первого уровня L1d.</p>
+<h3 id="2-kesh-lokalnost-spiskov-smezhnosti">2. Кэш-локальность списков смежности</h3>
+<p>При обходе графа <code>adj [][]int</code>:<br />
+- Использование среза срезов <code>adj[v]</code> обеспечивает строго последовательное чтение номеров соседей из памяти.<br />
+- Аппаратный Prefetcher процессора заблаговременно подтягивает смежные индексы в линии кэша, обеспечивая максимальную пропускную способность шины памяти.</p>
+<hr />
+<h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
 
-<p>Такой подход позволяет обходить графы с огромной глубиной без риска переполнения стека горутины и более гибко управлять памятью (явный стек можно переиспользовать).</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Слайс <code>stack []frame</code> хранит фреймы в непрерывном блоке памяти. Каждый <code>append</code> потенциально вызывает переаллокацию, но если заранее выделить достаточную вместимость (<code>make([]frame, 0, maxDepth)</code>), расширений не будет. Откат через срез <code>stack = stack[:len(stack)-1]</code> не освобождает память, но сохраняет её для последующего использования — это тот же трюк, что и переиспользование <code>cur</code> в backtracking.</p>
-  </div>
-</div>
-
-<h3 id="dfs-vs-backtracking-obshchee-i-razlichiya">DFS vs Backtracking: общее и различия</h3>
-
-<p>Backtracking, изученный в предыдущем кластере (<a href="../10-backtracking/1-teoriya-backtracking.html" class="wikilink">1. Теория. Backtracking</a>), по сути является DFS на <strong>неявном дереве состояний</strong>. Различия лежат в практической плоскости:</p>
-<div class="table-container"><table>
-<thead>
-<tr>
-<th>Характеристика</th>
-<th>Backtracking</th>
-<th>DFS (на графе/дереве)</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>Где применяется</strong></td>
-<td>Комбинаторные задачи (подмножества, перестановки, скобки)</td>
-<td>Обход графов, деревьев, матриц</td>
-</tr>
-<tr>
-<td><strong>Состояние</strong></td>
-<td>Мутабельный слайс <code>cur</code>, который модифицируется и откатывается</td>
-<td>Вершина + контекст (<code>visited</code>, путь)</td>
-</tr>
-<tr>
-<td><strong>Отсечения</strong></td>
-<td>Обязательны (pruning по сумме, длине, ограничениям)</td>
-<td>Обычно нет, но может быть эвристика</td>
-</tr>
-<tr>
-<td><strong>Цель</strong></td>
-<td>Найти все решения, удовлетворяющие условиям</td>
-<td>Посетить все вершины, найти путь, проверить связность</td>
-</tr>
-<tr>
-<td><strong>Память</strong></td>
-<td><code>cur</code> + стек рекурсии; переиспользование буфера критично</td>
-<td><code>visited</code> + стек рекурсии или явный стек</td>
-</tr>
-</tbody>
-</table></div>
-<p>Оба основаны на одном принципе: идём вглубь, пока возможно, затем откатываемся.</p>
-<h3 id="mechanical-sympathy-rekursiya-steki-i-kesh">Mechanical Sympathy: рекурсия, стеки и кэш</h3>
-
-<p><strong>Рекурсивный DFS и стек горутины.</strong><br />
-В Go вызов функции не аллоцирует память в куче — фрейм размещается на стеке горутины. Пока глубина невелика (сотни-тысячи), это практически бесплатно. При переходе порога расширения стека (stack growth) рантайм копирует весь стек в новую, более крупную область, что может занимать микросекунды. Для глубины 10⁵ это случится log₂(10⁵) ≈ 17 раз, что в сумме даёт ~0.1 мс — приемлемо. Однако сопутствующее потребление памяти (стек горутины размером ~2 МБ для глубины 10⁴) тоже нужно учитывать.</p>
-<p><strong>Итеративный DFS с явным стеком.</strong><br />
-Явный стек на слайсе <code>[]frame</code> выделяется в куче один раз. При <code>append</code> внутри цикла, если capacity достаточно, новых аллокаций нет. Память предсказуема и не растёт сверх необходимого. Более того, явный стек можно переиспользовать между вызовами, обнуляя длину (<code>stack = stack[:0]</code>), что вообще исключает аллокации для повторных обходов.</p>
-<p><strong>Кэш-локальность.</strong><br />
-- В дереве/графе, представленном через слайсы смежности (<code>[][]int</code>), обход соседей читает индексы из непрерывных блоков памяти — это дружественно кэшу.<br />
-- В матрице (<code>[][]byte</code>) обход в глубину может прыгать по строкам и столбцам, что иногда хуже для кэша, но для типичных размеров не критично.<br />
-- Явный стек на слайсе гарантирует, что все фреймы лежат в одном непрерывном куске памяти, максимально используя L1/L2 кэш.</p>
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Ловушка: Момент установки флага `visited` в графах</span>
   </div>
   <div class="callout-body">
-    <p>Новички иногда пытаются реализовать DFS для графа, не отмечая вершины как посещённые <strong>до</strong> добавления в стек. Это приводит к тому, что одна и та же вершина может быть добавлена в стек несколько раз (от разных соседей), что в лучшем случае замедлит алгоритм, а в худшем — вызовет экспоненциальный взрыв для плотных графов. Senior всегда помечает вершину как посещённую <strong>в момент добавления в стек</strong>, а не при извлечении.</p>
+    <p>В графах с циклами новички часто помечают вершину как посещенную в момент <em>извлечения из стека</em>. Это грубая ошибка!<br />
+Если вершина имеет несколько входящих ребер, она будет добавлена в стек соседями многократно, что приведет к факториальному разрастанию стека.<br />
+<strong>Инвариант безопасности:</strong> Вершина обязана помечаться <code>visited[v] = true</code> <strong>в момент добавления в стек / перед рекурсивным вызовом</strong>.</p>
   </div>
 </div>
 
-<h3 id="primeneniya-dfs">Применения DFS</h3>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования: Поиск компонент связности и сборка мусора</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Как алгоритм DFS используется в рантайме языка Go (<code>runtime.gcDrain</code>)?<br />
+<strong>Ответ:</strong> Трехцветная маркировка сборщика мусора Go (Tri-color Mark &amp; Sweep) — это параллельный DFS по графу указателей объектов. Серые объекты — это вершины в стеке обхода (Work-stealing Deque <code>gcWork</code>), черные — полностью исследованные объекты с помеченными битами в gcmarkBits, белые — недостижимые кандидаты на удаление.</p>
+  </div>
+</div>
 
-<ol>
-<li><strong>Обход дерева/графа</strong> — основа для многих задач.</li>
-<li><strong>Поиск компонент связности</strong> (<a href="3-number-of-islands.html" class="wikilink">3. Number of Islands</a>) — запускаем DFS от каждой непосещённой вершины, каждая компонента — один вызов.</li>
-<li><strong>Поиск циклов</strong> в орграфе — используем три состояния вершин: белый (не посещена), серый (в процессе обхода), чёрный (обработана). Обнаружение ребра, ведущего в серую вершину, означает цикл.</li>
-<li><strong>Топологическая сортировка</strong> (<a href="../14-grafy/3-course-schedule.html" class="wikilink">3. Course Schedule</a>) — postorder DFS на DAG плюс разворот порядка.</li>
-<li><strong>Поиск путей</strong> — DFS может найти любой путь (не обязательно кратчайший), но для кратчайшего пути в невзвешенном графе лучше BFS.</li>
-<li><strong>Генерация и обход лабиринтов</strong>.</li>
-<li><strong>Решение задач на матрицах</strong> (Flood Fill, <a href="8-flood-fill.html" class="wikilink">8. Flood Fill</a>) — DFS как альтернатива BFS для заливки.</li>
-</ol>
-<h3 id="tipichnye-oshibki-i-kak-ikh-izbezhat">Типичные ошибки и как их избежать</h3>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
-<ol>
-<li><strong>Отсутствие <code>visited</code> для графа.</strong> Даже в дереве, если есть родительские ссылки, можно зациклиться. Всегда думайте, нужен ли <code>visited</code>.</li>
-<li><strong>Переполнение стека при глубокой рекурсии.</strong> Переходите на итеративный DFS, если глубина потенциально &gt; 10⁵.</li>
-<li><strong>Изменение <code>visited</code> после извлечения из стека, а не при добавлении.</strong> Приводит к многократному добавлению. Правило: <code>visited[neighbor] = true</code> сразу перед <code>push</code>.</li>
-<li><strong>Путаница с порядком обхода.</strong> В итеративном preorder правый потомок кладётся первым, чтобы левый обработался раньше (LIFO). В рекурсивном варианте это неявно.</li>
-<li><strong>Использование <code>container/list</code> для стека.</strong> Медленно и с аллокациями. Слайс — идиоматичный и быстрый стек в Go.</li>
-</ol>
-<h3 id="zaklyuchenie">Заключение</h3>
-
-<p>Поиск в глубину — это фундаментальный паттерн обхода графов и деревьев, тесно связанный с backtracking. В Go он реализуется либо элегантной рекурсией, либо производительным итеративным стеком на слайсе, что даёт гибкость в управлении памятью. Senior-разработчик не просто выбирает один из способов, а обосновывает выбор глубиной обхода и требованиями к памяти, а также знает типичные ловушки и их решения.</p>
-<p>Теперь, освоив теорию, мы переходим к детальному сравнению рекурсивного и итеративного подходов в контексте Go: как работает стек горутины, как его расширение влияет на производительность и как построить итеративный DFS, контролирующий каждый байт памяти. <a href="2-rekursiya-i-stek.html" class="wikilink">2. Рекурсия и стек</a></p>
+<p><strong>Поиск в глубину (DFS)</strong> — базовый инструмент исследования структур:<br />
+- Память $O(H)$ делает его непревзойденным выбором для глубоких разветвленных деревьев.<br />
+- Рекурсия на стеке горутины в Go сверхэффективна благодаря continuous stacks.<br />
+- Итеративный стек на слайсе защищает от переполнения памяти на вырожденных графах.</p>
+<p>В следующей статье мы подробно сравним накладные расходы рекурсивного и итеративного подходов: <a href="2-rekursiya-i-stek.html" class="wikilink">2. Рекурсия и стек</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2489,7 +2427,7 @@ func dfsRecursive(node *TreeNode) {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#chto-takoe-dfs-tri-poryadka-obkhoda-dereva">Что такое DFS: три порядка обхода дерева</a></li><li class="toc-item toc-h3"><a href="#rekursivnyy-dfs-kanonicheskiy-karkas-na-go">Рекурсивный DFS: канонический каркас на Go</a></li><li class="toc-item toc-h3"><a href="#iterativnyy-dfs-emulyatsiya-steka-cherez-slays">Итеративный DFS: эмуляция стека через слайс</a></li><li class="toc-item toc-h3"><a href="#dfs-vs-backtracking-obshchee-i-razlichiya">DFS vs Backtracking: общее и различия</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-rekursiya-steki-i-kesh">Mechanical Sympathy: рекурсия, стеки и кэш</a></li><li class="toc-item toc-h3"><a href="#primeneniya-dfs">Применения DFS</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-i-kak-ikh-izbezhat">Типичные ошибки и как их избежать</a></li><li class="toc-item toc-h3"><a href="#zaklyuchenie">Заключение</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-tri-poryadka-obkhoda-dereva-i-neyavnyy-stek">Архитектура: Три порядка обхода дерева и неявный стек</a></li><li class="toc-item toc-h2"><a href="#fundamentalnoe-sravnenie-dfs-protiv-bfs">Фундаментальное сравнение: DFS против BFS</a></li><li class="toc-item toc-h2"><a href="#idiomatichnye-realizatsii-na-go">Идиоматичные реализации на Go</a></li><li class="toc-item toc-h3"><a href="#1-rekursivnyy-dfs-preorder">1. Рекурсивный DFS (Preorder)</a></li><li class="toc-item toc-h3"><a href="#2-iterativnyy-dfs-na-ploskom-slayse-zero-allocations">2. Итеративный DFS на плоском слайсе (Zero Allocations)</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#1-nepreryvnyy-stek-gorutiny-i-runtime-morestack">1. Непрерывный стек горутины и runtime.morestack</a></li><li class="toc-item toc-h3"><a href="#2-kesh-lokalnost-spiskov-smezhnosti">2. Кэш-локальность списков смежности</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

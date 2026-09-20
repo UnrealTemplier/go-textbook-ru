@@ -2171,25 +2171,147 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~11 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">4. Diameter of Binary Tree</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="razbor-zadachi-diameter-of-binary-tree">Разбор задачи: Diameter of Binary Tree</h2>
-
-<p>В прошлой статье <a href="3-maximum-depth-of-binary-tree.html" class="wikilink">3. Maximum Depth of Binary Tree</a> мы научились спускаться от корня к самому глубокому листу. Но что если нам нужно найти самое длинное расстояние между <strong>любыми двумя узлами</strong> в дереве? Эта задача известна как <strong>Диаметр бинарного дерева</strong> (LeetCode №543).</p>
-<p><strong>Условие:</strong> Дано бинарное дерево. Нужно вычислить длину его диаметра. Диаметр дерева — это длина самого длинного пути между любыми двумя узлами. Этот путь <strong>может не проходить</strong> через корень дерева. <br />
-<em>Примечание: Длина пути между двумя узлами измеряется количеством ребер между ними, а не количеством узлов.</em></p>
-<p>Эта задача — лакмусовая бумажка на Middle/Senior собеседованиях. Она проверяет, умеете ли вы применять Post-order обход (обратный обход) и управлять состоянием между рекурсивными вызовами.</p>
+            <blockquote>
+<p><em>«Диаметр графа отражает предельную цену общения между его наиболее удалёнными уголками».</em><br />
+— Дональд Эрвин Кнут</p>
+</blockquote>
+<p><strong>LeetCode 543. Diameter of Binary Tree.</strong> Дано бинарное дерево. Требуется вычислить длину его <strong>диаметра</strong> — длину самого протяжённого пути между любыми двумя узлами дерева. Этот путь <strong>не обязан проходить через корневой узел</strong>.</p>
+<p><em>Примечание:</em> Длина пути между двумя узлами измеряется количеством <strong>рёбер</strong> между ними (а не количеством вершин).</p>
+<p>Если в задаче о максимальной глубине (<a href="3-maximum-depth-of-binary-tree.html" class="wikilink">3. Maximum Depth of Binary Tree</a>) мы искали простейший путь от корня к листу, то задача о диаметре бинарного дерева — это классическая лакмусовая бумажка на собеседованиях уровня Middle+/Senior. Она проверяет способность кандидата разделять локальный максимум пути в поддереве и значение, передаваемое вверх родителю (паттерн, с которым мы также встречались в задаче <a href="../11-poisk-v-glubinu-dfs/6-binary-tree-maximum-path-sum.html" class="wikilink">6. Binary Tree Maximum Path Sum</a>).</p>
 <hr />
-<h2 id="intuitsiya-prichem-tut-maksimalnaya-glubina">Интуиция: Причем тут максимальная глубина?</h2>
+<h3 id="1-arkhitekturnaya-intuitsiya-most-nad-bezdnoy">1. Архитектурная интуиция: мост над бездной</h3>
 
-<p>Давайте посмотрим на дерево. Любой путь в дереве имеет наивысшую точку (узел, который ближе всего к корню всего дерева). <br />
-Для любого узла <code>X</code>, самый длинный путь, который проходит через <code>X</code> как через наивысшую точку, равен:<br />
-<strong>Глубина левого поддерева + Глубина правого поддерева</strong>.</p>
+<p>Каждый простой путь в дереве имеет наивысшую точку — узел-апекс (вершину «арки»), выше которой данный путь не поднимается.</p>
+<p>Для любого узла <code>X</code> длина самого длинного пути, вершиной которого является <code>X</code>, равна:<br />
+$$\text{localDiameter} = \text{leftDepth} + \text{rightDepth}$$</p>
+
+<div class="code-block" data-lang="ascii">
+  <div class="code-header">
+    <span class="code-lang-tag">DIAGRAM</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-ascii"><code class="language-ascii">                [ 1 ] (Корень не участвует!)
+               /     \
+             [ 2 ]   [ 3 ]  ◄── Наивысшая точка пути (Апекс)
+            /     \
+          [ 4 ]   [ 5 ]
+         /           \
+       [ 6 ]         [ 7 ]
+       /               \
+     [ 8 ]             [ 9 ]
+
+ Самый длинный путь: 8 - 6 - 4 - 2 - 5 - 7 - 9
+ Длина пути в рёбрах: leftDepth(4) + rightDepth(2) = 6 рёбер
+</code></pre>
+</div>
+
+<h4 id="invariant-obratnogo-obkhoda-postorder-dfs">Инвариант обратного обхода (Postorder DFS)</h4>
+<p>Чтобы вычислить локальный диаметр в узле <code>X</code>, мы обязаны <strong>сначала получить глубины его левого и правого поддеревьев</strong>. Это естественным образом диктует использование <strong>Postorder DFS</strong> (снизу вверх):<br />
+1. Спускаемся в детей: получаем <code>leftDepth</code> и <code>rightDepth</code>.<br />
+2. Обновляем глобальный диаметр: <code>diameter = max(diameter, leftDepth + rightDepth)</code>.<br />
+3. Возвращаем родителю максимальную длину одной ветви: <code>max(leftDepth, rightDepth) + 1</code>.</p>
+<hr />
+<h3 id="2-podkhod-1-reshenie-s-zamykaniem-klassicheskiy-variant">2. Подход 1: Решение с замыканием (Классический вариант)</h3>
+
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package main
+
+type TreeNode struct {
+    Val   int
+    Left  *TreeNode
+    Right *TreeNode
+}
+
+// diameterOfBinaryTree находит длину диаметра через замыкание.
+// Временная сложность: O(N) — каждый узел посещается ровно один раз.
+// Пространственная сложность: O(H) — глубина стека вызовов.
+func diameterOfBinaryTree(root *TreeNode) int {
+    maxDiameter := 0
+
+    var maxDepth func(node *TreeNode) int
+    maxDepth = func(node *TreeNode) int {
+        if node == nil {
+            return 0
+        }
+
+        left := maxDepth(node.Left)
+        right := maxDepth(node.Right)
+
+        // Обновляем диаметр: путь через текущий узел как апекс
+        if left+right &gt; maxDiameter {
+            maxDiameter = left + right
+        }
+
+        // Родителю отдаем только одну, самую глубокую ветвь + текущее ребро
+        return 1 + max(left, right)
+    }
+
+    maxDepth(root)
+    return maxDiameter
+}
+</code></pre>
+</div>
+
+<hr />
+<h3 id="3-podkhod-2-production-ready-chistaya-funktsiya-bez-allokatsiy">3. Подход 2: Production-Ready (Чистая функция без аллокаций)</h3>
+
+<p>Как Senior Go-разработчик, вы можете продемонстрировать глубокое знание компилятора Go. Переменная <code>maxDiameter</code> в Подходе 1 захватывается анонимной функцией, что может приводить к Escape Analysis и размещению переменной в куче (<code>moved to heap: maxDiameter</code>).</p>
+<p>Мы можем написать <strong>чистую функцию (Pure Function)</strong>, возвращающую кортеж из двух значений: <code>(depth, maxDiameter)</code>. В Go 1.17+ с регистровым ABIInternal оба возвращаемых числа передаются напрямую через регистры CPU (например, <code>RAX</code> и <code>RBX</code>), обеспечивая абсолютный <code>Zero-Alloc</code> режим работы.</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">func diameterOfBinaryTreePure(root *TreeNode) int {
+    _, diam := dfsPure(root)
+    return diam
+}
+
+// dfsPure возвращает (глубина поддерева, максимальный диаметр в поддереве)
+func dfsPure(node *TreeNode) (int, int) {
+    if node == nil {
+        return 0, 0
+    }
+
+    leftDepth, leftDiam := dfsPure(node.Left)
+    rightDepth, rightDiam := dfsPure(node.Right)
+
+    // Текущий диаметр с апексом в данном узле
+    currentDiam := leftDepth + rightDepth
+
+    // Максимальный диаметр выбирается среди локального пути и диаметров поддеревьев
+    bestDiam := max(currentDiam, max(leftDiam, rightDiam))
+
+    return 1 + max(leftDepth, rightDepth), bestDiam
+}
+</code></pre>
+</div>
+
+<hr />
+<h3 id="4-vizualizatsiya-raboty-algoritma">4. Визуализация работы алгоритма</h3>
+
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2203,160 +2325,72 @@
     </button>
   </div>
   <pre class="mermaid">
-graph TD
-A[&quot;1&lt;br&gt;Корень&quot;] --&gt; B[&quot;2&lt;br&gt;Наивысшая точка пути&quot;]
-A --&gt; C[&quot;3&quot;]
-B --&gt; D[&quot;4&quot;]
-B --&gt; E[&quot;5&quot;]
-D --&gt; F[&quot;6&quot;]
-E --&gt; G[&quot;7&quot;]
-F --&gt; H[&quot;8&quot;]
+flowchart TD
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
 
-style B fill:#2e1065,stroke:#c084fc,stroke-width:2px,color:#f8fafc
-style D fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-style E fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-style F fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-style G fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-style H fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+Start[&quot;Вызов: dfs(node)&quot;]:::entry --&gt; CheckNil{&quot;node == nil?&quot;}:::warning
+
+CheckNil -- &quot;Да&quot; --&gt; RetZero[&quot;return (0, 0)&quot;]:::process
+CheckNil -- &quot;Нет&quot; --&gt; Recurse[&quot;leftDepth, leftDiam = dfs(node.Left)&lt;br&gt;rightDepth, rightDiam = dfs(node.Right)&quot;]:::process
+
+Recurse --&gt; CalcLocal[&quot;currentDiam = leftDepth + rightDepth&quot;]:::accent
+CalcLocal --&gt; CalcBest[&quot;bestDiam = max(currentDiam, leftDiam, rightDiam)&quot;]:::success
+CalcBest --&gt; RetParent[&quot;return (1 + max(leftDepth, rightDepth), bestDiam)&quot;]:::process
   </pre>
 </div>
 
 
-<p>В примере выше самый длинный путь проходит через узлы <code>8-6-4-2-5-7</code>. Он имеет длину 5 ребер (6 узлов). Корень <code>1</code> в этом пути не участвует.<br />
-Узел <code>2</code> здесь выступает "мостом". Его левая глубина равна 3 (узлы 4, 6, 8), а правая глубина равна 2 (узлы 5, 7). Итого локальный диаметр: <code>3 + 2 = 5</code>.</p>
-<p>Следовательно, алгоритм звучит так:<br />
-1. Обходим дерево алгоритмом DFS.<br />
-2. В каждом узле вычисляем глубину левого и правого поддеревьев.<br />
-3. Складываем их. Если сумма больше глобального максимума, обновляем максимум.<br />
-4. Возвращаем наверх <code>max(left, right) + 1</code> (как в задаче на глубину).</p>
-<p>Поскольку нам нужны результаты от детей <em>до</em> того, как мы сможем вычислить результат для родителя, мы используем <strong>Post-order DFS</strong> (Обратный обход: сначала дети, потом родитель).</p>
 <hr />
-<h2 id="podkhod-1-klassicheskoe-reshenie-s-zamykaniem-closure">Подход 1: Классическое решение с замыканием (Closure)</h2>
-
-<p>На собеседовании кандидаты чаще всего пишут это решение. Оно быстрое в написании и использует замыкание для хранения глобального состояния.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func diameterOfBinaryTree(root *TreeNode) int {
-    diameter := 0
-
-    // Замыкание для Post-order DFS
-    var dfs func(node *TreeNode) int
-    dfs = func(node *TreeNode) int {
-        if node == nil {
-            return 0
-        }
-
-        // Спускаемся максимально вниз
-        leftDepth := dfs(node.Left)
-        rightDepth := dfs(node.Right)
-
-        // Считаем диаметр через текущий узел
-        currentDiameter := leftDepth + rightDepth
-        if currentDiameter &gt; diameter {
-            diameter = currentDiameter // Обновляем захваченную переменную
-        }
-
-        // Возвращаем максимальную глубину текущего поддерева
-        return max(leftDepth, rightDepth) + 1
-    }
-
-    dfs(root)
-    return diameter
-}
-</code></pre>
-</div>
-
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом: Escape Analysis и замыкания</span>
-  </div>
-  <div class="callout-body">
-    <p>Код выше решает задачу за <code>O(N)</code> по времени и <code>O(H)</code> по памяти (стек). Но давайте посмотрим на него глазами компилятора Go.</p>
-<p>Переменная <code>diameter</code> объявлена внутри <code>diameterOfBinaryTree</code>, но изменяется внутри анонимной функции <code>dfs</code>. В Go, когда локальная переменная захватывается (captured) и модифицируется замыканием, компилятор не может безопасно оставить ее на стеке. </p>
-<p>Если вы запустите <code>go build -gcflags="-m"</code>, вы увидите:<br />
-<code>moved to heap: diameter</code><br />
-<code>func literal escapes to heap</code></p>
-<p>Это означает, что переменная <code>diameter</code> аллоцируется в куче (Heap), а не на стеке (Stack). В высоконагруженном бэкенде, если эта функция вызывается миллионы раз в секунду (например, при маршрутизации пакетов в дереве), вы создадите огромную нагрузку на Garbage Collector из-за мусорных микро-аллокаций.</p>
-  </div>
-</div>
-
-<hr />
-<h2 id="podkhod-2-production-ready-pure-function-bez-allokatsiy">Подход 2: Production-Ready (Pure Function без аллокаций)</h2>
-
-<p>Как Senior Go Engineer, вы можете предложить решение без использования глобальных переменных, указателей или замыканий. </p>
-<p>Функция может возвращать сразу два значения: максимальную глубину поддерева и максимальный диаметр, найденный внутри этого поддерева. Это делает функцию <strong>чистой (Pure Function)</strong>. Все переменные будут жить исключительно в регистрах процессора и фреймах стека горутины. Никаких аллокаций в куче!</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func diameterOfBinaryTree(root *TreeNode) int {
-    // Нас интересует только диаметр, глубину корня игнорируем
-    _, maxDiameter := dfsPure(root)
-    return maxDiameter
-}
-
-// dfsPure возвращает (глубина поддерева, максимальный диаметр в поддереве)
-func dfsPure(node *TreeNode) (int, int) {
-    if node == nil {
-        return 0, 0
-    }
-
-    // Получаем данные от левого и правого потомков
-    leftDepth, leftMaxDiam := dfsPure(node.Left)
-    rightDepth, rightMaxDiam := dfsPure(node.Right)
-
-    // 1. Считаем диаметр, где текущий узел - это наивысшая точка моста
-    currentDiam := leftDepth + rightDepth
-
-    // 2. Находим максимальный диаметр из всех возможных:
-    // Либо он целиком в левом поддереве, либо в правом, либо проходит через нас.
-    bestSubDiam := max(leftMaxDiam, rightMaxDiam)
-    bestDiam := max(currentDiam, bestSubDiam)
-
-    // Возвращаем (глубина текущего дерева, лучший найденный диаметр)
-    return max(leftDepth, rightDepth) + 1, bestDiam
-}
-</code></pre>
-</div>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p>Если вы напишете "чистую" функцию и упомянете избавление от Escape Analysis — это мощный сигнал для интервьюера, что вы понимаете рантайм Go, а не просто заучили паттерны с LeetCode. </p>
-<p>Использование указателя (передача <code>maxDiam *int</code> в параметры) — это плохая альтернатива чистому подходу, так как указатель на локальную переменную, переданный по стеку вниз, в Go часто тоже заставляет переменную "убегать" в кучу, если компилятор не сможет гарантировать ее безопасность. Возврат нескольких значений (tuple) в Go реализован максимально эффективно через регистры (с версии Go 1.17 ABI), поэтому <code>return int, int</code> практически бесплатен.</p>
-  </div>
-</div>
-
-<h3 id="otsenka-slozhnosti">Оценка сложности</h3>
-<ul>
-<li><strong>Время:</strong> <code>O(N)</code>, где <code>N</code> — количество узлов дерева. Алгоритм посещает каждый узел ровно один раз во время обратного обхода.</li>
-<li><strong>Память:</strong> <code>O(H)</code>, где <code>H</code> — высота дерева. Память расходуется только на стек вызовов горутины. В худшем случае (вырожденное дерево в связный список) это <code>O(N)</code>, в сбалансированном дереве — <code>O(log N)</code>.</li>
-</ul>
-<hr />
-<h2 id="lovushki-i-corner-cases-gotchas">Ловушки и Corner Cases (Gotchas)</h2>
+<h3 id="5-podvodnye-kamni-i-lovushki-gotchas">5. Подводные камни и ловушки (Gotchas)</h3>
 
 <ol>
-<li><strong>Не путайте узлы и ребра.</strong> В некоторых ресурсах (или на устаревших платформах) диаметр определяют как количество <em>узлов</em> в пути. На LeetCode диаметр — это количество <em>ребер</em>. Наш алгоритм считает именно ребра (потому что мы не прибавляем <code>+1</code> к <code>leftDepth + rightDepth</code> при расчете <code>currentDiam</code>). Если спросят узлы — просто верните <code>maxDiameter + 1</code>.</li>
-<li><strong>Нулевой корень:</strong> Не забывайте базовое условие <code>if root == nil</code>.</li>
-<li><strong>Отрицательные значения:</strong> Деревья могут хранить отрицательные значения (например, вес узлов), но в классической задаче на диаметр вес ребер всегда равен <code>1</code>, так что структура данных не влияет на логику обхода.</li>
+<li><strong>Рёбра против Вершин:</strong><br />
+   Внимательно читайте условие! На LeetCode диаметр измеряется <strong>числом рёбер</strong> между узлами. Если путь проходит через 3 узла, его длина равна $2$ рёбрам (<code>leftDepth + rightDepth</code>). Если бы требовалось количество узлов, ответом было бы <code>leftDepth + rightDepth + 1</code>.</li>
+<li><strong>Путь не обязательно проходит через корень:</strong><br />
+   Дерево может иметь длинный и ветвистый кластер глубоко в одном из поддеревьев. Алгоритм, рассчитывающий диаметр исключительно как <code>maxDepth(root.Left) + maxDepth(root.Right)</code>, потерпит крах.</li>
+<li><strong>Пустое дерево:</strong><br />
+   Если <code>root == nil</code>, диаметр равен <code>0</code>.</li>
 </ol>
-<p>Мы научились находить глубину и диаметр. Однако, эффективность работы с деревьями напрямую зависит от их формы. Если дерево превращается в длинную макаронину, <code>O(log N)</code> деградирует до <code>O(N)</code>. В следующей статье мы разберем, как определить, что с деревом все в порядке: <a href="5-balanced-binary-tree.html" class="wikilink">5. Balanced Binary Tree</a>.</p>
+<hr />
+<h3 id="rezyume-dlya-intervyu">Резюме для интервью</h3>
+
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Критерий</th>
+<th>Значение</th>
+<th>Пояснение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Временная сложность</strong></td>
+<td>$O(N)$</td>
+<td>Каждый узел дерева посещается ровно один раз</td>
+</tr>
+<tr>
+<td><strong>Пространственная сложность</strong></td>
+<td>$O(H)$</td>
+<td>Глубина стека вызовов ($O(\log N)$ в сбалансированном, $O(N)$ в вырожденном)</td>
+</tr>
+<tr>
+<td><strong>Аллокации в куче</strong></td>
+<td><strong>0 B/op</strong></td>
+<td>Полная работа на регистрах процессора при использовании чистой функции</td>
+</tr>
+<tr>
+<td><strong>Ключевой инвариант</strong></td>
+<td>Разделение арки и полупути</td>
+<td>Сумма левой и правой ветвей формирует диаметр; родителю отдается максимум</td>
+</tr>
+</tbody>
+</table></div>
+<p>В следующей задаче мы продолжим исследовать метрики глубины и выясним, как определить идеальную форму дерева: <a href="5-balanced-binary-tree.html" class="wikilink">5. Balanced Binary Tree</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2384,7 +2418,7 @@ func dfsPure(node *TreeNode) (int, int) {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#razbor-zadachi-diameter-of-binary-tree">Разбор задачи: Diameter of Binary Tree</a></li><li class="toc-item toc-h2"><a href="#intuitsiya-prichem-tut-maksimalnaya-glubina">Интуиция: Причем тут максимальная глубина?</a></li><li class="toc-item toc-h2"><a href="#podkhod-1-klassicheskoe-reshenie-s-zamykaniem-closure">Подход 1: Классическое решение с замыканием (Closure)</a></li><li class="toc-item toc-h2"><a href="#podkhod-2-production-ready-pure-function-bez-allokatsiy">Подход 2: Production-Ready (Pure Function без аллокаций)</a></li><li class="toc-item toc-h3"><a href="#otsenka-slozhnosti">Оценка сложности</a></li><li class="toc-item toc-h2"><a href="#lovushki-i-corner-cases-gotchas">Ловушки и Corner Cases (Gotchas)</a></li>
+    <li class="toc-item toc-h3"><a href="#1-arkhitekturnaya-intuitsiya-most-nad-bezdnoy">1. Архитектурная интуиция: мост над бездной</a></li><li class="toc-item toc-h4"><a href="#invariant-obratnogo-obkhoda-postorder-dfs">Инвариант обратного обхода (Postorder DFS)</a></li><li class="toc-item toc-h3"><a href="#2-podkhod-1-reshenie-s-zamykaniem-klassicheskiy-variant">2. Подход 1: Решение с замыканием (Классический вариант)</a></li><li class="toc-item toc-h3"><a href="#3-podkhod-2-production-ready-chistaya-funktsiya-bez-allokatsiy">3. Подход 2: Production-Ready (Чистая функция без аллокаций)</a></li><li class="toc-item toc-h3"><a href="#4-vizualizatsiya-raboty-algoritma">4. Визуализация работы алгоритма</a></li><li class="toc-item toc-h3"><a href="#5-podvodnye-kamni-i-lovushki-gotchas">5. Подводные камни и ловушки (Gotchas)</a></li><li class="toc-item toc-h3"><a href="#rezyume-dlya-intervyu">Резюме для интервью</a></li>
   </ul>
 </aside>
 

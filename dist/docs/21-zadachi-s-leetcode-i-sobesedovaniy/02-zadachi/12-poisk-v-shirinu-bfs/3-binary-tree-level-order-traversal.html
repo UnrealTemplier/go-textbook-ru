@@ -2171,20 +2171,59 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">3. Binary Tree Level Order Traversal</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Задача Binary Tree Level Order Traversal (LeetCode 102) — это бенчмарк на понимание того, как BFS работает на древовидных структурах. Если в <a href="2-obkhod-po-urovnyam.html" class="wikilink">2. Обход по уровням</a> мы обсуждали теорию разделения графа на слои, то теперь мы реализуем этот паттерн в строгом, production-ready стиле Go, учитывая особенности работы с памятью.</p>
-<p><strong>Условие:</strong> Дано бинарное дерево. Вернуть обход значений его узлов по уровням (слева направо, уровень за уровнем).</p>
-<p>Для бэкенд-разработчика эта задача эквивалентна сериализации иерархической сущности (например, дерева комментариев или организационной структуры компании) в плоский JSON, сгруппированный по глубине вложенности, для последующей отрисовки на фронтенде.</p>
-<h2 id="idiomatichnaya-realizatsiya-slays-ochered-s-indeksom-head">Идиоматичная реализация: Слайс-очередь с индексом `head`</h2>
+            <blockquote>
+<p><em>«Отладка кода вдвое сложнее, чем его первоначальное написание. Поэтому, если вы пишете код настолько умно, насколько способны, вы по определению недостаточно сообразительны, чтобы его отлаживать».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p><strong>LeetCode 102. Binary Tree Level Order Traversal.</strong> Дано бинарное дерево. Требуется вернуть значения его узлов в виде двумерного среза <code>[][]int</code>, сгруппированного по уровням (слева направо для каждого горизонтального слоя дерева).</p>
+<p>Если в обзорных главах (<a href="1-teoriya-bfs.html" class="wikilink">1. Теория. BFS</a> и <a href="2-obkhod-po-urovnyam.html" class="wikilink">2. Обход по уровням</a>) мы сформулировали теоретические принципы волнового обхода, то задача 102 — это эталонный полигон для проверки навыков Senior Go-инженера. На реальном собеседовании от кандидата ждут не просто рабочего цикла, а глубокого понимания механической симпатии: предотвращения утечек памяти при работе со срезами, минимизации реаллокаций памяти (<code>0 allocs/op</code> на промежуточных операциях) и снижения задержек сборщика мусора (GC).</p>
+<hr />
+<h3 id="1-arkhitekturnyy-karkas-snimok-sloya-i-skolzyashchee-okno">1. Архитектурный каркас: снимок слоя и скользящее окно</h3>
 
-<p>Главный враг производительности в этой задаче — аллокации и утечки памяти при работе с очередью. Как мы выясняли в <a href="1-teoriya-bfs.html" class="wikilink">1. Теория. BFS</a>, использование <code>queue = queue[1:]</code> в Go создает утечку памяти, так как базовый массив (underlying array) продолжает удерживать указатели на уже извлеченные узлы дерева, блокируя работу Garbage Collector.</p>
-<p>Здесь мы применим паттерн со сдвигом индекса <code>head</code>, а также критически важную технику — снимок размера уровня (<code>levelSize</code>).</p>
+<p>Главная опасность наивной реализации поиска в ширину — смешивание узлов разных уровней в едином плоском цикле. Решение задачи опирается на инвариант <strong>«Снимка размера уровня» (Queue Snapshot)</strong>:</p>
+<ol>
+<li>В начале обработки каждого горизонтального слоя мы фиксируем количество узлов, находящихся в очереди прямо сейчас: <code>levelSize := len(queue) - head</code>.</li>
+<li>Мы выполняем ровно <code>levelSize</code> шагов внутреннего цикла, извлекая элементы текущего уровня и добавляя их дочерние узлы в конец очереди.</li>
+<li>Поскольку дети добавляются за пределы зафиксированного диапазона <code>[head, head + levelSize)</code>, они гарантированно попадут только в следующий уровень.</li>
+</ol>
+
+<div class="code-block" data-lang="text">
+  <div class="code-header">
+    <span class="code-lang-tag">TEXT</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-text"><code class="language-text">                   [ 3 ]              Уровень 0: [3]
+                  /     \
+                [ 9 ]  [ 20 ]         Уровень 1: [9, 20]
+                       /    \
+                     [15]   [ 7 ]     Уровень 2: [15, 7]
+</code></pre>
+</div>
+
+<hr />
+<h3 id="2-voprosy-intervyueru-pered-napisaniem-koda">2. Вопросы интервьюеру перед написанием кода</h3>
+
+<ul>
+<li><strong>Что возвращать, если корень дерева <code>nil</code>?</strong><br />
+<em>Ответ:</em> Пустой срез <code>nil</code> или <code>[][]int{}</code>. В Go идиоматично возвращать <code>nil</code>, так как срез с нулевым значением корректно сериализуется в JSON как <code>[]</code> или <code>null</code> в зависимости от тегов.</li>
+<li><strong>Каков максимальный размер дерева?</strong><br />
+<em>Ответ:</em> До $2000$ узлов. Это означает, что максимальная ширина слоя составит до $1000$ элементов.</li>
+<li><strong>Могут ли значения в узлах быть отрицательными?</strong><br />
+<em>Ответ:</em> Да, значения лежат в диапазоне $[-1000, 1000]$. Это не влияет на логику группировки.</li>
+</ul>
+<hr />
+<h3 id="3-idiomaticheskaya-realizatsiya-na-go">3. Идиоматическая реализация на Go</h3>
+
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2194,32 +2233,41 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">type TreeNode struct {
+  <pre class="language-go"><code class="language-go">package main
+
+// TreeNode представляет узел бинарного дерева.
+type TreeNode struct {
     Val   int
     Left  *TreeNode
     Right *TreeNode
 }
 
+// levelOrder выполняет горизонтальный обход бинарного дерева по слоям.
+// Временная сложность: O(N) — посещение каждого узла ровно 1 раз.
+// Пространственная сложность: O(N) — максимальный размер очереди (до N/2 узлов на нижнем слое).
 func levelOrder(root *TreeNode) [][]int {
     if root == nil {
         return nil
     }
 
-    // Очередь на базе слайса. Избегаем container/list ради производительности.
+    // Инициализируем очередь срезом достаточной начальной емкости
     queue := []*TreeNode{root}
-    head := 0 // Индекс первого необработанного элемента
-    result := [][]int{}
+    head := 0
+    result := make([][]int, 0, 16)
 
     for head &lt; len(queue) {
-        // Фиксируем размер текущего уровня до того, как добавим детей
-        levelSize := len(queue)
+        // 1. Фиксируем снимок размера текущего горизонтального слоя
+        levelSize := len(queue) - head
 
-        // Предаллоцируем слайс для значений текущего уровня
+        // 2. Предаллоцируем срез под элементы слоя точно заданного размера
         level := make([]int, 0, levelSize)
 
-        // Обрабатываем ровно levelSize элементов, начиная с head
-        for i := head; i &lt; levelSize; i++ {
-            node := queue[i]
+        // 3. Обрабатываем строго levelSize узлов текущего слоя
+        for i := 0; i &lt; levelSize; i++ {
+            node := queue[head]
+            queue[head] = nil // Очищаем ссылку: защита от удержания объектов в GC!
+            head++
+
             level = append(level, node.Val)
 
             if node.Left != nil {
@@ -2230,8 +2278,6 @@ func levelOrder(root *TreeNode) [][]int {
             }
         }
 
-        // Сдвигаем голову очереди на следующий уровень
-        head = levelSize
         result = append(result, level)
     }
 
@@ -2239,6 +2285,9 @@ func levelOrder(root *TreeNode) [][]int {
 }
 </code></pre>
 </div>
+
+<hr />
+<h3 id="4-vizualizatsiya-logiki-algoritma">4. Визуализация логики алгоритма</h3>
 
 
 <div class="mermaid-wrapper">
@@ -2254,85 +2303,110 @@ func levelOrder(root *TreeNode) [][]int {
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Очередь - 1&lt;br&gt;head = 0&quot;]:::data --&gt; B{&quot;levelSize = 1&quot;}
-B --&gt; C[&quot;Обработка 1 узла&lt;br&gt;Добавляем детей 2 и 3 в конец&quot;]
-C --&gt; D[&quot;head = 1&lt;br&gt;Очередь - 1, 2, 3&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
 
-D --&gt; E{&quot;levelSize = 3&quot;}
-E --&gt; F[&quot;Обработка с индекса 1 до 3&lt;br&gt;Добавляем детей 4, 5, 6&quot;]
-F --&gt; G[&quot;head = 3&lt;br&gt;Очередь - 1, 2, 3, 4, 5, 6&quot;]
+Start[&quot;Старт: queue=[root], head=0&quot;]:::entry --&gt; CheckEmpty{&quot;head &lt; len(queue)?&quot;}:::warning
+
+CheckEmpty -- &quot;Нет&quot; --&gt; ReturnResult[&quot;return result&quot;]:::success
+CheckEmpty -- &quot;Да&quot; --&gt; Snapshot[&quot;levelSize = len(queue) - head&lt;br&gt;level = make([]int, 0, levelSize)&quot;]:::accent
+
+Snapshot --&gt; InnerLoop[&quot;Внутренний цикл: i от 0 до levelSize&quot;]:::process
+InnerLoop --&gt; ReadNode[&quot;node = queue[head]&lt;br&gt;queue[head] = nil&lt;br&gt;head++&quot;]:::process
+
+ReadNode --&gt; AppendVal[&quot;level.append(node.Val)&quot;]:::process
+AppendVal --&gt; AddChildren[&quot;Добавить node.Left и node.Right в queue&quot;]:::process
+
+AddChildren --&gt; LoopDone{&quot;i == levelSize?&quot;}:::warning
+LoopDone -- &quot;Нет&quot; --&gt; InnerLoop
+LoopDone -- &quot;Да&quot; --&gt; SaveLevel[&quot;result.append(level)&quot;]:::accent
+SaveLevel --&gt; CheckEmpty
   </pre>
 </div>
 
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Почему <code>make([]int, 0, levelSize)</code> — это инсайт уровня Senior?<br />
-Если бы мы использовали <code>var level []int</code>, при каждом <code>append</code> рантайм Go проверял бы вместимость. Когда она заканчивается, вызывается <code>runtime.growslice</code>, который аллоцирует новый массив в куче (размером в 2 раза больше старого), копирует туда данные и удаляет старый. На одном уровне из 1000 узлов это может вызвать до 10 реаллокаций.<br />
-Указывая <code>capacity = levelSize</code>, мы говорим рантайму: "Выдели память один раз". Это экономит процессорное время на аллокациях и снижает фрагментацию кэша. Для high-load сервиса, обходящего большие деревья конфигураций, это снижает задержку (latency) на обработку запроса в десятки процентов.</p>
-  </div>
-</div>
+<hr />
+<h3 id="5-mekhanicheskaya-simpatiya-pamyat-pointer-chasing-i-gc">5. Механическая симпатия: Память, Pointer Chasing и GC</h3>
 
-<h2 id="mechanical-sympathy-pointer-chasing-v-kuche-go">Mechanical Sympathy: Pointer Chasing в куче Go</h2>
+<ol>
+<li><strong>Защита от Pointer Retention (<code>queue[head] = nil</code>):</strong><br />
+   Когда мы сдвигаем индекс <code>head++</code>, ячейка <code>queue[head-1]</code> физически остаётся внутри базового массива среза <code>queue</code>. Если не записать туда <code>nil</code>, сборщик мусора рантайма Go будет видеть живой указатель на узел <code>*TreeNode</code>, удерживая в памяти как сам узел, так и всю его структуру до момента завершения функции <code>levelOrder</code>. Для деревьев из сотен тысяч узлов это приводит к колоссальным просадкам памяти.</li>
+<li><strong>Предаллокация <code>make([]int, 0, levelSize)</code>:</strong><br />
+   Зная точное число элементов на слое, мы выделяем память ровно один раз. Без этого вызов <code>append</code> приводил бы к каскадным реаллокациям базового массива через функцию <code>runtime.growslice</code>, порождая мусор в куче.</li>
+<li><strong>Кэш-локальность и Pointer Chasing:</strong><br />
+   Узлы дерева аллоцированы в куче независимо. Чтение <code>node.Left</code> и <code>node.Right</code> неизбежно вызывает промахи кэша процессора L1/L2 (Cache Miss), так как адреса в куче разрознены. Однако наша очередь <code>queue</code> представляет собой монолитный непрерывный срез, поэтому итерация по индексам <code>queue[head]</code> выполняется процессором с максимальной эффективностью предвыборки (Hardware Prefetcher).</li>
+</ol>
+<hr />
+<h3 id="6-sobesedovanie-variatsii-i-tryuki">6. Собеседование: Вариации и трюки</h3>
 
-<p>Обратите внимание на тип очереди: <code>[]*TreeNode</code>. Дерево в Go — это набор указателей, разбросанных по куче (heap). </p>
-<p>Когда процессор извлекает <code>node := queue[i]</code>, он получает указатель. Чтобы прочитать <code>node.Val</code>, <code>node.Left</code> и <code>node.Right</code>, процессору приходится переходить по этому указателю в произвольную область оперативной памяти. Это <strong>Pointer Chasing</strong>, который вызывает Cache Miss (промах L1/L2 кэша) и простои процессора на ~100 наносекунд.</p>
-<p>Особенно неприятна ситуация, когда дерево "вырождено" в связный список (каждый узел имеет только левого ребенка). В этом случае ширина уровня <code>levelSize = 1</code>, и процессор на каждом шаге прыгает в случайную область памяти.</p>
-<p>В отличие от деревьев, массивы или B-деревья (используемые в БД) хранят данные плотно. Это еще одна причина, почему в базах данных не используют бинарные деревья поиска для индексов: процессор тратит всё время на ожидание RAM, а не на вычисления.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Если вы используете <code>queue = queue[1:]</code> и у вас вырожденное дерево из 100 000 узлов, базовый массив очереди разрастется до 100 000 указателей. GC будет сканировать этот массив, но не сможет очистить первые 99 999 узлов дерева, пока на них ссылаются элементы массива. Это приводит к колоссальному потреблению RAM (до нескольких гигабайт для простого дерева) и паузам Stop-The-World. Паттерн с <code>head</code> решает эту проблему: старые узлы дерева становятся недостижимыми из стека функции <code>levelOrder</code>, и GC может их спокойно удалить.</p>
-  </div>
-</div>
-
-<h2 id="system-design-reshenie-problemy-n1-v-api">System Design: Решение проблемы N+1 в API</h2>
-
-<p>Представьте, что дерево хранится в реляционной БД (PostgreSQL) через таблицу <code>nodes</code> с колонками <code>id</code>, <code>parent_id</code>, <code>value</code>. </p>
-<p>Если фронтенд запрашивает дерево, наивный подход (DFS) заставит бэкенд делать запрос в БД на каждого ребенка (проблема N+1 запросов). </p>
-<p>Используя парадигму Level Order, мы можем применить <strong>BFS-батчинг</strong>:<br />
-1. Выбираем корень: <code>SELECT * FROM nodes WHERE parent_id IS NULL</code>.<br />
-2. Берем ID корня и делаем запрос за детьми: <code>SELECT * FROM nodes WHERE parent_id IN (1)</code>.<br />
-3. Берем ID детей (2, 3) и делаем запрос: <code>SELECT * FROM nodes WHERE parent_id IN (2, 3)</code>.</p>
-<p>Мы сводим 1000 запросов к <code>глубина дерева</code> запросам. Снимок размера уровня (<code>levelSize</code>) в коде напрямую соответствует размеру <code>IN (...)</code> клаузы в SQL. Для широких и неглубоких деревьев (типичных для каталогов товаров) это радикально ускоряет работу API.</p>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Интервьюер спросит: <em>"А как реализовать зигзагообразный обход (Zigzag Level Order)?"</em><br />
-Правильный ответ: алгоритм BFS остается неизменным. Мы всегда извлекаем детей слева направо. Единственное, что меняется — это формирование слайса <code>level</code>. Для нечетных уровней мы добавляем значения в конец (<code>append</code>), а для четных — в начало. Но добавление в начало слайса (<code>prepend</code>) — это $O(N)$ аллокаций.<br />
-<strong>Инженерный трюк:</strong> Мы по-прежнему собираем <code>level</code> через <code>append</code>, а после завершения цикла по уровню, если уровень четный, просто разворачиваем готовый слайс <code>slices.Reverse(level)</code>. Это сохраняет $O(N)$ общую сложность и не ломает логику очереди.</p>
+    <p><strong>Вопрос интервьюера:</strong> «Как модифицировать этот алгоритм для задачи <strong>Zigzag Level Order Traversal</strong> (LeetCode 103), где чётные уровни должны идти слева направо, а нечётные — справа налево?»  </p>
+<p><strong>Ответ кандидата:</strong><br />
+«Очередь и порядок обхода детей в BFS трогать <strong>категорически нельзя</strong>, иначе нарушится топологический порядок следующих слоёв. Мы сохраняем стандартный обход слева направо. Единственное изменение: перед добавлением готового среза <code>level</code> в <code>result</code> мы проверяем чётность текущего слоя:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">if len(result)%2 == 1 {
+    slices.Reverse(level) // Разворот на месте за O(K) без аллокаций
+}
+result = append(result, level)
+</code></pre>
+</div>
+
+<p>Использование функции <code>slices.Reverse</code> из стандартного пакета Go 1.21+ выполняет разворот на месте за $O(K)$ без выделения дополнительной памяти».</p>
   </div>
 </div>
 
-<h2 id="itog">Итог</h2>
+<hr />
+<h3 id="rezyume-dlya-intervyu">Резюме для интервью</h3>
 
-<ol>
-<li><strong>Снимок размера:</strong> Ключ к разделению уровней — переменная <code>levelSize = len(queue)</code> перед циклом обработки уровня.</li>
-<li><strong>Очередь без утечек:</strong> Использование индекса <code>head</code> и <code>queue[i]</code> внутри цикла предотвращает удержание указателей в базовом массиве слайса, позволяя GC очищать память "на лету".</li>
-<li><strong>Предаллокация:</strong> <code>make([]int, 0, levelSize)</code> экономит процессорные такты на реаллокациях массива при <code>append</code>.</li>
-<li><strong>Архитектура:</strong> Паттерн Level Order — это математическая основа батч-запросов (Bulk Fetching) в реляционных БД для борьбы с N+1 проблемой.</li>
-</ol>
-<p>В следующей статье мы применим BFS для поиска кратчайшего пути в дереве — от корня до ближайшего листа: <a href="4-minimum-depth-of-binary-tree.html" class="wikilink">4. Minimum Depth of Binary Tree</a>.</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Параметр</th>
+<th>Значение</th>
+<th>Пояснение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Временная сложность</strong></td>
+<td>$O(N)$</td>
+<td>Каждый узел дерева помещается в очередь и извлекается ровно 1 раз</td>
+</tr>
+<tr>
+<td><strong>Пространственная сложность</strong></td>
+<td>$O(W) \le O(N)$</td>
+<td>Максимальная ширина очереди на нижнем слое полного дерева</td>
+</tr>
+<tr>
+<td><strong>Аллокации на слой</strong></td>
+<td>Ровно 1</td>
+<td>За счёт <code>make([]int, 0, levelSize)</code></td>
+</tr>
+<tr>
+<td><strong>Сборщик мусора (GC)</strong></td>
+<td>Защищён</td>
+<td>Явное зануление указателей <code>queue[head] = nil</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>В следующей задаче — <a href="4-minimum-depth-of-binary-tree.html" class="wikilink">4. Minimum Depth of Binary Tree</a> — мы увидим, как послойный BFS обеспечивает мгновенный ранний выход (Early Exit) для поиска кратчайшего расстояния до первого листа дерева.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2360,7 +2434,7 @@ F --&gt; G[&quot;head = 3&lt;br&gt;Очередь - 1, 2, 3, 4, 5, 6&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-slays-ochered-s-indeksom-head">Идиоматичная реализация: Слайс-очередь с индексом head</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-pointer-chasing-v-kuche-go">Mechanical Sympathy: Pointer Chasing в куче Go</a></li><li class="toc-item toc-h2"><a href="#system-design-reshenie-problemy-n1-v-api">System Design: Решение проблемы N+1 в API</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h3"><a href="#1-arkhitekturnyy-karkas-snimok-sloya-i-skolzyashchee-okno">1. Архитектурный каркас: снимок слоя и скользящее окно</a></li><li class="toc-item toc-h3"><a href="#2-voprosy-intervyueru-pered-napisaniem-koda">2. Вопросы интервьюеру перед написанием кода</a></li><li class="toc-item toc-h3"><a href="#3-idiomaticheskaya-realizatsiya-na-go">3. Идиоматическая реализация на Go</a></li><li class="toc-item toc-h3"><a href="#4-vizualizatsiya-logiki-algoritma">4. Визуализация логики алгоритма</a></li><li class="toc-item toc-h3"><a href="#5-mekhanicheskaya-simpatiya-pamyat-pointer-chasing-i-gc">5. Механическая симпатия: Память, Pointer Chasing и GC</a></li><li class="toc-item toc-h3"><a href="#6-sobesedovanie-variatsii-i-tryuki">6. Собеседование: Вариации и трюки</a></li><li class="toc-item toc-h3"><a href="#rezyume-dlya-intervyu">Резюме для интервью</a></li>
   </ul>
 </aside>
 

@@ -2171,34 +2171,64 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~25 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~19 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">6. Binary Tree Maximum Path Sum</h1>
           </header>
 
           <div class="article-markdown">
-            <p><strong>LeetCode 124. Binary Tree Maximum Path Sum.</strong> Дано бинарное дерево с целыми значениями в узлах. <strong>Путь</strong> определяется как последовательность из одного или нескольких узлов, в которой каждая пара соседних узлов соединена ребром, а каждый узел встречается не более одного раза (т.е. путь не разветвляется). Сумма пути — сумма значений входящих в него узлов. Требуется найти <strong>максимальную сумму пути</strong> среди всех возможных путей в дереве. Путь может начинаться и заканчиваться в любых узлах, не обязательно проходить через корень.</p>
-<p>Это первая задача уровня Hard в кластере DFS, и она кардинально отличается от предыдущих: вместо простого поиска (<a href="5-path-sum.html" class="wikilink">5. Path Sum</a>) или обхода с построением (<a href="4-clone-graph.html" class="wikilink">4. Clone Graph</a>) здесь требуется <strong>комбинировать результаты из левого и правого поддеревьев</strong> для вычисления глобального оптимума. Паттерн «postorder DFS + глобальный максимум» — один из самых мощных в арсенале Senior Go-разработчика: он учит разделять «вклад вверх» и «локальный ответ», а также элегантно обрабатывать отрицательные значения через обрезание ветвей. С точки зрения механической симпатии задача демонстрирует, как рекурсивный обход без аллокаций может за O(N) решить проблему, кажущуюся квадратичной.</p>
-<h3 id="formulirovka-i-utochneniya">Формулировка и уточнения</h3>
+            <blockquote>
+<p><em>«Есть два способа создания архитектуры программы: сделать её настолько простой, чтобы в ней очевидно не было дефектов, либо настолько запутанной, чтобы в ней не было очевидных дефектов. Первый путь несравненно труднее».</em><br />
+— Чарльз Эркюль Хоар</p>
+</blockquote>
+<p><strong>LeetCode 124. Binary Tree Maximum Path Sum.</strong> Дано бинарное дерево с произвольными (в том числе отрицательными) целыми числами в узлах. <strong>Путь</strong> определяется как последовательность узлов, в которой любая пара соседних узлов соединена ребром графа, причём ни один узел не посещается дважды (путь не может ветвиться). Сумма пути — сумма значений всех входящих в него узлов. Требуется найти <strong>максимальную сумму пути</strong> среди всех возможных путей в дереве. Путь обязан содержать хотя бы один узел и не обязан проходить через корень.</p>
+<p>Это классическая задача уровня Hard, открывающая перед инженером фундаментальный паттерн: <strong>Postorder DFS с разделением локального оптимума и глобального агрегата</strong>. В отличие от линейных обходов (<a href="5-path-sum.html" class="wikilink">5. Path Sum</a>), здесь дерево требует вычисления снизу вверх (bottom-up), где каждый узел принимает решение: что вернуть родителю для продолжения пути наверх, а какую дугу замкнуть внутри себя, сравнив её с историческим максимумом. С точки зрения механической симпатии Go задача идеально ложится на стек горутины, не требуя ни единой аллокации в куче.</p>
+<hr />
+<h3 id="1-anatomiya-puti-razdvoenie-protiv-prodolzheniya">1. Анатомия пути: раздвоение против продолжения</h3>
 
-<p><strong>Условие:</strong> функция <code>maxPathSum(root *TreeNode) int</code>. Тип <code>TreeNode</code> стандартный: <code>Val int</code>, <code>Left *TreeNode</code>, <code>Right *TreeNode</code>.</p>
-<p><strong>Вопросы интервьюеру (Senior-стиль):</strong><br />
-- <em>Может ли <code>root</code> быть <code>nil</code>?</em> По условию LeetCode дерево не пустое, но проверка не помешает: если <code>nil</code>, вернуть 0 или <code>math.MinInt</code>? Лучше уточнить; обычно считаем, что узлы есть.<br />
-- <em>Могут ли значения быть отрицательными?</em> Да. Это ключевая сложность: нельзя отбрасывать отрицательные листья бездумно, но и включать убыточные ветви в глобальный путь невыгодно.<br />
-- <em>Что считается путём?</em> Хотя бы один узел (не обязательно лист). Путь не может раздваиваться: в каждом узле он может продолжаться не более чем в одну сторону.<br />
-- <em>Может ли путь состоять из одного узла?</em> Да.</p>
-<p>Эти ответы фиксируют стратегию: нам нужно для каждого узла вычислить <strong>максимальную сумму пути, проходящего через этот узел и обе его ветви</strong> (это кандидат на глобальный максимум), и <strong>максимальную сумму пути, который можно продолжить вверх</strong> (только одна ветвь, чтобы родитель мог её использовать). Отрицательные ветви мы можем обрезать, считая их вклад равным нулю.</p>
-<h3 id="naivnoe-reshenie-perebor-vsekh-par-uzlov">Наивное решение: перебор всех пар узлов</h3>
+<p>Главная ментальная ловушка задачи — забыть определение простого пути в теории графов. Путь — это линейная цепочка вершин. Если узел объединяет левое и правое поддеревья, образуя вершину («арку»), этот путь <strong>не может быть продлён выше к его родителю</strong>, иначе в узле возникло бы разветвление (степень вершины равнялась бы 3).</p>
 
-<p>Можно было бы для каждой пары узлов искать путь между ними (через LCA) и вычислять сумму. Сложность O(N²) или O(N³) при обходе — неприемлемо для N до 3×10⁴. Узкое место — независимое рассмотрение пар, тогда как дерево имеет рекурсивную структуру, которую можно использовать.</p>
-<h3 id="optimalnoe-reshenie-postorder-dfs-s-globalnym-maksimumom">Оптимальное решение: postorder DFS с глобальным максимумом</h3>
+<div class="code-block" data-lang="text">
+  <div class="code-header">
+    <span class="code-lang-tag">TEXT</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-text"><code class="language-text">         Случай А: Арка (Вершина пути)               Случай Б: Продолжение родителю
+              [Родитель]                                      [Родитель]
+                  |  (нельзя соединить!)                           | (только одна ветвь!)
+               [ Node ]                                         [ Node ]
+               /      \                                         /      \
+           [Left]    [Right]                                [Left]    [Right]
+         (путь замкнут в Node)                          (выбираем лучшую ветвь)
+  currentSum = Node + Left + Right               maxGain = Node + max(Left, Right)
+</code></pre>
+</div>
 
-<p><strong>Идея.</strong> Выполним рекурсивный обход дерева снизу вверх (postorder). Для каждого узла <code>node</code> определим функцию <code>maxGain(node)</code>, возвращающую <strong>максимальную сумму пути, который начинается в <code>node</code> и спускается ровно в одно поддерево</strong> (либо в левое, либо в правое, либо никуда — только сам узел). Этот путь может быть продолжен родителем.</p>
-<p>Параллельно с этим на каждом узле мы вычисляем <strong>сумму пути, проходящего через <code>node</code> и использующего обе ветви</strong>: <code>currentSum = node.Val + maxGain(node.Left) + maxGain(node.Right)</code>. Эта сумма не может быть продолжена вверх (так как путь разветвляется), но является кандидатом на глобальный максимум. Обновляем глобальную переменную <code>maxSum</code>.</p>
-<p>Чтобы обрабатывать отрицательные ветви, мы <strong>обрезаем</strong> убыточные поддеревья: если <code>maxGain</code> для потомка отрицателен, мы не включаем его, считая вклад равным 0. Это эквивалентно тому, что путь просто не идёт в эту сторону.</p>
-<p><strong>Инвариант:</strong><br />
-- <code>maxGain(node)</code> возвращает максимальную сумму пути, который стартует в <code>node</code>, идёт вниз по одной ветви и может быть пустым (0), если все продолжения убыточны? Нет, путь должен содержать хотя бы один узел, но для обрезания ветвей мы берём <code>max(0, maxGain(child))</code>. Однако если узел сам по себе отрицателен, <code>maxGain</code> всё равно вернёт <code>node.Val + max(0, gainLeft, gainRight)</code>, и этот вклад может быть отрицательным. Тогда родитель, обрезая ветвь, возьмёт <code>max(0, maxGain(node))</code>, и эта ветвь не попадёт в глобальный путь. Глобальный максимум обновляется на каждом узле как <code>node.Val + max(0, gainLeft) + max(0, gainRight)</code>. Таким образом, узел с отрицательным значением всё равно может стать глобальным максимумом, если через него проходят только нулевые ветви — сумма будет равна <code>node.Val</code>, что может быть больше <code>math.MinInt</code>.</p>
+<p>Отсюда рождается строгое разделение двух понятий:<br />
+1. <strong><code>currentPathSum</code> (Локальная арка):</strong> <code>node.Val + leftGain + rightGain</code>. Узел выступает наивысшей точкой (апексом) пути. Это значение конкурирует за звание глобального максимума <code>maxSum</code>.<br />
+2. <strong><code>maxGain(node)</code> (Вклад наверх):</strong> <code>node.Val + max(leftGain, rightGain)</code>. Узел возвращает своему родителю максимальную сумму полупути, начинающегося в <code>node</code> и спускающегося строго в одну сторону.</p>
+<p>Если поддерево приносит отрицательный суммарный вклад, мы вольны <strong>не включать его в путь вообще</strong>. В коде это выражается элегантной операцией отсечения (pruning): <code>max(0, gain)</code>.</p>
+<hr />
+<h3 id="2-voprosy-intervyueru-pered-realizatsiey">2. Вопросы интервьюеру перед реализацией</h3>
+
+<ul>
+<li><strong>Может ли дерево быть пустым (<code>root == nil</code>)?</strong><br />
+<em>Ответ:</em> По спецификации LeetCode дерево гарантированно содержит от $1$ до $3 \cdot 10^4$ узлов. Если бы дерево могло быть пустым, возврат <code>0</code> мог бы быть некорректен при наличии отрицательных узлов.</li>
+<li><strong>Могут ли все узлы дерева быть отрицательными?</strong><br />
+<em>Ответ:</em> Да, например дерево из одного узла <code>[-3]</code> или <code>[-2, -1]</code>. Это ключевой момент: начальное значение глобального максимума обязано быть <code>math.MinInt</code>, а не <code>0</code>. Максимальный путь в таком случае — единственный узел с наименьшим модулем (например, <code>-1</code>).</li>
+<li><strong>Может ли путь состоять ровно из одного узла?</strong><br />
+<em>Ответ:</em> Да, один изолированный узел является валидным путём длины 0 (по рёбрам) со значением узла.</li>
+<li><strong>Допустимо ли модифицировать исходное дерево?</strong><br />
+<em>Ответ:</em> Нет, обход должен быть чистым чтением.</li>
+</ul>
+<hr />
+<h3 id="3-idiomaticheskaya-realizatsiya-na-go">3. Идиоматическая реализация на Go</h3>
+
+<p>В современном Go (начиная с версии 1.21) функция <code>max</code> входит в число встроенных (<code>builtin</code>), что избавляет от необходимости писать собственные хелперы.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2208,51 +2238,64 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func maxPathSum(root *TreeNode) int {
+  <pre class="language-go"><code class="language-go">package main
+
+import (
+    &quot;math&quot;
+)
+
+// TreeNode представляет узел бинарного дерева.
+type TreeNode struct {
+    Val   int
+    Left  *TreeNode
+    Right *TreeNode
+}
+
+// maxPathSum находит максимальную сумму любого пути в дереве.
+// Временная сложность: O(N) — каждый узел посещается ровно один раз.
+// Пространственная сложность: O(H) — глубина стека вызовов, где H — высота дерева.
+func maxPathSum(root *TreeNode) int {
     if root == nil {
         return 0
     }
-    maxSum := math.MinInt // глобальный максимум, инициализирован минимально возможным значением
 
-    var maxGain func(*TreeNode) int
+    // Инициализируем минимально возможным int, так как все узлы
+    // в дереве могут иметь отрицательные значения (например, [-3]).
+    maxSum := math.MinInt
+
+    var maxGain func(node *TreeNode) int
     maxGain = func(node *TreeNode) int {
         if node == nil {
             return 0
         }
-        // Рекурсивно вычисляем вклад левого и правого поддеревьев,
-        // обрезая отрицательные ветви (не включаем их в путь)
+
+        // Рекурсивный обход поддеревьев (Postorder: Left, Right, Node).
+        // Обрезаем ветви с отрицательной суммой: если поддерево уходит в минус,
+        // выгоднее вообще не включать его в наш путь (берём 0).
         leftGain := max(0, maxGain(node.Left))
         rightGain := max(0, maxGain(node.Right))
 
-        // Путь, проходящий через node и обе ветви, не может быть продолжен вверх
-        currentPathSum := node.Val + leftGain + rightGain
-        if currentPathSum &gt; maxSum {
-            maxSum = currentPathSum
+        // 1. Кандидат на глобальный максимум: путь, вершиной которого является node.
+        // Он объединяет самого себя и обе ветви (арка).
+        currentPath := node.Val + leftGain + rightGain
+        if currentPath &gt; maxSum {
+            maxSum = currentPath
         }
 
-        // Для родителя мы можем продолжить только одну ветвь (лучшую)
+        // 2. Вклад для родителя: узел может отдать наверх только одну
+        // из своих ветвей, чтобы не допустить разветвления пути.
         return node.Val + max(leftGain, rightGain)
     }
 
     maxGain(root)
     return maxSum
 }
-
-func max(a, b int) int {
-    if a &gt; b {
-        return a
-    }
-    return b
-}
 </code></pre>
 </div>
 
-<p><strong>Go-идиомы и комментарии:</strong><br />
-- <code>maxSum</code> инициализирован <code>math.MinInt</code>, потому что значения могут быть отрицательными. Простая инициализация нулём привела бы к неверному ответу для дерева из отрицательных узлов.<br />
-- Вспомогательная функция <code>max</code> — до Go 1.21 встроенной не было (с 1.21 есть <code>max</code> в builtin, но для совместимости на собеседовании часто пишут свою).<br />
-- <code>maxGain</code> — замыкание, захватывающее <code>maxSum</code> по указателю (через внешнюю переменную). Это предпочтительнее глобальной переменной.<br />
-- Рекурсивный postorder: сначала обрабатываем потомков, затем узел.<br />
-- <code>max(0, ...)</code> — ключевой трюк, реализующий обрезание убыточных поддеревьев. Без него отрицательные ветви тянули бы глобальный максимум вниз.</p>
+<hr />
+<h3 id="4-vizualizatsiya-logiki-algoritma">4. Визуализация логики алгоритма</h3>
+
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2267,89 +2310,135 @@ func max(a, b int) int {
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;maxGain(node):::warning&quot;] --&gt; B{&quot;node == nil?&quot;}
-B --&gt;|&quot;Да&quot;| C[&quot;return 0&quot;]
-B --&gt;|&quot;Нет&quot;| D[&quot;leftGain = max(0, maxGain(node.Left))&quot;]
-D --&gt; E[&quot;rightGain = max(0, maxGain(node.Right))&quot;]
-E --&gt; F[&quot;currentPathSum = node.Val + leftGain + rightGain&quot;]
-F --&gt; G{&quot;currentPathSum &gt; maxSum?&quot;}
-G --&gt;|&quot;Да&quot;| H[&quot;maxSum = currentPathSum&quot;]
-G --&gt;|&quot;Нет&quot;| I[&quot; &quot;]
-H --&gt; J[&quot;return node.Val + max(leftGain, rightGain)&quot;]
-I --&gt; J
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+
+Start[&quot;Вход: maxGain(node)&quot;]:::entry --&gt; CheckNil{&quot;node == nil?&quot;}:::warning
+CheckNil -- &quot;Да&quot; --&gt; ReturnZero[&quot;return 0&quot;]:::process
+CheckNil -- &quot;Нет&quot; --&gt; CalcChildren[&quot;leftGain = max(0, maxGain(node.Left))&lt;br&gt;rightGain = max(0, maxGain(node.Right))&quot;]:::process
+
+CalcChildren --&gt; CalcArc[&quot;currentPath = node.Val + leftGain + rightGain&quot;]:::accent
+CalcArc --&gt; CheckMax{&quot;currentPath &gt; maxSum?&quot;}:::warning
+
+CheckMax -- &quot;Да&quot; --&gt; UpdateMax[&quot;maxSum = currentPath&quot;]:::success
+CheckMax -- &quot;Нет&quot; --&gt; SkipUpdate[&quot;Оставить maxSum без изменений&quot;]:::process
+
+UpdateMax --&gt; ReturnGain[&quot;return node.Val + max(leftGain, rightGain)&quot;]:::accent
+SkipUpdate --&gt; ReturnGain
   </pre>
 </div>
 
 
-<h3 id="pochemu-eto-rabotaet-invariant-i-obosnovanie-obrezaniya">Почему это работает: инвариант и обоснование обрезания</h3>
+<hr />
+<h3 id="5-poshagovaya-trassirovka-na-slozhnom-primere">5. Пошаговая трассировка на сложном примере</h3>
 
-<p>Функция <code>maxGain(node)</code> возвращает максимальную сумму пути, который начинается в <code>node</code> и идёт <strong>строго вниз</strong> по одной ветви. Почему можно обрезать отрицательные <code>leftGain</code>/<code>rightGain</code>?<br />
-- Если <code>maxGain(child)</code> отрицателен, это означает, что любой путь, начинающийся в <code>child</code>, имеет сумму ≤ <code>child.Val</code> &lt; 0. Продолжение из <code>node</code> в <code>child</code> только ухудшит сумму пути, поэтому мы можем просто не ходить в эту ветвь, что эквивалентно взятию <code>max(0, gain)</code>. Сам <code>child</code> при этом не теряется: его собственный вклад как кандидата на глобальный максимум уже учтён, когда мы обрабатывали <code>child</code> (там <code>currentPathSum</code> был вычислен и сравнён с <code>maxSum</code>).</p>
-<p>Глобальный максимум обновляется для каждого узла как сумма <code>node.Val + leftGain + rightGain</code>. Это покрывает все возможные конфигурации путей, потому что любой путь имеет «вершину» — самый верхний узел, в котором он разветвляется (или не разветвляется). Для этой вершины <code>leftGain</code> и <code>rightGain</code> дают максимальные суммы путей, уходящих в левое и правое поддеревья (или 0, если ветвь не используется). Таким образом, все пути перебираются.</p>
-<h3 id="edge-cases">Edge Cases</h3>
+<p>Рассмотрим дерево, где отрицательный корень разделяет два прибыльных поддерева:</p>
 
-<ul>
-<li><strong>Пустое дерево:</strong> функция может вернуть 0 или <code>math.MinInt</code>. В условии LeetCode дерево не пусто, но Senior добавит проверку. Если <code>root == nil</code>, возвращаем 0 (или уточним у интервьюера).</li>
-<li><strong>Один узел:</strong> <code>leftGain = 0</code>, <code>rightGain = 0</code>, <code>currentPathSum = node.Val</code>, <code>maxSum</code> обновится, возвращаемое значение <code>node.Val</code>. Всё корректно.</li>
-<li><strong>Все узлы отрицательные:</strong> например, <code>[-3]</code>. <code>maxSum</code> изначально <code>math.MinInt</code>. Для узла <code>-3</code>: <code>leftGain=0</code>, <code>rightGain=0</code>, <code>currentPathSum=-3</code>, <code>maxSum</code> становится <code>-3</code>. Возвращается <code>-3</code>. Результат <code>-3</code> — верно (путь из одного узла). Без <code>math.MinInt</code> и с инициализацией 0 ответ был бы 0, что неверно.</li>
-<li><strong>Дерево с глубокой отрицательной ветвью:</strong> например, <code>[1, -100, 2]</code>. Для узла <code>-100</code>: <code>leftGain=0</code>, <code>rightGain=0</code>, <code>currentPathSum=-100</code>, <code>maxSum</code> пока <code>-100</code> или <code>math.MinInt</code>. Для узла <code>1</code>: <code>leftGain = max(0, -100) = 0</code>, <code>rightGain = max(0, 2) = 2</code>, <code>currentPathSum = 1+0+2=3</code>, <code>maxSum</code> становится 3. Ветвь <code>-100</code> обрезана, глобальный максимум — путь <code>2-1</code> или <code>1-2</code>.</li>
-</ul>
-<h3 id="analiz-slozhnosti">Анализ сложности</h3>
-
-<ul>
-<li><strong>Время:</strong> O(N). Каждый узел посещается ровно один раз за счёт postorder обхода.</li>
-<li><strong>Память:</strong> O(H) для стека рекурсии, где H — высота дерева. Для сбалансированного — O(log N), для вырожденного — O(N). Дополнительных структур данных нет.</li>
-</ul>
-<h3 id="mechanical-sympathy-rekursiya-registry-i-obrezanie">Mechanical Sympathy: рекурсия, регистры и обрезание</h3>
-
-<ul>
-<li><strong>Рекурсия на стеке горутины.</strong> Здесь глубина рекурсии равна высоте дерева. Для сбалансированного дерева (H ~ 17 для N=10⁵) — идеально. Для вырожденного (H=10⁵) — стек горутины расширится несколько раз, но суммарные затраты на копирование стека составят микросекунды. В production-коде Senior может переписать на итеративный postorder с явным стеком, но в рамках собеседования рекурсивный вариант является эталонным.</li>
-<li><strong>Отсутствие аллокаций в куче.</strong> <code>maxGain</code> не создаёт слайсов и map — только целые числа на стеке. GC не испытывает давления.</li>
-<li><strong>Обрезание <code>max(0, ...)</code></strong> — это не только алгоритмический трюк, но и защита от копирования лишних фреймов? Нет, но он уменьшает количество значимых операций. С точки зрения CPU, инструкция <code>max</code> (CMP + CMOV) выполняется за 1–2 такта и не содержит ветвлений (после оптимизации компилятором), что благоприятно для конвейера.</li>
-<li><strong>Глобальная переменная через замыкание.</strong> <code>maxSum</code> захвачена из внешней функции; компилятор Go размещает её на стеке и передаёт по указателю в замыкание. Обращение к ней — быстрое (через указатель, но в пределах стека).</li>
-</ul>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+<div class="code-block" data-lang="text">
+  <div class="code-header">
+    <span class="code-lang-tag">TEXT</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p>Функция <code>maxGain</code> возвращает <code>int</code>. Escape analysis: <code>node</code> — указатель на узел, уже находящийся в куче (так как дерево аллоцировано там). Локальные переменные <code>leftGain</code>, <code>rightGain</code>, <code>currentPathSum</code> — на стеке. Рекурсивные вызовы <code>maxGain(node.Left)</code> — обычные вызовы функций, фреймы на стеке. Никаких неожиданных аллокаций.</p>
-  </div>
+  <pre class="language-text"><code class="language-text">       [-10]
+       /   \
+     [9]   [20]
+          /    \
+        [15]   [7]
+</code></pre>
 </div>
 
-<h3 id="alternativy-i-trade-off">Альтернативы и trade-off</h3>
+<ol>
+<li><strong>Лист <code>9</code>:</strong><br />
+   - <code>leftGain = 0</code>, <code>rightGain = 0</code>.<br />
+   - <code>currentPath = 9 + 0 + 0 = 9</code> $\rightarrow$ <code>maxSum = 9</code>.<br />
+   - Возврат родителю: <code>9 + max(0, 0) = 9</code>.</li>
+<li><strong>Лист <code>15</code>:</strong><br />
+   - <code>currentPath = 15</code> $\rightarrow$ <code>maxSum = 15</code>. Возврат родителю: <code>15</code>.</li>
+<li><strong>Лист <code>7</code>:</strong><br />
+   - <code>currentPath = 7</code> $\rightarrow$ <code>maxSum = 15</code>. Возврат родителю: <code>7</code>.</li>
+<li><strong>Узел <code>20</code>:</strong><br />
+   - <code>leftGain = max(0, 15) = 15</code>, <code>rightGain = max(0, 7) = 7</code>.<br />
+   - <code>currentPath = 20 + 15 + 7 = 42</code> $\rightarrow$ <code>maxSum = 42</code>.<br />
+   - Возврат родителю: <code>20 + max(15, 7) = 20 + 15 = 35</code>.</li>
+<li><strong>Корень <code>-10</code>:</strong><br />
+   - <code>leftGain = max(0, 9) = 9</code>, <code>rightGain = max(0, 35) = 35</code>.<br />
+   - <code>currentPath = -10 + 9 + 35 = 34</code>. Так как $34 &lt; 42$, <code>maxSum</code> остаётся равным <code>42</code>.<br />
+   - Возврат: <code>-10 + 35 = 25</code>.</li>
+</ol>
+<p><strong>Итог:</strong> максимальный путь равен <strong>42</strong> (цепочка <code>15 -&gt; 20 -&gt; 7</code>), и он даже не затронул корень дерева.</p>
+<hr />
+<h3 id="6-mekhanicheskaya-simpatiya-stek-registry-i-escape-analysis">6. Механическая симпатия: стек, регистры и escape analysis</h3>
+
+<p>С точки зрения внутреннего устройства Go рантайма:<br />
+1. <strong>Замыкание и Escape Analysis:</strong><br />
+   Переменная <code>maxSum</code> объявлена во внешней функции и захватывается замыканием <code>maxGain</code>. Компилятор Go (<code>go build -gcflags="-m"</code>) анализирует время жизни <code>maxSum</code>. Поскольку замыкание не переживает вызов <code>maxPathSum</code> и не возвращается наружу, компилятор размещает переменную на стеке текущего фрейма, передавая в <code>maxGain</code> лишь указатель на регистре (в ABIInternal).<br />
+2. <strong>Zero-Allocation Execution:</strong><br />
+   Функция не создаёт объектов в куче: нет ни слайсов, ни динамических структур. Аллокаций: <strong>0 B/op, 0 allocs/op</strong>.<br />
+3. <strong>Ветвление и CMOV:</strong><br />
+   Конструкция <code>max(0, gain)</code> компилируется на x86-64 в пару инструкций <code>TESTQ</code> / <code>CMOVL</code> (условная пересылка данных), предотвращая сброс конвейера инструкций процессора из-за неверного предсказания перехода (Branch Misprediction).</p>
+<hr />
+<h3 id="7-granichnye-sluchai-edge-cases">7. Граничные случаи (Edge Cases)</h3>
 
 <ul>
-<li><strong>Итеративный postorder.</strong> Потребовал бы двух стеков или одного с флагами посещения. Сложнее код, но исключает рекурсию. Применим для экстремально глубоких деревьев.</li>
-<li><strong>BFS?</strong> Неприменим, так как задача требует bottom-up комбинации результатов.</li>
-<li><strong>Глобальная переменная вместо замыкания.</strong> Можно использовать поле структуры или глобальную переменную пакета, но замыкание чище и безопаснее в конкурентной среде (при возможных параллельных вызовах).</li>
+<li><strong>Все вершины отрицательные:</strong><br />
+  Дерево <code>[-3, -2, -5]</code>.<br />
+  Благодаря <code>maxSum := math.MinInt</code>, вершина <code>-2</code> обновит <code>maxSum</code> до <code>-2</code>. Обрезание <code>max(0, -3)</code> вернёт <code>0</code>, не давая ухудшить результат суммированием с соседними отрицательными узлами. Ответ: <code>-2</code>.</li>
+<li><strong>Дерево-бамбук (вырожденное в список):</strong><br />
+  Высота $H = N$. Глубина рекурсии достигнет $N$. В Go начальный стек горутины равен 2 КБ. При $N = 3 \cdot 10^4$ фреймы займут около 1–2 МБ. Рантайм Go плавно расширит стек через процедуру <code>runtime.morestack</code> без паники по Stack Overflow.</li>
 </ul>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Вопрос: «Почему вы инициализировали <code>maxSum</code> как <code>math.MinInt</code>, а не 0?»<br />
-Ответ: «Потому что все узлы могут иметь отрицательные значения. В этом случае максимальный путь — это наименее отрицательный узел, например, -3. Если бы я инициализировал <code>maxSum</code> нулём, то при дереве <code>[-3]</code> функция вернула бы 0, что неверно — путь обязан содержать хотя бы один узел. <code>math.MinInt</code> гарантирует, что любой реальный путь будет больше начального значения».</p>
+    <p><strong>Вопрос интервьюера:</strong> «Почему для <code>maxSum</code> нельзя взять начальное значение <code>0</code>?»<br />
+<strong>Ответ кандидата:</strong> «Потому что по условию задачи путь обязан содержать хотя бы один узел. Если все узлы дерева имеют отрицательные значения (например, корень равен <code>-5</code>), то максимальная сумма пути равна <code>-5</code>. Если инициализировать <code>maxSum = 0</code>, функция ошибочно вернёт <code>0</code>, что соответствует пустому пути, запрещённому условием».</p>
   </div>
 </div>
 
-<h3 id="itog">Итог</h3>
+<hr />
+<h3 id="rezyume-dlya-intervyu">Резюме для интервью</h3>
 
-<p>Binary Tree Maximum Path Sum — это демонстрация силы postorder DFS в сочетании с глобальным максимумом. Задача учит разделять «вклад наверх» (maxGain) и «локальный ответ» (currentPathSum), а также элегантно обрабатывать отрицательные ветви через <code>max(0, gain)</code>. В Go решение реализуется рекурсивным замыканием без единой аллокации в куче, с предельно ясной логикой и оптимальной сложностью O(N). Senior-разработчик не только выдаёт код, но и объясняет инвариант, обосновывает инициализацию <code>math.MinInt</code> и обсуждает влияние рекурсии на стек горутины.</p>
-<p>Следующая задача — <strong>Lowest Common Ancestor</strong> — перенесёт нас в другую плоскость: теперь DFS будет использоваться для поиска общего предка двух заданных узлов, а рекурсивный postorder вновь окажется ключом к элегантному решению. <a href="7-lowest-common-ancestor.html" class="wikilink">7. Lowest Common Ancestor</a></p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Критерий</th>
+<th>Значение</th>
+<th>Пояснение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Время</strong></td>
+<td>$O(N)$</td>
+<td>Каждый узел дерева посещается ровно один раз</td>
+</tr>
+<tr>
+<td><strong>Память</strong></td>
+<td>$O(H)$</td>
+<td>Глубина стека вызовов ($O(\log N)$ в сбалансированном, $O(N)$ в вырожденном)</td>
+</tr>
+<tr>
+<td><strong>Аллокации</strong></td>
+<td>$0$ байт</td>
+<td>Вся работа выполняется на регистрах и стеке горутины</td>
+</tr>
+<tr>
+<td><strong>Ключевой инвариант</strong></td>
+<td>Разделение арки и полупути</td>
+<td>Арка обновляет глобальный максимум; полупуть возвращается наверх</td>
+</tr>
+</tbody>
+</table></div>
+<p>В следующей задаче — <a href="7-lowest-common-ancestor.html" class="wikilink">7. Lowest Common Ancestor</a> — мы применим аналогичную философию постобхода (Postorder DFS), но вместо агрегации числовых сумм научимся передавать наверх топологические маркеры обнаружения узлов.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2377,7 +2466,7 @@ I --&gt; J
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#formulirovka-i-utochneniya">Формулировка и уточнения</a></li><li class="toc-item toc-h3"><a href="#naivnoe-reshenie-perebor-vsekh-par-uzlov">Наивное решение: перебор всех пар узлов</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-postorder-dfs-s-globalnym-maksimumom">Оптимальное решение: postorder DFS с глобальным максимумом</a></li><li class="toc-item toc-h3"><a href="#pochemu-eto-rabotaet-invariant-i-obosnovanie-obrezaniya">Почему это работает: инвариант и обоснование обрезания</a></li><li class="toc-item toc-h3"><a href="#edge-cases">Edge Cases</a></li><li class="toc-item toc-h3"><a href="#analiz-slozhnosti">Анализ сложности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-rekursiya-registry-i-obrezanie">Mechanical Sympathy: рекурсия, регистры и обрезание</a></li><li class="toc-item toc-h3"><a href="#alternativy-i-trade-off">Альтернативы и trade-off</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h3"><a href="#1-anatomiya-puti-razdvoenie-protiv-prodolzheniya">1. Анатомия пути: раздвоение против продолжения</a></li><li class="toc-item toc-h3"><a href="#2-voprosy-intervyueru-pered-realizatsiey">2. Вопросы интервьюеру перед реализацией</a></li><li class="toc-item toc-h3"><a href="#3-idiomaticheskaya-realizatsiya-na-go">3. Идиоматическая реализация на Go</a></li><li class="toc-item toc-h3"><a href="#4-vizualizatsiya-logiki-algoritma">4. Визуализация логики алгоритма</a></li><li class="toc-item toc-h3"><a href="#5-poshagovaya-trassirovka-na-slozhnom-primere">5. Пошаговая трассировка на сложном примере</a></li><li class="toc-item toc-h3"><a href="#6-mekhanicheskaya-simpatiya-stek-registry-i-escape-analysis">6. Механическая симпатия: стек, регистры и escape analysis</a></li><li class="toc-item toc-h3"><a href="#7-granichnye-sluchai-edge-cases">7. Граничные случаи (Edge Cases)</a></li><li class="toc-item toc-h3"><a href="#rezyume-dlya-intervyu">Резюме для интервью</a></li>
   </ul>
 </aside>
 

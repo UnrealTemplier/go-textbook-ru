@@ -2171,81 +2171,32 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~22 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">3. Number of Islands</h1>
           </header>
 
           <div class="article-markdown">
-            <p><strong>LeetCode 200. Number of Islands.</strong> Дана двумерная сетка <code>grid</code> размером <code>m x n</code>, состоящая из символов <code>'1'</code> (суша) и <code>'0'</code> (вода). Требуется вернуть количество <strong>островов</strong> — групп <code>'1'</code>, соединённых друг с другом горизонтально или вертикально (но не диагонально), окружённых водой. Границы сетки также считаются водой.</p>
-<p>Это задача-флагман для поиска в глубину (DFS) на сетке — естественное продолжение теории из <a href="1-teoriya-dfs.html" class="wikilink">1. Теория. DFS</a> и обсуждения стека в <a href="2-rekursiya-i-stek.html" class="wikilink">2. Рекурсия и стек</a>. Она проверяет способность кандидата применить DFS не к абстрактному дереву, а к <strong>неявному графу</strong>, где вершины — клетки, а рёбра — соседние <code>'1'</code>. Для Senior Go-разработчика задача раскрывает важные нюансы: выбор между рекурсией и итерацией для глубоких островов, модификацию сетки in-place вместо выделения <code>visited</code>-матрицы и понимание того, как двумерный слайс взаимодействует с кэш-памятью.</p>
-<h3 id="formulirovka-i-utochneniya">Формулировка и уточнения</h3>
+            <blockquote>
+<p><em>«Остров — это лишь часть материка, которую скрыли под собой поднявшиеся воды».</em><br />
+— Джон Донн</p>
+</blockquote>
+<p>Задача <strong>Number of Islands</strong> (LeetCode 200) — абсолютная классика алгоритмических интервью, проверяющая навык моделирования пространственных графов.</p>
+<p><strong>Условие:</strong> Дана двумерная матрица символов <code>grid</code> размера $M \times N$, состоящая из <code>'1'</code> (суша) и <code>'0'</code> (вода). Островом считается группа соседних по горизонтали или вертикали единиц, со всех сторон окруженная водой или границами карты. Требуется определить общее число островов.</p>
+<p>Эта задача служит базовым шаблоном для анализа компонент связности. Она появляется в энциклопедии в трех взаимосвязанных контекстах:<br />
+- в данном кластере как демонстрация <strong>поиска в глубину на сетке</strong>;<br />
+- в кластере графов <a href="../14-grafy/5-number-of-islands.html" class="wikilink">5. Number of Islands</a> как нахождение компонент связности в неориентированном графе;<br />
+- в кластере матриц <a href="../24-matritsy-i-grid-zadach/2-dfs-i-bfs-na-matritsakh.html" class="wikilink">2. DFS и BFS на матрицах</a> как техника работы с 2D-координатами.</p>
+<hr />
+<h2 id="arkhitektura-in-place-zatoplenie-sink-pattern">Архитектура: In-Place «затопление» (Sink Pattern)</h2>
 
-<p><strong>Условие:</strong> функция <code>numIslands(grid [][]byte) int</code>. Сетка <code>grid</code> может быть пустой (<code>m == 0</code> или <code>n == 0</code>). Символы — <code>'1'</code> и <code>'0'</code>.</p>
-<p><strong>Вопросы интервьюеру (Senior-стиль):</strong><br />
-- <em>Может ли <code>grid</code> быть пустым?</em> Да, <code>len(grid) == 0</code> → возвращаем 0.<br />
-- <em>Можно ли изменять входную сетку?</em> Обычно да, это позволяет использовать in-place пометку вместо дополнительного <code>visited</code>. Если нельзя — потребуется отдельный слайс <code>visited</code>.<br />
-- <em>Есть ли ограничения на <code>m</code> и <code>n</code>?</em> До 300 (LeetCode), что даёт до 90 000 клеток. Глубина рекурсии может достигать 90 000 в вырожденном случае (змеевидный остров), что для стека горутины в Go приемлемо, но Senior отметит возможность перехода на итеративный подход.<br />
-- <em>Диагонали считаются связью?</em> Нет, только горизонтальные и вертикальные соседи.</p>
-<p>Ответы фиксируют выбор: DFS с пометкой суши в <code>'0'</code> (in-place «затопление» острова) как основной метод. Для экстремально глубоких островов — итеративный стек.</p>
-<h3 id="naivnoe-reshenie-otdelnaya-matritsa-visited-i-bfsdfs-bez-modifikatsii">Наивное решение: отдельная матрица `visited` и BFS/DFS без модификации</h3>
-
-<p>Можно было бы создать <code>visited [][]bool</code> размером <code>m x n</code>, запускать DFS для каждой <code>'1'</code> и помечать клетки в <code>visited</code>. Это корректно, но требует дополнительных O(m*n) памяти. Задача не запрещает менять <code>grid</code>, и Senior сразу предложит более экономный вариант — «тонуть» остров, заменяя <code>'1'</code> на <code>'0'</code>.</p>
-<h3 id="optimalnoe-reshenie-rekursivnyy-dfs-s-zatopleniem-ostrova">Оптимальное решение: рекурсивный DFS с «затоплением» острова</h3>
-
-<p><strong>Идея.</strong> Проходим по каждой клетке сетки. Если встречаем <code>'1'</code>, увеличиваем счётчик островов и запускаем DFS, который <strong>рекурсивно</strong> посещает все связанные с ней клетки суши, немедленно заменяя их на <code>'0'</code> (вода). Таким образом, один остров «стирается» с карты, и мы не посетим его повторно при дальнейшем сканировании.</p>
-<p><strong>Инвариант:</strong> после выхода из DFS для стартовой клетки <code>(r, c)</code> все клетки острова, содержащего <code>(r, c)</code>, превращены в <code>'0'</code>. Счётчик островов увеличен на 1. Дальнейшее сканирование сетки не обнаружит уже учтённую сушу.</p>
-<p><strong>Почему рекурсия здесь допустима, но требует комментария:</strong><br />
-Максимальная глубина рекурсии равна площади одного острова, которая для сетки 300×300 может достигать 90 000. Это вызовет несколько расширений стека горутины (копирование), но не приведёт к переполнению. Стандартный подход на собеседовании — показать рекурсивный DFS, упомянув, что для продакшена с экстремально большими вырожденными островами можно перейти на итеративный DFS или BFS. В Go 1.21+ можно также использовать <code>GOGC</code> и ограничения памяти, но в рамках задачи это избыточно.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func numIslands(grid [][]byte) int {
-    if len(grid) == 0 {
-        return 0
-    }
-    m, n := len(grid), len(grid[0])
-    count := 0
-
-    // Направления: вверх, вниз, влево, вправо
-    dirs := [][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
-
-    var dfs func(r, c int)
-    dfs = func(r, c int) {
-        if r &lt; 0 || r &gt;= m || c &lt; 0 || c &gt;= n || grid[r][c] == '0' {
-            return
-        }
-        grid[r][c] = '0' // «топим» сушу
-        for _, d := range dirs {
-            dfs(r+d[0], c+d[1])
-        }
-    }
-
-    for r := 0; r &lt; m; r++ {
-        for c := 0; c &lt; n; c++ {
-            if grid[r][c] == '1' {
-                count++
-                dfs(r, c)
-            }
-        }
-    }
-    return count
-}
-</code></pre>
-</div>
-
-<p><strong>Go-идиомы и комментарии:</strong><br />
-- <code>dirs</code> — статический слайс направлений, переиспользуется во всех вызовах.<br />
-- Внутри <code>dfs</code> <strong>сначала проверяются границы и вода</strong>, потом клетка топится. Это гарантирует, что каждая <code>'1'</code> будет посещена ровно один раз.<br />
-- Рекурсивное замыкание захватывает <code>grid</code>, <code>m</code>, <code>n</code>, <code>dirs</code> — минимум параметров.<br />
-- <code>grid</code> — это <code>[][]byte</code>, двойной слайс. Доступ <code>grid[r][c]</code> — двойное разыменование, но для 90 000 клеток это быстро.</p>
+<p>Выделение дополнительной булевой матрицы <code>visited [][]bool</code> требует $O(M \cdot N)$ памяти и порождает двойное разыменование указателей.</p>
+<p>Если условие допускает мутацию входных данных, самым идиоматичным и быстрым подходом в Go является паттерн <strong>затопления острова (Sink Algorithm)</strong>:<br />
+1. Сканируем матрицу обычными вложенными циклами <code>r</code> и <code>c</code>.<br />
+2. Как только натыкаемся на <code>'1'</code>, мы инкрементируем счетчик найденных островов <code>islandsCount++</code>.<br />
+3. Немедленно запускаем DFS из клетки <code>(r, c)</code>, который рекурсивно обходит всех 4-связных соседей и <strong>перекрашивает <code>'1'</code> в <code>'0'</code></strong> («топит» сушу в воду).<br />
+4. Когда DFS завершается, весь текущий остров целиком погружен под воду. Сканер продолжает движение по матрице и гарантированно не посчитает повторно клетки этого острова!</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2259,33 +2210,31 @@
     </button>
   </div>
   <pre class="mermaid">
-flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Проверить каждую клетку (r,c):::warning&quot;] --&gt; B{&quot;grid[r][c] == &#x27;1&#x27;?&quot;}
-B --&gt;|&quot;Да&quot;| C[&quot;count++&quot;]
-C --&gt; D[&quot;dfs(r,c)&quot;]
-D --&gt; E[&quot;Пометить клетку &#x27;0&#x27;&lt;br&gt;и рекурсивно обойти&lt;br&gt;всех соседей-суши&quot;]
-E --&gt; F[&quot;Остров затоплен&quot;]
-B --&gt;|&quot;Нет&quot;| G[&quot;Продолжить сканирование&quot;]
-F --&gt; G
-G --&gt; A
-A --&gt;|&quot;конец&quot;| H[&quot;Вернуть count&quot;]
+flowchart TD
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+
+Start[&quot;Сканирование ячеек: grid[r][c]&quot;]:::entry --&gt; Check{&quot;grid[r][c] == &#x27;1&#x27;?&quot;}:::warning
+
+Check --&gt;|&quot;Да (Суша найдена!)&quot;| Inc[&quot;islandsCount++&quot;]:::process
+Inc --&gt; Sink[&quot;DFS(r, c):&lt;br&gt;Топим сушу: grid[r][c] = &#x27;0&#x27;&quot;]:::process
+
+Sink --&gt; Dirs[&quot;Рекурсия во все 4 стороны:&lt;br&gt;(r-1, c), (r+1, c), (r, c-1), (r, c+1)&quot;]:::process
+Dirs --&gt; Done[&quot;Остров полностью затоплен&quot;]:::success
+
+Check --&gt;|&quot;Нет (Вода &#x27;0&#x27;)&quot;| Next[&quot;Переход к следующей клетке&quot;]:::process
+Done --&gt; Next
   </pre>
 </div>
 
 
-<h3 id="iterativnaya-alternativa-stek-na-slayse-dlya-zashchity-ot-glubokoy-rekursii">Итеративная альтернатива: стек на слайсе для защиты от глубокой рекурсии</h3>
+<hr />
+<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
 
-<p>Как обсуждалось в <a href="2-rekursiya-i-stek.html" class="wikilink">2. Рекурсия и стек</a>, если форма острова вырождена в длинную змею, глубина рекурсии может стать проблемой. Итеративный DFS с собственным стеком (или BFS с очередью) решает эту проблему полностью. Вот как выглядит итеративный вариант:</p>
+<h3 id="1-kanonicheskiy-rekursivnyy-variant">1. Канонический рекурсивный вариант</h3>
+
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2295,99 +2244,155 @@ A --&gt;|&quot;конец&quot;| H[&quot;Вернуть count&quot;]
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func numIslandsIterative(grid [][]byte) int {
-    if len(grid) == 0 {
+  <pre class="language-go"><code class="language-go">package main
+
+// numIslands возвращает число островов на карте
+// Временная сложность: O(M * N)
+// Пространственная сложность: O(M * N) в худшем случае (змеевидный остров на стеке)
+func numIslands(grid [][]byte) int {
+    if len(grid) == 0 || len(grid[0]) == 0 {
         return 0
     }
+
     m, n := len(grid), len(grid[0])
     count := 0
-    dirs := [][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
-    stack := make([][2]int, 0, m*n) // предвыделение под максимальный возможный размер
+
+    var dfs func(r, c int)
+    dfs = func(r, c int) {
+        // Проверка выхода за границы и фильтрация воды
+        if r &lt; 0 || r &gt;= m || c &lt; 0 || c &gt;= n || grid[r][c] == '0' {
+            return
+        }
+
+        // Топим текущую клетку суши in-place
+        grid[r][c] = '0'
+
+        // Обходим 4 направления
+        dfs(r+1, c)
+        dfs(r-1, c)
+        dfs(r, c+1)
+        dfs(r, c-1)
+    }
 
     for r := 0; r &lt; m; r++ {
         for c := 0; c &lt; n; c++ {
             if grid[r][c] == '1' {
                 count++
-                stack = stack[:0] // переиспользуем стек
-                stack = append(stack, [2]int{r, c})
+                dfs(r, c)
+            }
+        }
+    }
+
+    return count
+}
+</code></pre>
+</div>
+
+<h3 id="2-iterativnyy-stek-na-sreze-zero-allocations">2. Итеративный стек на срезе (Zero-Allocations)</h3>
+<p>Для гигантских вырожденных сеток ($300 \times 300$, где один остров закручен змейкой на $90\,000$ шагов), рекурсивный стек вызовет многократное копирование стека горутины. Итеративная реализация использует один предвыделенный срез:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package main
+
+type point struct{ r, c int }
+
+func numIslandsIterative(grid [][]byte) int {
+    if len(grid) == 0 || len(grid[0]) == 0 {
+        return 0
+    }
+    m, n := len(grid), len(grid[0])
+    count := 0
+
+    // Выделяем память под стек один раз на всю работу функции
+    stack := make([]point, 0, 1024)
+
+    for r := 0; r &lt; m; r++ {
+        for c := 0; c &lt; n; c++ {
+            if grid[r][c] == '1' {
+                count++
                 grid[r][c] = '0'
+                stack = stack[:0] // Обнуляем длину, сохраняя емкость cap!
+                stack = append(stack, point{r, c})
+
                 for len(stack) &gt; 0 {
-                    // Pop
-                    cell := stack[len(stack)-1]
-                    stack = stack[:len(stack)-1]
-                    for _, d := range dirs {
-                        nr, nc := cell[0]+d[0], cell[1]+d[1]
-                        if nr &gt;= 0 &amp;&amp; nr &lt; m &amp;&amp; nc &gt;= 0 &amp;&amp; nc &lt; n &amp;&amp; grid[nr][nc] == '1' {
-                            grid[nr][nc] = '0'
-                            stack = append(stack, [2]int{nr, nc})
+                    last := len(stack) - 1
+                    p := stack[last]
+                    stack = stack[:last]
+
+                    // Проверяем 4 соседей
+                    neighbors := [4]point{
+                        {p.r + 1, p.c}, {p.r - 1, p.c},
+                        {p.r, p.c + 1}, {p.r, p.c - 1},
+                    }
+
+                    for _, nb := range neighbors {
+                        if nb.r &gt;= 0 &amp;&amp; nb.r &lt; m &amp;&amp; nb.c &gt;= 0 &amp;&amp; nb.c &lt; n &amp;&amp; grid[nb.r][nb.c] == '1' {
+                            grid[nb.r][nb.c] = '0' // Топим ПЕРЕД добавлением в стек!
+                            stack = append(stack, nb)
                         }
                     }
                 }
             }
         }
     }
+
     return count
 }
 </code></pre>
 </div>
 
-<p>Этот вариант не использует рекурсию, стек полностью контролируем, и память под него выделена один раз через <code>make</code> с capacity, равной максимальному числу клеток (<code>m*n</code> гарантированно хватит, но в реальности размер стека примерно равен периметру компоненты). Важно: клетка помечается <code>'0'</code> <strong>до</strong> добавления в стек, чтобы избежать дублирования.</p>
-<div class="callout callout-info">
+<hr />
+<h2 id="vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</h2>
+
+<h3 id="1-in-place-mutatsiya-i-kesh-linii">1. In-Place мутация и кэш-линии</h3>
+<p>Матрица <code>grid</code> представляет собой набор срезов <code>[]byte</code>.<br />
+- Поскольку байты <code>'1'</code> и <code>'0'</code> занимают по 1 байту, в одну строку L1-кэша процессора (64 байта) помещается 64 соседних столбца одной строки!<br />
+- При горизонтальном перемещении <code>dfs(r, c+1)</code> процессор считывает байты прямо из кэша первого уровня L1d с задержкой $\sim 1$ нс.<br />
+- Замена <code>'1'</code> на <code>'0'</code> мутирует тот же байт в горячем кэше, не вызывая аллокаций в куче.</p>
+<h3 id="2-zashchita-ot-dublikatov-v-iterativnom-steke">2. Защита от дубликатов в итеративном стеке</h3>
+<p>Обратите внимание на строку: <code>grid[nb.r][nb.c] = '0'</code> <strong>до</strong> вызова <code>stack = append(stack, nb)</code>.<br />
+Если помечать клетку затопленной только при <em>извлечении</em> из стека (<code>pop</code>), соседние клетки добавят одну и ту же клетку в стек до 4 раз, вызвав лавинообразный рост размера стека. Затопление в момент обнаружения исключает дублирование.</p>
+<hr />
+<h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
+
+<div class="callout callout-warning">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Ловушка: Мутация входного аргумента</span>
   </div>
   <div class="callout-body">
-    <p>Рекурсивный DFS в Go может при глубине 90 000 расширить стек несколько раз. Каждое расширение копирует стек, что на пике может занять несколько миллисекунд. Итеративный подход с явным стеком на слайсе лишён этих копирований: <code>stack</code> растёт через <code>append</code>, но при достаточной capacity не аллоцирует новых массивов. После обработки острова <code>stack = stack[:0]</code> обнуляет длину, сохраняя capacity. Таким образом, все острова используют один и тот же выделенный однажды массив — идеальная механическая симпатия.</p>
+    <p>В продакшене сигнатура <code>numIslands(grid [][]byte)</code> мутирует данные вызывающей стороны. Если клиенту требуется сохранить исходную карту, сетку необходимо предварительно клонировать либо использовать <code>visited [][]bool</code>. На собеседовании обязательно озвучьте: <em>«Я использую in-place затопление для экономии $O(M \cdot N)$ памяти. Допустимо ли менять входной срез в условиях вашей системы?»</em>.</p>
   </div>
 </div>
 
-<h3 id="edge-cases">Edge Cases</h3>
-
-<ul>
-<li><strong>Пустая сетка:</strong> <code>len(grid) == 0</code> → <code>0</code>. Ранний возврат.</li>
-<li><strong>Одна клетка <code>'1'</code>:</strong> <code>&lt;span class="wikilink-unresolved" title="Заметка в разработке"&gt;&amp;quot;1&amp;quot;&lt;/span&gt;</code> → один остров.</li>
-<li><strong>Все <code>'0'</code>:</strong> <code>count</code> никогда не инкрементируется, возврат <code>0</code>.</li>
-<li><strong>Все <code>'1'</code>:</strong> один большой остров, один вызов DFS.</li>
-<li><strong>Змеевидный остров (300x300, змейка):</strong> глубина 90000, рекурсия может быть нагружена. Senior упомянет итеративную альтернативу.</li>
-<li><strong>Сетка с нулевой шириной:</strong> <code>m &gt; 0</code>, <code>n == 0</code>. Проверка <code>len(grid[0])</code> не сработает, но внешний цикл по <code>c</code> не выполнится, <code>count = 0</code> — корректно.</li>
-</ul>
-<h3 id="analiz-slozhnosti">Анализ сложности</h3>
-
-<ul>
-<li><strong>Время:</strong> O(m*n). Каждая клетка посещается не более одного раза: в основном цикле и в DFS. Проверка соседей занимает O(1) на клетку.</li>
-<li><strong>Память (рекурсивный DFS):</strong> O(m*n) в худшем случае на стек рекурсии (змеевидный остров). Память под <code>grid</code> используется in-place, дополнительная память — только стек вызовов.</li>
-<li><strong>Память (итеративный DFS/BFS):</strong> O(min(m,n, perimeter)) для стека/очереди, но с предвыделением <code>m*n</code> — O(m+n) фактически. Без рекурсии — полностью контролируемая память.</li>
-</ul>
-<h3 id="mechanical-sympathy-dvoynoy-slays-i-kesh">Mechanical Sympathy: двойной слайс и кэш</h3>
-
-<ul>
-<li><code>grid</code> в Go — слайс слайсов: <code>[]byte</code> для каждой строки. Каждая строка — непрерывный массив байтов. При переходе к соседней строке (<code>r+1</code>) происходит смена указателя, что может вызвать промах в TLB (Translation Lookaside Buffer), но не критично для 300 строк.</li>
-<li>Если бы <code>grid</code> был представлен как плоский массив <code>[]byte</code> длиной <code>m*n</code>, доступ был бы <code>i := r*n + c</code>, что обеспечивает идеальную локальность и одну аллокацию, но снижает читаемость. Senior может упомянуть эту оптимизацию для высоконагруженных систем.</li>
-<li>In-place модификация: мы меняем байты в строках, не создавая новых объектов. GC не испытывает давления, так как не порождается мусора внутри DFS (кроме стека вызовов в рекурсивном варианте).</li>
-<li>В итеративном варианте <code>stack</code> — это непрерывный массив в куче, дружественный кэшу.</li>
-</ul>
-<h3 id="alternativy-i-trade-off">Альтернативы и trade-off</h3>
-
-<ul>
-<li><strong>BFS (поиск в ширину).</strong> Использует очередь вместо стека. Очередь также может быть реализована на слайсе (<code>append</code> + сдвиг начала), но сдвиг начала (<code>queue = queue[1:]</code>) не освобождает память, что может привести к накоплению мусора при долгой работе. Для единоразового обхода это некритично. BFS даёт ту же асимптотику и может быть предпочтительнее при желании избежать глубинной рекурсии.</li>
-<li><strong>Union Find.</strong> Можно объединять соседние <code>'1'</code> в компоненты и в конце подсчитать количество уникальных родительских вершин. Это O(m*n) с обратной функцией Аккермана, но требует дополнительной памяти для <code>parent</code> и <code>rank</code>. Избыточно для задачи, но демонстрирует знание других подходов.</li>
-</ul>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования: DFS против BFS и Union-Find</span>
   </div>
   <div class="callout-body">
-    <p>Вопрос: «Почему вы выбрали DFS, а не BFS?»<br />
-Ответ: «DFS естественен в рекурсивной формулировке и код лаконичен. Для глубоких островов я готов перейти на итеративный DFS (или BFS) с явным стеком, чтобы избежать копирования стека горутины. BFS также хорош и даёт кратчайший путь, но здесь нам не нужен порядок обхода. Я выбрал DFS за минимализм».</p>
+    <p><strong>Вопрос:</strong> В чем разница производительности DFS, BFS и Disjoint Set Union (Union-Find) для этой задачи?<br />
+<strong>Ответ:</strong> <br />
+- <strong>DFS/BFS</strong> работают за строгое линейное время $O(M \cdot N)$ за один проход по матрице.<br />
+- <strong>Union-Find</strong> (разбираемый в <a href="../15-union-find/3-number-of-connected-components.html" class="wikilink">3. Number of Connected Components</a>) работает чуть медленнее ($O(M \cdot N \cdot \alpha(MN))$), но незаменим в <strong>динамических сценариях</strong> (Number of Islands II), когда клетки суши добавляются в реальном времени по одной (стриминг), и пересчитывать всю матрицу с нуля через DFS нецелесообразно.</p>
   </div>
 </div>
 
-<h3 id="itog">Итог</h3>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
-<p>Number of Islands — это хрестоматийный пример применения DFS на неявном графе-сетке. В Go задача решается элегантно через рекурсивное «затопление» с нулевыми дополнительными аллокациями, если допустима модификация входа. Senior-разработчик не просто пишет DFS, но и анализирует глубину рекурсии, предлагает итеративную альтернативу и понимает, как его код взаимодействует с кэш-памятью, стеком горутины и сборщиком мусора.</p>
-<p>Следующая задача — <strong>Clone Graph</strong> — перенесёт нас от сеток к графам общего вида, где потребуется глубокое копирование структуры с сохранением связей и избеганием циклов. <a href="4-clone-graph.html" class="wikilink">4. Clone Graph</a></p>
+<p><strong>Number of Islands</strong> — золотой стандарт пространственного поиска в глубину:<br />
+- Моделирование неявного графа на координатной сетке.<br />
+- Паттерн «затопления» in-place гарантирует нулевые аллокации памяти.<br />
+- Простая трансформация в итеративный стек гарантирует защиту от глубокой рекурсии.</p>
+<p>В следующей лекции мы перейдем к графам общего вида со сложной топологией и циклическими ссылками: <a href="4-clone-graph.html" class="wikilink">4. Clone Graph</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2415,7 +2420,7 @@ A --&gt;|&quot;конец&quot;| H[&quot;Вернуть count&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#formulirovka-i-utochneniya">Формулировка и уточнения</a></li><li class="toc-item toc-h3"><a href="#naivnoe-reshenie-otdelnaya-matritsa-visited-i-bfsdfs-bez-modifikatsii">Наивное решение: отдельная матрица visited и BFS/DFS без модификации</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-rekursivnyy-dfs-s-zatopleniem-ostrova">Оптимальное решение: рекурсивный DFS с «затоплением» острова</a></li><li class="toc-item toc-h3"><a href="#iterativnaya-alternativa-stek-na-slayse-dlya-zashchity-ot-glubokoy-rekursii">Итеративная альтернатива: стек на слайсе для защиты от глубокой рекурсии</a></li><li class="toc-item toc-h3"><a href="#edge-cases">Edge Cases</a></li><li class="toc-item toc-h3"><a href="#analiz-slozhnosti">Анализ сложности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-dvoynoy-slays-i-kesh">Mechanical Sympathy: двойной слайс и кэш</a></li><li class="toc-item toc-h3"><a href="#alternativy-i-trade-off">Альтернативы и trade-off</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-in-place-zatoplenie-sink-pattern">Архитектура: In-Place «затопление» (Sink Pattern)</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h3"><a href="#1-kanonicheskiy-rekursivnyy-variant">1. Канонический рекурсивный вариант</a></li><li class="toc-item toc-h3"><a href="#2-iterativnyy-stek-na-sreze-zero-allocations">2. Итеративный стек на срезе (Zero-Allocations)</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#1-in-place-mutatsiya-i-kesh-linii">1. In-Place мутация и кэш-линии</a></li><li class="toc-item toc-h3"><a href="#2-zashchita-ot-dublikatov-v-iterativnom-steke">2. Защита от дубликатов в итеративном стеке</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 
