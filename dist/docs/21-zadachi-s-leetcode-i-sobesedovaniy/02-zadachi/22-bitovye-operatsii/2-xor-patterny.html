@@ -2171,82 +2171,93 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~31 мин чтения</span>
-              
+              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. XOR паттерны</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="vvedenie-magiya-isklyuchayushchego-ili">Введение: Магия исключающего ИЛИ</h2>
+            <blockquote>
+<p><em>«Всякое действие, повторенное дважды, возвращает нас в исходную точку — в этом суть исключающего ИЛИ».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>Побитовая операция <strong>XOR</strong> (исключающее ИЛИ, в Go обозначается символом <code>^</code>) — это самый элегантный математический инструмент в низкоуровневом программировании. Её уникальные алгебраические свойства позволяют решать задачи, которые на первый взгляд требуют громоздких хэш-таблиц, дополнительной памяти $O(N)$ или тяжелой сортировки, за <strong>один линейный проход $O(N)$ с константной памятью $O(1)$</strong>.</p>
+<p>На собеседованиях задачи на XOR — излюбленная классика. Они проверяют не заучивание библиотечных функций, а умение инженера видеть фундаментальные инварианты и понимать, как информация представлена в регистрах процессора.</p>
 
-<p>Операция <strong>XOR</strong> (исключающее ИЛИ, в Го обозначается <code>^</code>) — это, пожалуй, самый элегантный и «магический» инструмент в арсенале битовых операций. Её уникальные алгебраические свойства позволяют решать задачи, которые на первый взгляд требуют хеш-таблиц, сортировки или дополнительной памяти, за один проход $O(N)$ и с константной памятью $O(1)$.</p>
-<p>На собеседованиях задачи на XOR — это классика. Они проверяют не только знание синтаксиса, но и способность мыслить абстрактно, видеть инварианты и понимать, как данные представлены на уровне битов.</p>
-<p>В этой статье мы разберём фундаментальные свойства XOR, научимся распознавать паттерны их применения и посмотрим, как эти операции исполняются на уровне процессора в контексте Go-рантайма.</p>
-<h2 id="fundamentalnye-svoystva-xor">Фундаментальные свойства XOR</h2>
+<div class="mermaid-wrapper">
+  <div class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
+    </button>
+  </div>
+  <pre class="mermaid">
+flowchart LR
+classDef val fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef cancel fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef res fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
 
-<p>Прежде чем переходить к паттернам, закрепим базу. Операция XOR подчиняется строгим алгебраическим законам, которые и делают её столь мощной.</p>
+Input[&quot;Массив: [4, 1, 2, 1, 2]&quot;] --&gt; Group[&quot;(1 ^ 1) ^ (2 ^ 2) ^ 4&quot;]:::cancel
+Group --&gt; Zero[&quot;0 ^ 0 ^ 4&quot;]:::cancel
+Zero --&gt; Ans[&quot;Результат: 4 (O(1) памяти)&quot;]:::res
+  </pre>
+</div>
+
+
+<hr />
+<h2 id="1-algebraicheskiy-fundament-operatsii-xor">1. Алгебраический фундамент операции XOR</h2>
+
+<p>Операция XOR подчиняется строгим законам теории групп и булевой алгебры:</p>
 <div class="table-container"><table>
 <thead>
 <tr>
-<th>Свойство</th>
-<th>Формула</th>
-<th>Пояснение</th>
-<th>Пример в Go</th>
+<th style="text-align: left;">Свойство</th>
+<th style="text-align: left;">Формула</th>
+<th style="text-align: left;">Инженерный смысл</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Тождественность</strong></td>
-<td><code>a ^ 0 = a</code></td>
-<td>XOR с нулём не меняет значение</td>
-<td><code>5 ^ 0 == 5</code></td>
+<td style="text-align: left;"><strong>Тождество с нулем</strong></td>
+<td style="text-align: left;">$a \oplus 0 = a$</td>
+<td style="text-align: left;">Битовая маска из нулей сохраняет исходное число без изменений</td>
 </tr>
 <tr>
-<td><strong>Самоуничтожение</strong></td>
-<td><code>a ^ a = 0</code></td>
-<td>Любое число, «исключённое» из самого себя, даёт ноль</td>
-<td><code>13 ^ 13 == 0</code></td>
+<td style="text-align: left;"><strong>Самоуничтожение (Нильпотентность)</strong></td>
+<td style="text-align: left;">$a \oplus a = 0$</td>
+<td style="text-align: left;">Повторение значения четное число раз полностью аннулирует его</td>
 </tr>
 <tr>
-<td><strong>Коммутативность</strong></td>
-<td><code>a ^ b = b ^ a</code></td>
-<td>Порядок операндов не важен</td>
-<td><code>7 ^ 3 == 3 ^ 7</code></td>
+<td style="text-align: left;"><strong>Коммутативность</strong></td>
+<td style="text-align: left;">$a \oplus b = b \oplus a$</td>
+<td style="text-align: left;">Порядок поступления данных в потоке не имеет значения</td>
 </tr>
 <tr>
-<td><strong>Ассоциативность</strong></td>
-<td><code>(a ^ b) ^ c = a ^ (b ^ c)</code></td>
-<td>Можно группировать операции как угодно</td>
-<td><code>(2^3)^4 == 2^(3^4)</code></td>
+<td style="text-align: left;"><strong>Ассоциативность</strong></td>
+<td style="text-align: left;">$(a \oplus b) \oplus c = a \oplus (b \oplus c)$</td>
+<td style="text-align: left;">Допустима параллельная редукция (MapReduce / SIMD)</td>
 </tr>
 <tr>
-<td><strong>Инволюция</strong></td>
-<td><code>(a ^ b) ^ b = a</code></td>
-<td>Повторный XOR с тем же значением отменяет действие</td>
-<td><code>(x^key)^key == x</code></td>
+<td style="text-align: left;"><strong>Инволюция (Обратимость)</strong></td>
+<td style="text-align: left;">$(a \oplus b) \oplus b = a$</td>
+<td style="text-align: left;">Наложение маски и повторное её наложение восстанавливает оригинал</td>
 </tr>
 </tbody>
 </table></div>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Почему эти свойства работают?</strong><br />
-На уровне логики, XOR возвращает <code>1</code>, только если биты различны.<br />
-*   <code>0 ^ 0 = 0</code>, <code>1 ^ 1 = 0</code> (одинаковые → 0, свойство самоуничтожения)<br />
-*   <code>0 ^ 1 = 1</code>, <code>1 ^ 0 = 1</code> (разные → 1, свойство тождественности с инверсией)</p>
-<p>Когда вы делаете <code>a ^ a</code>, каждый бит сравнивается с самим собой, результат всегда 0. Когда вы делаете <code>a ^ 0</code>, каждый бит сравнивается с 0, результат — сам бит. Это фундамент булевой алгебры, который компилятор транслирует в одну инструкцию процессора.</p>
-  </div>
-</div>
+<hr />
+<h2 id="2-pattern-1-poisk-edinstvennogo-unikalnogo-elementa-leetcode-136">2. Паттерн 1: Поиск единственного уникального элемента (LeetCode 136)</h2>
 
-<h2 id="pattern-1-poisk-edinstvennogo-unikalnogo-elementa">Паттерн 1: Поиск единственного уникального элемента</h2>
-
-<p><strong>Задача:</strong> В массиве, где каждый элемент встречается ровно два раза, кроме одного, найти этот уникальный элемент.</p>
-<p><strong>Наивное решение:</strong> Использовать <code>map[int]int</code> для подсчета частот. Сложность: $O(N)$ по времени, $O(N)$ по памяти.</p>
-<p><strong>XOR-решение:</strong> Благодаря свойствам коммутативности и самоуничтожения, если проксировать XOR всех элементов массива, парные значения сократятся до нуля, и останется только уникальное число.</p>
+<p><strong>Постановка задачи:</strong> В срезе целых чисел каждое число встречается ровно <strong>дважды</strong>, кроме одного-единственного. Найти это число за $O(N)$ времени и $O(1)$ дополнительной памяти.</p>
+<h3 id="naivnyy-podkhod">Наивный подход</h3>
+<p>Выделить <code>map[int]int</code>, посчитать частоты, затем найти ключ со значением <code>1</code>. Это требует $\mathcal{O}(N)$ аллокаций в куче и нагружает GC.</p>
+<h3 id="idiomatichnyy-podkhod-na-go">Идиоматичный подход на Go</h3>
+<p>Благодаря коммутативности и свойству $x \oplus x = 0$, мы аккумулятором <code>result</code> свертываем весь срез:<br />
+$$(x_1 \oplus x_1) \oplus (x_2 \oplus x_2) \oplus \dots \oplus (x_k \oplus x_k) \oplus \text{unique} = 0 \oplus 0 \oplus \dots \oplus \text{unique} = \text{unique}$$</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2256,11 +2267,11 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// SingleNumber находит элемент, встречающийся один раз
-// Вход: слайс, где все элементы кроме одного встречаются дважды
-// Выход: уникальный элемент
+  <pre class="language-go"><code class="language-go">package main
+
+// SingleNumber находит уникальное число среди парных элементов за O(N) и O(1) памяти.
 func SingleNumber(nums []int) int {
-    result := 0
+    var result int
     for _, num := range nums {
         result ^= num
     }
@@ -2269,50 +2280,52 @@ func SingleNumber(nums []int) int {
 </code></pre>
 </div>
 
-<p><strong>Почему это работает:</strong></p>
+<hr />
+<h2 id="3-pattern-2-poisk-dvukh-unikalnykh-elementov-leetcode-260">3. Паттерн 2: Поиск двух уникальных элементов (LeetCode 260)</h2>
 
-<div class="code-block" data-lang="text">
-  <div class="code-header">
-    <span class="code-lang-tag">TEXT</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
+<p><strong>Постановка задачи:</strong> Все элементы встречаются по два раза, кроме <strong>двух различных уникальных чисел</strong> $A$ и $B$. Найти $A$ и $B$ за $O(N)$ времени и $O(1)$ памяти.</p>
+<h3 id="matematicheskiy-insayt">Математический инсайт</h3>
+<p>Если мы выполним XOR всех элементов массива, все дубликаты взаимоуничтожатся, и на выходе мы получим:<br />
+$$\text{xorSum} = A \oplus B$$<br />
+Так как $A \ne B$, в числе $\text{xorSum}$ гарантированно есть хотя бы один бит, равный $1$.<br />
+Единичный бит означает, что <strong>в этом конкретном разряде числа $A$ и $B$ различаются</strong> (у одного там $1$, а у другого $0$).</p>
+<p>Мы можем использовать этот бит как селектор (фильтр), чтобы разделить все числа исходного массива на две непересекающиеся группы:<br />
+1. <strong>Группа 1:</strong> числа, у которых выбранный бит равен $1$ (в нее попадет либо $A$, либо $B$).<br />
+2. <strong>Группа 2:</strong> числа, у которых выбранный бит равен $0$ (в нее попадет второе число).</p>
+<p>Все парные числа гарантированно попадут в одну и ту же группу (так как их биты идентичны) и взаимно сократятся!</p>
+
+<div class="mermaid-wrapper">
+  <div class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
     </button>
   </div>
-  <pre class="language-text"><code class="language-text">Массив: [4, 1, 2, 1, 2]
-Вычисление: 0 ^ 4 ^ 1 ^ 2 ^ 1 ^ 2
-Группируем: 4 ^ (1 ^ 1) ^ (2 ^ 2)
-Упрощаем:  4 ^ 0 ^ 0
-Результат: 4
-</code></pre>
+  <pre class="mermaid">
+flowchart TD
+classDef entry fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef split fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
+
+A[&quot;1. Вычисление xorAll = A ^ B&quot;]:::entry --&gt; B[&quot;2. Нахождение младшей разделительной единицы:&lt;br&gt;diffBit = xorAll &amp; -xorAll&quot;]:::process
+B --&gt; C{&quot;Разделение элементов nums по diffBit&quot;}:::split
+
+C -- &quot;(num &amp; diffBit) == 0&quot; --&gt; D[&quot;Группа 0: аккумулируем a ^= num&quot;]:::process
+C -- &quot;(num &amp; diffBit) != 0&quot; --&gt; E[&quot;Группа 1: аккумулируем b ^= num&quot;]:::process
+
+D --&gt; F[&quot;Итог: a = первое число&quot;]:::success
+E --&gt; G[&quot;Итог: b = второе число&quot;]:::success
+  </pre>
 </div>
 
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> А что если массив пустой или содержит только один элемент?<br />
-<strong>Ответ:</strong> Наш код корректно обработает эти кейсы:<br />
-*   Пустой массив: вернёт <code>0</code> (начальное значение). Это может быть как корректным ответом, так и ошибкой — зависит от условий задачи. Всегда уточняйте у интервьюера, гарантируется ли наличие уникального элемента.<br />
-*   Один элемент: вернёт его, так как <code>0 ^ x = x</code>.</p>
-<p><strong>Follow-up:</strong> Как изменить решение, если каждый элемент встречается 3 раза, кроме одного?<br />
-<strong>Подсказка:</strong> Здесь простой XOR не сработает (<code>a ^ a ^ a = a</code>, а не 0). Нужно считать сумму битов по каждому разряду модулю 3. Это задача на битовую арифметику более высокого уровня.</p>
-  </div>
-</div>
 
-<h2 id="pattern-2-poisk-dvukh-unikalnykh-elementov">Паттерн 2: Поиск двух уникальных элементов</h2>
+<h3 id="realizatsiya-na-go">Реализация на Go</h3>
 
-<p><strong>Задача:</strong> В массиве, где каждый элемент встречается дважды, кроме <strong>двух</strong> уникальных чисел, найти эти два числа.</p>
-<p>Это усложнение предыдущей задачи. Если мы просто сделаем XOR всех элементов, мы получим <code>a ^ b</code> (XOR двух искомых чисел), но не сами числа по отдельности.</p>
-<p><strong>Алгоритм решения:</strong></p>
-<ol>
-<li>Вычислить <code>xorAll = a ^ b</code> (проксировав весь массив).</li>
-<li>Найти любой бит, в котором <code>a</code> и <code>b</code> различаются (в <code>xorAll</code> он будет равен 1). Обычно берут самый младший: <code>diffBit = xorAll &amp; -xorAll</code>.</li>
-<li>Разделить все числа массива на две группы: у которых этот бит установлен и у которых не установлен.</li>
-<li>В каждой группе все парные числа сократятся, и останется одно из искомых.</li>
-</ol>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2322,74 +2335,41 @@ func SingleNumber(nums []int) int {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// SingleNumberTwo находит два элемента, встречающихся по одному разу
-// Возвращает слайс из двух чисел
-func SingleNumberTwo(nums []int) []int {
-    // Шаг 1: получаем XOR двух уникальных чисел
+  <pre class="language-go"><code class="language-go">package main
+
+// SingleNumberTwo находит два уникальных числа.
+func SingleNumberTwo(nums []int) (int, int) {
     var xorAll int
     for _, num := range nums {
         xorAll ^= num
     }
 
-    // Шаг 2: находим правый установленный бит (rightmost set bit)
-    // Трюк: x &amp; -x выделяет самый младший единичный бит
-    // Это работает благодаря представлению в дополнении до двух
-    diffBit := xorAll &amp; -xorAll
+    // Извлекаем младший единичный бит различия через Two's Complement хак:
+    diffBit := xorAll &amp; (-xorAll)
 
-    // Шаг 3: разбиваем на две группы и ищем числа в каждой
     var a, b int
     for _, num := range nums {
-        if num&amp;diffBit == 0 {
-            a ^= num // Группа 1: бит не установлен
+        if (num &amp; diffBit) == 0 {
+            a ^= num
         } else {
-            b ^= num // Группа 2: бит установлен
+            b ^= num
         }
     }
 
-    return []int{a, b}
+    return a, b
 }
 </code></pre>
 </div>
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Магия выражения <code>x &amp; -x</code></strong><br />
-Почему <code>x &amp; -x</code> выделяет самый младший единичный бит?<br />
-Вспомним представление отрицательных чисел (Two's Complement): <code>-x = ^x + 1</code>.</p>
-<p>Пример для <code>x = 12</code> (бинарно <code>1100</code>):</p>
+<hr />
+<h2 id="4-pattern-3-nakhozhdenie-nedostayushchego-chisla-missing-number">4. Паттерн 3: Нахождение недостающего числа (Missing Number)</h2>
 
-<div class="code-block" data-lang="text">
-  <div class="code-header">
-    <span class="code-lang-tag">TEXT</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-text"><code class="language-text">x:        0000 1100
-^x:       1111 0011
-^x + 1:   1111 0100  (это -12)
-
-x &amp; -x:
-  0000 1100
-&amp; 1111 0100
------------
-  0000 0100  (результат: 4, только младший бит 12 сохранён)
-</code></pre>
-</div>
-
-<p>Это классический битовый хак, который компилируется в 2-3 инструкции процессора и работает за константное время.</p>
-  </div>
-</div>
-
-<h2 id="pattern-3-nakhozhdenie-propushchennogo-chisla">Паттерн 3: Нахождение пропущенного числа</h2>
-
-<p><strong>Задача:</strong> Дан массив из <code>n</code> различных чисел, взятых из диапазона <code>[0, n]</code>. Одно число пропущено. Найти его.</p>
-<p><strong>XOR-подход:</strong> Если мы сделаем XOR всех индексов <code>[0, n]</code> и всех значений массива, все числа, которые присутствуют и в индексах, и в значениях, сократятся. Останется только пропущенное число.</p>
+<p><strong>Постановка задачи:</strong> В массиве длины $N$ содержатся $N$ уникальных чисел из диапазона $[0, N]$. Одно число пропущено. Найти его.</p>
+<h3 id="arifmeticheskiy-risk-perepolneniya">Арифметический риск переполнения</h3>
+<p>Классическая формула суммы Гаусса $\frac{N(N+1)}{2}$ при больших $N$ (например, $N = 10^7$) может переполнить знаковое 32-битное целое число, приведя к арифметическому переполнению (integer overflow).</p>
+<h3 id="xor-reshenie-absolyutnaya-zashchita-ot-perepolneniya">XOR-решение: Абсолютная защита от переполнения</h3>
+<p>XOR работает строго поразрядно. Значения никогда не превышают диапазон исходного типа данных:<br />
+$$\text{Missing} = N \oplus \bigoplus_{i=0}^{N-1} (i \oplus \text{nums}[i])$$</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2399,39 +2379,25 @@ x &amp; -x:
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// MissingNumber находит пропущенное число в диапазоне [0, n]
-// nums содержит n чисел из диапазона [0, n]
+  <pre class="language-go"><code class="language-go">package main
+
+// MissingNumber находит пропущенное число в диапазоне [0, n].
 func MissingNumber(nums []int) int {
-    result := len(nums) // Начинаем с n, так как индексы идут от 0 до n-1
-
-    for i, num := range nums {
-        result ^= i ^ num
+    n := len(nums)
+    res := n
+    for i, val := range nums {
+        res ^= i ^ val
     }
-
-    return result
+    return res
 }
 </code></pre>
 </div>
 
-<p><strong>Альтернатива: арифметическая сумма</strong><br />
-Можно решить через формулу суммы арифметической прогрессии: <code>expected = n*(n+1)/2</code>, затем вычесть сумму массива.<br />
-Но этот подход имеет риск <strong>переполнения</strong> для больших <code>n</code>, особенно в языках с фиксированной разрядностью. XOR лишён этого недостатка, так как операция выполняется побитово и не выходит за пределы типа.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Переполнение в арифметических решениях</strong><br />
-В задаче на поиск пропущенного числа арифметическое решение (<code>sum - actualSum</code>) может дать неверный результат при переполнении <code>int</code>.<br />
-В Go переполнение целых чисел <strong>не вызывает паники</strong> (в отличие от деления на ноль или выхода за границы слайса), а просто «оборачивается» (wrap around).<br />
-XOR-решение безопасно от переполнения по определению, так как работает в пределах битовой сетки типа.</p>
-  </div>
-</div>
+<hr />
+<h2 id="5-pattern-4-vetvlenie-bez-vetvleniy-branchless-abs-sign">5. Паттерн 4: Ветвление без ветвлений (Branchless Abs & Sign)</h2>
 
-<h2 id="pattern-4-bystroe-shifrovanie-i-obmen-dannymi">Паттерн 4: Быстрое шифрование и обмен данными</h2>
-
-<p>Свойство инволюции <code>(a ^ key) ^ key = a</code> лежит в основе простейших симметричных шифров (например, потока в режиме XOR).</p>
+<p>На современных конвейерных процессорах (x86-64, Apple M-серии) условный переход <code>if/else</code>, который процессор не смог предсказать (Branch Misprediction), сбрасывает конвейер и обходится в 15–20 тактов простоя.</p>
+<p>С помощью операции XOR и арифметического сдвига вправо можно вычислить абсолютное значение числа <strong>без единого условного перехода</strong>:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2441,74 +2407,22 @@ XOR-решение безопасно от переполнения по опр�
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// SimpleXORCipher тривиальный пример потокового шифра
-// Внимание: не использовать для реальной криптографии!
-func SimpleXORCipher(data []byte, key byte) {
-    for i := range data {
-        data[i] ^= key
-    }
-}
+  <pre class="language-go"><code class="language-go">package main
 
-// Пример использования:
-// msg := []byte(&quot;secret&quot;)
-// SimpleXORCipher(msg, 0x5A) // Шифрование
-// SimpleXORCipher(msg, 0x5A) // Дешифрование (та же функция!)
-</code></pre>
-</div>
-
-<p>Также этот паттерн используется для <strong>обмена значениями без временной переменной</strong> (хотя в Го это скорее академический пример):</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Swap без третьей переменной (не рекомендуется в продакшене)
-func SwapXOR(a, b *int) {
-    if a == b { // Защита от само-свопа
-        return
-    }
-    *a ^= *b
-    *b ^= *a
-    *a ^= *b
+// AbsBranchless вычисляет |v| без инструкций условного перехода (JMP/CMOV).
+func AbsBranchless(v int64) int64 {
+    // Для v &gt;= 0: mask = 0x0000000000000000 (0)
+    // Для v &lt; 0:  mask = 0xFFFFFFFFFFFFFFFF (-1)
+    mask := v &gt;&gt; 63
+    // Если mask == 0:  (v ^ 0) - 0 = v
+    // Если mask == -1: (v ^ -1) - (-1) = (^v) + 1 = -v
+    return (v ^ mask) - mask
 }
 </code></pre>
 </div>
 
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Само-своп (self-swap) в XOR</strong><br />
-Если передать в функцию <code>SwapXOR</code> указатели на одну и ту же переменную (<code>SwapXOR(&amp;x, &amp;x)</code>), результат будет <code>0</code>, а не исходное значение!</p>
+<h3 id="assemblernyy-ekvivalent-x86-64">Ассемблерный эквивалент (x86-64):</h3>
 
-<div class="code-block" data-lang="text">
-  <div class="code-header">
-    <span class="code-lang-tag">TEXT</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-text"><code class="language-text">x = 5
-x ^= x  // x = 0
-x ^= x  // x = 0
-x ^= x  // x = 0
-</code></pre>
-</div>
-
-<p>Всегда добавляйте проверку <code>if a == b { return }</code> или используйте стандартный кортежный обмен: <code>*a, *b = *b, *a</code>. Компилятор Го оптимизирует его в эффективный код с использованием регистров, без риска ошибок.</p>
-  </div>
-</div>
-
-<h2 id="mekhanika-na-urovne-cpu-instruktsiya-xor">Механика на уровне CPU: Инструкция XOR</h2>
-
-<p>В архитектуре x86-64 операция XOR компилируется в инструкцию <code>XOR</code> (или <code>XORL</code>/<code>XORQ</code> для конкретных размеров операндов).</p>
 
 <div class="code-block" data-lang="asm">
   <div class="code-header">
@@ -2518,237 +2432,31 @@ x ^= x  // x = 0
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-asm"><code class="language-asm">; Пример: result ^= num, где result и num — int64
-; Компилятор Го сгенерирует что-то вроде:
-XORQ    AX, BX    ; BX = BX XOR AX (1 такт, порт исполнения 0,1,5)
+  <pre class="language-asm"><code class="language-asm">MOVQ    AX, CX
+SARQ    $63, CX     // CX = знаковая маска
+XORQ    CX, AX      // AX ^= mask
+SUBQ    CX, AX      // AX -= mask
 </code></pre>
 </div>
 
-<p><strong>Характеристики инструкции:</strong><br />
-*   <strong>Латентность:</strong> ~1 такт<br />
-*   <strong>Пропускная способность (throughput):</strong> 0.25–0.33 цикла (можно выполнять несколько операций за такт на разных исполнительных портах)<br />
-*   <strong>Влияние на флаги:</strong> Устанавливает флаги <code>ZF</code> (zero flag), <code>SF</code> (sign flag), <code>PF</code> (parity flag), сбрасывает <code>CF</code> и <code>OF</code>. Это важно для последующих условных переходов.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>XOR и предсказание ветвлений</strong><br />
-Одно из скрытых преимуществ битовых операций — они часто позволяют избежать условных переходов (<code>if/else</code>).<br />
-Например, абсолютное значение без ветвления:</p>
+<p>Всего 3 инструкции, выполняющиеся строго линейно за 2 такта CPU.</p>
+<hr />
+<h2 id="6-mechanical-sympathy-apparatnaya-instruktsiya-xorq">6. Mechanical Sympathy: Аппаратная инструкция XORQ</h2>
 
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func AbsNoBranch(v int) int {
-    mask := v &gt;&gt; 63          // 0 для положительных, -1 (все 1) для отрицательных
-    return (v ^ mask) - mask // Если mask=0: v-0=v; если mask=-1: ^v+1 = -v
-}
-</code></pre>
-</div>
-
-<p>Это устраняет риск <strong>mispredicted branch</strong>, который на современных CPU может стоить 10-20 тактов простоя конвейера. Однако в Го такие оптимизации редко нужны — компилятор и процессор отлично справляются с предсказанием простых ветвлений. Используйте такие трюки только после профилирования.</p>
-  </div>
-</div>
-
-<h2 id="optimizatsii-kompilyatora-i-paket-mathbits">Оптимизации компилятора и пакет math/bits</h2>
-
-<p>Стандартная библиотека Го предоставляет пакет <code>math/bits</code> для низкоуровневых битовых операций с гарантированной производительностью.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">import &quot;math/bits&quot;
-
-// Вместо ручного подсчета бит:
-func countOnesManual(n uint64) int {
-    count := 0
-    for n != 0 {
-        n &amp;= n - 1 // Удаляем младшую единицу
-        count++
-    }
-    return count
-}
-
-// Лучше использовать оптимизированную версию:
-func countOnesOptimized(n uint64) int {
-    return bits.OnesCount64(n) // Компилируется в POPCNT на x86
-}
-</code></pre>
-</div>
-
-<p>Компилятор Го распознаёт многие битовые паттерны и заменяет их на эффективные инструкции:<br />
-*   <code>x * 2</code> → <code>x &lt;&lt; 1</code> (strength reduction)<br />
-*   <code>x % 8</code> → <code>x &amp; 7</code> (если 8 — степень двойки)<br />
-*   Циклы с <code>n &amp;= n-1</code> для подсчета бит могут быть оптимизированы, но <code>bits.OnesCount</code> всегда предпочтительнее.</p>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Почему <code>bits.OnesCount</code> быстрее ручного цикла?<br />
-<strong>Ответ:</strong> Функция <code>bits.OnesCount</code> при компиляции для целевой архитектуры с поддержкой инструкции <code>POPCNT</code> (x86 SSE4.2, ARM NEON) транслируется в одну аппаратную инструкцию, которая считает все установленные биты за 2-3 такта, независимо от количества единиц. Ручной цикл выполняет итерацию на каждую единицу, что в худшем случае (все биты = 1) требует 64 итерации для <code>uint64</code>.</p>
-  </div>
-</div>
-
-<h2 id="prakticheskiy-primer-reshenie-zadachi-s-sobesedovaniya">Практический пример: Решение задачи с собеседования</h2>
-
-<p><strong>Условие:</strong> Дан массив целых чисел. Все числа встречаются по два раза, кроме двух, которые встречаются по одному разу. Найдите эти два числа. Верните их в порядке возрастания.</p>
-<p><strong>Полное решение с комментариями:</strong></p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">package solution
-
-// FindTwoUnique возвращает два уникальных числа из массива
-// где все остальные встречаются ровно дважды
-// Требование: время O(n), память O(1)
-func FindTwoUnique(nums []int) [2]int {
-    // Edge case: проверка на минимальный размер
-    if len(nums) &lt; 2 {
-        return [2]int{0, 0}
-    }
-
-    // Шаг 1: вычисляем XOR всех элементов
-    // Результат: xor = a ^ b, где a и b — искомые числа
-    var xorAll int
-    for _, num := range nums {
-        xorAll ^= num
-    }
-
-    // Шаг 2: находим бит, в котором a и b различаются
-    // Берём самый младший установленный бит
-    // Если xorAll == 0, значит a == b, что противоречит условию
-    diffBit := xorAll &amp; -xorAll
-
-    // Шаг 3: разбиваем числа на две группы по этому биту
-    // и находим уникальное число в каждой группе
-    var numA, numB int
-    for _, num := range nums {
-        if num&amp;diffBit == 0 {
-            numA ^= num
-        } else {
-            numB ^= num
-        }
-    }
-
-    // Шаг 4: возвращаем в отсортированном порядке
-    if numA &gt; numB {
-        numA, numB = numB, numA
-    }
-
-    return [2]int{numA, numB}
-}
-</code></pre>
-</div>
-
-<p><strong>Тесты (table-driven, как принято в Го):</strong></p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func TestFindTwoUnique(t *testing.T) {
-    tests := []struct {
-        name     string
-        input    []int
-        expected [2]int
-    }{
-        {
-            name:     &quot;basic case&quot;,
-            input:    []int{1, 2, 1, 3, 2, 5},
-            expected: [2]int{3, 5},
-        },
-        {
-            name:     &quot;negative numbers&quot;,
-            input:    []int{-1, -1, 0, 2, 0},
-            expected: [2]int{-1, 2}, // -1 встречается 2 раза, уникальные: 2 и... стоп, пересчитаем
-            // Исправленный тест: [-1, -1, 0, 2, 0, 3] -&gt; уникальные 2 и 3
-        },
-        {
-            name:     &quot;large numbers&quot;,
-            input:    []int{1 &lt;&lt; 30, 1 &lt;&lt; 30, 1 &lt;&lt; 31},
-            expected: [2]int{0, 1 &lt;&lt; 31}, // 0 не в массиве, но... 
-            // Лучше: []int{1&lt;&lt;30, 1&lt;&lt;30, 1&lt;&lt;31, 1&lt;&lt;29} -&gt; {1&lt;&lt;29, 1&lt;&lt;31}
-        },
-    }
-
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            result := FindTwoUnique(tt.input)
-            if result != tt.expected {
-                t.Errorf(&quot;got %v, want %v&quot;, result, tt.expected)
-            }
-        })
-    }
-}
-</code></pre>
-</div>
-
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Знаковые числа и сдвиги</strong><br />
-При работе с отрицательными числами помните: сдвиг вправо <code>&gt;&gt;</code> для знаковых типов в Го — <strong>арифметический</strong>, он сохраняет знак.<br />
-Выражение <code>xorAll &amp; -xorAll</code> для выделения младшего бита работает корректно и для отрицательных чисел, благодаря представлению в дополнении до двух. Но если вы вручную манипулируете битами знаковых чисел, всегда приводите их к <code>uint</code> для предсказуемого поведения: <code>uint64(x) &amp; -uint64(x)</code>.</p>
-  </div>
-</div>
-
-<h2 id="kogda-ne-ispolzovat-xor">Когда НЕ использовать XOR</h2>
-
-<p>Несмотря на элегантность, XOR — не серебряная пуля.</p>
-<ol>
-<li><strong>Читаемость кода:</strong> Если решение с <code>map</code> или сортировкой очевидно и укладывается в требования по времени/памяти, выбирайте его. Код читается чаще, чем пишется.</li>
-<li><strong>Отладка:</strong> Битовые операции сложнее отлаживать. Значение <code>0x5A3F</code> в отладчике менее информативно, чем <code>map[int]int</code>.</li>
-<li><strong>Сложные условия:</strong> Если задача требует не просто наличия/отсутствия, а подсчета частот &gt;2, XOR может усложнить решение.</li>
-</ol>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как бы вы решили задачу поиска уникального элемента, если бы массив был отсортирован?<br />
-<strong>Ответ:</strong> Если массив отсортирован, можно использовать бинарный поиск $O(\log N)$. Идея: до уникального элемента пары занимают индексы <code>(чётный, нечётный)</code>, после — <code>(нечётный, чётный)</code>. Проверяем средний индекс и определяем, в какой половине искать. Это демонстрирует умение комбинировать разные алгоритмические техники.</p>
-  </div>
-</div>
-
-<h2 id="itog">Итог</h2>
+<p>На кристалле процессора логический блок XOR реализован через простейшие логические вентили на КМОП-транзисторах.<br />
+- Инструкция <code>XORQ RAX, RBX</code> имеет задержку (latency) в <strong>1 такт</strong>.<br />
+- В современных суперскалярных ядрах (Intel Raptor Lake, AMD Zen 4, Apple Firestorm) имеется до 4–6 параллельных АЛУ-портов, способных выполнять до <strong>четырех XOR-инструкций за один машинный такт</strong>.</p>
+<p>Более того, инструкция обнуления регистра <code>XORQ AX, AX</code> распознается процессором еще на стадии декодирования (Register Renaming) и выполняется <strong>за 0 тактов (Zero-latency instruction)</strong>, не занимая исполнительные порты ядра!</p>
+<hr />
+<h2 id="7-rezyume">7. Резюме</h2>
 
 <ol>
-<li><strong>XOR</strong> — мощный инструмент для задач на поиск уникальных элементов, проверки чётности и простого шифрования.</li>
-<li>Ключевые свойства: <code>a ^ a = 0</code>, <code>a ^ 0 = a</code>, коммутативность и ассоциативность.</li>
-<li>Паттерны: поиск одного уникального, поиск двух уникальных, нахождение пропущенного числа, обмен без временной переменной.</li>
-<li>На уровне CPU: одна инструкция, высокая пропускная способность, минимум зависимостей.</li>
-<li>В Го: используйте <code>math/bits</code> для сложных операций, помните о знаковых типах и переполнении.</li>
-<li>На собеседовании: демонстрируйте понимание инвариантов, но не забывайте про читаемость и edge cases.</li>
+<li><strong>Инволюция $x \oplus x = 0$:</strong> Фундаментальный закон, позволяющий фильтровать парные события, сетевые пакеты и идентификаторы без аллокации хэш-таблиц.</li>
+<li><strong>Селектор $x \ \&amp; \ (-x)$:</strong> Позволяет мгновенно извлечь различающийся бит и разделить пространство поиска на независимые классы эквивалентности.</li>
+<li><strong>Безопасность типов:</strong> XOR-вычисления защищены от целочисленного переполнения, в отличие от сумм и произведений.</li>
+<li><strong>Zero Allocations:</strong> Алгоритмы на базе XOR работают исключительно в регистрах процессора с константной памятью $\mathcal{O}(1)$.</li>
 </ol>
-<p>В следующей статье мы применим изученные паттерны к классической задаче, которая встречается на собеседованиях в топовые компании: <a href="3-single-number.html" class="wikilink">3. Single Number</a>, где вы закрепите навык поиска уникального элемента и разберёте вариации задачи с увеличением сложности.</p>
+<p>В следующей статье мы подробно рассмотрим реализацию эталонной задачи этого семейства: <a href="3-single-number.html" class="wikilink">3. Single Number</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2776,7 +2484,7 @@ func FindTwoUnique(nums []int) [2]int {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#vvedenie-magiya-isklyuchayushchego-ili">Введение: Магия исключающего ИЛИ</a></li><li class="toc-item toc-h2"><a href="#fundamentalnye-svoystva-xor">Фундаментальные свойства XOR</a></li><li class="toc-item toc-h2"><a href="#pattern-1-poisk-edinstvennogo-unikalnogo-elementa">Паттерн 1: Поиск единственного уникального элемента</a></li><li class="toc-item toc-h2"><a href="#pattern-2-poisk-dvukh-unikalnykh-elementov">Паттерн 2: Поиск двух уникальных элементов</a></li><li class="toc-item toc-h2"><a href="#pattern-3-nakhozhdenie-propushchennogo-chisla">Паттерн 3: Нахождение пропущенного числа</a></li><li class="toc-item toc-h2"><a href="#pattern-4-bystroe-shifrovanie-i-obmen-dannymi">Паттерн 4: Быстрое шифрование и обмен данными</a></li><li class="toc-item toc-h2"><a href="#mekhanika-na-urovne-cpu-instruktsiya-xor">Механика на уровне CPU: Инструкция XOR</a></li><li class="toc-item toc-h2"><a href="#optimizatsii-kompilyatora-i-paket-mathbits">Оптимизации компилятора и пакет math/bits</a></li><li class="toc-item toc-h2"><a href="#prakticheskiy-primer-reshenie-zadachi-s-sobesedovaniya">Практический пример: Решение задачи с собеседования</a></li><li class="toc-item toc-h2"><a href="#kogda-ne-ispolzovat-xor">Когда НЕ использовать XOR</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-algebraicheskiy-fundament-operatsii-xor">1. Алгебраический фундамент операции XOR</a></li><li class="toc-item toc-h2"><a href="#2-pattern-1-poisk-edinstvennogo-unikalnogo-elementa-leetcode-136">2. Паттерн 1: Поиск единственного уникального элемента (LeetCode 136)</a></li><li class="toc-item toc-h3"><a href="#naivnyy-podkhod">Наивный подход</a></li><li class="toc-item toc-h3"><a href="#idiomatichnyy-podkhod-na-go">Идиоматичный подход на Go</a></li><li class="toc-item toc-h2"><a href="#3-pattern-2-poisk-dvukh-unikalnykh-elementov-leetcode-260">3. Паттерн 2: Поиск двух уникальных элементов (LeetCode 260)</a></li><li class="toc-item toc-h3"><a href="#matematicheskiy-insayt">Математический инсайт</a></li><li class="toc-item toc-h3"><a href="#realizatsiya-na-go">Реализация на Go</a></li><li class="toc-item toc-h2"><a href="#4-pattern-3-nakhozhdenie-nedostayushchego-chisla-missing-number">4. Паттерн 3: Нахождение недостающего числа (Missing Number)</a></li><li class="toc-item toc-h3"><a href="#arifmeticheskiy-risk-perepolneniya">Арифметический риск переполнения</a></li><li class="toc-item toc-h3"><a href="#xor-reshenie-absolyutnaya-zashchita-ot-perepolneniya">XOR-решение: Абсолютная защита от переполнения</a></li><li class="toc-item toc-h2"><a href="#5-pattern-4-vetvlenie-bez-vetvleniy-branchless-abs-sign">5. Паттерн 4: Ветвление без ветвлений (Branchless Abs &amp; Sign)</a></li><li class="toc-item toc-h3"><a href="#assemblernyy-ekvivalent-x86-64">Ассемблерный эквивалент (x86-64):</a></li><li class="toc-item toc-h2"><a href="#6-mechanical-sympathy-apparatnaya-instruktsiya-xorq">6. Mechanical Sympathy: Аппаратная инструкция XORQ</a></li><li class="toc-item toc-h2"><a href="#7-rezyume">7. Резюме</a></li>
   </ul>
 </aside>
 

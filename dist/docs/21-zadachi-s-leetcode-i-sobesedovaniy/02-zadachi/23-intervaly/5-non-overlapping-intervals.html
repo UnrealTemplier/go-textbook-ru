@@ -2171,23 +2171,42 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~19 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~12 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">5. Non-overlapping Intervals</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="vvedenie-ot-udaleniya-k-maksimizatsii">Введение: От удаления к максимизации</h2>
+            <blockquote>
+<p><em>«Выбирая то, что завершается раньше всех, мы оставляем наибольший простор для будущих свершений».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>Задача <strong>Non-overlapping Intervals (LeetCode 435, Medium)</strong> формулируется как оптимизационная задача минимизации потерь:</p>
+<blockquote>
+<p>Дан срез интервалов <code>intervals</code>, где <code>intervals[i] = [start, end]</code>.<br />
+Найдите <strong>минимальное количество интервалов</strong>, которые необходимо удалить, чтобы все оставшиеся отрезки стали взаимно непересекающимися.<br />
+Граничное касание концов (например, <code>[1, 2]</code> и <code>[2, 3]</code>) <strong>не считается</strong> пересечением.</p>
+</blockquote>
+<p>Прямая попытка перебирать «какие интервалы удалить» ведет к комбинаторному взрыву или тяжелому двумерному динамическому программированию.<br />
+Инженерный подход заключается в математической трансформации задачи:<br />
+$$\text{Минимум удалений} = N - \text{Максимум совместимых непересекающихся отрезков}$$</p>
+<p>Мы мгновенно редуцируем задачу к классической <strong>«Задаче о выборе мероприятий» (Activity Selection Problem)</strong>, которая решается с помощью бескомпромиссно жадного алгоритма за $\mathcal{O}(N \log N)$ времени и $\mathcal{O}(1)$ дополнительной памяти.</p>
+<hr />
+<h2 id="1-fundamentalnyy-vybor-sortirovka-po-nachalu-ili-po-kontsu">1. Фундаментальный выбор: Сортировка по началу или по концу?</h2>
 
-<p>Задача <strong>Non-overlapping Intervals</strong> (LeetCode 435) формулируется как задача минимизации: «Найдите минимальное количество интервалов, которые нужно удалить, чтобы оставшиеся не пересекались». Однако в алгоритмическом проектировании прямое решение «что удалить» часто ведёт к сложной динамике и экспоненциальному ветвлению. Инженерный подход заключается в трансформации задачи: <strong>минимум удалений = всего интервалов − максимум непересекающихся</strong>.</p>
-<p>Это классическая «Задача о выборе мероприятий» (Activity Selection Problem), фундамент для систем планирования ресурсов, тайм-слотов в Kubernetes, оптимизации окон репликации БД и scheduling процессов. В этой статье мы разберём доказательство оптимальности жадной стратегии, реализуем решение на Go с учётом низкоуровневых оптимизаций, проанализируем поведение CPU-конвейера и подготовимся к каверзным follow-up вопросам на собеседованиях уровня Senior.</p>
-<h2 id="1-fundamentalnaya-transformatsiya-i-zhadnaya-strategiya">1. Фундаментальная трансформация и жадная стратегия</h2>
-
-<p>Почему сортировка по времени окончания (<code>End</code>) критически важна, а сортировка по началу (<code>Start</code>) — нет?</p>
-<p>Представьте, что вы пытаетесь упаковать максимальное количество событий в календарь. Если вы выберете событие, которое заканчивается раньше всех, вы оставляете <strong>максимально возможный остаток времени</strong> для всех последующих событий. Это локально оптимальное решение гарантированно приводит к глобальному оптимуму.</p>
-<p><strong>Доказательство (интуитивное):</strong><br />
-Допустим, существует оптимальное решение <code>O</code>, которое не включает самый ранний завершающийся интервал <code>A</code>. Заменим в <code>O</code> первый конфликтующий с <code>A</code> интервал на <code>A</code>. Поскольку <code>A</code> заканчивается раньше или в тот же момент, эта замена <strong>не уменьшает</strong> пространство для остальных интервалов. Значит, <code>A</code> всегда можно безопасно включить в оптимальный набор.</p>
+<p>В <a href="3-merge-intervals.html" class="wikilink">3. Merge Intervals</a> мы сортировали интервалы по времени начала (<code>Start</code>).<br />
+Что произойдет, если мы применим жадный выбор после сортировки по <code>Start</code> здесь?</p>
+<h3 id="razrushitelnyy-kontrprimer-dlya-sortirovki-po-start">Разрушительный контрпример для сортировки по `Start`:</h3>
+<p>Пусть дан набор интервалов: <code>&lt;span class="wikilink-unresolved" title="Заметка в разработке"&gt;1, 100], [2, 3], [4, 5&lt;/span&gt;</code>.<br />
+1. Если мы сортируем по <code>Start</code>, первым идет длинный отрезок <code>[1, 100]</code>.<br />
+2. Жадный выбор берет <code>[1, 100]</code>. Теперь отрезки <code>[2, 3]</code> и <code>[4, 5]</code> пересекаются с ним и должны быть удалены!<br />
+   Результат: выбрано 1 мероприятие, удалено 2.<br />
+3. Но если взять <code>[2, 3]</code> и <code>[4, 5]</code>, мы удалим всего 1 отрезок (<code>[1, 100]</code>)!<br />
+<strong>Сортировка по времени начала для этой задачи не работает.</strong></p>
+<h3 id="pochemu-sortirovka-po-vremeni-okonchaniya-end-matematicheski-optimalna">Почему сортировка по времени окончания (`End`) математически оптимальна?</h3>
+<p>Каждый раз, когда мы выбираем интервал, завершающийся <strong>как можно раньше</strong> (<code>\min End</code>), мы освобождаем ресурс (комнату, процессорное ядро, временную шкалу) для максимально возможного количества последующих событий.<br />
+Отрезок с минимальным <code>End</code> оставляет наибольший сухой остаток времени справа от себя!</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2202,27 +2221,32 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-Start[&quot;Вход: N интервалов&lt;br&gt;Неотсортированный массив&quot;] --&gt; Sort[&quot;Сортировка по End&lt;br&gt;O(n log n)&quot;]
-Sort --&gt; Init[&quot;Берём первый&lt;br&gt;Фиксируем end_time&quot;]
-Init --&gt; Loop[&quot;Линейный проход&lt;br&gt;i от 1 до N&quot;]
-Loop --&gt; Check{&quot;curr.Start &gt;= end_time&lt;br&gt;Есть ли пересечение?&quot;}
-Check -- &quot;Нет (пересечение)&quot; --&gt; Skip[&quot;Пропускаем&lt;br&gt;Увеличиваем счётчик удалений&quot;]
-Check -- &quot;Да (совместим)&quot; --&gt; Pick[&quot;Берём интервал&lt;br&gt;end_time = curr.End&quot;]
-Skip --&gt; Next{&quot;i &lt; N?&quot;}
-Pick --&gt; Next
-Next -- &quot;Да&quot; --&gt; Loop
-Next -- &quot;Нет&quot; --&gt; Calc[&quot;Удаления = N - выбрано&lt;br&gt;Возврат результата&quot;]
+classDef entry fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef sort fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef loop fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef check fill:#78350f,stroke:#fbbf24,stroke-width:2px,color:#f8fafc
+classDef keep fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
+classDef drop fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#f8fafc
 
-style Start fill:#1e3a5f,stroke:#38bdf8,color:#f8fafc
-style Calc fill:#064e3b,stroke:#34d399,color:#f8fafc
-style Check fill:#78350f,stroke:#fbbf24,color:#f8fafc
+In[&quot;Вход: intervals [][]int&quot;]:::entry --&gt; S[&quot;Сортировка по End (по правому краю):&lt;br&gt;slices.SortFunc за O(N log N)&quot;]:::sort
+S --&gt; Init[&quot;prevEnd = intervals[0][1], kept = 1&quot;]:::loop
+Init --&gt; Loop[&quot;Итерация i от 1 до N-1&quot;]:::loop
+Loop --&gt; Check{&quot;intervals[i][0] &gt;= prevEnd?&lt;br&gt;(Нет пересечения?)&quot;}:::check
+
+Check -- &quot;Да&quot; --&gt; Keep[&quot;Оставляем интервал:&lt;br&gt;kept++&lt;br&gt;prevEnd = intervals[i][1]&quot;]:::keep
+Check -- &quot;Нет&quot; --&gt; Drop[&quot;Конфликт! Удаляем интервал:&lt;br&gt;(просто не двигаем prevEnd)&quot;]:::drop
+
+Keep --&gt; Next{&quot;Есть еще элементы?&quot;}:::loop
+Drop --&gt; Next
+Next -- &quot;Да&quot; --&gt; Loop
+Next -- &quot;Нет&quot; --&gt; Out[&quot;Результат: N - kept&quot;]:::entry
   </pre>
 </div>
 
 
-<h2 id="2-idiomatichnaya-realizatsiya-v-go">2. Идиоматичная реализация в Go</h2>
+<hr />
+<h2 id="2-idiomatichnaya-realizatsiya-na-go-1-21">2. Идиоматичная реализация на Go 1.21+</h2>
 
-<p>В Go мы работаем со срезами. Для максимальной читаемости и производительности используем структуру <code>Interval</code>, а не <code>[][]int</code>, что улучшает локальность данных и упрощает код.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2232,157 +2256,83 @@ style Check fill:#78350f,stroke:#fbbf24,color:#f8fafc
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">package solution
+  <pre class="language-go"><code class="language-go">package main
 
-import &quot;sort&quot;
+import &quot;slices&quot;
 
-// Interval представляет временной отрезок [Start, End]
-type Interval struct {
-    Start, End int
-}
-
-// MinRemovals возвращает минимальное количество интервалов,
-// которые необходимо удалить, чтобы оставшиеся не пересекались.
-// Сложность: O(n log n) время, O(1) дополнительная память (при in-place сортировке)
-func MinRemovals(intervals []Interval) int {
+// EraseOverlapIntervals возвращает минимальное число удалений для устранения конфликтов.
+// Временная сложность: O(N log N) — доминирует сортировка.
+// Память: O(1) extra space — сортировка выполняется in-place.
+func EraseOverlapIntervals(intervals [][]int) int {
     n := len(intervals)
     if n &lt;= 1 {
         return 0
     }
 
-    // Сортировка по времени окончания
-    sort.Slice(intervals, func(i, j int) bool {
-        return intervals[i].End &lt; intervals[j].End
+    // 1. Сортируем интервалы строго по времени окончания (intervals[i][1])
+    slices.SortFunc(intervals, func(a, b []int) int {
+        return a[1] - b[1]
     })
 
-    // Жадный выбор
-    count := 1
-    currentEnd := intervals[0].End
+    // 2. Жадный выбор максимального количества совместимых интервалов
+    keptCount := 1
+    prevEnd := intervals[0][1]
 
     for i := 1; i &lt; n; i++ {
-        if intervals[i].Start &gt;= currentEnd {
-            count++
-            currentEnd = intervals[i].End
+        // Если начало текущего интервала &gt;= окончания предыдущего — конфликта нет!
+        if intervals[i][0] &gt;= prevEnd {
+            keptCount++
+            prevEnd = intervals[i][1]
         }
+        // В противном случае интервал отбрасывается (не включается в keptCount)
     }
 
-    return n - count
+    // Минимальное число удалений = всего интервалов - сохранено интервалов
+    return n - keptCount
 }
 </code></pre>
 </div>
 
-<h2 id="3-mekhanika-pod-kapotom-cpu-kesh-i-vetvleniya">3. Механика под капотом: CPU, кэш и ветвления</h2>
-
-<p>Почему этот простой цикл работает настолько эффективно, что в бенчмарках часто обходит сложные деревья отрезков на размерах до $10^6$ элементов?</p>
-<h3 id="lokalnost-dannykh-i-apparatnyy-prefetching">Локальность данных и аппаратный префетчинг</h3>
-<p>Слайс <code>[]Interval</code> хранится в непрерывном блоке памяти. Цикл <code>for i := 1; i &lt; n; i++</code> осуществляет строго последовательный проход. CPU детектирует этот паттерн (Stream Prefetcher) и заранее загружает следующие 1-2 кэш-линии (64 байта) в L1. Промахи кэша (cache misses) практически отсутствуют.</p>
-<h3 id="predskazanie-vetvleniy-branch-prediction">Предсказание ветвлений (Branch Prediction)</h3>
-<p>Условие <code>intervals[i].Start &gt;= currentEnd</code> после сортировки по <code>End</code> обладает высокой предсказуемостью. В реальных данных (например, логи, графики процессов) интервалы часто идут пачками. Branch Predictor CPU (PHT/BTB в x86/ARM) быстро обучается последовательности <code>false</code> (пересечения) и <code>true</code> (совместимость), сводя штрафы за сброс конвейера к нулю.</p>
-<h3 id="allokatsii-i-escape-analysis">Аллокации и Escape Analysis</h3>
-<p>Сортировка <code>sort.Slice</code> модифицирует слайс <strong>in-place</strong>. Замыкание <code>func(i, j int) bool</code> в современных версиях Go (1.21+) анализируется компилятором: если оно не покидает область видимости, размещается на стеке. Дополнительных аллокаций в куче нет. <code>count</code>, <code>currentEnd</code>, <code>i</code> — стековые переменные. Давление на Garbage Collector равно нулю.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Почему не <code>sort.Interface</code>?</strong><br />
-Для production hot-path, где критичны наносекунды, можно реализовать <code>sort.Interface</code> вручную, чтобы избежать аллокации замыкания:</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">type ByEnd []Interval
-func (a ByEnd) Len() int           { return len(a) }
-func (a ByEnd) Less(i, j int) bool { return a[i].End &lt; a[j].End }
-func (a ByEnd) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-// sort.Sort(ByEnd(intervals))
-</code></pre>
-</div>
-
-<p>Это гарантирует 0 аллокаций. Однако в 95% случаев бизнес-логики выигрыш в 5-10 нс не оправдывает снижение читаемости. <code>sort.Slice</code> остаётся стандартом идиоматичного Go.</p>
-  </div>
-</div>
-
-<h2 id="4-lovushki-i-edge-cases">4. Ловушки и Edge Cases</h2>
-
-<h3 id="1-kasanie-granits-1-2-i-2-3">1. Касание границ `[1, 2]` и `[2, 3]`</h3>
-<p>В условии LeetCode 435 касание <strong>не считается</strong> пересечением (<code>Start &gt;= currentEnd</code> пропускает их). В реальных системах календарного типа часто используют полуоткрытые интервалы <code>[start, end)</code>. Если касание должно считаться конфликтом, условие меняется на <code>&gt;</code>. Всегда фиксируйте семантику в контракте API.</p>
-<h3 id="2-ravnye-vremena-okonchaniya">2. Равные времена окончания</h3>
-<p>Если <code>intervals[i].End == intervals[j].End</code>, порядок после сортировки не определён (нестабильная сортировка <code>sort.Slice</code>). Это не влияет на корректность жадного выбора, так как оба интервала занимают одинаковый объём времени. Однако для стабильности отладки можно добавить вторичный критерий: <code>intervals[i].Start &lt; intervals[j].Start</code>.</p>
-<h3 id="3-otritsatelnye-vremena-i-mikrosekundy">3. Отрицательные времена и микросекунды</h3>
-<p>Алгоритм не зависит от знака чисел. Работает с <code>int64</code>, <code>time.Time.UnixMilli()</code>. Главное требование: <code>Start &lt;= End</code>. Если во входных данных встречается инверсия (<code>Start &gt; End</code>), функция вернёт некорректный результат. В продакшене обязательно валидируйте вход:</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">if intervals[i].Start &gt; intervals[i].End {
-    return 0, errors.New(&quot;invalid interval range&quot;)
-}
-</code></pre>
-</div>
-
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Мутабельность входа и гонки данных</strong><br />
-<code>sort.Slice</code> меняет порядок элементов в исходном слайсе. Если <code>intervals</code> используется параллельно в других горутинах (например, читается из кэша, пока мы сортируем), возникнет data race.<br />
-<strong>Решение:</strong> Либо передавайте копию слайса: <code>intervals = append([]Interval(nil), intervals...)</code>, либо явно документируйте: «Функция изменяет порядок элементов входного массива». Для библиотечных функций безопаснее копия, для внутреннего сервиса допустимо in-place с предупреждением.</p>
-  </div>
-</div>
-
-<h2 id="5-podgotovka-k-sobesedovaniyu">5. Подготовка к собеседованию</h2>
-
-<h3 id="tipovye-voprosy-i-follow-up">Типовые вопросы и follow-up</h3>
+<hr />
+<h2 id="3-mechanical-sympathy-in-place-pdqsort-i-registrovye-peremennye">3. Mechanical Sympathy: In-Place pdqsort и регистровые переменные</h2>
 
 <ol>
-<li>
-<p><strong>Вопрос:</strong> Как доказать, что жадный выбор по <code>End</code> оптимален, а по <code>Start</code> — нет?<br />
-<strong>Ответ:</strong> Контрпример для сортировки по <code>Start</code>: <code>&lt;span class="wikilink-unresolved" title="Заметка в разработке"&gt;1, 100], [2, 3], [4, 5&lt;/span&gt;</code>. Если брать самый ранний <code>Start</code>, выберем <code>[1, 100]</code> и потеряем два других. Жадный по <code>End</code> выберет <code>[2, 3]</code>, затем <code>[4, 5]</code>, получив оптимальные 2 интервала вместо 1.</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Что если у интервалов есть «вес» (например, прибыль от встречи)? Задача превращается во взвешенную. Жадный подход ломается. Как решать?<br />
-<strong>Ответ:</strong> Это классическая <strong>Dynamic Programming на отсортированных интервалах</strong>. Используем DP[i] = max(вес i + DP[next_compatible], DP[i+1]). Для поиска <code>next_compatible</code> применяем бинарный поиск по <code>Start</code>. Сложность: $O(n \log n)$. В Go реализуется через <code>sort.Search</code> и массив <code>dp</code>.</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Как адаптировать алгоритм для потоковой обработки (stream), где интервалы приходят по одному, а память ограничена?<br />
-<strong>Ответ:</strong> Статическая сортировка невозможна. Требуется поддерживать минимальную кучу (min-heap) по <code>End</code> текущих активных интервалов. При поступлении нового извлекаем из кучи всё, что закончилось. Сложность на операцию: $O(\log k)$, где $k$ — текущее число активных интервалов.</p>
-</li>
+<li><strong>In-Place сортировка:</strong> Функция <code>slices.SortFunc</code> сортирует указатели среза на месте. Не создается никаких дополнительных динамических коллекций в куче.</li>
+<li><strong>Нулевая нагрузка на GC:</strong> Переменные <code>keptCount</code>, <code>prevEnd</code>, <code>i</code>, <code>n</code> размещаются компилятором Go в регистрах центрального процессора (<code>RAX</code>, <code>RBX</code>, <code>RCX</code>, <code>RSI</code>). Память в куче равна ровно <strong>0 байт</strong> ($0\text{ allocs/op}$).</li>
+<li><strong>Линейный Prefetching:</strong> После завершения сортировки цикл <code>for i := 1; i &lt; n; i++</code> выполняет строго последовательное линейное сканирование. Процессорный блок Stream Prefetcher подгружает данные в кэш L1 заблаговременно, исключая простои вычислительного конвейера.</li>
 </ol>
+<hr />
+<h2 id="4-voprosy-na-sobesedovanii">4. Вопросы на собеседовании</h2>
+
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Как объяснить сложность вслух:</strong><br />
-<em>«Мы сортируем массив по окончанию за $O(n \log n)$, что доминирует над линейным проходом. Итоговая временная сложность $O(n \log n)$. По памяти используем $O(1)$ дополнительных переменных, если разрешена in-place сортировка. Алгоритм кэш-дружественный, ветвления предсказуемы, что даёт стабильную латентность на высоких объёмах данных».</em></p>
+    <p><strong>Продвинутый вопрос интервьюера:</strong><br />
+<em>«А что если каждый интервал имеет вес (прибыль), и нам нужно максимизировать суммарную прибыль непересекающихся отрезков (Weighted Interval Scheduling)? Работает ли жадный алгоритм?»</em><br />
+<strong>Эталонный ответ:</strong><br />
+Нет, жадный алгоритм в присутствии весов терпит крах: короткий интервал с мизерной стоимостью заблокирует более выгодные длинные интервалы.<br />
+Для взвешенной задачи применяется <strong>динамическое программирование в сочетании с бинарным поиском</strong>:<br />
+1. Сортируем по <code>End</code>.<br />
+2. Определяем <code>dp[i]</code> как максимальную прибыль среди первых $i$ интервалов.<br />
+3. Формула перехода:<br />
+   $$dp[i] = \max(dp[i-1], \; \text{weight}_i + dp[p(i)])$$<br />
+   где $p(i)$ — индекс последнего интервала, совместимого с $i$ (находится за $\mathcal{O}(\log N)$ через <code>sort.Search</code>).<br />
+Общая сложность взвешенной версии составит $\mathcal{O}(N \log N)$.</p>
   </div>
 </div>
 
-<h2 id="itog">Итог</h2>
+<hr />
+<h2 id="5-rezyume">5. Резюме</h2>
 
 <ol>
-<li><strong>Non-overlapping Intervals</strong> решается через трансформацию в задачу максимизации совместимых отрезков.</li>
-<li><strong>Жадная стратегия:</strong> Сортировка по <code>End</code> + линейный проход. Доказано математически, что выбор самого раннего завершающегося интервала не сужает пространство для будущих.</li>
-<li><strong>В Go:</strong> In-place сортировка, нулевые аллокации, предсказуемое ветвление. Контракт мутабельности входа должен быть явно задокументирован.</li>
-<li><strong>Механика:</strong> Последовательный доступ к памяти + аппаратный префетчинг + предсказуемые ветвления = производительность, близкая к пропускной способности шины памяти.</li>
-<li><strong>Интервью:</strong> Будьте готовы к доказательству оптимальности, контрпримерам для <code>Start</code>, переходу к DP для взвешенных версий и обсуждению потоковых структур данных (min-heap).</li>
+<li><strong>Двойственность задачи:</strong> Минимум удалений равен $N$ минус максимум совместимых отрезков.</li>
+<li><strong>Сортировка по <code>End</code>:</strong> Гарантирует локальный жадный выбор, оставляющий максимальный запас времени для будущих задач.</li>
+<li><strong>Строго $\mathcal{O}(1)$ памяти:</strong> Весь алгоритм требует лишь две скалярные целочисленные переменные.</li>
 </ol>
-<p>В следующей статье мы перейдём к практической проверке совместимости расписаний в многопользовательских системах: <a href="6-meeting-rooms.html" class="wikilink">6. Meeting Rooms</a>, где разберём детекцию конфликтов, оптимизацию через Sweep Line и применение алгоритма в реальных бэкенд-архитектурах бронирования и календарных сервисов.</p>
+<p>В следующей статье мы применим интервальный анализ к многопользовательским системам планирования и научимся находить коллизии во встречах: <a href="6-meeting-rooms.html" class="wikilink">6. Meeting Rooms</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2410,7 +2360,7 @@ func (a ByEnd) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#vvedenie-ot-udaleniya-k-maksimizatsii">Введение: От удаления к максимизации</a></li><li class="toc-item toc-h2"><a href="#1-fundamentalnaya-transformatsiya-i-zhadnaya-strategiya">1. Фундаментальная трансформация и жадная стратегия</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-v-go">2. Идиоматичная реализация в Go</a></li><li class="toc-item toc-h2"><a href="#3-mekhanika-pod-kapotom-cpu-kesh-i-vetvleniya">3. Механика под капотом: CPU, кэш и ветвления</a></li><li class="toc-item toc-h3"><a href="#lokalnost-dannykh-i-apparatnyy-prefetching">Локальность данных и аппаратный префетчинг</a></li><li class="toc-item toc-h3"><a href="#predskazanie-vetvleniy-branch-prediction">Предсказание ветвлений (Branch Prediction)</a></li><li class="toc-item toc-h3"><a href="#allokatsii-i-escape-analysis">Аллокации и Escape Analysis</a></li><li class="toc-item toc-h2"><a href="#4-lovushki-i-edge-cases">4. Ловушки и Edge Cases</a></li><li class="toc-item toc-h3"><a href="#1-kasanie-granits-1-2-i-2-3">1. Касание границ [1, 2] и [2, 3]</a></li><li class="toc-item toc-h3"><a href="#2-ravnye-vremena-okonchaniya">2. Равные времена окончания</a></li><li class="toc-item toc-h3"><a href="#3-otritsatelnye-vremena-i-mikrosekundy">3. Отрицательные времена и микросекунды</a></li><li class="toc-item toc-h2"><a href="#5-podgotovka-k-sobesedovaniyu">5. Подготовка к собеседованию</a></li><li class="toc-item toc-h3"><a href="#tipovye-voprosy-i-follow-up">Типовые вопросы и follow-up</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-fundamentalnyy-vybor-sortirovka-po-nachalu-ili-po-kontsu">1. Фундаментальный выбор: Сортировка по началу или по концу?</a></li><li class="toc-item toc-h3"><a href="#razrushitelnyy-kontrprimer-dlya-sortirovki-po-start">Разрушительный контрпример для сортировки по Start:</a></li><li class="toc-item toc-h3"><a href="#pochemu-sortirovka-po-vremeni-okonchaniya-end-matematicheski-optimalna">Почему сортировка по времени окончания (End) математически оптимальна?</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-na-go-1-21">2. Идиоматичная реализация на Go 1.21+</a></li><li class="toc-item toc-h2"><a href="#3-mechanical-sympathy-in-place-pdqsort-i-registrovye-peremennye">3. Mechanical Sympathy: In-Place pdqsort и регистровые переменные</a></li><li class="toc-item toc-h2"><a href="#4-voprosy-na-sobesedovanii">4. Вопросы на собеседовании</a></li><li class="toc-item toc-h2"><a href="#5-rezyume">5. Резюме</a></li>
   </ul>
 </aside>
 

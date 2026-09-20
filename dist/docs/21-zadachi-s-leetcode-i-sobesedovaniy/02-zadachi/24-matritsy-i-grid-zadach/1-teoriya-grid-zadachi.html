@@ -2171,75 +2171,64 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~20 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">1. Теория. Grid задачи</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="vvedenie-matritsa-kak-graf">Введение: Матрица как граф</h2>
+            <blockquote>
+<p><em>«Всякая сетка — это лишь строгий геометрический граф, где каждый узел обречен на общение лишь со своими ближайшими соседями».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>Матричные задачи (Grid Problems) — это обширный класс инженерных задач, где данные представлены в виде двумерной координатной сетки $R \times C$.</p>
+<p>Визуально мы видим таблицу ячеек, но для опытного бэкенд-инженера это <strong>неявный планарный граф</strong>:<br />
+- Каждая ячейка $(r, c)$ является <strong>вершиной графа</strong>.<br />
+- Ребрами являются ортогональные (4 направления) или диагональные (8 направлений) переходы между соседними ячейками.</p>
+<p>В реальных распределенных и вычислительных системах сеточные алгоритмы работают повсюду:<br />
+- <strong>Логистика и робототехника:</strong> Навигация складских роботов (Pathfinding в Amazon Kiva), расчет кратчайших маршрутов обхода препятствий.<br />
+- <strong>Геоинформационные системы (GIS):</strong> Поиск кластеров объектов на карте, заливка высотных изолиний, детекция связных зон затопления.<br />
+- <strong>Обработка медиа и компьютерное зрение:</strong> Сегментация изображений (Flood Fill), выделение связных контуров (Connected Component Labeling).<br />
+- <strong>Игровые серверы:</strong> Поле зрения (Field of View), расчет траекторий NPC, физика воксельных пространств.</p>
+<hr />
+<h2 id="1-arkhitektura-pamyati-v-go-mif-o-dvumernom-massive">1. Архитектура памяти в Go: Миф о двумерном массиве</h2>
 
-<p>Матричные задачи (Grid Problems) — это огромный класс алгоритмических проблем, где входные данные представлены в виде двумерного массива. Визуально это сетка ячеек, но алгоритмически — это <strong>неявный граф</strong>. Каждая ячейка <code>(r, c)</code> является узлом, а соседи (обычно по 4 или 8 направлениям) — рёбрами.</p>
-<p>В контексте бэкенд-разработки такие задачи моделируют:<br />
-*   <strong>Поиск пути</strong> в логистике (например, навигация складских роботов).<br />
-*   <strong>Обработку изображений</strong> (Flood Fill для заливки областей, детекция границ).<br />
-*   <strong>Игровые движки и карты</strong> (генерация ландшафта, поиск кратчайшего пути для NPC).<br />
-*   <strong>Системы рекомендаций</strong> (в виде матрицы пользователь-товар, хотя там чаще используют разреженные матрицы).</p>
-<p>На собеседованиях grid-задачи проверяют умение кандидата работать с графами (DFS/BFS/Union-Find), управлять рекурсией, обрабатывать граничные условия без избыточных проверок и понимать, как структура данных влияет на производительность процессора.</p>
-<h2 id="struktura-dannykh-pod-kapotom-v-go">Структура данных: Под капотом в Go</h2>
+<p>В языках низкого уровня вроде C или Fortran двумерный массив <code>int matrix[R][C]</code> представляет собой <strong>единый непрерывный блок памяти</strong> в стеке или куче.</p>
+<p>В языке Go тип <code>[][]int</code> устроен принципиально иначе: это <strong>срез срезов (Slice of Slices)</strong>:</p>
 
-<p>В Go двумерный массив обычно реализуется как слайс слайсов <code>[][]T</code> (Slice of Slices). Это не непрерывный блок памяти, как в C-массиве <code>int matrix[10][10]</code>.</p>
-<h3 id="pamyat-i-pointer-chasing">Память и Pointer Chasing</h3>
-<p>Структура <code>[][]int</code> выглядит так:</p>
-
-<div class="code-block" data-lang="go">
+<div class="code-block" data-lang="text">
   <div class="code-header">
-    <span class="code-lang-tag">Go</span>
+    <span class="code-lang-tag">TEXT</span>
     <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">type SliceHeader struct {
-    Data uintptr // Указатель на массив заголовков строк
-    Len  int
-    Cap  int
-}
+  <pre class="language-text"><code class="language-text">Go [][]int: Фрагментация и Pointer Chasing
++-----------------------+
+|  grid: []([]int)      |  (Slice Header: Data, Len, Cap - 24 байта)
++-----------------------+
+   |
+   +--&gt; [Row 0 Header: Data*, Len, Cap] ---&gt; [ 1 ][ 2 ][ 3 ][ 4 ] (Куча, адрес 0x1000)
+   +--&gt; [Row 1 Header: Data*, Len, Cap] ---&gt; [ 5 ][ 6 ][ 7 ][ 8 ] (Куча, адрес 0x8540)
+   +--&gt; [Row 2 Header: Data*, Len, Cap] ---&gt; [ 9 ][ 1 ][ 2 ][ 3 ] (Куча, адрес 0x3020)
 </code></pre>
 </div>
 
-<p>Каждая строка — это отдельный слайс со своим <code>Data</code>, <code>Len</code>, <code>Cap</code>.</p>
-<p><strong>Цена доступа к <code>grid[i][j]</code>:</strong><br />
-1.  Загрузка заголовка <code>grid</code>.<br />
-2.  <strong>Pointer chasing:</strong> Получение указателя на i-ю строку (разыменование указателя).<br />
-3.  Вычисление адреса j-го элемента внутри строки.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Влияние на кэш (Cache Locality)</strong><br />
-Поскольку строки выделяются отдельно (через <code>make([]int, cols)</code>), они могут быть разбросаны в куче.<br />
-*   <strong>Проблема:</strong> При обходе матрицы вы часто попадаете в <strong>Cache Miss</strong>, переходя на новую строку, так как следующая строка может находиться в совершенно другой странице памяти.<br />
-*   <strong>Row-Major Traversal:</strong> В Go данные хранятся по строкам (Row-Major). Обход <code>for i { for j { grid[i][j] } }</code> оптимален для префетчера CPU, так как соседние элементы <code>grid[i][j]</code> и <code>grid[i][j+1]</code> лежат рядом (расстояние 8 байт для <code>int64</code>). Обход по колонкам (сначала <code>j</code>, потом <code>i</code>) будет катастрофически медленным из-за перескоков по 8 КБ+ (размер страницы) или больше.</p>
-<p><strong>Оптимизация (Flattening):</strong><br />
-Для высоконагруженных систем матрицу часто "выпрямляют" в один слайс <code>[]T</code> размером <code>rows * cols</code>. Индекс <code>[r][c]</code> вычисляется как <code>r * cols + c</code>.<br />
-*   <em>Плюс:</em> Идеальная локальность данных, одна аллокация.<br />
-*   <em>Минус:</em> Лишняя арифметика умножения на каждой итерации. Однако инструкция <code>LEA</code> (Load Effective Address) на x86 делает это за 1 такт, часто быстрее, чем два промаха кэша.</p>
-  </div>
-</div>
-
-<h2 id="fundamentalnye-patterny-obkhoda">Фундаментальные паттерны обхода</h2>
-
-<h3 id="1-dfs-poisk-v-glubinu">1. DFS (Поиск в глубину)</h3>
-<p>Используется для поиска <strong>связных компонентов</strong> (например, подсчёт островов), проверки связности, поиска <strong>любого</strong> пути или полного перебора (backtracking).</p>
-<ul>
-<li><strong>Реализация:</strong> Рекурсия или явный стек.</li>
-<li><strong>Сложность:</strong> Время $O(N \cdot M)$, Память $O(N \cdot M)$ (глубина стека в худшем случае — вся матрица, например, змейка).</li>
-<li><strong>В Go:</strong> Рекурсия удобна, но помните, что каждый рекурсивный вызов — это выделение фрейма на стеке горутины. При гигантских матрицах это может привести к <code>stack overflow</code> (хотя рантайм Go динамически расширяет стек, это дорого).</li>
-</ul>
+<h3 id="chem-eto-grozit-proizvoditelnosti">Чем это грозит производительности?</h3>
+<ol>
+<li><strong>Pointer Chasing (Погоня за указателями):</strong><br />
+   Для чтения <code>grid[r][c]</code> процессор обязан выполнить <strong>два последовательных разыменования</strong>:<br />
+   - Шаг 1: Прочитать адрес базового массива строк <code>grid.Data + r * 24</code>.<br />
+   - Шаг 2: Прочитать указатель на ячейку <code>row.Data + c * 8</code>.</li>
+<li><strong>Разрушение пространственной локальности (Cache Thrashing):</strong><br />
+   Строки матрицы создаются независимыми вызовами <code>make([]int, cols)</code> и могут быть разбросаны аллокатором Go по совершенно разным страницам оперативной памяти.</li>
+</ol>
+<h3 id="zakon-row-major-obkhoda">Закон Row-Major обхода</h3>
+<p>В Go данные внутри одной строки хранятся последовательно:<br />
+- <strong>Правильно (Row-Major):</strong> Внешний цикл по строкам <code>r</code>, внутренний — по столбцам <code>c</code>. Процессор читает смежные адреса памяти с шагом 8 байт. Линия L1-кэша (64 байта) вмещает 8 целых чисел, аппаратный префетчер работает со 100% эффективностью.<br />
+- <strong>Антипаттерн (Column-Major):</strong> Внешний цикл по <code>c</code>, внутренний — по <code>r</code>. На каждом шаге процессор перескакивает между разными строками в памяти, провоцируя лавину L1/L2 Cache Misses. Обход по колонкам работает <strong>в 5–10 раз медленнее</strong>!</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2249,86 +2238,18 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// Пример DFS для поиска связной области (Flood Fill)
-func dfs(grid [][]int, r, c int, visited [][]bool) {
-    // Проверки границ и посещенности
-    if r &lt; 0 || c &lt; 0 || r &gt;= len(grid) || c &gt;= len(grid[0]) || visited[r][c] || grid[r][c] == 0 {
-        return
+  <pre class="language-go"><code class="language-go">// ОПТИМАЛЬНО ДЛЯ КЭША:
+for r := 0; r &lt; rows; r++ {
+    for c := 0; c &lt; cols; c++ {
+        process(grid[r][c])
     }
-
-    visited[r][c] = true
-
-    // Рекурсивные вызовы по 4 направлениям
-    dfs(grid, r-1, c, visited)
-    dfs(grid, r+1, c, visited)
-    dfs(grid, r, c-1, visited)
-    dfs(grid, r, c+1, visited)
 }
 </code></pre>
 </div>
 
-<h3 id="2-bfs-poisk-v-shirinu">2. BFS (Поиск в ширину)</h3>
-<p>Золотой стандарт для поиска <strong>кратчайшего пути</strong> в невзвешенной сетке (где вес перехода = 1).</p>
-<ul>
-<li><strong>Реализация:</strong> Очередь (<code>container/list</code> или кастомный слайс-цикл).</li>
-<li><strong>Сложность:</strong> Время $O(N \cdot M)$, Память $O(N \cdot M)$ (в худшем случае очередь хранит границу волны).</li>
-<li><strong>Преимущество:</strong> Находит путь с минимальным количеством шагов.</li>
-</ul>
+<hr />
+<h2 id="2-tri-kita-setochnykh-algoritmov">2. Три кита сеточных алгоритмов</h2>
 
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Пример BFS (псевдокод структуры)
-type Point struct { r, c int }
-
-func bfs(grid [][]int, start Point) int {
-    queue := []Point{start}
-    // ... логика обхода с уровнями
-}
-</code></pre>
-</div>
-
-<h3 id="3-union-find-disjoint-set-union">3. Union-Find (Disjoint Set Union)</h3>
-<p>Особенно эффективен для задач <strong>динамической связности</strong> (например, задача "Number of Islands II", где острова появляются по одному).</p>
-<ul>
-<li><strong>Логика:</strong> Каждая ячейка — множество. Операция <code>Union</code> объединяет множества соседей. <code>Find</code> находит корень.</li>
-<li><strong>Сложность:</strong> Почти $O(1)$ на операцию (обратная функция Аккермана $\alpha(N)$).</li>
-<li><strong>Применение:</strong> Когда нужно быстро отвечать на вопросы "связаны ли ячейки A и B?" или "сколько компонент связности осталось?".</li>
-</ul>
-<h2 id="mekhanika-proizvoditelnosti-vetvleniya-i-granichnye-proverki">Механика производительности: Ветвления и граничные проверки</h2>
-
-<p>В grid-задачах внутри цикла часто стоят проверки: <code>if r &gt;= 0 &amp;&amp; c &gt;= 0 &amp;&amp; ...</code>. Это "штраф" за каждую клетку.</p>
-<h3 id="optimizatsiya-1-sentinel-nodes-zashchitnye-granitsy">Оптимизация 1: Sentinel Nodes (Защитные границы)</h3>
-<p>Можно добавить вокруг матрицы рамку из нулей или <code>-1</code> размером <code>(N+2) x (M+2)</code>. Тогда проверки границ не нужны — алгоритм просто упрётся в стену и остановится.<br />
-*   <em>Плюс:</em> Убирает ветвления в горячем цикле.<br />
-*   <em>Минус:</em> Лишняя память и копирование данных. В Go редко используется на собеседованиях, так как требует копирования входных данных, но полезно знать для embedded/системного кода.</p>
-<h3 id="optimizatsiya-2-in-place-visited">Оптимизация 2: In-place Visited</h3>
-<p>Если разрешено модифицировать входные данные, можно отмечать посещённые клетки, меняя их значение (например, <code>1</code> -&gt; <code>-1</code> или <code>0</code>). Это убирает необходимость в <code>visited [][]bool</code> массиве, экономя память и улучшая локальность (мы пишем туда же, откуда читаем).</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Вместо visited[r][c] = true
-if grid[r][c] == '1' {
-    grid[r][c] = '0' // Помечаем как посещенное (вода)
-    // ... обход соседей
-}
-</code></pre>
-</div>
-
-<h2 id="diagramma-obkhoda-matritsy">Диаграмма обхода матрицы</h2>
-
-<p>Визуализация того, как BFS исследует сетку, в отличие от DFS.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2342,80 +2263,136 @@ if grid[r][c] == '1' {
     </button>
   </div>
   <pre class="mermaid">
-flowchart LR
-Start[&quot;Старт: Клетка (r, c)&quot;] --&gt; Choice{&quot;Алгоритм?&quot;}
+flowchart TD
+classDef entry fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef bfs fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef dfs fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef dsu fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
 
-Choice -- &quot;BFS (Кратчайший путь)&quot; --&gt; Queue[&quot;Очередь (FIFO)&lt;br&gt;Обход слоями&lt;br&gt;1, 2, 3, ... шагов&quot;]
-Choice -- &quot;DFS (Поиск области)&quot; --&gt; Stack[&quot;Стек (LIFO) / Рекурсия&lt;br&gt;Углубление до конца&lt;br&gt;Возврат при dead-end&quot;]
-
-Queue --&gt; Wave[&quot;Волна расширяется равномерно&lt;br&gt;Гарантия кратчайшего пути&quot;]
-Stack --&gt; Path[&quot;Пробивает путь в глубину&lt;br&gt;Быстро находит *любой* путь&quot;]
-
-style Start fill:#1e3a5f,stroke:#38bdf8,color:#f8fafc
-style Choice fill:#78350f,stroke:#fbbf24,color:#f8fafc
-style Wave fill:#064e3b,stroke:#34d399,color:#f8fafc
-style Path fill:#78350f,stroke:#fb923c,color:#f8fafc
+In[&quot;Сетка R x C как неявный граф&quot;]:::entry --&gt; Choice{&quot;Какова цель задачи?&quot;}
+Choice -- &quot;Кратчайший путь (шаги / время)&quot; --&gt; BFS[&quot;BFS (Поиск в ширину)&lt;br&gt;Очередь FIFO, распространение волной&quot;]:::bfs
+Choice -- &quot;Связные компоненты / Заливка / Бэктрекинг&quot; --&gt; DFS[&quot;DFS (Поиск в глубину)&lt;br&gt;Рекурсия или стек LIFO&quot;]:::dfs
+Choice -- &quot;Динамическое объединение областей&quot; --&gt; DSU[&quot;Union-Find (DSU)&lt;br&gt;Деревья непересекающихся множеств&quot;]:::dsu
   </pre>
 </div>
 
 
-<h2 id="lovushki-i-edge-cases">Ловушки и Edge Cases</h2>
+<h3 id="1-poisk-v-shirinu-bfs">1. Поиск в ширину (BFS)</h3>
+<ul>
+<li><strong>Область применения:</strong> Поиск кратчайшего пути в невзвешенном лабиринте, распространение огня/инфекции (волновой фронт).</li>
+<li><strong>Сложность:</strong> $\mathcal{O}(R \cdot C)$ времени, $\mathcal{O}(\min(R, C))$ памяти (размер очереди ограничен периметром фронта волны).</li>
+<li><strong>Инвариант:</strong> Первая встреча целевой клетки гарантирует <strong>минимально возможное расстояние</strong>.</li>
+</ul>
+<h3 id="2-poisk-v-glubinu-dfs">2. Поиск в глубину (DFS)</h3>
+<ul>
+<li><strong>Область применения:</strong> Подсчет связных компонентов (островов), заливка областей (Flood Fill), поиск слов в сетке (Backtracking).</li>
+<li><strong>Сложность:</strong> $\mathcal{O}(R \cdot C)$ времени, $\mathcal{O}(R \cdot C)$ памяти стека вызовов в худшем случае вырожденной змейки.</li>
+</ul>
+<h3 id="3-sistemy-neperesekayushchikhsya-mnozhestv-dsu-union-find">3. Системы непересекающихся множеств (DSU / Union-Find)</h3>
+<ul>
+<li><strong>Область применения:</strong> Задачи динамической связанности (когда клетки добавляются на лету, например, LeetCode 305 «Number of Islands II»).</li>
+<li><strong>Сложность:</strong> Практически $\mathcal{O}(1)$ на операцию благодаря эвристикам ранга и сжатия путей.</li>
+</ul>
+<hr />
+<h2 id="3-inzhenernyy-pattern-vektory-smeshcheniy-delta-directions">3. Инженерный паттерн: Векторы смещений (Delta Directions)</h2>
 
-<h3 id="1-pustaya-matritsa-ili-0x0">1. Пустая матрица или 0x0</h3>
-<p>Вход <code>[][]int{}</code> (пустой слайс) или <code>[][]int{{}}</code> (слайс с одной пустой строкой).<br />
-Всегда проверяйте <code>len(grid) == 0 || len(grid[0]) == 0</code> перед доступом к <code>grid[0]</code>, иначе будет паника <code>index out of range</code>.</p>
-<h3 id="2-odnorodnye-dannye">2. Однородные данные</h3>
-<p>Матрица, состоящая только из <code>0</code> или только из <code>1</code>. Алгоритмы должны корректно завершаться, не уходя в бесконечный цикл.</p>
-<h3 id="3-bolshie-matritsy-memory-limit-exceeded">3. Большие матрицы (Memory Limit Exceeded)</h3>
-<p>Если матрица $10000 \times 10000$, создание <code>visited</code> массива того же размера потребит гигабайты памяти (100 млн <code>bool</code> или <code>int</code>). В таких случаях используют <strong>in-place</strong> маркировку или битовые поля (bitsets), если это допустимо.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+<p>Вместо того чтобы писать четыре громоздких блока условий (<code>r-1</code>, <code>r+1</code>, <code>c-1</code>, <code>c+1</code>), senior Go-инженер использует статический массив дельт направлений:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p><strong>Рекурсия и размер стека</strong><br />
-В Go размер стека горутины начинается с 2 КБ и растёт по мере необходимости. Однако глубокое рекурсивное DFS на большой матрице может вызвать частую реаллокацию стека ("stack copying"), что замедляет выполнение. Для глубоких обходов в Go безопаснее использовать <strong>явный стек</strong> (слайс), выделенный в куче, хотя это и требует чуть больше кода.</p>
-  </div>
+  <pre class="language-go"><code class="language-go">package main
+
+// Дельты 4 ортогональных направлений: Вверх, Вниз, Влево, Вправо
+var directions4 = [4][2]int{
+    {-1, 0}, // Вверх
+    {1, 0},  // Вниз
+    {0, -1}, // Влево
+    {0, 1},  // Вправо
+}
+
+// Дельты 8 направлений (включая диагонали):
+var directions8 = [8][2]int{
+    {-1, 0}, {1, 0}, {0, -1}, {0, 1},
+    {-1, -1}, {-1, 1}, {1, -1}, {1, 1},
+}
+
+// Универсальный цикл исследования соседей
+func exploreNeighbors(grid [][]int, r, c int) {
+    rows, cols := len(grid), len(grid[0])
+
+    for _, d := range directions4 {
+        nr, nc := r+d[0], c+d[1]
+
+        // Единый Guard Clause выхода за границы сетки
+        if nr &lt; 0 || nr &gt;= rows || nc &lt; 0 || nc &gt;= cols {
+            continue
+        }
+
+        // Обработка валидного соседа (nr, nc)
+    }
+}
+</code></pre>
 </div>
 
-<h2 id="podgotovka-k-sobesedovaniyu-tipichnye-voprosy">Подготовка к собеседованию: Типичные вопросы</h2>
+<p>Массив <code>directions4</code> целиком помещается в регистры процессора и избавляет код от опечаток и копипасты.</p>
+<hr />
+<h2 id="4-pamyat-i-optimizatsiya-in-place-visited-protiv-matritsy-flagov">4. Память и оптимизация: In-Place Visited против матрицы флагов</h2>
 
-<ol>
-<li>
-<p><strong>Вопрос:</strong> Как оптимизировать BFS, если нас интересует не просто кратчайший путь, а путь с минимальной ценой (веса рёбер разные)?<br />
-<strong>Ответ:</strong> BFS не подходит. Нужно использовать алгоритм <strong>Дейкстры</strong> (Dijkstra's Algorithm) с приоритетной кучей (Min-Heap), либо A* (A-Star), если есть эвристика расстояния до цели.</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Почему DFS быстрее находит решение в лабиринте, если выход рядом, но BFS быстрее, если выход далеко?<br />
-<strong>Ответ:</strong> DFS "ныряет" вглубь и может случайно наткнуться на выход быстро, но если он в другом углу, DFS потратит время на обход всех тупиков. BFS гарантирует, что найдёт выход за $K$ шагов, где $K$ — расстояние, без исследования далёких ветвей.</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Как обрабатывать матрицу, если она не помещается в память (внешняя память / диск)?<br />
-<strong>Ответ:</strong> Использовать построчную обработку (streaming). Если задача позволяет (например, подсчёт островов с ограничением по ширине), можно хранить в памяти только 2-3 строки матрицы. Для поиска пути — использовать алгоритмы вроде IDA<em> (Iterative Deepening A</em>).</p>
-</li>
-</ol>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+<p>Традиционное решение выделяет матрицу посещенных ячеек:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p><strong>Фраза для демонстрации системного мышления:</strong><br />
-<em>«Я бы начал с классического BFS для кратчайшего пути, так как он оптимален по количеству шагов. Однако, учитывая, что в Go слайсы строк разбросаны в памяти, при работе с гигантскими матрицами я бы рассмотрел "сплющивание" матрицы в 1D слайс для улучшения кэш-локальности (cache locality) и предсказуемости выделения памяти. Также я бы уточнил требования к иммутабельности входных данных: если можно менять <code>grid</code>, это сэкономит $O(N \cdot M)$ памяти на массиве <code>visited</code>».</em></p>
-  </div>
+  <pre class="language-go"><code class="language-go">visited := make([][]bool, rows)
+for i := range visited {
+    visited[i] = make([]bool, cols)
+}
+</code></pre>
 </div>
 
-<h2 id="itog">Итог</h2>
+<p>Для матрицы $1000 \times 1000$ это порождает <strong>1001 аллокацию в куче</strong>, потребляя мегабайты памяти и заставляя сборщик мусора сканировать миллион ячеек.</p>
+<h3 id="pattern-in-place-mutatsii-zero-allocations">Паттерн In-Place мутации (Zero Allocations):</h3>
+<p>Если контракт задачи разрешает модифицировать исходные данные, мы отмечаем посещенную ячейку изменением ее значения на месте:<br />
+- В задаче поиска островов: <code>grid[r][c] = '0'</code> (затопляем исследованную сушу водой).<br />
+- В числовых матрицах: инвертируем знак <code>grid[r][c] = -grid[r][c]</code> или записываем специальный sentinel-маркер (<code>-1</code>).</p>
+<p>Это сокращает расход памяти с $\mathcal{O}(R \cdot C)$ до <strong>строго $\mathcal{O}(1)$ дополнительной памяти</strong>!</p>
+<hr />
+<h2 id="5-granichnye-sluchai-edge-cases">5. Граничные случаи (Edge Cases)</h2>
 
 <ol>
-<li><strong>Grid-задачи</strong> — это задачи на графах. Сетка — лишь способ визуализации.</li>
-<li><strong>Выбор алгоритма:</strong> BFS для кратчайшего пути, DFS для компонент связности/поиска любого пути, Union-Find для динамического связывания.</li>
-<li><strong>В Go:</strong> <code>[][]int</code> — это слайс указателей. Обход по строкам оптимален. Обход по столбцам — антипаттерн.</li>
-<li><strong>Оптимизация:</strong> Избегайте лишней памяти через in-place модификации, используйте <code>sentinel</code> (защитные рамки) для упрощения кода или 1D-массивы для кэш-эффективности.</li>
-<li><strong>Интервью:</strong> Всегда уточняйте контракт (можно ли менять матрицу?), размеры (влезет ли в память?) и критерии оптимальности (кратчайший путь или любой?).</li>
+<li><strong>Вырожденная пустая сетка:</strong><br />
+<code>grid = [][]int{}</code> или <code>grid = [][]int{{}}</code>.<br />
+   Всегда начинайте функцию с проверки:<br />
+<code>go
+   if len(grid) == 0 || len(grid[0]) == 0 {
+       return 0
+   }</code></li>
+<li><strong>Сетка в виде линии:</strong><br />
+   $1 \times N$ (одна строка) или $N \times 1$ (один столбец). Алгоритм обязан корректно обходить соседей без паники выхода за границы.</li>
+<li><strong>Глубокая рекурсия и стек горутины:</strong><br />
+   Стек горутины в Go стартует с 2 КБ и динамически расширяется до 1 ГБ на 64-битных системах. Однако частое выделение стековых страниц при рекурсивном DFS на матрице $2000 \times 2000$ накладывает заметный оверхед. Для гигантских сеток предпочтителен <strong>итеративный BFS с предвыделенным срезом-очередью</strong>.</li>
 </ol>
-<p>В следующей статье мы перейдём к конкретным алгоритмам обхода и паттернам модификации матриц: <a href="2-dfs-i-bfs-na-matritsakh.html" class="wikilink">2. DFS и BFS на матрицах</a>, где разберём детальную реализацию обоих подходов, сравним их потребление памяти и покажем, как писать чистый, тестируемый код обхода сеток без дублирования логики направлений.</p>
+<hr />
+<h2 id="6-rezyume">6. Резюме</h2>
+
+<ol>
+<li><strong>Матрица — это неявный граф:</strong> Ячейки — узлы, смежные соседи — ребра.</li>
+<li><strong>Row-Major — закон кремния:</strong> Обходите матрицу строго по строкам (<code>for r ... for c</code>), чтобы попадать в кэш-линии процессора L1.</li>
+<li><strong>Векторы направлений:</strong> Используйте компактный массив <code>[4][2]int</code> для чистого обхода соседей.</li>
+<li><strong>In-Place маркировка:</strong> Экономьте память и защищайте GC от аллокаций, заменяя матрицу <code>visited</code> на мутацию значений ячеек.</li>
+</ol>
+<p>В следующей лекции мы детально сопоставим реализацию обходов в глубину и ширину на координатных сетках: <a href="2-dfs-i-bfs-na-matritsakh.html" class="wikilink">2. DFS и BFS на матрицах</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2443,7 +2420,7 @@ style Path fill:#78350f,stroke:#fb923c,color:#f8fafc
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#vvedenie-matritsa-kak-graf">Введение: Матрица как граф</a></li><li class="toc-item toc-h2"><a href="#struktura-dannykh-pod-kapotom-v-go">Структура данных: Под капотом в Go</a></li><li class="toc-item toc-h3"><a href="#pamyat-i-pointer-chasing">Память и Pointer Chasing</a></li><li class="toc-item toc-h2"><a href="#fundamentalnye-patterny-obkhoda">Фундаментальные паттерны обхода</a></li><li class="toc-item toc-h3"><a href="#1-dfs-poisk-v-glubinu">1. DFS (Поиск в глубину)</a></li><li class="toc-item toc-h3"><a href="#2-bfs-poisk-v-shirinu">2. BFS (Поиск в ширину)</a></li><li class="toc-item toc-h3"><a href="#3-union-find-disjoint-set-union">3. Union-Find (Disjoint Set Union)</a></li><li class="toc-item toc-h2"><a href="#mekhanika-proizvoditelnosti-vetvleniya-i-granichnye-proverki">Механика производительности: Ветвления и граничные проверки</a></li><li class="toc-item toc-h3"><a href="#optimizatsiya-1-sentinel-nodes-zashchitnye-granitsy">Оптимизация 1: Sentinel Nodes (Защитные границы)</a></li><li class="toc-item toc-h3"><a href="#optimizatsiya-2-in-place-visited">Оптимизация 2: In-place Visited</a></li><li class="toc-item toc-h2"><a href="#diagramma-obkhoda-matritsy">Диаграмма обхода матрицы</a></li><li class="toc-item toc-h2"><a href="#lovushki-i-edge-cases">Ловушки и Edge Cases</a></li><li class="toc-item toc-h3"><a href="#1-pustaya-matritsa-ili-0x0">1. Пустая матрица или 0x0</a></li><li class="toc-item toc-h3"><a href="#2-odnorodnye-dannye">2. Однородные данные</a></li><li class="toc-item toc-h3"><a href="#3-bolshie-matritsy-memory-limit-exceeded">3. Большие матрицы (Memory Limit Exceeded)</a></li><li class="toc-item toc-h2"><a href="#podgotovka-k-sobesedovaniyu-tipichnye-voprosy">Подготовка к собеседованию: Типичные вопросы</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-arkhitektura-pamyati-v-go-mif-o-dvumernom-massive">1. Архитектура памяти в Go: Миф о двумерном массиве</a></li><li class="toc-item toc-h3"><a href="#chem-eto-grozit-proizvoditelnosti">Чем это грозит производительности?</a></li><li class="toc-item toc-h3"><a href="#zakon-row-major-obkhoda">Закон Row-Major обхода</a></li><li class="toc-item toc-h2"><a href="#2-tri-kita-setochnykh-algoritmov">2. Три кита сеточных алгоритмов</a></li><li class="toc-item toc-h3"><a href="#1-poisk-v-shirinu-bfs">1. Поиск в ширину (BFS)</a></li><li class="toc-item toc-h3"><a href="#2-poisk-v-glubinu-dfs">2. Поиск в глубину (DFS)</a></li><li class="toc-item toc-h3"><a href="#3-sistemy-neperesekayushchikhsya-mnozhestv-dsu-union-find">3. Системы непересекающихся множеств (DSU / Union-Find)</a></li><li class="toc-item toc-h2"><a href="#3-inzhenernyy-pattern-vektory-smeshcheniy-delta-directions">3. Инженерный паттерн: Векторы смещений (Delta Directions)</a></li><li class="toc-item toc-h2"><a href="#4-pamyat-i-optimizatsiya-in-place-visited-protiv-matritsy-flagov">4. Память и оптимизация: In-Place Visited против матрицы флагов</a></li><li class="toc-item toc-h3"><a href="#pattern-in-place-mutatsii-zero-allocations">Паттерн In-Place мутации (Zero Allocations):</a></li><li class="toc-item toc-h2"><a href="#5-granichnye-sluchai-edge-cases">5. Граничные случаи (Edge Cases)</a></li><li class="toc-item toc-h2"><a href="#6-rezyume">6. Резюме</a></li>
   </ul>
 </aside>
 

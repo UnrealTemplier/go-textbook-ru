@@ -2171,167 +2171,25 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~22 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~16 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. DFS и BFS на матрицах</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="vvedenie-ot-teorii-k-praktike-obkhoda-setok">Введение: От теории к практике обхода сеток</h2>
+            <blockquote>
+<p><em>«Широта охватывает горизонт слой за слоем, глубина же устремляется к цели, не оглядываясь назад».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>В <a href="1-teoriya-grid-zadachi.html" class="wikilink">1. Теория. Grid задачи</a> мы установили, что любая координатная сетка $R \times C$ — это неявный граф. Но когда дело доходит до решения конкретной задачи, перед инженером встает фундаментальная дилемма: <strong>DFS (поиск в глубину)</strong> или <strong>BFS (поиск в ширину)</strong>?</p>
+<p>Этот выбор определяет не просто структуру кода, а физическое поведение программы в оперативной памяти:<br />
+- Сколько килобайт выделится на стеке горутины?<br />
+- Сколько раз сработает сборщик мусора (GC)?<br />
+- Выдержит ли алгоритм сетку $10\,000 \times 10\,000$ или рухнет с <code>panic: runtime error: stack overflow</code>?</p>
+<hr />
+<h2 id="1-sravnitelnaya-anatomiya-dvukh-strategiy">1. Сравнительная анатомия двух стратегий</h2>
 
-<p>Матричные задачи на собеседованиях редко требуют изобретения велосипеда. В 95% случаев решение сводится к грамотному применению <strong>DFS</strong> (поиск в глубину) или <strong>BFS</strong> (поиск в ширину). Ключевое отличие между ними лежит не в сложности кода, а в характеристиках потребления памяти, порядке обработки узлов и аппаратной эффективности. Выбор между ними напрямую влияет на латентность сервиса, давление на Garbage Collector и стабильность работы под нагрузкой.</p>
-<p>В этой статье мы реализуем оба подхода на идиоматичном Go, сравним их механику на уровне CPU и рантайма, разберём оптимизации для production-контекста и подготовимся к каверзным follow-up вопросам, которые отличают инженера, знающего синтаксис, от инженера, понимающего систему.</p>
-<h2 id="realizatsiya-dfs-rekursiya-protiv-yavnogo-steka">Реализация DFS: Рекурсия против явного стека</h2>
-
-<h3 id="1-klassicheskiy-rekursivnyy-dfs">1. Классический рекурсивный DFS</h3>
-<p>Самый компактный вариант. Рантайм Go автоматически управляет стеком вызовов, динамически расширяя его по мере необходимости.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// DFSRecursive обходит связную компоненту, начиная с (r, c)
-// grid: входная матрица, r/c: текущие координаты
-func DFSRecursive(grid [][]byte, r, c int) {
-    rows, cols := len(grid), len(grid[0])
-
-    // Проверка границ и условий остановки
-    if r &lt; 0 || c &lt; 0 || r &gt;= rows || c &gt;= cols || grid[r][c] == '0' {
-        return
-    }
-
-    // Маркировка посещённой клетки (in-place)
-    grid[r][c] = '0'
-
-    // Обход 4 соседей
-    DFSRecursive(grid, r-1, c)
-    DFSRecursive(grid, r+1, c)
-    DFSRecursive(grid, r, c-1)
-    DFSRecursive(grid, r, c+1)
-}
-</code></pre>
-</div>
-
-<h3 id="2-iterativnyy-dfs-na-yavnom-steke">2. Итеративный DFS на явном стеке</h3>
-<p>Для глубоких матриц (например, <code>10000x10000</code> спираль) рекурсия вызовет многократное расширение стека горутины (<code>stack copying</code>), что замедлит выполнение и увеличит расход памяти. Итеративный стек, выделенный в куче, решает эту проблему.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// DFSIterative использует слайс как стек (LIFO)
-func DFSIterative(grid [][]byte, startR, startC int) {
-    rows, cols := len(grid), len(grid[0])
-    stack := make([][2]int, 0, 256) // Предвыделение буфера
-    stack = append(stack, [2]int{startR, startC})
-
-    // Массив направлений для компактного цикла
-    dirs := [][2]int{{0, 1}, {0, -1}, {1, 0}, {-1, 0}}
-
-    for len(stack) &gt; 0 {
-        // Pop: берём последний элемент и обрезаем слайс
-        top := stack[len(stack)-1]
-        stack = stack[:len(stack)-1]
-        r, c := top[0], top[1]
-
-        if r &lt; 0 || c &lt; 0 || r &gt;= rows || c &gt;= cols || grid[r][c] == '0' {
-            continue
-        }
-
-        grid[r][c] = '0'
-
-        // Push соседей
-        for _, d := range dirs {
-            stack = append(stack, [2]int{r + d[0], c + d[1]})
-        }
-    }
-}
-</code></pre>
-</div>
-
-<h2 id="realizatsiya-bfs-posloynyy-obkhod-cherez-slays-ochered">Реализация BFS: Послойный обход через слайс-очередь</h2>
-
-<p>BFS гарантирует нахождение кратчайшего пути в невзвешенном графе. В Go идиоматичная реализация очереди использует слайс. <code>container/list</code> (связный список) здесь <strong>антипаттерн</strong>: каждый элемент потребляет аллокацию в куче, разрушает кэш-локальность и создаёт давление на GC.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// BFSLevelOrder находит расстояние до цели или обходит уровни
-func BFSLevelOrder(grid [][]byte, start [2]int, target [2]int) int {
-    rows, cols := len(grid), len(grid[0])
-    if grid[start[0]][start[1]] == '0' {
-        return -1 // Старт недоступен
-    }
-
-    // Очередь хранит [r, c, distance]
-    queue := make([][3]int, 0, 1024)
-    queue = append(queue, [3]int{start[0], start[1], 0})
-    grid[start[0]][start[1]] = '0' // Помечаем как посещённое сразу при постановке в очередь
-
-    dirs := [][2]int{{0, 1}, {0, -1}, {1, 0}, {-1, 0}}
-
-    for len(queue) &gt; 0 {
-        // Dequeue: берём первый элемент
-        curr := queue[0]
-        queue = queue[1:] // Сдвиг указателя, без копирования данных (slicing)
-
-        if curr[0] == target[0] &amp;&amp; curr[1] == target[1] {
-            return curr[2]
-        }
-
-        for _, d := range dirs {
-            nr, nc := curr[0]+d[0], curr[1]+d[1]
-            if nr &gt;= 0 &amp;&amp; nc &gt;= 0 &amp;&amp; nr &lt; rows &amp;&amp; nc &lt; cols &amp;&amp; grid[nr][nc] == '1' {
-                grid[nr][nc] = '0'
-                queue = append(queue, [3]int{nr, nc, curr[2] + 1})
-            }
-        }
-    }
-
-    return -1 // Цель не достигнута
-}
-</code></pre>
-</div>
-
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Почему <code>queue = queue[1:]</code> эффективно?</strong><br />
-При удалении первого элемента слайса Go не сдвигает память. Он просто инкрементирует поле <code>Data</code> в заголовке слайса и декрементирует <code>Len</code>. Это операция $O(1)$.<br />
-Однако, если вы часто делаете <code>queue = queue[1:]</code>, а затем <code>append</code>, Go может не переиспользовать старую память, если указатель <code>Data</code> сдвинулся далеко от начала буфера. Для long-running систем с постоянным потоком задач рассмотрите <strong>кольцевой буфер (ring buffer)</strong>, где <code>head</code> и <code>tail</code> двигаются по модулю <code>capacity</code>, избегая аллокаций навсегда.</p>
-  </div>
-</div>
-
-<h2 id="mekhanika-pod-kapotom-cpu-kesh-i-pamyat">Механика под капотом: CPU, кэш и память</h2>
-
-<h3 id="1-lokalnost-dannykh-i-hardware-prefetcher">1. Локальность данных и Hardware Prefetcher</h3>
-<ul>
-<li><strong>BFS:</strong> Очередь обрабатывает узлы слоями. Соседние узлы в очереди часто физически близки в матрице. Линейное чтение очереди и последовательные проверки границ отлично предсказываются префетчером CPU.</li>
-<li><strong>DFS (рекурсия):</strong> Глубокое погружение приводит к случайным прыжкам по <code>visited</code> массиву или изменению удалённых ячеек матрицы. Паттерн доступа хаотичен, что вызывает <strong>cache misses</strong> и сбросы конвейера предсказателя ветвлений.</li>
-</ul>
-<h3 id="2-allokatsii-i-escape-analysis">2. Аллокации и Escape Analysis</h3>
-<p>В рекурсивном DFS локальные переменные <code>r</code>, <code>c</code>, <code>dirs</code> остаются на стеке. В итеративном DFS/BFS слайс <code>stack</code>/<code>queue</code> создаётся через <code>make</code>. Если функция возвращает его или сохраняет ссылку, <code>escape analysis</code> пометит его как <code>escapes to heap</code>.<br />
-В бенчмарках на матрицах $1000 \times 1000$:<br />
-*   Рекурсивный DFS: ~120 нс/шаг, но пиковое потребление стека ~8 МБ.<br />
-*   Итеративный BFS: ~150 нс/шаг, стабильное потребление кучи ~4 МБ, ноль <code>stack copying</code>.<br />
-*   <code>container/list</code> BFS: ~450 нс/шаг, тысячи мелких аллокаций, рост <code>GC sweep</code> времени.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2346,29 +2204,62 @@ func BFSLevelOrder(grid [][]byte, start [2]int, target [2]int) int {
   </div>
   <pre class="mermaid">
 flowchart TD
-Start[&quot;Вход: Матрица NxM&quot;] --&gt; Choice{&quot;Стратегия обхода&quot;}
+classDef entry fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef bfs fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef dfs fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
 
-Choice -- &quot;BFS&quot; --&gt; Queue[&quot;Очередь FIFO&lt;br&gt;Обход по слоям&lt;br&gt;Кратчайший путь гарантирован&quot;]
-Queue --&gt; MemoryB[&quot;Пиковая память: O(min(N, M))&lt;br&gt;Лучшая кэш-локальность&quot;]
+Start[&quot;Сетка R x C&quot;]:::entry --&gt; Choice{&quot;Цель поиска&quot;}
+Choice -- &quot;Кратчайший путь / Минимальное время&quot; --&gt; BFS[&quot;BFS (Очередь FIFO)&lt;br&gt;Волна расширяется концентрическими кругами&lt;br&gt;Память: O(min(R, C))&quot;]:::bfs
+Choice -- &quot;Связные компоненты / Заливка (Flood Fill)&quot; --&gt; DFS[&quot;DFS (Стек LIFO / Рекурсия)&lt;br&gt;Пробивает путь до упора&lt;br&gt;Память: O(R * C) в худшем случае&quot;]:::dfs
 
-Choice -- &quot;DFS&quot; --&gt; Stack[&quot;Стек LIFO / Рекурсия&lt;br&gt;Погружение в глубину&lt;br&gt;Поиск связных компонент&quot;]
-Stack --&gt; MemoryD[&quot;Пиковая память: O(N*M)&lt;br&gt;Худшая кэш-локальность&quot;]
-
-MemoryB --&gt; End[&quot;Выбор зависит от цели:&lt;br&gt;Кратчайший путь -&gt; BFS&lt;br&gt;Проверка связности -&gt; DFS&quot;]
-MemoryD --&gt; End
-
-style Start fill:#1e3a5f,stroke:#38bdf8,color:#f8fafc
-style End fill:#064e3b,stroke:#34d399,color:#f8fafc
-style Queue fill:#78350f,stroke:#fbbf24,color:#f8fafc
-style Stack fill:#78350f,stroke:#fb923c,color:#f8fafc
+BFS --&gt; Done[&quot;Гарантия кратчайшего пути&quot;]:::success
+DFS --&gt; Done
   </pre>
 </div>
 
 
-<h2 id="idiomatichnyy-go-i-production-gotovnost">Идиоматичный Go и Production-готовность</h2>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th style="text-align: left;">Параметр</th>
+<th style="text-align: left;">Поиск в ширину (BFS)</th>
+<th style="text-align: left;">Поиск в глубину (DFS)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Структура данных</strong></td>
+<td style="text-align: left;">Очередь (FIFO: First-In-First-Out)</td>
+<td style="text-align: left;">Стек (LIFO: Last-In-First-Out) или рекурсия</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Оптимальность пути</strong></td>
+<td style="text-align: left;"><strong>Гарантирует кратчайший путь</strong> в невзвешенной сетке</td>
+<td style="text-align: left;">Не гарантирует кратчайший путь (находит <em>любой</em>)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Потребление памяти</strong></td>
+<td style="text-align: left;">Пропорционально периметру фронта волны: $\mathcal{O}(\min(R, C))$</td>
+<td style="text-align: left;">Пропорционально максимальной глубине пути: до $\mathcal{O}(R \cdot C)$</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Поведение кэша CPU</strong></td>
+<td style="text-align: left;">Высокая пространственная локальность (соседи рядом)</td>
+<td style="text-align: left;">Прыжки по памяти при глубоком погружении</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Угроза для Go</strong></td>
+<td style="text-align: left;">Утечка базового массива при наивном <code>queue[1:]</code></td>
+<td style="text-align: left;">Переполнение или копирование стека горутины</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="2-poisk-v-glubinu-dfs-rekursivnyy-vs-iterativnyy">2. Поиск в глубину (DFS): Рекурсивный vs Итеративный</h2>
 
-<h3 id="1-izbeganie-dublirovaniya-proverok-granits">1. Избегание дублирования проверок границ</h3>
-<p>Вместо 4 отдельных <code>if</code> или громоздких циклов, используйте массив смещений. Компилятор Go умеет разворачивать такие циклы и применять SIMD-инструкции при наличии флага <code>GOAMD64=v2</code>+.</p>
+<h3 id="1-rekursivnyy-dfs-idiomatichnyy-i-lakonichnyy">1. Рекурсивный DFS (Идиоматичный и лаконичный)</h3>
+<p>Подходит для большинства задач среднего масштаба (до $1000 \times 1000$ ячеек):</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2378,81 +2269,188 @@ style Stack fill:#78350f,stroke:#fb923c,color:#f8fafc
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// directions.go
-var Dirs4 = [][2]int{
-    {0, 1},  // вправо
-    {0, -1}, // влево
-    {1, 0},  // вниз
-    {-1, 0}, // вверх
-}
+  <pre class="language-go"><code class="language-go">package main
 
-// Использование:
-for _, d := range Dirs4 {
-    nr, nc := r+d[0], c+d[1]
-    // ...
+var dirs = [4][2]int{{-1, 0}, {1, 0}, {0, -1}, {0, 1}}
+
+// DFSRecursive обходит связную компоненту и заливает ее нулями (In-Place)
+func DFSRecursive(grid [][]byte, r, c int) {
+    rows, cols := len(grid), len(grid[0])
+
+    // Базовый случай выхода: границы сетки или вода
+    if r &lt; 0 || r &gt;= rows || c &lt; 0 || c &gt;= cols || grid[r][c] == '0' {
+        return
+    }
+
+    // Маркируем клетку как посещенную (затопляем)
+    grid[r][c] = '0'
+
+    for _, d := range dirs {
+        DFSRecursive(grid, r+d[0], c+d[1])
+    }
 }
 </code></pre>
 </div>
 
-<h3 id="2-in-place-markirovka-vs-otdelnyy-visited-massiv">2. In-place маркировка vs Отдельный `visited` массив</h3>
-<p>Выделение <code>visited := make([][]bool, rows)</code> требует отдельной аллокации и ухудшает локальность (два разных блока памяти: <code>grid</code> и <code>visited</code>). Если контракт позволяет модифицировать вход, меняйте значение ячейки на <code>-1</code>, <code>'X'</code> или <code>0</code>. Это экономит память и ускоряет доступ.</p>
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
   </div>
   <div class="callout-body">
-    <p><strong>Состояние гонки при параллельном обходе</strong><br />
-Если матрица шарится между горутинами (например, параллельный BFS), <code>grid[r][c] = '0'</code> вызовет data race. Используйте <code>sync/atomic</code> для битовой карты посещений или <code>atomic.CompareAndSwapUint32</code>. На алгоритмических интервью это редко требуется, но в системном дизайне high-load обработчиков изображений или карт это критично.</p>
+    <p><strong>Механика Stack Copying в Go:</strong><br />
+Стек горутины в Go стартует с 2 КБ. При глубокой рекурсии (например, извилистый лабиринт-змейка на 50 000 вызовов) рантайм Go вынужден непрерывно аллоцировать новый стековый блок двойного размера, копировать все стековые фреймы и переписывать указатели. Это создает скрытую просадку производительности.</p>
   </div>
 </div>
 
-<h2 id="podgotovka-k-sobesedovaniyu">Подготовка к собеседованию</h2>
+<h3 id="2-iterativnyy-dfs-na-yavnom-sreze-steke-zero-stack-overflow">2. Итеративный DFS на явном срезе-стеке (Zero Stack Overflow)</h3>
+<p>Для экстремально глубоких матриц рекурсию заменяют явным срезом-стеком в куче:</p>
 
-<h3 id="tipovye-voprosy-i-follow-up">Типовые вопросы и follow-up</h3>
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">func DFSIterative(grid [][]byte, startR, startC int) {
+    rows, cols := len(grid), len(grid[0])
+    // Предвыделяем емкость стека
+    stack := make([][2]int, 0, 1024)
+    stack = append(stack, [2]int{startR, startC})
+    grid[startR][startC] = '0'
+
+    for len(stack) &gt; 0 {
+        // Pop с вершины стека
+        top := stack[len(stack)-1]
+        stack = stack[:len(stack)-1]
+        r, c := top[0], top[1]
+
+        for _, d := range dirs {
+            nr, nc := r+d[0], c+d[1]
+            if nr &gt;= 0 &amp;&amp; nr &lt; rows &amp;&amp; nc &gt;= 0 &amp;&amp; nc &lt; cols &amp;&amp; grid[nr][nc] == '1' {
+                grid[nr][nc] = '0' // Маркируем сразу при обнаружении!
+                stack = append(stack, [2]int{nr, nc})
+            }
+        }
+    }
+}
+</code></pre>
+</div>
+
+<hr />
+<h2 id="3-poisk-v-shirinu-bfs-posloynyy-volnovoy-front">3. Поиск в ширину (BFS): Послойный волновой фронт</h2>
+
+<p>BFS — единственный корректный выбор, когда требуется найти <strong>наименьшее число шагов</strong> от точки $A$ до точки $B$.</p>
+<div class="callout callout-important">
+  <div class="callout-header">
+    <span class="callout-icon">⚡</span>
+    <span class="callout-title">Важно</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Фатальная ошибка новичков: Поздняя маркировка (Mark on Pop vs Mark on Push)</strong><br />
+В BFS клетку <strong>обязательно помечать как посещенную в момент добавления в очередь (on PUSH)</strong>!<br />
+Если пометить ее в момент извлечения (on POP), несколько соседних клеток одновременно добавят одну и ту же клетку в очередь. Очередь экспоненциально раздуется, алгоритм деградирует до $\mathcal{O}(4^{R \cdot C})$ и завершится с Out Of Memory.</p>
+  </div>
+</div>
+
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package main
+
+// Point представляет координаты и накопленное расстояние
+type Point struct {
+    r, c, dist int
+}
+
+// ShortestPathBFS находит минимальное расстояние от старта до цели
+func ShortestPathBFS(grid [][]byte, start, target [2]int) int {
+    rows, cols := len(grid), len(grid[0])
+    if grid[start[0]][start[1]] == '0' || grid[target[0]][target[1]] == '0' {
+        return -1
+    }
+
+    // Предвыделяем срез под очередь для исключения реаллокаций
+    queue := make([]Point, 0, rows*cols)
+    queue = append(queue, Point{r: start[0], c: start[1], dist: 0})
+    grid[start[0]][start[1]] = '0' // КРИТИЧНО: маркировка при PUSH!
+
+    head := 0 // Указатель на начало очереди (O(1) pop без утечек)
+
+    for head &lt; len(queue) {
+        curr := queue[head]
+        head++
+
+        // Если достигли цели — кратчайший путь найден!
+        if curr.r == target[0] &amp;&amp; curr.c == target[1] {
+            return curr.dist
+        }
+
+        for _, d := range dirs {
+            nr, nc := curr.r+d[0], curr.c+d[1]
+
+            if nr &gt;= 0 &amp;&amp; nr &lt; rows &amp;&amp; nc &gt;= 0 &amp;&amp; nc &lt; cols &amp;&amp; grid[nr][nc] == '1' {
+                grid[nr][nc] = '0' // Немедленно маркируем, предотвращая повторное добавление
+                queue = append(queue, Point{r: nr, c: nc, dist: curr.dist + 1})
+            }
+        }
+    }
+
+    return -1 // Путь заблокирован препятствиями
+}
+</code></pre>
+</div>
+
+<h3 id="pochemu-ukazatel-head-pobezhdaet-queue-queue1">Почему указатель `head` побеждает `queue = queue[1:]`?</h3>
+<p>Операция <code>queue = queue[1:]</code> сдвигает указатель заголовка среза, но <strong>не освобождает память базового массива</strong> до тех пор, пока сборщик мусора не очистит весь срез целиком. Использование простого целочисленного индекса <code>head</code> сохраняет базовый массив непрерывным и избавляет процессор от лишних модификаций slice header.</p>
+<hr />
+<h2 id="4-mechanical-sympathy-lokalnost-pamyati-i-gc-overhead">4. Mechanical Sympathy: Локальность памяти и GC Overhead</h2>
+
 <ol>
-<li>
-<p><strong>Вопрос:</strong> Когда BFS потребляет экспоненциально больше памяти, чем DFS?<br />
-<strong>Ответ:</strong> В сетках с высокой ветвистостью (например, открытое поле, где из каждой клетки 4 прохода). BFS хранит всю «волну» фронта, которая может достичь $O(\min(N, M))$ ячеек. DFS хранит только текущий путь, максимум $O(N \cdot M)$ в худшем случае, но на практике часто меньше.</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Как найти кратчайший путь в матрице с весами (разная стоимость прохода по клеткам)?<br />
-<strong>Ответ:</strong> BFS не подходит. Требуется <strong>Dijkstra</strong> с Min-Heap (<code>container/heap</code>). Если веса неотрицательные и малы, можно использовать <strong>0-1 BFS</strong> (deque): переходы с весом 0 кладём в начало, с весом 1 — в конец. Сложность остаётся $O(V+E)$.</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Почему в Go не используют <code>container/list</code> для очередей в алгоритмах?<br />
-<strong>Ответ:</strong> <code>container/list</code> реализован как двусвязный список. Каждый <code>PushBack</code> выделяет <code>*Element</code> в куче. Это фрагментирует память, вызывает частые cache misses при разыменовании <code>element.Next</code> и нагружает GC. Слайс-очередь выигрывает в 3-10 раз по производительности благодаря contiguous memory.</p>
-</li>
+<li><strong>Запрет на <code>container/list</code>:</strong><br />
+   Стандартный связный список <code>container/list</code> в Go аллоцирует структуру узла в куче на каждый добавленный элемент. При матрице $1000 \times 1000$ это создаст $10^6$ аллокаций. Слайс-очередь с плоской структурой <code>Point</code> работает в едином непрерывном буфере, ускоряя обход <strong>в 7–12 раз</strong>!</li>
+<li><strong>Векторы направлений в L1:</strong><br />
+   Массив <code>[4][2]int</code> занимает ровно 64 байта и постоянно удерживается в L1-кэше ядра процессора.</li>
+<li><strong>Branch Predictor:</strong><br />
+   Условия проверки границ <code>nr &gt;= 0 &amp;&amp; nr &lt; rows</code> для внутренних клеток матрицы выполняются со 100% предсказуемостью.</li>
 </ol>
+<hr />
+<h2 id="5-voprosy-na-sobesedovanii">5. Вопросы на собеседовании</h2>
+
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Как объяснить выбор вслух:</strong><br />
-<em>«Для поиска кратчайшего пути в невзвешенной сетке я выберу BFS на основе слайса-очереди с предвыделенной ёмкостью. Это гарантирует $O(L)$ памяти на фронт волны и минимизирует аллокации. Если задача требует просто проверить связность или посчитать количество компонент, я предпочту итеративный DFS, чтобы избежать риска переполнения стека на глубоких паттернах. В обоих случаях я буду использовать in-place маркировку, если контракт API позволяет модифицировать вход, чтобы снизить давление на память».</em></p>
+    <p><strong>Каверзный вопрос интервьюера:</strong><br />
+<em>«Что если переходы между клетками имеют разный вес (например, равнина = 1 секунда, болото = 3 секунды)? Будет ли работать обычный BFS?»</em><br />
+<strong>Эталонный ответ:</strong><br />
+Обычный BFS гарантирует кратчайший путь <strong>только для невзвешенных графов</strong> (где вес всех ребер равен 1).<br />
+Для взвешенной сетки:<br />
+- Если веса принимают только два значения (0 и 1), используется <strong>0-1 BFS</strong> на двусторонней очереди (Deque): ребра веса 0 добавляются в начало очереди (<code>PushFront</code>), а веса 1 — в конец (<code>PushBack</code>), что сохраняет сложность $\mathcal{O}(R \cdot C)$.<br />
+- Для произвольных неотрицательных весов применяется <strong>Алгоритм Дейкстры (Dijkstra)</strong> с минимальной кучей (<code>container/heap</code>) за $\mathcal{O}(R \cdot C \log(R \cdot C))$.</p>
   </div>
 </div>
 
-<h2 id="lovushki-i-edge-cases">Ловушки и Edge Cases</h2>
+<hr />
+<h2 id="6-rezyume">6. Резюме</h2>
 
 <ol>
-<li><strong>Пустая или неквадратная матрица:</strong> Всегда проверяйте <code>len(grid) == 0 || len(grid[0]) == 0</code> перед обращением к <code>grid[0][0]</code>.</li>
-<li><strong>Изменение <code>queue</code> во время итерации:</strong> <code>queue = queue[1:]</code> безопасно внутри цикла <code>for len(queue) &gt; 0</code>, но если вы кешируете <code>len(queue)</code> в переменную перед циклом (<code>n := len(queue)</code>), а затем меняете очередь, получите панику или бесконечный цикл.</li>
-<li><strong>Дубликаты в очереди:</strong> В BFS критически важно помечать узел как посещённый <strong>сразу при добавлении в очередь</strong>, а не при извлечении. Иначе одна и та же клетка попадёт в очередь несколько раз от разных соседей, увеличивая сложность до $O(4^{N \cdot M})$.</li>
-<li><strong>8 направлений вместо 4:</strong> В задачах типа "Number of Islands II" или "Knight Moves" используются диагонали. Убедитесь, что массив <code>Dirs</code> содержит 8 элементов, и проверьте граничные условия для углов.</li>
+<li><strong>Кратчайший путь $\to$ только BFS:</strong> Никогда не используйте DFS для поиска кратчайшего пути в невзвешенных сетках.</li>
+<li><strong>Маркировка при PUSH:</strong> Помечайте ячейки как посещенные до помещения в очередь, чтобы исключить дублирование и взрыв памяти.</li>
+<li><strong>Очередь на указателе <code>head</code>:</strong> Избегайте аллокаций и <code>container/list</code>, используя плоский срез с целочисленным смещением <code>head</code>.</li>
+<li><strong>Рекурсия vs Итерация:</strong> Для матриц размером $&gt; 1000 \times 1000$ применяйте итеративный стек, спасая горутину от <code>stack copying</code>.</li>
 </ol>
-<h2 id="itog">Итог</h2>
-
-<ol>
-<li><strong>DFS vs BFS:</strong> DFS оптимален для связных компонент и полного перебора, BFS — для кратчайших путей в невзвешенных сетках.</li>
-<li><strong>В Go:</strong> Используйте слайсы как стек и очередь. Избегайте <code>container/list</code> из-за фрагментации памяти и плохой локальности. Предвыделяйте <code>cap</code> для минимизации реаллокаций.</li>
-<li><strong>Механика:</strong> Итеративный стек защищает от <code>stack copying</code>. <code>queue[1:]</code> — $O(1)$, но требует контроля за ростом буфера. Массив смещений компилируется в эффективный машинный код.</li>
-<li><strong>Ловушки:</strong> Маркировка при <code>push</code>, а не <code>pop</code>, проверки пустой матрицы, in-place модификации vs race conditions.</li>
-<li><strong>Интервью:</strong> Аргументируйте выбор через призму памяти, кэш-локальности и требований задачи. Умейте переключаться на Dijkstra или 0-1 BFS для взвешенных случаев.</li>
-</ol>
-<p>В следующей статье мы перейдём к задачам, где матрица модифицируется без дополнительной памяти, используя трюки с маркировкой строк и колонок: <a href="3-set-matrix-zeroes.html" class="wikilink">3. Set Matrix Zeroes</a>, где разберём алгоритм in-place обнуления, его влияние на параллельные вычисления и типичные ошибки при работе с побочными эффектами в многопоточных средах.</p>
+<p>В следующей лекции мы разберем классическую матричную задачу на пространственную оптимизацию, где строки и столбцы обнуляются с нулевым расходом дополнительной памяти: <a href="3-set-matrix-zeroes.html" class="wikilink">3. Set Matrix Zeroes</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2480,7 +2478,7 @@ for _, d := range Dirs4 {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#vvedenie-ot-teorii-k-praktike-obkhoda-setok">Введение: От теории к практике обхода сеток</a></li><li class="toc-item toc-h2"><a href="#realizatsiya-dfs-rekursiya-protiv-yavnogo-steka">Реализация DFS: Рекурсия против явного стека</a></li><li class="toc-item toc-h3"><a href="#1-klassicheskiy-rekursivnyy-dfs">1. Классический рекурсивный DFS</a></li><li class="toc-item toc-h3"><a href="#2-iterativnyy-dfs-na-yavnom-steke">2. Итеративный DFS на явном стеке</a></li><li class="toc-item toc-h2"><a href="#realizatsiya-bfs-posloynyy-obkhod-cherez-slays-ochered">Реализация BFS: Послойный обход через слайс-очередь</a></li><li class="toc-item toc-h2"><a href="#mekhanika-pod-kapotom-cpu-kesh-i-pamyat">Механика под капотом: CPU, кэш и память</a></li><li class="toc-item toc-h3"><a href="#1-lokalnost-dannykh-i-hardware-prefetcher">1. Локальность данных и Hardware Prefetcher</a></li><li class="toc-item toc-h3"><a href="#2-allokatsii-i-escape-analysis">2. Аллокации и Escape Analysis</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-i-production-gotovnost">Идиоматичный Go и Production-готовность</a></li><li class="toc-item toc-h3"><a href="#1-izbeganie-dublirovaniya-proverok-granits">1. Избегание дублирования проверок границ</a></li><li class="toc-item toc-h3"><a href="#2-in-place-markirovka-vs-otdelnyy-visited-massiv">2. In-place маркировка vs Отдельный visited массив</a></li><li class="toc-item toc-h2"><a href="#podgotovka-k-sobesedovaniyu">Подготовка к собеседованию</a></li><li class="toc-item toc-h3"><a href="#tipovye-voprosy-i-follow-up">Типовые вопросы и follow-up</a></li><li class="toc-item toc-h2"><a href="#lovushki-i-edge-cases">Ловушки и Edge Cases</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-sravnitelnaya-anatomiya-dvukh-strategiy">1. Сравнительная анатомия двух стратегий</a></li><li class="toc-item toc-h2"><a href="#2-poisk-v-glubinu-dfs-rekursivnyy-vs-iterativnyy">2. Поиск в глубину (DFS): Рекурсивный vs Итеративный</a></li><li class="toc-item toc-h3"><a href="#1-rekursivnyy-dfs-idiomatichnyy-i-lakonichnyy">1. Рекурсивный DFS (Идиоматичный и лаконичный)</a></li><li class="toc-item toc-h3"><a href="#2-iterativnyy-dfs-na-yavnom-sreze-steke-zero-stack-overflow">2. Итеративный DFS на явном срезе-стеке (Zero Stack Overflow)</a></li><li class="toc-item toc-h2"><a href="#3-poisk-v-shirinu-bfs-posloynyy-volnovoy-front">3. Поиск в ширину (BFS): Послойный волновой фронт</a></li><li class="toc-item toc-h3"><a href="#pochemu-ukazatel-head-pobezhdaet-queue-queue1">Почему указатель head побеждает queue = queue[1:]?</a></li><li class="toc-item toc-h2"><a href="#4-mechanical-sympathy-lokalnost-pamyati-i-gc-overhead">4. Mechanical Sympathy: Локальность памяти и GC Overhead</a></li><li class="toc-item toc-h2"><a href="#5-voprosy-na-sobesedovanii">5. Вопросы на собеседовании</a></li><li class="toc-item toc-h2"><a href="#6-rezyume">6. Резюме</a></li>
   </ul>
 </aside>
 

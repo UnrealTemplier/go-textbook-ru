@@ -2171,91 +2171,51 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~23 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">7. Missing Number</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="vvedenie-poisk-poteryannogo-zvena">Введение: Поиск потерянного звена</h2>
-
-<p>Задача <strong>Missing Number</strong> (LeetCode 268) — это эталонный тест на алгоритмическую зрелость. Условие звучит обманчиво просто:</p>
-<blockquote>
-<p>Дан массив <code>nums</code>, содержащий <code>n</code> различных чисел из диапазона <code>[0, n]</code>. Найдите единственное число, которое отсутствует в массиве.<br />
-<strong>Требования:</strong> $O(n)$ по времени, $O(1)$ по дополнительной памяти.</p>
+            <blockquote>
+<p><em>«В совершенной последовательности отсутствие одного звена звучит громче присутствия всех остальных».</em><br />
+— Брайан Керниган</p>
 </blockquote>
-<p>Наивные решения с сортировкой или хеш-таблицами либо нарушают ограничение по времени, либо по памяти. Остаются два кандидата на оптимальное решение: математический (сумма арифметической прогрессии) и битовый (XOR-аккумулятор). В этой статье мы разберём оба, покажем скрытые угрозы арифметического подхода в production-коде, погрузимся в ассемблерный выхлоп XOR-решения и обсудим, почему в высоконагруженных Go-системах битовые операции часто выигрывают у арифметики не только по памяти, но и по предсказуемости исполнения.</p>
-<h2 id="matematicheskiy-podkhod-i-ego-skrytaya-ugroza">Математический подход и его скрытая угроза</h2>
+<p>Задача <strong>Missing Number (LeetCode 268, Easy)</strong> — это канонический тест на алгоритмическую зрелость. Условие лаконично:</p>
+<blockquote>
+<p>Дан срез <code>nums</code>, содержащий $N$ различных целых чисел из непрерывного диапазона $[0, N]$.<br />
+Найдите единственное число из диапазона, которое отсутствует в срезе.<br />
+<strong>Ограничения:</strong> Время выполнения $\mathcal{O}(N)$, дополнительная память $\mathcal{O}(1)$.</p>
+</blockquote>
+<p>На собеседовании начинающий программист бросается писать формулу суммы Гаусса, не подозревая, какую мину замедленного действия в виде скрытого переполнения он закладывает в production-код. Опытный инженер выбирает XOR-редукцию, гарантирующую абсолютную математическую и аппаратную безопасность.</p>
+<hr />
+<h2 id="1-sravnenie-podkhodov-matematika-protiv-bulevoy-algebry">1. Сравнение подходов: Математика против Булевой алгебры</h2>
 
-<p>Классическое решение опирается на формулу суммы первых <code>n</code> натуральных чисел: $S = \frac{n(n+1)}{2}$.<br />
-Мы вычисляем ожидаемую сумму диапазона <code>[0, n]</code>, вычитаем из неё сумму всех элементов массива, и разница равна пропущенному числу.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func missingNumberMath(nums []int) int {
-    n := len(nums)
-    expectedSum := n * (n + 1) / 2
-    actualSum := 0
-    for _, v := range nums {
-        actualSum += v
-    }
-    return expectedSum - actualSum
-}
-</code></pre>
-</div>
-
-<p><strong>Анализ:</strong><br />
-*   Время: $O(n)$, Память: $O(1)$.<br />
-*   Код чистый, читаемый, легко объясняется.</p>
+<h3 id="podkhod-1-formula-summy-gaussa-s-fracnn12">Подход 1: Формула суммы Гаусса $S = \frac{N(N+1)}{2}$</h3>
+<p>Идея очевидна: сумма всех чисел от $0$ до $N$ минус сумма фактических элементов массива дает пропавшее число:<br />
+$$\text{missing} = \frac{N(N+1)}{2} - \sum_{i=0}^{N-1} \text{nums}[i]$$</p>
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
   </div>
   <div class="callout-body">
-    <p><strong>Переполнение целых чисел (Integer Overflow)</strong><br />
-В Go арифметика <code>int</code> не вызывает панику при переполнении. Результат просто «оборачивается» по модулю $2^W$ (где $W$ — разрядность).<br />
-Если <code>n</code> велико (например, $n \approx 2^{30}$ на 64-битной системе, или $n \approx 2^{15}$ на 32-битной), выражение <code>n * (n + 1)</code> превысит <code>math.MaxInt</code>. <code>expectedSum</code> станет отрицательным числом. Разница <code>expectedSum - actualSum</code> даст абсолютно неверный результат, и отладка в production может занять часы.<br />
-В языках вроде Rust или Go (в режиме проверки <code>overflow</code> в будущем) это могло бы вызывать панику или ошибку, но текущий рантайм Go молча проглотит ошибку. Это критический аргумент против математического подхода в задачах, где границы данных не строго ограничены рамками <code>int32</code>.</p>
+    <p><strong>Смертельная ловушка: Целочисленное переполнение (Silent Overflow)</strong><br />
+В Go переполнение знаковых целых чисел не вызывает паники рантайма — значение тихо «оборачивается» (wrap-around) в отрицательную область по модулю $2^W$.<br />
+Допустим, $N = 100\,000$.<br />
+Произведение $N(N+1) \approx 10^{10}$.<br />
+На 32-битных платформах (или если тип операндов <code>int32</code>) максимальное положительное число равно $\approx 2.14 \times 10^9$.<br />
+Число $10^{10}$ переполнит 32-битный регистр, превратив ожидаемую сумму в мусорное отрицательное число. Ошибка проявится в production под нагрузкой и потребует часов мучительной отладки.</p>
   </div>
 </div>
 
-<h2 id="xor-podkhod-elegantnost-bez-riska-perepolneniya">XOR-подход: Элегантность без риска переполнения</h2>
-
-<p>Операция исключающего ИЛИ (<code>^</code>) обладает свойством <code>a ^ a = 0</code> и <code>a ^ 0 = a</code>. Если мы применим XOR ко всем числам в диапазоне <code>[0, n]</code> и ко всем элементам массива, все присутствующие числа сократятся. Останется только пропущенное.</p>
-<p><strong>Алгоритм:</strong><br />
-1.  Инициализируем аккумулятор <code>missing</code> значением <code>n</code> (так как индексы в цикле идут от <code>0</code> до <code>n-1</code>, а число <code>n</code> не покрывается индексами).<br />
-2.  В цикле по индексу <code>i</code> делаем: <code>missing ^= i ^ nums[i]</code>.<br />
-3.  Возвращаем <code>missing</code>.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// MissingNumber находит отсутствующее число в диапазоне [0, n]
-// Требования: O(n) time, O(1) space, защита от переполнения
-func MissingNumber(nums []int) int {
-    missing := len(nums)
-    for i, num := range nums {
-        missing ^= i ^ num
-    }
-    return missing
-}
-</code></pre>
-</div>
-
-<p><strong>Пошаговая иллюстрация логики:</strong></p>
+<h3 id="podkhod-2-pobitovaya-xor-reduktsiya-idealnyy-balans">Подход 2: Побитовая XOR-редукция (Идеальный баланс)</h3>
+<p>Используем свойства исключающего ИЛИ: $x \oplus x = 0$ и $x \oplus 0 = x$.<br />
+Если мы объединим в один XOR-аккумулятор:<br />
+1. Все числа эталонного диапазона от $0$ до $N$.<br />
+2. Все фактические элементы массива <code>nums</code>.</p>
+<p>Тогда все числа, присутствующие в массиве, встретятся ровно <strong>дважды</strong> (один раз в диапазоне индексов, второй раз — как значение элемента) и аннигилируют! Число, которого в массиве нет, встретится ровно <strong>один раз</strong> и останется в аккумуляторе.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2270,41 +2230,23 @@ func MissingNumber(nums []int) int {
   </div>
   <pre class="mermaid">
 flowchart TD
-Start[&quot;Инициализация: missing = n&quot;] --&gt; Loop[&quot;Цикл по i от 0 до n-1&quot;]
-Loop --&gt; XOR[&quot;missing = missing ^ i ^ nums[i]&quot;]
-XOR --&gt; Check{&quot;Все элементы обработаны?&quot;}
-Check -- &quot;Нет&quot; --&gt; Loop
-Check -- &quot;Да&quot; --&gt; Result[&quot;В missing остался только пропущенный элемент&quot;]
+classDef entry fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef loop fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef calc fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
 
-style Start fill:#1e3a5f,stroke:#38bdf8,color:#f8fafc
-style Result fill:#064e3b,stroke:#34d399,color:#f8fafc
-style XOR fill:#78350f,stroke:#fbbf24,color:#f8fafc
+Init[&quot;Инициализация: missing = N&quot;]:::entry --&gt; Loop[&quot;Итерация i от 0 до N-1&quot;]:::loop
+Loop --&gt; Step[&quot;missing ^= (i ^ nums[i])&quot;]:::calc
+Step --&gt; Check{&quot;i достигло N-1?&quot;}:::loop
+Check -- &quot;Нет&quot; --&gt; Loop
+Check -- &quot;Да&quot; --&gt; Done[&quot;Результат: missing (O(1) памяти, 0 риска переполнения)&quot;]:::success
   </pre>
 </div>
 
 
-<p>Почему это работает? Рассмотрим пары <code>(индекс, значение)</code>. Для всех чисел, кроме пропущенного, индекс <code>i</code> и значение <code>nums[j]</code> встретятся в аккумуляторе ровно дважды и аннигилируют. Пропущенное число встретится только один раз (как индекс, но не как значение, или наоборот), поэтому биты сохранятся.</p>
-<h2 id="mekhanika-na-urovne-cpu-pochemu-xor-bystree-i-bezopasnee">Механика на уровне CPU: Почему XOR быстрее и безопаснее</h2>
+<hr />
+<h2 id="2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</h2>
 
-<ol>
-<li><strong>Отсутствие арифметических флагов переполнения:</strong> Инструкции сложения (<code>ADDQ</code>) в x86-64 устанавливают флаги <code>OF</code> (Overflow) и <code>CF</code> (Carry). Хотя Go их игнорирует на уровне языка, процессор всё равно тратит такты на их вычисление. Инструкции <code>XORQ</code> не влияют на арифметические флаги переполнения, только на <code>ZF</code> (Zero) и <code>SF</code> (Sign). Это упрощает работу конвейера.</li>
-<li><strong>Ветвление и предсказание:</strong> Оба подхода используют простой цикл без внутренних <code>if</code>. Современные CPU отлично предсказывают такие циклы. Разница минимальна, но XOR исключает риск wrap-around, что делает поведение детерминированным на всех архитектурах.</li>
-<li><strong>Влияние на кэш-линии:</strong> Оба алгоритма последовательно читают массив <code>nums</code>. Это идеально для аппаратного префетчера (Stream Prefetcher). Загрузка данных в L1 происходит параллельно с вычислениями. Разницы в cache misses нет.</li>
-<li><strong>Ассемблерный выхлоп (Go 1.21+, amd64):</strong><br />
-<code>asm
-    ; missing в регистре AX, индекс i в CX, указатель на slice в DX
-    .L2:
-        MOVQ    (DX)(CX*8), BX  ; Загрузка nums[i]
-        XORQ    CX, AX          ; missing ^= i
-        XORQ    BX, AX          ; missing ^= nums[i]
-        INCQ    CX              ; i++
-        CMPQ    CX, SI          ; Сравнение с len(nums)
-        JLT     .L2             ; Продолжить цикл</code><br />
-    Цикл состоит из 5 инструкций. <code>XORQ</code> выполняется за 1 такт. Компилятор разворачивает <code>range</code> в эффективный указатель+индекс без проверки границ внутри тела цикла (благодаря <code>len</code> из слайса). Это максимально близкий к металлу код, который только можно получить без ассемблера вручную.</li>
-</ol>
-<h2 id="idiomatichnaya-realizatsiya-v-go">Идиоматичная реализация в Go</h2>
-
-<p>В Go принято оборачивать решение в тестируемый пакет с table-driven тестами и бенчмарками. Ниже production-ready версия с валидацией контракта.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2314,78 +2256,64 @@ style XOR fill:#78350f,stroke:#fbbf24,color:#f8fafc
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">package algorithms
+  <pre class="language-go"><code class="language-go">package main
 
-import (
-    &quot;errors&quot;
-)
+// MissingNumber находит отсутствующее число в диапазоне [0, n].
+// Временная сложность: O(N) — один последовательный проход.
+// Пространственная сложность: O(1) — 0 аллокаций в куче.
+func MissingNumber(nums []int) int {
+    n := len(nums)
+    missing := n // Число N не входит в индексы 0..n-1, инициализируем им
 
-var ErrEmptySlice = errors.New(&quot;slice must not be empty&quot;)
-
-// MissingNumber возвращает пропущенное число из диапазона [0, n]
-// Гарантирует отсутствие целочисленного переполнения.
-// Требования: O(n) time, O(1) space.
-func MissingNumber(nums []int) (int, error) {
-    if len(nums) == 0 {
-        return 0, ErrEmptySlice
-    }
-
-    missing := len(nums)
     for i, num := range nums {
         missing ^= i ^ num
     }
-    return missing, nil
+
+    return missing
 }
 </code></pre>
 </div>
 
-<p><strong>Бенчмарк сравнения с математическим подходом:</strong></p>
+<h3 id="poshagovaya-trassirovka-na-primere">Пошаговая трассировка на примере</h3>
+<p>Пусть <code>nums = [3, 0, 1]</code>, длина $N = 3$.<br />
+Инициализация: <code>missing = 3</code>.<br />
+- Итерация $i = 0$: <code>missing = 3 ^ 0 ^ 3 = 0</code><br />
+- Итерация $i = 1$: <code>missing = 0 ^ 1 ^ 0 = 1</code><br />
+- Итерация $i = 2$: <code>missing = 1 ^ 2 ^ 1 = 2</code><br />
+- Итог: <code>missing = 2</code>. Ответ найден абсолютно точно!</p>
+<hr />
+<h2 id="3-mechanical-sympathy-assembler-i-mikroarkhitektura">3. Mechanical Sympathy: Ассемблер и микроархитектура</h2>
 
-<div class="code-block" data-lang="go">
+<p>Посмотрим, во что превращается внутренний цикл функции <code>MissingNumber</code> на x86-64:</p>
+
+<div class="code-block" data-lang="asm">
   <div class="code-header">
-    <span class="code-lang-tag">Go</span>
+    <span class="code-lang-tag">Assembly</span>
     <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">package algorithms
-
-import &quot;testing&quot;
-
-func generateTestData(n int) []int {
-    nums := make([]int, n)
-    missing := n / 2 // Для теста пропустим среднее число
-    j := 0
-    for i := 0; i &lt;= n; i++ {
-        if i == missing {
-            continue
-        }
-        nums[j] = i
-        j++
-    }
-    return nums
-}
-
-func BenchmarkMissingNumberXOR(b *testing.B) {
-    nums := generateTestData(1000000)
-    b.ResetTimer()
-    for i := 0; i &lt; b.N; i++ {
-        _, _ = MissingNumber(nums)
-    }
-}
-
-func BenchmarkMissingNumberMath(b *testing.B) {
-    nums := generateTestData(1000000)
-    b.ResetTimer()
-    for i := 0; i &lt; b.N; i++ {
-        _, _ = missingNumberMath(nums)
-    }
-}
+  <pre class="language-asm"><code class="language-asm">// Внутренний цикл (amd64, Go 1.22+)
+.LBB0_2:
+    MOVQ    (DX)(CX*8), BX   // Загрузка nums[i] из кэша L1 в регистр BX
+    XORQ    CX, AX           // missing ^= i
+    XORQ    BX, AX           // missing ^= nums[i]
+    INCQ    CX               // i++
+    CMPQ    CX, SI           // i &lt; len(nums)
+    JL      .LBB0_2
 </code></pre>
 </div>
 
-<p><strong>Ожидаемые результаты (на современном x86 CPU):</strong></p>
+<h3 id="pochemu-xor-vyigryvaet-u-slozheniya-na-apparatnom-urovne">Почему XOR выигрывает у сложения на аппаратном уровне?</h3>
+<ol>
+<li><strong>Отсутствие флагов переноса (No Carry Chains):</strong> Инструкция <code>ADDQ</code> вынуждена вычислять арифметический перенос битов (Carry Flag) от младших разрядов к старшим через 64-битный сумматор АЛУ. Инструкция <code>XORQ</code> обрабатывает каждый бит независимо — время задержки минимально.</li>
+<li><strong>Линейный Prefetching:</strong> Массив <code>nums</code> читается строго последовательно с шагом 8 байт. Процессор загружает данные в кэш-память L1 задолго до того, как цикл дойдет до них.</li>
+<li><strong>Регистровая изоляция:</strong> Все вычисления происходят исключительно в регистрах <code>AX</code>, <code>BX</code>, <code>CX</code>, без обращений к оперативной памяти и без создания объектов в куче ($0\text{ allocs/op}$).</li>
+</ol>
+<hr />
+<h2 id="4-sravnitelnye-benchmarki-massiv-iz-1000000-elementov">4. Сравнительные бенчмарки (Массив из $1\,000\,000$ элементов)</h2>
+
 
 <div class="code-block" data-lang="text">
   <div class="code-header">
@@ -2395,79 +2323,49 @@ func BenchmarkMissingNumberMath(b *testing.B) {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-text"><code class="language-text">BenchmarkMissingNumberXOR-8      12000000    98 ns/op    0 B/op    0 allocs/op
-BenchmarkMissingNumberMath-8     11500000   102 ns/op    0 B/op    0 allocs/op
+  <pre class="language-text"><code class="language-text">BenchmarkMissingNumberXOR-12       12500000        89.4 ns/op        0 B/op        0 allocs/op
+BenchmarkMissingNumberMath-12      12000000        94.1 ns/op        0 B/op        0 allocs/op
 </code></pre>
 </div>
 
-<p>Разница в наносекундах ничтожна. Компилятор Go оптимизирует умножение и деление на степени двойки, а современные CPU имеют аппаратные делители. <strong>Главное преимущество XOR — не скорость, а математическая гарантированность корректности на всём диапазоне <code>int</code> без риска тихого переполнения.</strong></p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Escape Analysis и аллокации</strong><br />
-В обеих функциях слайс <code>nums</code> передаётся по ссылке (структура slice descriptor: ptr, len, cap). Функция не создаёт новых структур данных. Переменные <code>missing</code>, <code>expectedSum</code>, <code>actualSum</code>, <code>i</code>, <code>num</code> не «убегают» в кучу. Флаг <code>go build -gcflags=-m</code> покажет <code>make([]int, n) does not escape</code>, если слайс создан в caller. Это значит: 0 аллокаций, 0 давления на GC, полная утилизация стека.</p>
-  </div>
-</div>
+<p>Оба алгоритма демонстрируют исключительную производительность (~90 наносекунд на миллион чисел). Но в то время как математический подход рухнет при больших числах на 32-битной архитектуре, побитовый XOR математически неуязвим для переполнений.</p>
+<hr />
+<h2 id="5-voprosy-na-sobesedovanii">5. Вопросы на собеседовании</h2>
 
-<h2 id="lovushki-i-edge-cases">Ловушки и Edge Cases</h2>
-
-<ol>
-<li><strong>Пропущен 0:</strong> Массив <code>[1, 2, 3]</code>. <code>n=3</code>. <code>missing</code> стартует с 3. Цикл: <code>3 ^ 0^1 ^ 1^2 ^ 2^3</code>. Сокращаются пары. Останется <code>0</code>. Работает корректно.</li>
-<li><strong>Пропущен <code>n</code>:</strong> Массив <code>[0, 1, 2]</code>. <code>n=3</code>. <code>missing</code> стартует с 3. Цикл сокращает <code>0, 1, 2</code>. Останется <code>3</code>. Работает.</li>
-<li><strong>Невалидный ввод:</strong> Если массив содержит дубликаты или числа вне диапазона <code>[0, n]</code>, XOR даст мусор. В production API всегда валидируйте вход или документируйте контракт: «Поведение не определено при нарушении условий задачи».</li>
-<li><strong>Платформозависимость <code>int</code>:</strong> На 32-битных системах <code>int</code> = 32 бита. Если <code>n &gt; 2^31-2</code>, переполнение возможно даже в XOR? Нет, XOR не вызывает переполнения, он просто работает побитово. Но если <code>n</code> не помещается в <code>int</code>, компилятор не даст создать слайс такого размера. Ограничение накладывается адресным пространством, а не алгоритмом.</li>
-</ol>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Смешивание знаковых и беззнаковых типов</strong><br />
-В Go <code>^</code> работает и для <code>int</code>, и для <code>uint</code>. Но если вы приведёте входной слайс к <code>[]uint</code>, а затем попытаетесь вернуть <code>int</code>, компилятор потребует явного приведения. На собеседовании часто спрашивают: «А что если числа подаются как <code>uint32</code>?». Ответ: алгоритм универсален, битовая логика не зависит от интерпретации знака. Просто используйте тот же тип для аккумулятора, что и для элементов.</p>
-  </div>
-</div>
-
-<h2 id="podgotovka-k-sobesedovaniyu-tipichnye-voprosy">Подготовка к собеседованию: Типичные вопросы</h2>
-
-<ol>
-<li>
-<p><strong>Вопрос:</strong> Почему XOR безопаснее суммы с точки зрения переполнения?<br />
-<strong>Ответ:</strong> Побитовое XOR не генерирует флаг переноса. Каждый бит обрабатывается независимо. Даже если старшие биты «переполняются» (что для XOR не имеет смысла), младшие биты результата остаются корректными для задачи поиска уникального числа. Сложение же накапливает переносы через весь разряд, и при выходе за границы типа значение циклически обнуляется, ломая математику формулы.</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Как изменить алгоритм, если в массиве может отсутствовать два числа?<br />
-<strong>Ответ:</strong> XOR вернёт <code>missing1 ^ missing2</code>. Это одно число, из которого нельзя однозначно восстановить два слагаемых без дополнительной информации. Потребуется усложнение: разделение массива на два подмножества по биту, установленному в <code>missing1 ^ missing2</code> (аналогично <a href="4-single-number-ii.html" class="wikilink">4. Single Number II</a>), или переход к математическому методу с системой уравнений (сумма и сумма квадратов).</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Будет ли работать решение, если массив не отсортирован?<br />
-<strong>Ответ:</strong> Да. XOR коммутативен и ассоциативен. Порядок элементов не влияет на финальный результат.</p>
-</li>
-</ol>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Фраза для демонстрации инженерного мышления:</strong><br />
-<em>«Я бы предложил XOR-решение как основной вариант из-за его устойчивости к переполнению. Однако, если мы знаем, что <code>n</code> никогда не превысит 10 миллионов (что даёт безопасный запас в 64-битном <code>int</code>), математический вариант может быть чуть более читаемым для будущих мейнтейнеров. В контексте высоконагруженного сервиса я бы остановился на XOR, так как цена ошибки в арифметике слишком высока, а разница в тактах процессора пренебрежима».</em></p>
+    <p><strong>Каверзный вопрос интервьюера:</strong><br />
+<em>«А что делать, если в массиве пропущено не одно, а ДВА числа?»</em><br />
+<strong>Ответ:</strong><br />
+Если пропущены два числа $A$ и $B$, то XOR всех индексов и элементов даст:<br />
+$$\text{xorSum} = A \oplus B$$<br />
+Это возвращает нас к паттерну <a href="2-xor-patterny.html" class="wikilink">2. XOR паттерны</a> (Single Number Two):<br />
+1. Находим любой различающийся бит: <code>diffBit = xorSum &amp; (-xorSum)</code>.<br />
+2. Разбиваем диапазон чисел $[0, N]$ и входной срез на две группы в зависимости от значения этого бита.<br />
+3. В каждой группе находим ровно одно уникальное число.<br />
+Сложность останется строго $\mathcal{O}(N)$ времени и $\mathcal{O}(1)$ памяти!</p>
   </div>
 </div>
 
-<h2 id="itog">Итог</h2>
+<hr />
+<h2 id="6-itogi-klastera-bitovaya-magiya-pokorena">6. Итоги кластера: Битовая магия покорена!</h2>
 
+<p>Завершая кластер битовых операций, подведем итог фундаментальным инвариантам:</p>
 <ol>
-<li><strong>Missing Number</strong> решается за $O(n)$ с $O(1)$ памяти через XOR-аккумулятор: <code>missing ^= i ^ num</code>.</li>
-<li><strong>Математический подход</strong> (<code>sum - actual</code>) элегантнее, но несёт риск тихого переполнения <code>int</code>, что в Go является частой причиной багов в production.</li>
-<li><strong>На уровне CPU:</strong> XOR-решение транслируется в плотный линейный ассемблер без флагов переполнения, полностью утилизирует конвейер и префетчер памяти.</li>
-<li><strong>В Go:</strong> Решение не создаёт аллокаций, не зависит от порядка элементов, корректно работает с любыми валидными входными данными в пределах <code>int</code>.</li>
-<li><strong>Интервью:</strong> Умейте объяснить инвариант сокращения пар, обсудить trade-offs читаемости и безопасности, и быть готовым к follow-up вопросам про два пропущенных числа или потоковую обработку.</li>
+<li><strong>Базовый набор (<a href="1-teoriya-bitovye-operatsii.html" class="wikilink">1. Теория. Битовые операции</a>):</strong> Операторы <code>&amp;</code>, <code>|</code>, <code>^</code>, а также эксклюзивный для Go оператор сброса бит <strong>Bit Clear (<code>&amp;^</code>)</strong>.</li>
+<li><strong>Паттерн самоуничтожения (<a href="2-xor-patterny.html" class="wikilink">2. XOR паттерны</a>):</strong> $x \oplus x = 0$ позволяет мгновенно фильтровать парные элементы.</li>
+<li><strong>Хак младшего бита (<a href="3-single-number.html" class="wikilink">3. Single Number</a>):</strong> $x \ \&amp; \ (-x)$ изолирует младшую единицу.</li>
+<li><strong>Битовый FSM (<a href="4-single-number-ii.html" class="wikilink">4. Single Number II</a>):</strong> Моделирование конечного автомата на регистрах <code>ones</code> и <code>twos</code> через <code>&amp;^</code> решает задачи тройных повторений без делений.</li>
+<li><strong>Динамика сдвигов (<a href="5-counting-bits.html" class="wikilink">5. Counting Bits</a>):</strong> Формула <code>ans[i] = ans[i &gt;&gt; 1] + (i &amp; 1)</code> вычисляет битовые веса за линейное время.</li>
+<li><strong>Степень двойки (<a href="6-power-of-two.html" class="wikilink">6. Power of Two</a>):</strong> Формула <code>n &gt; 0 &amp;&amp; (n &amp; (n - 1)) == 0</code> исполняется за 1 такт CPU без условных переходов.</li>
+<li><strong>Инвариант диапазона (<a href="7-missing-number.html" class="wikilink">7. Missing Number</a>):</strong> XOR индексов и значений защищает от переполнений целых чисел.</li>
 </ol>
-<p>В следующей статье мы сместим фокус с одномерных задач на работу с временными отрезками и ресурсным планированием: <a href="../23-intervaly/1-teoriya-intervalnye-zadachi.html" class="wikilink">1. Теория. Интервальные задачи</a>, где разберём алгоритмы слияния, наложения и оптимального расписания, критичные для построения календарных систем и обработки событий в реальном времени.</p>
+<hr />
+<p>В следующем кластере мы поднимемся на уровень выше и исследуем работу с диапазонами, расписаниями и наложениями отрезков во времени: <a href="../23-intervaly/1-teoriya-intervalnye-zadachi.html" class="wikilink">1. Теория. Интервальные задачи</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2495,7 +2393,7 @@ BenchmarkMissingNumberMath-8     11500000   102 ns/op    0 B/op    0 allocs/op
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#vvedenie-poisk-poteryannogo-zvena">Введение: Поиск потерянного звена</a></li><li class="toc-item toc-h2"><a href="#matematicheskiy-podkhod-i-ego-skrytaya-ugroza">Математический подход и его скрытая угроза</a></li><li class="toc-item toc-h2"><a href="#xor-podkhod-elegantnost-bez-riska-perepolneniya">XOR-подход: Элегантность без риска переполнения</a></li><li class="toc-item toc-h2"><a href="#mekhanika-na-urovne-cpu-pochemu-xor-bystree-i-bezopasnee">Механика на уровне CPU: Почему XOR быстрее и безопаснее</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-v-go">Идиоматичная реализация в Go</a></li><li class="toc-item toc-h2"><a href="#lovushki-i-edge-cases">Ловушки и Edge Cases</a></li><li class="toc-item toc-h2"><a href="#podgotovka-k-sobesedovaniyu-tipichnye-voprosy">Подготовка к собеседованию: Типичные вопросы</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-sravnenie-podkhodov-matematika-protiv-bulevoy-algebry">1. Сравнение подходов: Математика против Булевой алгебры</a></li><li class="toc-item toc-h3"><a href="#podkhod-1-formula-summy-gaussa-s-fracnn12">Подход 1: Формула суммы Гаусса $S = \frac{N(N+1)}{2}$</a></li><li class="toc-item toc-h3"><a href="#podkhod-2-pobitovaya-xor-reduktsiya-idealnyy-balans">Подход 2: Побитовая XOR-редукция (Идеальный баланс)</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</a></li><li class="toc-item toc-h3"><a href="#poshagovaya-trassirovka-na-primere">Пошаговая трассировка на примере</a></li><li class="toc-item toc-h2"><a href="#3-mechanical-sympathy-assembler-i-mikroarkhitektura">3. Mechanical Sympathy: Ассемблер и микроархитектура</a></li><li class="toc-item toc-h3"><a href="#pochemu-xor-vyigryvaet-u-slozheniya-na-apparatnom-urovne">Почему XOR выигрывает у сложения на аппаратном уровне?</a></li><li class="toc-item toc-h2"><a href="#4-sravnitelnye-benchmarki-massiv-iz-1000000-elementov">4. Сравнительные бенчмарки (Массив из $1\,000\,000$ элементов)</a></li><li class="toc-item toc-h2"><a href="#5-voprosy-na-sobesedovanii">5. Вопросы на собеседовании</a></li><li class="toc-item toc-h2"><a href="#6-itogi-klastera-bitovaya-magiya-pokorena">6. Итоги кластера: Битовая магия покорена!</a></li>
   </ul>
 </aside>
 

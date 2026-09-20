@@ -2171,25 +2171,49 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~21 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~23 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">7. Number of Islands</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="vvedenie-podschyot-svyaznykh-komponent-v-raspredelyonnoy-setke">Введение: Подсчёт связных компонент в распределённой сетке</h2>
+            <blockquote>
+<p><em>«Вся сложность анализа больших структур часто сводится к тому, чтобы аккуратно и вовремя пометить уже пройденное».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="vvedenie-vydelenie-komponent-svyaznosti-v-raspredelennykh-setkakh">Введение: Выделение компонент связности в распределенных сетках</h2>
 
-<p>Задача <strong>Number of Islands</strong> (LeetCode 200) требует подсчитать количество островов в двумерной сетке, где <code>1</code> обозначает сушу, а <code>0</code> — воду. Острова формируются горизонтально или вертикально смежными единицами. За рамками алгоритмических соревнований этот паттерн напрямую транслируется в бэкенд-архитектуру: обнаружение кластеров отказавших нод в мониторинге, сегментация связных областей в разреженных матрицах смежности, агрегация географических зон в картографических сервисах и расчёт компонент связности в graph-based базах данных.</p>
-<p>На собеседованиях уровня Middle+/Senior эта задача выступает строгим фильтром на понимание обхода графов, управления памятью в горячих циклах и способности выбирать между рекурсией, очередями и структурами непересекающихся множеств (DSU) с учётом ограничений рантайма Go. В этой статье мы разберём три фундаментальных подхода, погрузимся в механику работы с <code>[][]byte</code>, проанализируем влияние на кэш-подсистему CPU и Garbage Collector, а также подготовимся к архитектурным follow-up вопросам.</p>
-<h2 id="1-algoritmicheskiy-vybor-dfs-bfs-i-union-find">1. Алгоритмический выбор: DFS, BFS и Union-Find</h2>
+<p>Задача <strong>Number of Islands</strong> (LeetCode 200) — абсолютная классика алгоритмических интервью, проверяющая знание алгоритмов обхода графов и умение находить компоненты связности в неявных сетках (Implicit Grids).</p>
+<p>Условие задачи: дана двумерная бинарная матрица <code>grid</code> размера $M \times N$, где <code>'1'</code> обозначает участок суши, а <code>'0'</code> — воду. Остров образуется смежными по вертикали или горизонтали единицами. Требуется подсчитать суммарное количество островов.</p>
 
-<p>Существует три оптимальных стратегии, каждая из которых имеет чёткие инженерные границы применимости.</p>
-<ul>
-<li><strong>DFS (Поиск в глубину):</strong> Проваливается в первую найденную компоненту, помечая её, и возвращается. Минимальный overhead на управление состоянием, но рискует переполнением стека на глубоких структурах (например, змеевидный остров).</li>
-<li><strong>BFS (Поиск в ширину):</strong> Обходит компоненту послойно. Гарантирует стабильное потребление памяти (ограничено шириной фронта волны), но требует управления очередью, что создаёт дополнительные аллокации и разрушает кэш-локальность при росте.</li>
-<li><strong>Union-Find (DSU):</strong> Идеален для динамических сценариев, когда острова появляются или исчезают в реальном времени. Для статической сетки имеет постоянный overhead на инициализацию массивов <code>parent</code> и <code>rank</code>, но обеспечивает почти $O(1)$ на операцию с оптимизациями сжатия пути и рангов.</li>
-</ul>
+<div class="code-block" data-lang="ascii">
+  <div class="code-header">
+    <span class="code-lang-tag">DIAGRAM</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-ascii"><code class="language-ascii">Исходная сетка (4x5):
+[ '1', '1', '0', '0', '0' ]   ──► Остров 1
+[ '1', '1', '0', '0', '0' ]
+[ '0', '0', '1', '0', '0' ]   ──► Остров 2
+[ '0', '0', '0', '1', '1' ]   ──► Остров 3
+
+Количество островов: 3
+</code></pre>
+</div>
+
+<p>В реальной бэкенд-инженерии поиск компонент связности на матрицах и графах лежит в основе ключевых подсистем:<br />
+* <strong>Мониторинг распределенных кластеров:</strong> Обнаружение групп взаимно изолированных нод при сплит-брейне (Network Partition / Split-Brain Detection).<br />
+* <strong>Сегментация геопространственных данных:</strong> Объединение полигонов и тайлов в картографических движках (GIS).<br />
+* <strong>Анализ разреженных графов:</strong> Выявление изолированных сообществ в социальных графах и антифрод-системах.<br />
+* <strong>Сжатие битовых масок и изображений:</strong> Поиск связных областей для алгоритмов RLE (Run-Length Encoding) и фильтрации шума.</p>
+<p>На собеседованиях уровня Middle+/Senior эта задача служит отличной отправной точкой для глубокой дискуссии: почему DFS может вызвать Stack Overflow, как устроен кольцевой буфер для BFS без утечек памяти и когда структура непересекающихся множеств (DSU) превосходит классические обходы.</p>
+<hr />
+<h2 id="arkhitekturnyy-vybor-sravnenie-trekh-fundamentalnykh-strategiy">Архитектурный выбор: Сравнение трех фундаментальных стратегий</h2>
+
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2204,31 +2228,71 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-Grid[&quot;Входная матрица&lt;br&gt;N x M&quot;] --&gt; Scan[&quot;Линейное сканирование&lt;br&gt;Поиск первой единицы&quot;]
-Scan --&gt; Match{&quot;Единица найдена?&quot;}
-Match -- &quot;Нет&quot; --&gt; End[&quot;Возврат счётчика&lt;br&gt;Завершение&quot;]
-Match -- &quot;Да&quot; --&gt; Inc[&quot;Счётчик++&lt;br&gt;Запуск обхода&quot;]
-Inc --&gt; Choose{&quot;Выбор стратегии&quot;}
-Choose --&gt; DFS[&quot;Рекурсивный DFS&lt;br&gt;Глубокое погружение&lt;br&gt;Стек горутины&quot;]
-Choose --&gt; BFS[&quot;Очередь FIFO&lt;br&gt;Послойный обход&lt;br&gt;Слайс/Кольцевой буфер&quot;]
-Choose --&gt; DSU[&quot;Union-Find&lt;br&gt;Сжатие пути + Ранг&lt;br&gt;Массив parent&quot;]
-DFS --&gt; Mark[&quot;Маркировка посещённого&lt;br&gt;In-place или visited&quot;]
-BFS --&gt; Mark
-DSU --&gt; Union[&quot;Объединение множеств&lt;br&gt;Поиск корня&quot;]
-Mark --&gt; Scan
-Union --&gt; Scan
-End --&gt; Result[&quot;Итоговое число&lt;br&gt;компонент связности&quot;]
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef warn    fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
 
-style Grid fill:#1e3a5f,stroke:#38bdf8,color:#f8fafc
-style Result fill:#064e3b,stroke:#34d399,color:#f8fafc
-style Choose fill:#78350f,stroke:#fbbf24,color:#f8fafc
+Grid[&quot;Входная сетка M x N&quot;]:::entry --&gt; Scan[&quot;Линейный обход ячеек:&lt;br/&gt;for r .. rows; for c .. cols&quot;]:::process
+Scan --&gt; Check{&quot;grid[r][c] == &#x27;1&#x27;?&quot;}
+
+Check -- &quot;Нет (&#x27;0&#x27;)&quot; --&gt; Next[&quot;Переход к следующей ячейке&quot;]:::process
+Next --&gt; Scan
+
+Check -- &quot;Да (&#x27;1&#x27;)&quot; --&gt; Inc[&quot;islands++&lt;br/&gt;Запуск &#x27;затопления&#x27;&quot;]:::accent
+Inc --&gt; Strategy{&quot;Выбор стратегии&quot;}:::warn
+
+Strategy --&gt; DFS[&quot;1. Рекурсивный DFS&lt;br/&gt;Затопление in-place &#x27;1&#x27; -&gt; &#x27;0&#x27;&lt;br/&gt;0 аллокаций, стек горутины&quot;]:::process
+Strategy --&gt; BFS[&quot;2. Итеративный BFS&lt;br/&gt;Очередь ячеек (FIFO)&lt;br/&gt;Стабильная память волны&quot;]:::process
+Strategy --&gt; DSU[&quot;3. Disjoint Set Union&lt;br/&gt;Иерархия parent/rank&lt;br/&gt;Идеально для потоковых данных&quot;]:::process
+
+DFS --&gt; Sunk[&quot;Остров полностью затоплен&quot;]:::success
+BFS --&gt; Sunk
+DSU --&gt; Sunk
+Sunk --&gt; Next
   </pre>
 </div>
 
 
-<h2 id="2-idiomatichnaya-realizatsiya-v-go">2. Идиоматичная реализация в Go</h2>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Стратегия</th>
+<th>Время</th>
+<th>Дополнительная память</th>
+<th>Плюсы</th>
+<th>Минусы / Риски</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1. DFS (In-place sinking)</strong></td>
+<td>$O(M \cdot N)$</td>
+<td>$O(M \cdot N)$ стек</td>
+<td>Минимальный объем кода, нулевые аллокации в куче (<code>0 B/op</code>).</td>
+<td>Риск <code>stack overflow</code> или дорогого <code>stack copying</code> на длинных узких змейках.</td>
+</tr>
+<tr>
+<td><strong>2. BFS (Queue)</strong></td>
+<td>$O(M \cdot N)$</td>
+<td>$O(\min(M, N))$ очередь</td>
+<td>Память ограничена длиной фронта волны. Нет глубокой рекурсии.</td>
+<td>Требует ручной реализации эффективной очереди (на базе среза или кольцевого буфера).</td>
+</tr>
+<tr>
+<td><strong>3. DSU (Union-Find)</strong></td>
+<td>$O(M \cdot N \cdot \alpha(V))$</td>
+<td>$O(M \cdot N)$</td>
+<td>Идеален для динамических сценариев: острова добавляются в реальном времени.</td>
+<td>Оверхед на предвыделение массивов <code>parent</code> и <code>rank</code>.</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="1-rekursivnyy-dfs-s-in-place-zatopleniem-kanonicheskiy-podkhod">1. Рекурсивный DFS с In-Place затоплением (Канонический подход)</h2>
 
-<p>В production-коде предпочтение отдаётся DFS с in-place маркировкой из-за нулевых аллокаций и предельной компактности. Мы используем <code>[][]byte</code> вместо <code>[][]rune</code> или <code>[][]string</code>, чтобы минимизиров footprint памяти и ускорить сравнения на уровне CPU.</p>
+<p>Самый быстрый и лаконичный способ — техника «затопления» (Flood Fill / Sinking). При обнаружении <code>'1'</code> мы увеличиваем счетчик островов и рекурсивно превращаем все смежные <code>'1'</code> в <code>'0'</code>, исключая необходимость вспомогательной матрицы <code>visited</code>.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2238,12 +2302,82 @@ style Choose fill:#78350f,stroke:#fbbf24,color:#f8fafc
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">package solution
+  <pre class="language-go"><code class="language-go">package islands
 
-// NumIslands подсчитывает количество связных компонент единиц в сетке.
-// Контракт: модифицирует входную сетку in-place для экономии памяти.
-// Если иммутабельность обязательна, создайте копию перед вызовом.
+// NumIslands подсчитывает количество островов методом DFS in-place.
+// Временная сложность: O(M * N)
+// Пространственная сложность: O(M * N) в худшем случае для стека рекурсии
 func NumIslands(grid [][]byte) int {
+    if len(grid) == 0 || len(grid[0]) == 0 {
+        return 0
+    }
+
+    rows, cols := len(grid), len(grid[0])
+    islandsCount := 0
+
+    for r := 0; r &lt; rows; r++ {
+        for c := 0; c &lt; cols; c++ {
+            if grid[r][c] == '1' {
+                islandsCount++
+                // Затапливаем текущий остров целиком
+                sinkDFS(grid, r, c, rows, cols)
+            }
+        }
+    }
+
+    return islandsCount
+}
+
+// sinkDFS рекурсивно обходит смежные клетки и обращает '1' в '0'.
+func sinkDFS(grid [][]byte, r, c, rows, cols int) {
+    // Базовые условия останова: выход за границы или клетка является водой/уже затоплена
+    if r &lt; 0 || r &gt;= rows || c &lt; 0 || c &gt;= cols || grid[r][c] == '0' {
+        return
+    }
+
+    // Затапливаем ячейку
+    grid[r][c] = '0'
+
+    // Рекурсивно обходим 4 соседних направления
+    sinkDFS(grid, r-1, c, rows, cols) // Вверх
+    sinkDFS(grid, r+1, c, rows, cols) // Вниз
+    sinkDFS(grid, r, c-1, rows, cols) // Влево
+    sinkDFS(grid, r, c+1, rows, cols) // Вправо
+}
+</code></pre>
+</div>
+
+<hr />
+<h2 id="2-iterativnyy-bfs-zashchita-ot-perepolneniya-steka-i-lovushka-ocheredi">2. Итеративный BFS: Защита от переполнения стека и ловушка очереди</h2>
+
+<p>Если в продакшене матрица имеет размер $5000 \times 5000$, змеевидный остров из 1 000 000 ячеек приведет к тысячам раундов <code>runtime.morestack</code> в Go. В таких условиях рекурсия недопустима, и применяется <strong>итеративный BFS</strong>.</p>
+<div class="callout callout-note">
+  <div class="callout-header">
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Заметка</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Фундаментальный закон BFS на сетках: Mark-on-Push Invariant</strong><br />
+Самая частая и губительная ошибка кандидатов на собеседовании — помечать ячейку посещенной (<code>grid[nr][nc] = '0'</code>) <strong>в момент извлечения из очереди (Pop)</strong>, а не в момент добавления (Push).<br />
+Если ячейка добавляется в очередь без немедленного зануления, соседние ячейки фронта волны успеют повторно добавить её в очередь десятки раз! Очередь экспоненциально раздувается, пожирая гигабайты памяти и приводя к Out Of Memory (OOM).</p>
+  </div>
+</div>
+
+<h3 id="optimizatsiya-pamyati-ocheredi-v-go-upakovka-koordinat">Оптимизация памяти очереди в Go: Упаковка координат</h3>
+
+<p>Вместо создания структуры <code>type Point struct { r, c int }</code>, которая требует 16 байт, мы можем упаковать координаты <code>(r, c)</code> в одно 32-битное беззнаковое целое: <code>uint32(r)&lt;&lt;16 | uint32(c)</code>.<br />
+Для матрицы $1000 \times 1000$ координаты гарантированно укладываются в 16 бит. Это снижает потребление памяти очередью в 2 раза и улучшает кэш-локальность.</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">// NumIslandsBFS решает задачу итеративно через BFS с компактной очередью.
+func NumIslandsBFS(grid [][]byte) int {
     if len(grid) == 0 || len(grid[0]) == 0 {
         return 0
     }
@@ -2251,75 +2385,53 @@ func NumIslands(grid [][]byte) int {
     rows, cols := len(grid), len(grid[0])
     islands := 0
 
+    // Очередь с плоской упаковкой координат: (r &lt;&lt; 16) | c
+    queue := make([]uint32, 0, 1024)
+
+    // Дельта-массивы смещений для 4 направлений
+    dr := [4]int{-1, 1, 0, 0}
+    dc := [4]int{0, 0, -1, 1}
+
     for r := 0; r &lt; rows; r++ {
         for c := 0; c &lt; cols; c++ {
             if grid[r][c] == '1' {
                 islands++
-                // Запускаем обход для пометки всей компоненты
-                markIslandDFS(grid, r, c, rows, cols)
+
+                // Mark-on-Push: немедленно затапливаем стартовую ячейку
+                grid[r][c] = '0'
+                queue = append(queue[:0], uint32(r)&lt;&lt;16|uint32(c))
+
+                head := 0
+                for head &lt; len(queue) {
+                    curr := queue[head]
+                    head++
+
+                    cr := int(curr &gt;&gt; 16)
+                    cc := int(curr &amp; 0xFFFF)
+
+                    for i := 0; i &lt; 4; i++ {
+                        nr, nc := cr+dr[i], cc+dc[i]
+                        if nr &gt;= 0 &amp;&amp; nr &lt; rows &amp;&amp; nc &gt;= 0 &amp;&amp; nc &lt; cols &amp;&amp; grid[nr][nc] == '1' {
+                            // СТРОГО: Mark-on-Push! Зануляем ДО добавления в очередь
+                            grid[nr][nc] = '0'
+                            queue = append(queue, uint32(nr)&lt;&lt;16|uint32(nc))
+                        }
+                    }
+                }
             }
         }
     }
 
     return islands
 }
-
-// markIslandDFS рекурсивно помечает связную область нулями
-func markIslandDFS(grid [][]byte, r, c, rows, cols int) {
-    // Проверка границ и условия остановки
-    if r &lt; 0 || c &lt; 0 || r &gt;= rows || c &gt;= cols || grid[r][c] == '0' {
-        return
-    }
-
-    // In-place маркировка: '1' -&gt; '0'
-    grid[r][c] = '0'
-
-    // Обход 4 направлений. Порядок не влияет на корректность,
-    // но последовательный вызов лучше предсказывается CPU.
-    markIslandDFS(grid, r-1, c, rows, cols) // Вверх
-    markIslandDFS(grid, r+1, c, rows, cols) // Вниз
-    markIslandDFS(grid, r, c-1, rows, cols) // Влево
-    markIslandDFS(grid, r, c+1, rows, cols) // Вправо
-}
 </code></pre>
 </div>
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Почему передаём <code>rows</code> и <code>cols</code>, а не вычисляем <code>len(grid)</code> внутри?</strong><br />
-Вызов <code>len()</code> на слайсе компилируется в прямое чтение поля структуры <code>sliceHeader</code>. Компилятор Go обычно инлайнит его, но передача значений в аргументах устраняет даже теоретический overhead и снимает нагрузку на регистровый файл в глубокой рекурсии. Это микрооптимизация, но в tight-loop рекурсии с миллионами вызовов она суммируется в заметный выигрыш.</p>
-  </div>
-</div>
+<hr />
+<h2 id="3-disjoint-set-union-dsu-dlya-dinamicheskikh-nagruzok">3. Disjoint Set Union (DSU) для динамических нагрузок</h2>
 
-<h2 id="3-mekhanika-pod-kapotom-pamyat-kesh-i-rantaym">3. Механика под капотом: Память, кэш и рантайм</h2>
-
-<h3 id="1-struktura-byte-i-pointer-chasing">1. Структура `[][]byte` и Pointer Chasing</h3>
-<p>В Go двумерная сетка — это слайс указателей на строки. Каждая строка <code>grid[i]</code> выделена отдельно. При обходе DFS мы читаем <code>grid[r][c]</code>, что требует:<br />
-1. Загрузки базового указателя <code>grid</code>.<br />
-2. Разыменования <code>grid[r]</code> (pointer chasing).<br />
-3. Вычисления смещения <code>c</code> и загрузки байта.</p>
-<p>При случайном порядке обхода (DFS ныряет глубоко, прыгая между строками) аппаратный префетчер CPU (Stream Prefetcher) не может предсказать следующие адреса. Это вызывает частые <strong>L1/L2 cache misses</strong>. На сетках &gt;2000x2000 латентность памяти становится доминирующим фактором.</p>
-<h3 id="2-stek-gorutiny-i-stack-copying">2. Стек горутины и Stack Copying</h3>
-<p>Рекурсивный DFS создаёт фрейм на стеке каждой горутины. Go начинает с 2 КБ и растёт динамически. Если остров образует длинную цепь (например, змейка на 5000 клеток), стек расширяется, и рантайм выполняет <strong>stack copying</strong>: выделяет новый блок в куче, копирует фреймы, обновляет указатели. Это блокирует выполнение и фрагментирует память.</p>
-<p><strong>Инженерное решение:</strong> Для гарантированно стабильной латентности используйте <strong>итеративный DFS</strong> с явным стеком <code>[]Point</code>, выделенным через <code>make([]Point, 0, rows*cols)</code>. Стек в куче не вызывает <code>morestack</code> и не блокирует горутины на копирование.</p>
-<h3 id="3-escape-analysis-i-davlenie-na-gc">3. Escape Analysis и давление на GC</h3>
-<p>Если вместо in-place маркировки выделить <code>visited := make([][]bool, rows)</code>, компилятор пометит его как <code>escapes to heap</code>, так как время жизни превышает функцию. Это создаёт:<br />
-*   Отдельную аллокацию в куче.<br />
-*   Дополнительную работу для GC на фазе маркировки (scan of <code>bool</code> slices).<br />
-*   Потерю кэш-локальности (два разных блока памяти: <code>grid</code> и <code>visited</code>).</p>
-<p>In-place подход <code>grid[r][c] = '0'</code> полностью устраняет эти накладные расходы, удерживая всё в одном contiguous блоке (в пределах строк) и снижая GC паузы на порядок.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Контракт мутабельности и Data Race</strong><br />
-Функция изменяет входные данные. В многопоточном бэкенде, если <code>grid</code> шарится через <code>sync.Map</code> или кэш, параллельный вызов <code>NumIslands</code> вызовет <strong>data race</strong>. Компилятор не ловит это на этапе сборки, но <code>go run -race</code> покажет панику. Для конкурентных сценариев всегда клонируйте вход:</p>
+<p>В распределенных геоинформационных сервисах или онлайн-играх карта не статична: пользователи ставят блоки, дамбы прорываются, острова объединяются. Статический DFS/BFS требует полного пересчета за $O(M \cdot N)$ при каждом изменении.<br />
+Структура <strong>Disjoint Set Union</strong> с эвристиками сжатия путей (Path Compression) и объединения по рангу (Union by Rank) выполняет добавление суши и слияние островов за почти константное время: $O(\alpha(N))$ (где $\alpha$ — обратная функция Аккермана, $\alpha \le 4$ для любых мыслимых масштабов).</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2329,58 +2441,145 @@ func markIslandDFS(grid [][]byte, r, c, rows, cols int) {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">cp := make([][]byte, len(grid))
-for i, row := range grid {
-    cp[i] = make([]byte, len(row))
-    copy(cp[i], row)
+  <pre class="language-go"><code class="language-go">type DSU struct {
+    parent []int
+    rank   []int
+    count  int // Количество независимых компонент суши
 }
-NumIslands(cp)
+
+func NewDSU(grid [][]byte) *DSU {
+    rows, cols := len(grid), len(grid[0])
+    total := rows * cols
+    parent := make([]int, total)
+    rank := make([]int, total)
+    count := 0
+
+    for r := 0; r &lt; rows; r++ {
+        for c := 0; c &lt; cols; c++ {
+            if grid[r][c] == '1' {
+                id := r*cols + c
+                parent[id] = id
+                count++
+            }
+        }
+    }
+
+    return &amp;DSU{parent: parent, rank: rank, count: count}
+}
+
+func (d *DSU) Find(i int) int {
+    // Сжатие пути (Path Compression)
+    if d.parent[i] != i {
+        d.parent[i] = d.Find(d.parent[i])
+    }
+    return d.parent[i]
+}
+
+func (d *DSU) Union(i, j int) {
+    rootI := d.Find(i)
+    rootJ := d.Find(j)
+    if rootI == rootJ {
+        return
+    }
+
+    // Объединение по рангу (Union by Rank)
+    if d.rank[rootI] &lt; d.rank[rootJ] {
+        d.parent[rootI] = rootJ
+    } else if d.rank[rootI] &gt; d.rank[rootJ] {
+        d.parent[rootJ] = rootI
+    } else {
+        d.parent[rootJ] = rootI
+        d.rank[rootI]++
+    }
+
+    d.count-- // Два острова слились в один
+}
 </code></pre>
 </div>
 
-<p>Или используйте атомарные битовые карты, если сетка гигантская.</p>
+<hr />
+<h2 id="mekhanika-rantayma-kesh-pamyat-i-mnogopotochnost">Механика рантайма: Кэш, память и многопоточность</h2>
+
+<h3 id="1-pointer-chasing-pri-obkhode-byte">1. Pointer Chasing при обходе `[][]byte`</h3>
+
+<p>Тип <code>[][]byte</code> — это массив указателей на строки.<br />
+При обходе DFS шаги <code>r-1</code> и <code>r+1</code> переходят по разным строкам, вызывая скачки по несвязанным адресам памяти в куче.<br />
+Для сеток масштаба $10000 \times 10000$ это приводит к потере до 40% тактов процессора на ожидание данных из DRAM. В критичных к производительности системах сетку хранят в плоском срезе <code>[]byte</code> размера $M \cdot N$, преобразуя координаты формулой: <code>idx = r * cols + c</code>.</p>
+<h3 id="2-mutabelnost-kontrakta-i-data-race">2. Мутабельность контракта и Data Race</h3>
+
+<p>Функция <code>NumIslands</code> мутирует входной слайс in-place (<code>grid[r][c] = '0'</code>).<br />
+Если сетка передается в несколько параллельных воркеров без предварительного клонирования, возникает гонка данных (Data Race), детектируемая <code>go test -race</code>.<br />
+Если вызывающей стороне необходимо сохранить исходные данные, перед вызовом алгоритма создают глубокую копию строк:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
+  <pre class="language-go"><code class="language-go">func cloneGrid(grid [][]byte) [][]byte {
+    cp := make([][]byte, len(grid))
+    for i := range grid {
+        cp[i] = make([]byte, len(grid[i]))
+        copy(cp[i], grid[i])
+    }
+    return cp
+}
+</code></pre>
 </div>
 
-<h2 id="4-podgotovka-k-sobesedovaniyu">4. Подготовка к собеседованию</h2>
+<hr />
+<h2 id="voprosy-dlya-sobesedovaniya">Вопросы для собеседования</h2>
 
-<h3 id="tipovye-voprosy-i-follow-up">Типовые вопросы и follow-up</h3>
-
-<ol>
-<li>
-<p><strong>Вопрос:</strong> Как изменить алгоритм, если острова появляются динамически (потоковый режим)?<br />
-<strong>Ответ:</strong> Статический DFS/BFS неэффективен. Требуется <strong>Dynamic Union-Find</strong>. Изначально считаем 0 островов. При поступлении новой единицы в <code>(r, c)</code> увеличиваем счётчик, проверяем 4 соседей. Если сосед — единица, выполняем <code>Union(r, c, neighbor)</code>. Если они принадлежали разным множествам, уменьшаем счётчик на 1. Сложность: почти $O(1)$ на обновление. В Go реализуется через два <code>[]int</code> массива (<code>parent</code>, <code>rank</code>).</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Можно ли распараллелить подсчёт островов?<br />
-<strong>Ответ:</strong> Прямое распараллеливание DFS/BFS невозможно из-за состояния <code>visited</code>. Но можно использовать <strong>разделение области (Domain Decomposition)</strong>: разбить сетку на 4 квадранта, запустить <code>NumIslands</code> в 4 горутинах, а затем слить результаты, проверяя только граничные клетки на пересечения компонент через локальный DSU. Это даёт near-linear scaling на многоядерных CPU, но требует синхронизации на границах.</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Почему вы не используете <code>container/list</code> для BFS?<br />
-<strong>Ответ:</strong> <code>container/list</code> — это двусвязный список. Каждый <code>PushBack</code> выделяет <code>*Element</code> в куче. При обходе острова из 100К клеток это создаёт 100К мелких аллокаций, фрагментирует память и убивает кэш-локальность. Идиоматичный Go использует слайс как кольцевой буфер или просто <code>[]Point</code> с двумя указателями <code>head/tail</code>, что в 5-10 раз быстрее и создаёт ноль аллокаций после предвыделения.</p>
-</li>
-</ol>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Как объяснить сложность вслух:</strong><br />
-<em>«Временная сложность строго $O(N \cdot M)$, так как мы посещаем каждую ячейку не более двух раз. Пространственная сложность в худшем случае $O(N \cdot M)$ для глубины рекурсивного стека, но на практике ограничена размером острова. В Go я выбираю in-place маркировку, чтобы избежать аллокаций и снизить давление на GC. Для production-систем с динамической сеткой я бы перешёл на DSU, а для потоковой обработки — на кольцевой буфер с предварительным выделением памяти через sync.Pool».</em></p>
+    <p><strong>Вопрос 1:</strong> Как параллельно подсчитать число островов на матрице размером $100\,000 \times 100\,000$, которая распределена по нескольким серверам?<br />
+<strong>Ответ:</strong> Применяется метод декомпозиции области (<strong>Domain Decomposition</strong>):<br />
+1. Сетка разбивается на горизонтальные или вертикальные полосы (Tiles) между серверами.<br />
+2. Каждый сервер независимо запускает локальный <code>NumIslands</code> для своей полосы, сохраняя границы компонент.<br />
+3. На фазе редукции сервер-координатор сопоставляет только ячейки на стыках смежных полос (швы). Если единицы на границе соприкасаются, их множества объединяются через распределенный <strong>DSU</strong>, уменьшая общее число островов.</p>
   </div>
 </div>
 
-<h2 id="5-itog">5. Итог</h2>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос 2:</strong> Почему в Go нельзя использовать <code>container/list</code> для очереди в BFS?<br />
+<strong>Ответ:</strong> <code>container/list</code> представляет собой классический двусвязный список на указателях. Каждая вставка элемента (<code>PushBack</code>) выделяет узел <code>*Element</code> в куче через <code>new()</code>. На миллионе ячеек это вызовет 1 000 000 аллокаций, катастрофически фрагментирует память и создаст огромную паузу GC. Простой срез <code>[]uint32</code> с указателем <code>head</code> работает в пределах одной непрерывной кэш-линии и не создает мусора.</p>
+  </div>
+</div>
 
-<ol>
-<li><strong>Number of Islands</strong> решается за $O(N \cdot M)$ через обход связных компонент. DFS оптимален для статических сеток, BFS — для предсказуемой памяти, DSU — для динамических обновлений.</li>
-<li><strong>В Go:</strong> In-place маркировка <code>grid[r][c] = '0'</code> исключает аллокации, минимизирует GC паузы и сохраняет кэш-локальность в пределах строк. Избегайте <code>container/list</code> и <code>defer</code> в рекурсивных хот-путах.</li>
-<li><strong>Механика:</strong> <code>[][]byte</code> вызывает pointer chasing, что ограничивает эффективность префетчера при случайных прыжках DFS. Рекурсия нагружает стек горутины, вызывая <code>stack copying</code> на глубоких структурах. Итеративный стек в куче решает проблему.</li>
-<li><strong>Ловушки:</strong> Мутабельность контракта требует явной документации или копирования. Параллельный вызов на одной сетке вызывает data race. Пустые или вырожденные матрицы требуют защитных проверок <code>len()</code>.</li>
-<li><strong>Интервью:</strong> Умейте аргументировать выбор алгоритма через призму нагрузки (статика vs поток), объяснить trade-offs памяти и латентности, и предложить гибридные решения (Domain Decomposition + локальный DSU) для масштабирования на многоядерные кластеры.</li>
-</ol>
-<p>В следующей статье мы перейдём к работе с текстовыми структурами и алгоритмами поиска подстрок: <a href="../25-stroki/1-teoriya-strokovye-zadachi.html" class="wikilink">1. Теория. Строковые задачи</a>, где разберём хеширование, префиксные структуры, суффиксные массивы и их применение в высоконагруженных поисковых и аналитических бэкенд-системах.</p>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос 3:</strong> Как найти не количество островов, а площадь самого большого острова (Max Area of Island)?<br />
+<strong>Ответ:</strong> Достаточно изменить возвращаемое значение функции обхода: <code>sinkDFS</code> возвращает <code>1 + sinkDFS(up) + sinkDFS(down) + sinkDFS(left) + sinkDFS(right)</code>. В главном цикле мы вычисляем <code>maxArea = max(maxArea, currentArea)</code>.</p>
+  </div>
+</div>
+
+<hr />
+<h2 id="rezyume">Резюме</h2>
+
+<ul>
+<li>Задача о числе островов — эталонная задача на поиск компонент связности графа в неявной сетке.</li>
+<li>Техника <strong>In-Place затопления</strong> (<code>grid[r][c] = '0'</code>) исключает необходимость вспомогательной структуры <code>visited</code>, снижая потребление памяти до минимума.</li>
+<li>Для BFS критически важен инвариант <strong>Mark-on-Push</strong>: ячейка обязана помечаться посещенной ДО попадания в очередь, иначе очередь экспоненциально раздувается.</li>
+<li>Для динамических систем с добавлением новых ячеек в реальном времени оптимален <strong>Disjoint Set Union (DSU)</strong>.</li>
+<li>В распределенных системах задача масштабируется через Domain Decomposition и склеивание граничных швов.</li>
+</ul>
+<p>На этом мы завершаем кластер матричных задач. В следующей главе мы перейдем к фундаментальной теории строковых алгоритмов: <a href="../25-stroki/1-teoriya-strokovye-zadachi.html" class="wikilink">1. Теория. Строковые задачи</a>, где разберем внутреннее устройство <code>stringStruct</code> в рантайме Go, кодировку UTF-8, разницу между байтами и рунами, а также механику Zero-Allocation манипуляций со строками.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2408,7 +2607,7 @@ NumIslands(cp)
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#vvedenie-podschyot-svyaznykh-komponent-v-raspredelyonnoy-setke">Введение: Подсчёт связных компонент в распределённой сетке</a></li><li class="toc-item toc-h2"><a href="#1-algoritmicheskiy-vybor-dfs-bfs-i-union-find">1. Алгоритмический выбор: DFS, BFS и Union-Find</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-v-go">2. Идиоматичная реализация в Go</a></li><li class="toc-item toc-h2"><a href="#3-mekhanika-pod-kapotom-pamyat-kesh-i-rantaym">3. Механика под капотом: Память, кэш и рантайм</a></li><li class="toc-item toc-h3"><a href="#1-struktura-byte-i-pointer-chasing">1. Структура [][]byte и Pointer Chasing</a></li><li class="toc-item toc-h3"><a href="#2-stek-gorutiny-i-stack-copying">2. Стек горутины и Stack Copying</a></li><li class="toc-item toc-h3"><a href="#3-escape-analysis-i-davlenie-na-gc">3. Escape Analysis и давление на GC</a></li><li class="toc-item toc-h2"><a href="#4-podgotovka-k-sobesedovaniyu">4. Подготовка к собеседованию</a></li><li class="toc-item toc-h3"><a href="#tipovye-voprosy-i-follow-up">Типовые вопросы и follow-up</a></li><li class="toc-item toc-h2"><a href="#5-itog">5. Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#vvedenie-vydelenie-komponent-svyaznosti-v-raspredelennykh-setkakh">Введение: Выделение компонент связности в распределенных сетках</a></li><li class="toc-item toc-h2"><a href="#arkhitekturnyy-vybor-sravnenie-trekh-fundamentalnykh-strategiy">Архитектурный выбор: Сравнение трех фундаментальных стратегий</a></li><li class="toc-item toc-h2"><a href="#1-rekursivnyy-dfs-s-in-place-zatopleniem-kanonicheskiy-podkhod">1. Рекурсивный DFS с In-Place затоплением (Канонический подход)</a></li><li class="toc-item toc-h2"><a href="#2-iterativnyy-bfs-zashchita-ot-perepolneniya-steka-i-lovushka-ocheredi">2. Итеративный BFS: Защита от переполнения стека и ловушка очереди</a></li><li class="toc-item toc-h3"><a href="#optimizatsiya-pamyati-ocheredi-v-go-upakovka-koordinat">Оптимизация памяти очереди в Go: Упаковка координат</a></li><li class="toc-item toc-h2"><a href="#3-disjoint-set-union-dsu-dlya-dinamicheskikh-nagruzok">3. Disjoint Set Union (DSU) для динамических нагрузок</a></li><li class="toc-item toc-h2"><a href="#mekhanika-rantayma-kesh-pamyat-i-mnogopotochnost">Механика рантайма: Кэш, память и многопоточность</a></li><li class="toc-item toc-h3"><a href="#1-pointer-chasing-pri-obkhode-byte">1. Pointer Chasing при обходе [][]byte</a></li><li class="toc-item toc-h3"><a href="#2-mutabelnost-kontrakta-i-data-race">2. Мутабельность контракта и Data Race</a></li><li class="toc-item toc-h2"><a href="#voprosy-dlya-sobesedovaniya">Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

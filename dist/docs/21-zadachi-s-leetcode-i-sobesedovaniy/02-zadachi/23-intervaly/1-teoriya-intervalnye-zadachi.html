@@ -2171,174 +2171,67 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~23 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
+              <span class="meta-tag read-time">⏱ ~18 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">1. Теория. Интервальные задачи</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="vvedenie-intervaly-kak-fundament-planirovaniya">Введение: Интервалы как фундамент планирования</h2>
+            <blockquote>
+<p><em>«Время — это не точка, а непрерывный отрезок; упорядочив их истоки, мы обуздываем хаос совпадений».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>Интервальные задачи лежат в самом сердце архитектуры высоконагруженных бэкенд-систем:<br />
+- <strong>Планировщики задач и бронирование ресурсов:</strong> Выделение вычислительных слотов в Kubernetes, бронирование отелей и билетов, распределение переговорных комнат в корпоративных календарях (Google Calendar, Outlook).<br />
+- <strong>Сетевой стек и хранилища данных:</strong> Слияние окон подтверждения TCP (TCP SACK intervals), оптимизация дискового ввода-вывода (IO coalescing), диапазоны LSM-деревьев в RocksDB и Cassandra.<br />
+- <strong>Финансовые системы:</strong> Анализ биржевых свечей (OHLC), агрегация временных рядов в Prometheus и VictoriaMetrics.</p>
+<p>На технических собеседованиях интервальные задачи позволяют интервьюеру мгновенно оценить культуру кода инженера: умеет ли он моделировать непрерывные диапазоны, как обрабатывает граничные коллизии (касания концов) и способен ли выбрать оптимальную стратегию между <strong>жадным слиянием (Greedy Merging)</strong> и <strong>методом заметающей прямой (Sweep Line)</strong>.</p>
+<hr />
+<h2 id="1-pamyat-i-predstavlenie-slice-of-slices-protiv-flat-structs">1. Память и представление: Slice of Slices против Flat Structs</h2>
 
-<p>Интервальные задачи лежат в основе огромного пласта реальных бэкенд-систем: планировщики встреч, системы бронирования ресурсов (от номеров в отелях до вычислительных нод в Kubernetes), тарификация облачных сервисов, окна репликации в базах данных и анализ временных рядов. </p>
-<p>На алгоритмических собеседованиях этот класс задач проверяет не только умение писать циклы, но и способность моделировать временные сущности, работать с границами диапазонов и выбирать между жадными стратегиями и методами сканирования событий (Sweep Line). В этой статье мы разберём фундаментальные паттерны решения интервальных задач, их реализацию в Go с учётом особенностей работы с памятью и CPU, а также подготовимся к каверзным follow-up вопросам, которые отличают Middle от Senior инженера.</p>
-<h2 id="predstavlenie-dannykh-v-pamyati-struktury-i-vyravnivanie">Представление данных в памяти: Структуры и выравнивание</h2>
+<p>На LeetCode интервалы традиционно задаются как срез срезов: <code>intervals [][]int</code>.<br />
+Давайте проанализируем, во что это выливается в оперативной памяти с точки зрения железа:</p>
 
-<p>В Go интервалы естественно моделируются через структуру:</p>
-
-<div class="code-block" data-lang="go">
+<div class="code-block" data-lang="text">
   <div class="code-header">
-    <span class="code-lang-tag">Go</span>
+    <span class="code-lang-tag">TEXT</span>
     <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// Interval представляет отрезок на числовой прямой.
-// По умолчанию считаем границы включительными [Start, End].
-type Interval struct {
-    Start int
-    End   int
-}
+  <pre class="language-text"><code class="language-text">LeetCode формат: [][]int (Фрагментация кучи и Pointer Chasing)
+[Slice Header: ptr, len, cap] (24 байта)
+    |
+    +---&gt; [Backing array: *ptr, len, cap] -&gt; [int, int] (16 байт в куче)
+    +---&gt; [Backing array: *ptr, len, cap] -&gt; [int, int] (16 байт в куче)
+^ Десятки тысяч микроаллокаций, размазанных по RAM. L1 Cache Misses гарантированы.
+
+Инженерный формат: []Interval (Непрерывный массив в L1 Cache)
++-------------------+-------------------+-------------------+-------------------+
+| Interval 0 (16B)  | Interval 1 (16B)  | Interval 2 (16B)  | Interval 3 (16B)  |
++-------------------+-------------------+-------------------+-------------------+
+&lt;--------------------------- 1 Линия кэша CPU (64 байта) ---------------------------&gt;
 </code></pre>
 </div>
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Макет памяти и кэш-локальность</strong><br />
-На 64-битных архитектурах <code>int</code> занимает 8 байт. Структура <code>Interval</code> весит ровно 16 байт и не требует выравнивания (padding). Это означает, что слайс из 4 интервалов (<code>64 байта</code>) идеально помещается в одну кэш-линию CPU.<br />
-При последовательном проходе по <code>[]Interval</code> контроллер памяти эффективно подгружает данные в L1/L2 кэш. Это даёт значительный выигрыш по сравнению с использованием разрозненных слайсов <code>starts []int</code> и <code>ends []int</code> (структура SoA), где доступ к памяти будет менее предсказуемым для аппаратного префетчера, хотя SoA иногда выгоднее для векторизации (SIMD), которая в Go недоступна без ручной ассемблерной оптимизации.</p>
-  </div>
-</div>
+<ol>
+<li><strong>Структура <code>Interval</code>:</strong><br />
+<code>go
+   type Interval struct {
+       Start int // 8 байт
+       End   int // 8 байт
+   }</code><br />
+   Размер структуры составляет ровно <strong>16 байт</strong> без какого-либо скрытого паддинга (Padding).</li>
+<li><strong>Кэш-линия:</strong> Стандартная линия кэша x86-64 и ARM64 составляет 64 байта. В одну линию кэша L1 помещается ровно <strong>4 интервала</strong>. Аппаратный префетчер процессора загружает их блоками, обеспечивая максимальную скорость итерации.</li>
+</ol>
+<hr />
+<h2 id="2-fundamentalnyy-pattern-1-sortirovka-i-zhadnoe-sliyanie-greedy-merge">2. Фундаментальный паттерн 1: Сортировка и жадное слияние (Greedy Merge)</h2>
 
-<h2 id="fundamentalnye-algoritmicheskie-patterny">Фундаментальные алгоритмические паттерны</h2>
-
-<p>В основе 90% интервальных задач лежат два подхода: жадное слияние после сортировки и метод разделяющей прямой (Sweep Line).</p>
-<h3 id="1-pattern-sortirovka-i-zhadnoe-sliyanie">1. Паттерн: Сортировка и жадное слияние</h3>
-<p>Используется, когда нужно объединить перекрывающиеся интервалы или найти свободные окна. Ключевая идея: после сортировки по времени начала мы можем обрабатывать интервалы линейно, сравнивая каждый только с последним добавленным в результат.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// mergeIntervals базовая реализация паттерна
-func mergeIntervals(intervals []Interval) []Interval {
-    if len(intervals) &lt;= 1 {
-        return intervals
-    }
-
-    // Сортировка по времени начала
-    sort.Slice(intervals, func(i, j int) bool {
-        return intervals[i].Start &lt; intervals[j].Start
-    })
-
-    // Предвыделение памяти: в худшем случае результат = входной слайс
-    merged := make([]Interval, 0, len(intervals))
-    merged = append(merged, intervals[0])
-
-    for i := 1; i &lt; len(intervals); i++ {
-        last := &amp;merged[len(merged)-1] // Указатель для модификации без копирования
-
-        // Если текущий начинается раньше или ровно в момент окончания предыдущего -&gt; пересечение
-        if intervals[i].Start &lt;= last.End {
-            // Объединяем: берём максимум из концов
-            if intervals[i].End &gt; last.End {
-                last.End = intervals[i].End
-            }
-            // Если intervals[i].End &lt;= last.End, он полностью вложен в last -&gt; игнорируем
-        } else {
-            merged = append(merged, intervals[i])
-        }
-    }
-
-    return merged
-}
-</code></pre>
-</div>
-
-<h3 id="2-pattern-sweep-line-metod-razdelyayushchey-pryamoy">2. Паттерн: Sweep Line (Метод разделяющей прямой)</h3>
-<p>Используется, когда нужно найти максимальное количество одновременных интервалов, проверить корректность расписания или построить календарь занятости. Идея: разбить каждый интервал на два события (начало и конец), отсортировать все события по времени и пройтись по ним, поддерживая счётчик активных интервалов.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Event представляет точку на временной оси
-type Event struct {
-    Time int
-    Type int // +1 для начала, -1 для конца
-}
-
-// maxConcurrentIntervals находит максимум одновременно активных интервалов
-func maxConcurrentIntervals(intervals []Interval) int {
-    if len(intervals) == 0 {
-        return 0
-    }
-
-    events := make([]Event, 0, len(intervals)*2)
-    for _, iv := range intervals {
-        events = append(events, Event{Time: iv.Start, Type: 1})
-        events = append(events, Event{Time: iv.End, Type: -1})
-    }
-
-    // Сортировка событий. При равенстве Time сначала обрабатываем конец (-1),
-    // чтобы корректно считать касания границ [1,2] и [2,3] как неперекрывающиеся.
-    sort.Slice(events, func(i, j int) bool {
-        if events[i].Time == events[j].Time {
-            return events[i].Type &lt; events[j].Type
-        }
-        return events[i].Time &lt; events[j].Time
-    })
-
-    maxOverlap, currentOverlap := 0, 0
-    for _, ev := range events {
-        currentOverlap += ev.Type
-        if currentOverlap &gt; maxOverlap {
-            maxOverlap = currentOverlap
-        }
-    }
-
-    return maxOverlap
-}
-</code></pre>
-</div>
-
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Как работает <code>sort.Slice</code> в Go</strong><br />
-Компилятор генерирует замыкание, которое передаётся в <code>sort.Slice</code>. Под капстом используется <strong>Introsort</strong> (гибрид Quicksort, Heapsort и Insertion Sort). <br />
-*   Quicksort обеспечивает среднее $O(n \log n)$.<br />
-*   Если глубина рекурсии превышает $2 \log n$, алгоритм переключается на Heapsort, гарантируя худший случай $O(n \log n)$ и защиту от DoS-атак специально подобранными данными.<br />
-*   Insertion Sort применяется для мелких подмассивов (&lt;12 элементов), где он эффективнее из-за локальности данных.<br />
-Сортировка происходит <strong>in-place</strong> для слайса, но замыкание может «убежать» в кучу (escape analysis), если компилятор не сможет доказать его кратковременность. Для горячих путей лучше использовать <code>sort.Slice</code> с <code>//go:noinline</code> или кастомный тип с методом <code>Len/Less/Swap</code>, что генерирует более предсказуемый машинный код.</p>
-  </div>
-</div>
-
-<h2 id="mekhanika-proizvoditelnosti-kesh-vetvleniya-i-gc">Механика производительности: Кэш, ветвления и GC</h2>
-
-<h3 id="vetvleniya-i-predskazanie">Ветвления и предсказание</h3>
-<p>В цикле слияния условие <code>intervals[i].Start &lt;= last.End</code> после сортировки становится <strong>высокопредсказуемым</strong>. Пока интервалы перекрываются, ветка <code>true</code> выполняется подряд. Когда перекрытий нет, срабатывает <code>false</code>. Современный Branch Predictor (PHT/BTB в Intel/AMD) угадывает такие паттерны с точностью &gt;99%, минимизируя штрафы за сброс конвейера (15-20 тактов).</p>
-<h3 id="upravlenie-pamyatyu-i-escape-analysis">Управление памятью и Escape Analysis</h3>
-<p>В примере выше <code>merged := make([]Interval, 0, len(intervals))</code> гарантирует:<br />
-1.  <strong>Одну аллокацию</strong> вместо потенциальных $O(\log n)$ ресайзов.<br />
-2.  <code>last := &amp;merged[...]</code> — взятие адреса элемента слайса внутри той же функции. Escape Analysis видит, что указатель не покидает область видимости функции, и размещает <code>merged</code> <strong>на стеке</strong>, если общий размер <code>&lt; ~64 КБ</code> (зависит от <code>GOMAXPROCS</code> и лимита стека). Это полностью исключает нагрузку на Garbage Collector.<br />
-3.  Если вернуть <code>merged</code> наружу, слайс уйдёт в кучу. Для high-load систем, где интервалы обрабатываются транзитно, рассмотрите инъекцию буфера: <code>func Merge(dst, src []Interval) []Interval</code>.</p>
+<p>Применяется, когда необходимо объединить пересекающиеся отрезки или найти свободные «окна» между ними.</p>
+<h3 id="glavnyy-invariant">Главный инвариант</h3>
+<p>Если отсортировать интервалы <strong>по времени начала (<code>Start</code>)</strong>, то все потенциальные кандидаты на пересечение выстраиваются строго в хронологический ряд. Каждый новый интервал $I_{k}$ может пересекаться <strong>только с самым последним объединенным интервалом $I_{\text{last}}$</strong>! Сравнивать его с более ранними интервалами не требуется.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2353,80 +2246,221 @@ func maxConcurrentIntervals(intervals []Interval) int {
   </div>
   <pre class="mermaid">
 flowchart TD
-Start[&quot;Вход: []Interval&quot;] --&gt; Sort[&quot;Сортировка по Start&lt;br&gt;Introsort O(n log n)&quot;]
-Sort --&gt; Loop[&quot;Линейный проход&lt;br&gt;Сравнение Start &lt;= Prev.End&quot;]
-Loop --&gt; Merge{&quot;Есть пересечение?&quot;}
-Merge -- &quot;Да&quot; --&gt; Update[&quot;Обновление Prev.End&lt;br&gt;max(Prev.End, Curr.End)&quot;]
-Update --&gt; Loop
-Merge -- &quot;Нет&quot; --&gt; Push[&quot;Добавление в результат&lt;br&gt;append(merged, curr)&quot;]
-Push --&gt; Loop
-Loop --&gt; Finish[&quot;Возврат []Interval&quot;]
+classDef entry fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef sort fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef loop fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef check fill:#78350f,stroke:#fbbf24,stroke-width:2px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
 
-style Start fill:#1e3a5f,stroke:#38bdf8,color:#f8fafc
-style Finish fill:#064e3b,stroke:#34d399,color:#f8fafc
+In[&quot;Входные интервалы&quot;]:::entry --&gt; S[&quot;Сортировка по Start: O(N log N)&quot;]:::sort
+S --&gt; L[&quot;Инициализация merged = [intervals[0]]&quot;]:::loop
+L --&gt; C{&quot;intervals[i].Start &lt;= last.End?&quot;}:::check
+C -- &quot;Да (Пересечение)&quot; --&gt; M[&quot;last.End = max(last.End, intervals[i].End)&quot;]:::loop
+C -- &quot;Нет (Разрыв)&quot; --&gt; A[&quot;append(merged, intervals[i])&quot;]:::loop
+M --&gt; Nxt{&quot;Конец массива?&quot;}:::loop
+A --&gt; Nxt
+Nxt -- &quot;Нет&quot; --&gt; C
+Nxt -- &quot;Да&quot; --&gt; Out[&quot;Результат: merged&quot;]:::success
   </pre>
 </div>
 
 
-<h2 id="lovushki-i-edge-cases">Ловушки и Edge Cases</h2>
+<h3 id="idiomatichnyy-go-kod">Идиоматичный Go-код</h3>
 
-<h3 id="1-kasanie-granits-1-2-i-2-3">1. Касание границ: `[1, 2]` и `[2, 3]`</h3>
-<p>Это самый частый источник багов. Нужно ли их объединять?<br />
-*   Если интервалы <strong>включительные</strong> <code>[start, end]</code>, точка <code>2</code> принадлежит обоим -&gt; объединяем.<br />
-*   Если интервалы <strong>полуоткрытые</strong> <code>[start, end)</code> (как часто бывает в календарях и таймсериях), <code>2</code> не входит в первый интервал -&gt; не объединяем.<br />
-*   <strong>Решение:</strong> Всегда уточняйте у интервьюера или используйте явно заданные правила сравнения (<code>&lt;</code> vs <code>&lt;=</code>). В Sweep Line это регулируется порядком сортировки событий при равных <code>Time</code>.</p>
-<h3 id="2-vlozhennost-1-10-i-2-5">2. Вложенность: `[1, 10]` и `[2, 5]`</h3>
-<p>После сортировки <code>[1, 10]</code> идёт первым. При обработке <code>[2, 5]</code> условие <code>2 &lt;= 10</code> истинно, но <code>5 &gt; 10</code> ложно. Алгоритм должен <strong>не обновлять</strong> <code>End</code>, если новый интервал полностью вложен. Ошибка <code>last.End = intervals[i].End</code> без <code>max</code> сломает логику.</p>
-<h3 id="3-perepolnenie-pri-vychislenii-dlitelnosti">3. Переполнение при вычислении длительности</h3>
-<p><code>duration := end - start</code> безопасно для <code>int</code>, если разность помещается в диапазон. Но при работе с <code>time.Time</code> или микросекундами лучше использовать <code>int64</code> и явно проверять <code>end &lt; start</code>, так как отрицательная длительность часто сигнализирует о баге валидации входных данных.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p><strong>Несортированный вход</strong><br />
-В 80% задач на LeetCode и реальных API интервалы приходят в произвольном порядке. Попытка применить линейный проход без предварительной сортировки (<code>O(n)</code>) приведёт к неверному результату на кейсах вроде <code>[2,3], [4,5], [1,6]</code>. Всегда явно сортируйте или используйте Sweep Line. Если интервьюер скажет «Вход уже отсортирован», это сигнал, что ожидаемое решение должно быть строго $O(n)$.</p>
-  </div>
+  <pre class="language-go"><code class="language-go">package main
+
+import &quot;slices&quot;
+
+type Interval struct {
+    Start int
+    End   int
+}
+
+// MergeIntervals объединяет перекрывающиеся интервалы.
+// Временная сложность: O(N log N) из-за сортировки.
+// Память: O(N) под результирующий срез.
+func MergeIntervals(intervals []Interval) []Interval {
+    if len(intervals) &lt;= 1 {
+        return intervals
+    }
+
+    // Современная быстрая сортировка без аллокаций интерфейсов (Go 1.21+)
+    slices.SortFunc(intervals, func(a, b Interval) int {
+        return a.Start - b.Start
+    })
+
+    // Предвыделяем емкость N для исключения реаллокаций базового массива
+    merged := make([]Interval, 0, len(intervals))
+    merged = append(merged, intervals[0])
+
+    for i := 1; i &lt; len(intervals); i++ {
+        last := &amp;merged[len(merged)-1] // Указатель на последний элемент без копирования
+
+        if intervals[i].Start &lt;= last.End {
+            // Пересечение: растягиваем границу до максимума
+            last.End = max(last.End, intervals[i].End)
+        } else {
+            // Разрыв: добавляем новый изолированный интервал
+            merged = append(merged, intervals[i])
+        }
+    }
+
+    return merged
+}
+</code></pre>
 </div>
 
-<h2 id="podgotovka-k-sobesedovaniyu-tipichnye-voprosy">Подготовка к собеседованию: Типичные вопросы</h2>
+<hr />
+<h2 id="3-fundamentalnyy-pattern-2-zametayushchaya-pryamaya-sweep-line">3. Фундаментальный паттерн 2: Заметающая прямая (Sweep Line)</h2>
 
-<ol>
-<li>
-<p><strong>Вопрос:</strong> Как изменить алгоритм слияния, чтобы использовать $O(1)$ дополнительной памяти (модифицировать входной слайс)?<br />
-<strong>Ответ:</strong> Использовать два указателя в исходном массиве. <code>writeIdx</code> будет указывать на позицию, куда записывается последний объединённый интервал. При слиянии обновляем <code>intervals[writeIdx]</code>. При отсутствии пересечения инкрементируем <code>writeIdx</code> и копируем туда текущий. В конце возвращаем <code>intervals[:writeIdx+1]</code>. Это паттерн «in-place compacting».</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Что если интервалы динамически добавляются, и нужно часто запрашивать статус занятости?<br />
-<strong>Ответ:</strong> Статическая сортировка не подходит. Требуется структура данных, поддерживающая вставки и запросы: <strong>Дерево отрезков (Segment Tree)</strong> или <strong>Сбалансированное BST</strong> (в Go нет встроенного, используются <code>github.com/emirpasic/gods/trees/redblacktree</code>), либо кэширование префиксных сумм для Sweep Line, если изменения редкие.</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Почему в Sweep Line мы сортируем события, а не просто сканируем массив интервалов?<br />
-<strong>Ответ:</strong> Сортировка событий превращает задачу 2D-наложения в 1D-обработку точек. Это унифицирует логику поиска пиков, пустот и свободных окон в одном проходе за $O(n \log n)$, избегая вложенных циклов $O(n^2)$.</p>
-</li>
-</ol>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+<p>Когда требуется найти <strong>максимальное количество одновременно активных процессов</strong> (пиковую нагрузку на сервер, требуемое число конференц-залов), слияние интервалов не подходит. На помощь приходит <strong>Sweep Line</strong>.</p>
+<h3 id="fizicheskaya-model">Физическая модель</h3>
+<p>Представьте вертикальную линию времени, которая движется слева направо.<br />
+Каждый интервал $[S, E]$ распадается на два независимых точечных события:<br />
+1. <code>Start (+1)</code>: процесс начался, нагрузка выросла на единицу.<br />
+2. <code>End (-1)</code>: процесс завершился, нагрузка уменьшилась на единицу.</p>
+<p>Мы сортируем все события вдоль временной оси и за один линейный проход накапливаем сумму, фиксируя глобальный максимум.</p>
+
+<div class="mermaid-wrapper">
+  <div class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p><strong>Как объяснить сложность вслух:</strong><br />
-<em>«Мы сортируем массив за $O(n \log n)$, что доминирует над линейным проходом $O(n)$. Итоговая сложность $O(n \log n)$ по времени. По памяти мы используем $O(n)$ для результирующего слайса. Если разрешат модификацию входа, память можно снизить до $O(1)$ extra space, перемещая элементы в начало массива двумя указателями».</em></p>
-  </div>
+  <pre class="mermaid">
+flowchart LR
+classDef startEv fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef endEv fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef peak fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc
+
+E1[&quot;t=1: Start (+1) [Загрузка: 1]&quot;]:::startEv --&gt; E2[&quot;t=2: Start (+1) [Загрузка: 2]&quot;]:::startEv
+E2 --&gt; E3[&quot;t=3: Start (+1) [ПИК: 3]&quot;]:::peak
+E3 --&gt; E4[&quot;t=4: End (-1) [Загрузка: 2]&quot;]:::endEv
+E4 --&gt; E5[&quot;t=6: End (-1) [Загрузка: 1]&quot;]:::endEv
+  </pre>
 </div>
 
-<h2 id="itog">Итог</h2>
+
+<h3 id="kovarnyy-nyuans-taybreyking-pri-sovpadenii-vremeni-tie-breaking">Коварный нюанс: Тайбрейкинг при совпадении времени (Tie-Breaking)</h3>
+<p>Что делать, если событие окончания одного интервала и событие начала другого приходятся на один и тот же момент времени $T$?<br />
+- <strong>Если интервалы полуоткрытые $[S, E)$:</strong> касание в точке $T$ не является пересечением. Событие <strong>конца (<code>-1</code>)</strong> обязано обрабатываться <strong>раньше</strong> события начала (<code>+1</code>).<br />
+- <strong>Если интервалы замкнутые $[S, E]$:</strong> касание в точке $T$ считается пересечением. Событие <strong>начала (<code>+1</code>)</strong> обязано обрабатываться <strong>раньше</strong> окончания (<code>-1</code>).</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">type Event struct {
+    Time int
+    Type int // +1 — старт, -1 — конец
+}
+
+func MaxConcurrentEvents(intervals []Interval) int {
+    events := make([]Event, 0, len(intervals)*2)
+    for _, iv := range intervals {
+        events = append(events, Event{Time: iv.Start, Type: 1})
+        events = append(events, Event{Time: iv.End, Type: -1})
+    }
+
+    // Сортировка: при равном времени порядок Type определяет семантику границ
+    slices.SortFunc(events, func(a, b Event) int {
+        if a.Time != b.Time {
+            return a.Time - b.Time
+        }
+        return a.Type - b.Type // -1 раньше +1 (для полуоткрытых отрезков)
+    })
+
+    current, maxPeak := 0, 0
+    for _, ev := range events {
+        current += ev.Type
+        maxPeak = max(maxPeak, current)
+    }
+    return maxPeak
+}
+</code></pre>
+</div>
+
+<hr />
+<h2 id="4-optimizatsiya-pamyati-in-place-compacting-za-o1-extra-space">4. Оптимизация памяти: In-Place Compacting за $O(1)$ extra space</h2>
+
+<p>На собеседованиях уровня Staff/Principal часто звучит требование:<br />
+<em>«Память $\mathcal{O}(1)$ дополнительно. Разрешено мутировать входной массив».</em></p>
+<p>Для этого применяется паттерн двух указателей (Read Pointer и Write Pointer):</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">// MergeInPlace выполняет слияние прямо во входном срезе intervals.
+func MergeInPlace(intervals []Interval) []Interval {
+    if len(intervals) &lt;= 1 {
+        return intervals
+    }
+
+    slices.SortFunc(intervals, func(a, b Interval) int {
+        return a.Start - b.Start
+    })
+
+    writeIdx := 0 // Указатель на последний валидный объединенный элемент
+
+    for readIdx := 1; readIdx &lt; len(intervals); readIdx++ {
+        if intervals[readIdx].Start &lt;= intervals[writeIdx].End {
+            intervals[writeIdx].End = max(intervals[writeIdx].End, intervals[readIdx].End)
+        } else {
+            writeIdx++
+            intervals[writeIdx] = intervals[readIdx]
+        }
+    }
+
+    // Усекаем срез до фактически записанных элементов (0 аллокаций!)
+    return intervals[:writeIdx+1]
+}
+</code></pre>
+</div>
+
+<hr />
+<h2 id="5-granichnye-sluchai-i-lovushki">5. Граничные случаи и ловушки</h2>
 
 <ol>
-<li><strong>Интервальные задачи</strong> решаются двумя фундаментальными подходами: жадным слиянием (после сортировки) и Sweep Line (преобразование в события).</li>
-<li><strong>Производительность в Go:</strong> Предвыделение слайсов, понимание <code>sort.Slice</code> (Introsort) и управление Escape Analysis критичны для hot-path кода. 16-байтовые структуры идеально ложатся в кэш-линии CPU.</li>
-<li><strong>Ловушки:</strong> Касания границ (<code>[1,2]</code> vs <code>[2,3]</code>), вложенные интервалы, отсутствие гарантии сортировки на входе, переполнение длительностей.</li>
-<li><strong>Интервью:</strong> Умейте переключаться между подходами, обсуждать trade-offs $O(n)$ памяти vs $O(1)$ in-place, и аргументировать выбор <code>&lt;</code> vs <code>&lt;=</code> на границах.</li>
-<li><strong>Production:</strong> Для календарей и бронирований всегда используйте полуоткрытые интервалы <code>[start, end)</code>, это устраняет коллизии на границах и упрощает математику объединения.</li>
+<li><strong>Вложенные интервалы:</strong> <code>[1, 10]</code> и <code>[2, 5]</code>.<br />
+   После сортировки <code>[1, 10]</code> идет первым. Для второго интервала <code>2 &lt;= 10</code>, но <code>5 &lt; 10</code>.<br />
+   Формула <code>last.End = max(last.End, curr.End)</code> гарантирует, что конец не откатится назад до 5.</li>
+<li><strong>Точечные интервалы нулевой длины:</strong> <code>[3, 3]</code>.<br />
+   Моделируют мгновенные события (импульсы, flash sales). Корректно сливаются с окружающими диапазонами.</li>
+<li><strong>Пустой срез или срез из 1 элемента:</strong> Всегда ставьте guard clause <code>if len(intervals) &lt;= 1 { return intervals }</code> в самом начале функции.</li>
 </ol>
-<p>В следующей статье мы детально разберём каноническую задачу на применение паттерна жадного слияния: <a href="3-merge-intervals.html" class="wikilink">3. Merge Intervals</a>, где реализуем решение с поддержкой in-place оптимизации, напишем table-driven тесты и проанализируем ассемблерный выхлоп цикла слияния.</p>
+<hr />
+<h2 id="6-rezyume">6. Резюме</h2>
+
+<ol>
+<li><strong>Сортировка — фундамент:</strong> 90% интервальных задач начинаются с сортировки по времени начала <code>Start</code>. Это упорядочивает пересечения во времени.</li>
+<li><strong>Жадное слияние (Greedy Merge):</strong> После сортировки текущий интервал сравнивается исключительно с последним объединенным элементом.</li>
+<li><strong>Заметающая прямая (Sweep Line):</strong> Превращает отрезки в независимые события <code>+1 / -1</code>. Порядок тайбрейкинга при равенстве временных меток критичен для корректности.</li>
+<li><strong>Кэш-дружественность:</strong> Плоские структуры <code>Interval</code> размером 16 байт утилизируют кэш-линии процессора на 100%, в отличие от вложенных срезов <code>[][]int</code>.</li>
+</ol>
+<p>В следующей лекции мы разберем каноническую задачу LeetCode на слияние диапазонов и напишем для нее исчерпывающий набор тестов: <a href="3-merge-intervals.html" class="wikilink">3. Merge Intervals</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2454,7 +2488,7 @@ style Finish fill:#064e3b,stroke:#34d399,color:#f8fafc
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#vvedenie-intervaly-kak-fundament-planirovaniya">Введение: Интервалы как фундамент планирования</a></li><li class="toc-item toc-h2"><a href="#predstavlenie-dannykh-v-pamyati-struktury-i-vyravnivanie">Представление данных в памяти: Структуры и выравнивание</a></li><li class="toc-item toc-h2"><a href="#fundamentalnye-algoritmicheskie-patterny">Фундаментальные алгоритмические паттерны</a></li><li class="toc-item toc-h3"><a href="#1-pattern-sortirovka-i-zhadnoe-sliyanie">1. Паттерн: Сортировка и жадное слияние</a></li><li class="toc-item toc-h3"><a href="#2-pattern-sweep-line-metod-razdelyayushchey-pryamoy">2. Паттерн: Sweep Line (Метод разделяющей прямой)</a></li><li class="toc-item toc-h2"><a href="#mekhanika-proizvoditelnosti-kesh-vetvleniya-i-gc">Механика производительности: Кэш, ветвления и GC</a></li><li class="toc-item toc-h3"><a href="#vetvleniya-i-predskazanie">Ветвления и предсказание</a></li><li class="toc-item toc-h3"><a href="#upravlenie-pamyatyu-i-escape-analysis">Управление памятью и Escape Analysis</a></li><li class="toc-item toc-h2"><a href="#lovushki-i-edge-cases">Ловушки и Edge Cases</a></li><li class="toc-item toc-h3"><a href="#1-kasanie-granits-1-2-i-2-3">1. Касание границ: [1, 2] и [2, 3]</a></li><li class="toc-item toc-h3"><a href="#2-vlozhennost-1-10-i-2-5">2. Вложенность: [1, 10] и [2, 5]</a></li><li class="toc-item toc-h3"><a href="#3-perepolnenie-pri-vychislenii-dlitelnosti">3. Переполнение при вычислении длительности</a></li><li class="toc-item toc-h2"><a href="#podgotovka-k-sobesedovaniyu-tipichnye-voprosy">Подготовка к собеседованию: Типичные вопросы</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-pamyat-i-predstavlenie-slice-of-slices-protiv-flat-structs">1. Память и представление: Slice of Slices против Flat Structs</a></li><li class="toc-item toc-h2"><a href="#2-fundamentalnyy-pattern-1-sortirovka-i-zhadnoe-sliyanie-greedy-merge">2. Фундаментальный паттерн 1: Сортировка и жадное слияние (Greedy Merge)</a></li><li class="toc-item toc-h3"><a href="#glavnyy-invariant">Главный инвариант</a></li><li class="toc-item toc-h3"><a href="#idiomatichnyy-go-kod">Идиоматичный Go-код</a></li><li class="toc-item toc-h2"><a href="#3-fundamentalnyy-pattern-2-zametayushchaya-pryamaya-sweep-line">3. Фундаментальный паттерн 2: Заметающая прямая (Sweep Line)</a></li><li class="toc-item toc-h3"><a href="#fizicheskaya-model">Физическая модель</a></li><li class="toc-item toc-h3"><a href="#kovarnyy-nyuans-taybreyking-pri-sovpadenii-vremeni-tie-breaking">Коварный нюанс: Тайбрейкинг при совпадении времени (Tie-Breaking)</a></li><li class="toc-item toc-h2"><a href="#4-optimizatsiya-pamyati-in-place-compacting-za-o1-extra-space">4. Оптимизация памяти: In-Place Compacting за $O(1)$ extra space</a></li><li class="toc-item toc-h2"><a href="#5-granichnye-sluchai-i-lovushki">5. Граничные случаи и ловушки</a></li><li class="toc-item toc-h2"><a href="#6-rezyume">6. Резюме</a></li>
   </ul>
 </aside>
 

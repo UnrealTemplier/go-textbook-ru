@@ -2171,23 +2171,26 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~20 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
+              <span class="meta-tag read-time">⏱ ~25 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">4. Rotate Image</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="vvedenie-geometricheskaya-transformatsiya-bez-vydeleniya-pamyati">Введение: Геометрическая трансформация без выделения памяти</h2>
+            <blockquote>
+<p><em>«Симметрия и элегантность алгоритма часто избавляют нас от необходимости выделять лишнюю память».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="vvedenie-geometricheskaya-transformatsiya-bez-allokatsiy-pamyati">Введение: Геометрическая трансформация без аллокаций памяти</h2>
 
-<p>Задача <strong>Rotate Image</strong> (LeetCode 48) требует повернуть квадратную матрицу $N \times N$ на 90 градусов по часовой стрелке <strong>in-place</strong>, то есть без выделения дополнительного двумерного массива. В бэкенд-разработке подобные операции встречаются в сервисах обработки изображений, генерации тепловой карт (heatmaps), повороте матриц смежности в графовых алгоритмах и оптимизации макетов памяти для численных расчётов.</p>
-<p>На собеседованиях эта задача является лакмусовой бумажкой на понимание индексации, способности работать с побочными эффектами in-place модификаций и умения оценивать влияние алгоритма на подсистему памяти процессора. В этой статье мы разберём два фундаментальных подхода, глубоко погрузимся в механику работы с <code>[][]int</code> в Go, проанализируем кэш-локальность и предсказуемость ветвлений, а также подготовимся к каверзным follow-up вопросам уровня Senior.</p>
-<h2 id="algoritmicheskiy-pattern-transponirovanie-i-revers">Алгоритмический паттерн: Транспонирование и реверс</h2>
-
-<p>Самый элегантный и легко объяснимый подход состоит из двух последовательных шагов:<br />
-1. <strong>Транспонирование</strong>: Меняем местами элементы относительно главной диагонали <code>matrix[i][j] ↔ matrix[j][i]</code>. Матрица отражается по диагонали.<br />
-2. <strong>Реверс строк</strong>: Разворачиваем каждую строку задом наперёд.</p>
-<p>Математически это эквивалентно повороту на 90 градусов. Индексация трансформируется по правилу: <code>(i, j) → (j, i) → (j, n-1-i)</code>, что точно соответствует формуле вращения по часовой стрелке.</p>
+<p>Задача <strong>Rotate Image</strong> (LeetCode 48) требует повернуть квадратную матрицу $N \times N$ на 90 градусов по часовой стрелке строго <strong>in-place</strong>, то есть используя $O(1)$ дополнительной памяти без создания вспомогательных двумерных массивов.</p>
+<p>В бэкенд-инженерии и смежных областях похожие геометрические и линейно-алгебраические операции встречаются регулярно:<br />
+* Поворот тепловых карт (heatmaps) и матриц плотности сетевого трафика.<br />
+* Обработка и нормализация кадровых буферов в медиа-микросервисах без привлечения тяжелых CGO-библиотек.<br />
+* Трансформация матриц смежности в графовых алгоритмах для смены направления ориентированных ребер.<br />
+* Переупаковка матриц для оптимизации векторных вычислений (SIMD) и смены формата хранения (Row-Major $\leftrightarrow$ Column-Major).</p>
+<p>На технических интервью уровня Middle+/Senior эта задача служит надежной проверкой: способен ли кандидат манипулировать индексами без ошибок смещения на единицу (off-by-one), понимает ли он физику перемещения данных в оперативной памяти и как структура <code>[][]int</code> в Go влияет на L1/L2 кэши современных процессоров.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2202,19 +2205,57 @@
   </div>
   <pre class="mermaid">
 flowchart LR
-Start[&quot;Вход: Матрица N x N&quot;] --&gt; T[&quot;Транспонирование&lt;br&gt;matrix[i][j] = matrix[j][i]&quot;]
-T --&gt; R[&quot;Реверс каждой строки&lt;br&gt;Своп элементов до середины&quot;]
-R --&gt; End[&quot;Результат: Поворот на 90&lt;br&gt;по часовой стрелке&quot;]
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
 
-style Start fill:#1e3a5f,stroke:#38bdf8,color:#f8fafc
-style End fill:#064e3b,stroke:#34d399,color:#f8fafc
+Start[&quot;Входная матрица N x N&quot;]:::entry --&gt; Transpose[&quot;1. Транспонирование&lt;br/&gt;swap(matrix[i][j], matrix[j][i])&quot;]:::process
+Transpose --&gt; Reverse[&quot;2. Реверс строк&lt;br/&gt;Каждая строка отражается по горизонтали&quot;]:::accent
+Reverse --&gt; Result[&quot;Результат: Поворот на 90°&lt;br/&gt;по часовой стрелке in-place&quot;]:::success
   </pre>
 </div>
 
 
-<h2 id="idiomatichnaya-realizatsiya-v-go">Идиоматичная реализация в Go</h2>
+<hr />
+<h2 id="matematicheskiy-i-algoritmicheskiy-printsip-razlozhenie-na-otrazheniya">Математический и алгоритмический принцип: Разложение на отражения</h2>
 
-<p>В Go мы используем встроенные механизмы работы со срезами. Код должен быть строгим, безопасным и минимизировать аллокации.</p>
+<p>Наиболее элегантный и устойчивый к ошибкам подход заключается в разложении поворота на <strong>две простые геометрические операции</strong>:</p>
+<ol>
+<li><strong>Транспонирование относительно главной диагонали:</strong><br />
+   Каждый элемент $(i, j)$ меняется местами с элементом $(j, i)$. При этом главная диагональ $(i == j)$ остается неподвижной:<br />
+   $$\text{matrix}[i][j] \longleftrightarrow \text{matrix}[j][i], \quad \forall j &gt; i$$</li>
+<li><strong>Горизонтальное отражение (реверс каждой строки):</strong><br />
+   В каждой строке $i$ меняются местами элементы $j$ и $N - 1 - j$:<br />
+   $$\text{matrix}[i][j] \longleftrightarrow \text{matrix}[i][N - 1 - j], \quad 0 \le j &lt; \lfloor N/2 \rfloor$$</li>
+</ol>
+<h3 id="trassirovka-preobrazovaniya-koordinat">Трассировка преобразования координат</h3>
+
+<p>Проследим математическую судьбу элемента при последовательном применении этих двух шагов:<br />
+$$(i, j) \xrightarrow{\text{Транспонирование}} (j, i) \xrightarrow{\text{Реверс строки}} (j, N - 1 - i)$$</p>
+<p>Формула поворота точки матрицы $N \times N$ на 90 градусов по часовой стрелке:<br />
+$$(r_{\text{new}}, c_{\text{new}}) = (c_{\text{old}}, N - 1 - r_{\text{old}})$$</p>
+<p>Обе формулы совпадают до бита. Разложение сложного 2D-вращения на два простых одномерных прохода делает код компактным, легко тестируемым и исключает запутанные четырехсторонние перестановки.</p>
+
+<div class="code-block" data-lang="text">
+  <div class="code-header">
+    <span class="code-lang-tag">TEXT</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-text"><code class="language-text">Исходная (3x3):       Транспонирование:      Реверс строк (90° по часовой):
+[ 1,  2,  3 ]          [ 1,  4,  7 ]          [ 7,  4,  1 ]
+[ 4,  5,  6 ]   ---&gt;   [ 2,  5,  8 ]   ---&gt;   [ 8,  5,  2 ]
+[ 7,  8,  9 ]          [ 3,  6,  9 ]          [ 9,  6,  3 ]
+</code></pre>
+</div>
+
+<hr />
+<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
+
+<p>В современном Go (начиная с версии 1.21+) стандартная библиотека предоставляет пакет <code>slices</code>, включающий функцию <code>slices.Reverse</code>. Однако полезно уметь писать оба варианта: идиоматичный с двухточечным указателем (two pointers) и с использованием стандартной библиотеки.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2224,26 +2265,30 @@ style End fill:#064e3b,stroke:#34d399,color:#f8fafc
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">package solution
+  <pre class="language-go"><code class="language-go">package matrix
 
-// Rotate поворачивает квадратную матрицу на 90 градусов по часовой стрелке.
-// Работает in-place, O(1) дополнительной памяти, O(N^2) времени.
+import &quot;slices&quot;
+
+// Rotate поворачивает квадратную матрицу N x N на 90 градусов по часовой стрелке in-place.
+// Временная сложность: O(N^2)
+// Пространственная сложность: O(1)
 func Rotate(matrix [][]int) {
     n := len(matrix)
-    if n == 0 {
+    if n &lt;= 1 {
         return
     }
 
-    // 1. Транспонирование (отражение относительно главной диагонали)
-    // Проходим только по верхней треугольной матрице, чтобы не менять дважды
+    // Шаг 1. Транспонирование матрицы относительно главной диагонали.
+    // Обходим только верхний треугольник (j &gt; i), чтобы избежать двойного свопа.
     for i := 0; i &lt; n; i++ {
         for j := i + 1; j &lt; n; j++ {
             matrix[i][j], matrix[j][i] = matrix[j][i], matrix[i][j]
         }
     }
 
-    // 2. Реверс каждой строки
+    // Шаг 2. Горизонтальное отражение (реверс каждой строки).
     for i := 0; i &lt; n; i++ {
+        // Идиоматичный двухточечный реверс без аллокаций
         left, right := 0, n-1
         for left &lt; right {
             matrix[i][left], matrix[i][right] = matrix[i][right], matrix[i][left]
@@ -2252,31 +2297,75 @@ func Rotate(matrix [][]int) {
         }
     }
 }
+
+// RotateWithSlices демонстрирует современную реализацию на Go 1.21+.
+func RotateWithSlices(matrix [][]int) {
+    n := len(matrix)
+    if n &lt;= 1 {
+        return
+    }
+
+    for i := 0; i &lt; n; i++ {
+        for j := i + 1; j &lt; n; j++ {
+            matrix[i][j], matrix[j][i] = matrix[j][i], matrix[i][j]
+        }
+    }
+
+    for i := 0; i &lt; n; i++ {
+        slices.Reverse(matrix[i])
+    }
+}
 </code></pre>
 </div>
 
-<div class="callout callout-info">
+<div class="callout callout-note">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Заметка</span>
   </div>
   <div class="callout-body">
-    <p><strong>Своп в Go: <code>a, b = b, a</code></strong><br />
-В отличие от C++ или Python, в Go многозначное присваивание гарантированно вычисляет правую часть полностью до записи в левую. Компилятор генерирует оптимальный код: загружает оба значения в регистры, затем сохраняет их на нужные адреса. Никакой временной переменной на стеке не создаётся. Попытка использовать XOR-трюк для свопа не даст выигрыша, а лишь запутает компилятор и ухудшит читаемость.</p>
+    <p><strong>Многозначное присваивание в Go: <code>a, b = b, a</code></strong><br />
+Спецификация языка Go гарантирует, что все выражения в правой части оператора присваивания вычисляются до того, как происходит запись в левую часть. Компилятор Go преобразует конструкцию <code>matrix[i][j], matrix[j][i] = matrix[j][i], matrix[i][j]</code> в загрузку двух 64-битных значений в регистры процессора (например, <code>RAX</code> и <code>RDX</code>), за которой следуют две инструкции сохранения. Временная переменная в памяти стека не создается.</p>
   </div>
 </div>
 
-<h2 id="mekhanika-pod-kapotom-kesh-pamyat-i-arkhitektura-go">Механика под капотом: Кэш, память и архитектура Go</h2>
+<hr />
+<h2 id="alternativa-posloynyy-chetyrekhtochechnyy-svop-layer-by-layer">Альтернатива: Послойный четырехточечный своп (Layer-by-Layer)</h2>
 
-<h3 id="1-struktura-int-i-problema-kesh-lokalnosti">1. Структура `[][]int` и проблема кэш-локальности</h3>
-<p>В Go двумерная матрица — это <strong>слайс слайсов</strong>, а не непрерывный блок памяти. Каждая строка <code>matrix[i]</code> — отдельный слайс, который может быть размещён в разных областях кучи.</p>
-<p>При транспонировании мы обращаемся к <code>matrix[j][i]</code>, где <code>j</code> меняется во внутреннем цикле. Это означает <strong>обход по столбцам</strong>. Поскольку строки разбросаны в памяти, каждый шаг <code>matrix[j][i]</code> вызывает <strong>pointer chasing</strong>: загрузка адреса строки <code>j</code>, разыменование, вычисление смещения <code>i</code>. Это ломает предсказуемость для аппаратного префетчера и вызывает частые cache misses.</p>
-<p><strong>Инженерный компромисс:</strong> Для собеседования <code>Transpose + Reverse</code> предпочтителен из-за простоты и читаемости. Для production-сервисов обработки изображений или численных методов матрицу следует <strong>сплющивать</strong> в 1D слайс <code>[]int</code> размером $N^2$. Тогда транспонирование превращается в работу с индексами <code>arr[i*N + j]</code>, что сохраняет row-major локальность при правильном порядке обхода.</p>
-<h3 id="2-escape-analysis-i-allokatsii">2. Escape Analysis и аллокации</h3>
-<p>Функция <code>Rotate</code> модифицирует переданный слайс. Переменные <code>i</code>, <code>j</code>, <code>left</code>, <code>right</code>, <code>n</code> размещаются на стеке горутины. Никаких <code>make</code>, <code>append</code> или замыканий нет. Escape Analysis подтверждает: <code>0 B/op, 0 allocs/op</code>. Давление на Garbage Collector равно нулю, что критично для high-throughput API.</p>
-<h3 id="3-alternativa-posloynoe-vrashchenie-layer-by-layer">3. Альтернатива: Послойное вращение (Layer-by-Layer)</h3>
-<p>Второй подход, часто ожидаемый на хардовых интервью, — вращение четырёх элементов одновременно по концентрическим слоям.<br />
-Формула вращения: <code>(r, c) → (c, n-1-r) → (n-1-r, n-1-c) → (n-1-c, r)</code>.</p>
+<p>Второй классический метод выполняет поворот ровно за один проход по концентрическим квадратным слоям матрицы от внешнего периметра к центру:</p>
+
+<div class="mermaid-wrapper">
+  <div class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
+    </button>
+  </div>
+  <pre class="mermaid">
+flowchart TD
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+
+Layer[&quot;Слой матрицы: layer = 0 .. N/2 - 1&quot;]:::entry --&gt; Save[&quot;Сохранить top = matrix[first][i]&quot;]:::process
+Save --&gt; LtoT[&quot;left -&gt; top:&lt;br/&gt;matrix[first][i] = matrix[last - offset][first]&quot;]:::process
+LtoT --&gt; BtoL[&quot;bottom -&gt; left:&lt;br/&gt;matrix[last - offset][first] = matrix[last][last - offset]&quot;]:::process
+BtoL --&gt; RtoB[&quot;right -&gt; bottom:&lt;br/&gt;matrix[last][last - offset] = matrix[i][last]&quot;]:::process
+RtoB --&gt; TtoR[&quot;top -&gt; right:&lt;br/&gt;matrix[i][last] = top&quot;]:::accent
+TtoR --&gt; Next[&quot;Следующий элемент / Следующий слой&quot;]:::success
+  </pre>
+</div>
+
+
+<h3 id="4-pozitsionnyy-tsikl-perestanovok">4-позиционный цикл перестановок</h3>
+
+<p>В каждом слое четыре связанных элемента образуют замкнутый цикл:<br />
+$$\text{Top} \to \text{Right} \to \text{Bottom} \to \text{Left} \to \text{Top}$$</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2286,23 +2375,33 @@ func Rotate(matrix [][]int) {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// RotateLayers вращает матрицу послойно за один проход
-func RotateLayers(matrix [][]int) {
+  <pre class="language-go"><code class="language-go">// RotateLayerByLayer осуществляет послойное вращение за один проход по элементам.
+func RotateLayerByLayer(matrix [][]int) {
     n := len(matrix)
+    if n &lt;= 1 {
+        return
+    }
+
     for layer := 0; layer &lt; n/2; layer++ {
         first := layer
         last := n - 1 - layer
+
         for i := first; i &lt; last; i++ {
             offset := i - first
-            // Сохраняем верхний элемент
+
+            // 1. Сохраняем верхний элемент
             top := matrix[first][i]
-            // Лево -&gt; Верх
+
+            // 2. Левый нижний -&gt; Верхний левый
             matrix[first][i] = matrix[last-offset][first]
-            // Низ -&gt; Лево
+
+            // 3. Нижний правый -&gt; Левый нижний
             matrix[last-offset][first] = matrix[last][last-offset]
-            // Право -&gt; Низ
+
+            // 4. Верхний правый -&gt; Нижний правый
             matrix[last][last-offset] = matrix[i][last]
-            // Верх (сохранённый) -&gt; Право
+
+            // 5. Сохраненный верхний -&gt; Верхний правый
             matrix[i][last] = top
         }
     }
@@ -2310,65 +2409,155 @@ func RotateLayers(matrix [][]int) {
 </code></pre>
 </div>
 
-<p>Этот метод выполняет ровно $N^2/4$ итераций и требует только одного прохода, но индексная математика сложнее для отладки. По кэш-локальности он аналогичен транспонированию: доступ к <code>matrix[i][last]</code> и <code>matrix[last][last-offset]</code> прыгает между строками.</p>
-<h2 id="lovushki-i-edge-cases">Ловушки и Edge Cases</h2>
+<p>Количество перемещений данных в этом алгоритме минимально: ровно $N^2 - 1$ записей для нечетного $N$ (центр не трогается) и $N^2$ для четного. Однако индексная арифметика с <code>offset</code>, <code>first</code> и <code>last</code> существенно сложнее и часто приводит к багам на интервью.</p>
+<hr />
+<h2 id="arkhitektura-pamyati-i-mechanical-sympathy-problema-int">Архитектура памяти и Mechanical Sympathy: Проблема `[][]int`</h2>
 
-<h3 id="1-nechyotnye-i-chyotnye-razmery">1. Нечётные и чётные размеры</h3>
-<p>Цикл <code>layer &lt; n/2</code> корректно обрабатывает оба случая. Для нечётного <code>N</code> центральный элемент остаётся на месте, что математически верно. Для чётного <code>N</code> слои закрываются полностью.</p>
-<h3 id="2-pustaya-matritsa-i-1x1">2. Пустая матрица и 1x1</h3>
-<p>Проверка <code>if n == 0 { return }</code> предотвращает панику. Для 1x1 циклы не выполняются, матрица возвращается без изменений.</p>
-<h3 id="3-mutabelnost-i-gonki-dannykh">3. Мутабельность и гонки данных</h3>
-<p>Функция модифицирует входной слайс in-place. Если <code>matrix</code> используется параллельно (например, кэшируется в <code>sync.Map</code> или читается другими горутинами), возникнет <strong>data race</strong>.<br />
-<strong>Решение:</strong> В production API всегда явно документируйте контракт: «Функция изменяет входные данные». Если иммутабельность обязательна, создавайте копию: <code>cp := make([][]int, n); for i := range cp { cp[i] = append([]int(nil), matrix[i]...) }</code>. Это добавляет $O(N^2)$ памяти, но гарантирует потокобезопасность.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+<p>Понимание устройства памяти в Go отличает зрелого Senior-инженера от теоретика. В Go тип <code>[][]int</code> — это <strong>слайс заголовков слайсов</strong> (slice of slices), а не плоский непрерывный массив (как <code>int[N][N]</code> в C/C++):</p>
+
+<div class="code-block" data-lang="ascii">
+  <div class="code-header">
+    <span class="code-lang-tag">DIAGRAM</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p><strong>Неквадратные матрицы</strong><br />
-Задача LeetCode гарантирует $N \times N$. В реальном бэкенде всегда уточняйте контракт. Для прямоугольной матрицы $M \times N$ поворот 90 градусов меняет размерность на $N \times M$, что делает in-place невозможным без сложных перестановок памяти. В таких случаях требуется выделение нового слайса.</p>
-  </div>
+  <pre class="language-ascii"><code class="language-ascii">matrix (Заголовок слайса в стеке): [ Data: 0x1000 | Len: 3 | Cap: 3 ]
+                      │
+                      ▼
+Память кучи 0x1000:
+  [0]: [ Data: 0x2000 | Len: 3 | Cap: 3 ] ────► Массив строки 0: [ 1, 2, 3 ] (0x2000)
+  [1]: [ Data: 0x2080 | Len: 3 | Cap: 3 ] ────► Массив строки 1: [ 4, 5, 6 ] (0x2080)
+  [2]: [ Data: 0x2100 | Len: 3 | Cap: 3 ] ────► Массив строки 2: [ 7, 8, 9 ] (0x2100)
+</code></pre>
 </div>
 
-<h2 id="podgotovka-k-sobesedovaniyu">Подготовка к собеседованию</h2>
+<h3 id="pointer-chasing-i-cache-thrashing-pri-transponirovanii">Pointer Chasing и Cache Thrashing при транспонировании</h3>
 
-<h3 id="tipovye-voprosy-i-follow-up">Типовые вопросы и follow-up</h3>
 <ol>
-<li>
-<p><strong>Вопрос:</strong> Почему транспонирование + реверс лучше, чем послойное вращение, если послойное делает меньше операций?<br />
-<strong>Ответ:</strong> На современных CPU предсказуемость кода и простота отладки часто важнее теоретического сокращения итераций. Транспонирование использует два независимых цикла с понятной логикой, которые легче векторизовать компилятору. Послойное вращение содержит сложную индексную арифметику с зависимостями по данным, что усложняет суперскалярное исполнение и увеличивает риск off-by-one ошибок.</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Как оптимизировать транспонирование для больших матриц, чтобы улучшить кэш-локальность?<br />
-<strong>Ответ:</strong> Использовать <strong>блочное транспонирование (cache-oblivious / tiled transpose)</strong>. Матрица разбивается на блоки размером $B \times B$ (обычно $32 \times 32$ или $64 \times 64$), которые помещаются в L1 кэш. Каждый блок транспонируется локально, минимизируя cache misses. В Go это реализуется через вложенные циклы с шагом <code>B</code>.</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Можно ли повернуть матрицу на 180 или 270 градусов in-place?<br />
-<strong>Ответ:</strong> 180 градусов: реверс всех строк, затем реверс порядка строк (или просто один проход свопа <code>matrix[i][j] ↔ matrix[n-1-i][n-1-j]</code>). 270 градусов по часовой: транспонирование + реверс столбцов (или транспонирование + реверс строк для поворота против часовой).</p>
-</li>
+<li>При обращении <code>matrix[i][j]</code> процессор выполняет два чтения памяти: сначала читает заголовок строки <code>matrix[i]</code>, берет указатель <code>Data</code>, затем смещается на <code>j * 8</code> байт.</li>
+<li>Во внешнем цикле по <code>i</code> и внутреннем по <code>j</code>:<br />
+   - Доступ <code>matrix[i][j]</code> идет <strong>последовательно</strong> по строке <code>i</code>. Аппаратный префетчер L1/L2 кэша (Spatial Locality) работает отлично: одна строка кэша (64 байта) вмещает 8 значений <code>int64</code>.<br />
+   - Но парный доступ <code>matrix[j][i]</code> при транспонировании шагает <strong>по столбцу</strong>! Каждый шаг меняет указатель строки <code>matrix[j]</code>, прыгая между несвязанными блоками памяти в куче.<br />
+   - Для больших матриц (например, $2048 \times 2048$) каждый доступ <code>matrix[j][i]</code> приводит к <strong>Cache Miss</strong> в L1 и L2 кэше, вызывая задержки обращения к DRAM (~50–80 нс вместо ~1 нс).</li>
 </ol>
+<h3 id="inzhenernoe-reshenie-dlya-prodakshena-splyushchivanie-flattening">Инженерное решение для продакшена: Сплющивание (Flattening)</h3>
+
+<p>В высоконагруженных численных библиотеках матрицы хранят в едином непрерывном 1D-слайсе:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">type FlatMatrix struct {
+    Data []int
+    N    int
+}
+
+// At возвращает значение по координатам (r, c)
+func (m *FlatMatrix) At(r, c int) int {
+    return m.Data[r*m.N+c]
+}
+</code></pre>
+</div>
+
+<p>При 1D-раскладке вся матрица занимает один последовательный блок памяти, что снижает нагрузку на сборщик мусора (GC отслеживает всего один указатель вместо $N+1$) и позволяет компилятору применять автовекторизацию (SIMD инструкции <code>VMOVUPD</code>).</p>
+<hr />
+<h2 id="analiz-slozhnosti-i-escape-analysis">Анализ сложности и Escape Analysis</h2>
+
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Параметр</th>
+<th>Значение</th>
+<th>Обоснование</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Временная сложность</strong></td>
+<td>$O(N^2)$</td>
+<td>Транспонирование выполняет ровно $N(N-1)/2$ свопов. Реверс строк выполняет $N \times \lfloor N/2 \rfloor$ свопов. Суммарно: $N^2 - N/2 = O(N^2)$.</td>
+</tr>
+<tr>
+<td><strong>Пространственная сложность</strong></td>
+<td>$O(1)$</td>
+<td>Используются только регистры процессора для индексов и временных значений. Никаких аллокаций.</td>
+</tr>
+<tr>
+<td><strong>Escape Analysis</strong></td>
+<td><code>0 allocs/op, 0 B/op</code></td>
+<td>Слайс <code>matrix</code> передается в функцию по значению (24 байта заголовка). Никакие объекты не покидают стек функции.</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="podvodnye-kamni-i-granichnye-usloviya">Подводные камни и граничные условия</h2>
+
+<ol>
+<li><strong>Матрицы размером $0 \times 0$ и $1 \times 1$:</strong><br />
+   Условие <code>if n &lt;= 1 { return }</code> защищает от паники на пустых слайсах и мгновенно возвращает матрицу $1 \times 1$, поворот которой является тождественным преобразованием.</li>
+<li><strong>Неквадратные матрицы $M \times N$ ($M \neq N$):</strong><br />
+   Задача LeetCode 48 гарантирует квадратность $N \times N$. При повороте прямоугольной матрицы $M \times N$ результирующая размерность меняется на $N \times M$. Вращение прямоугольной матрицы <strong>in-place</strong> в общем случае невозможно без сложнейших алгоритмов циклического сдвига с перестановкой памяти (Cycle Leader Algorithm). В продакшене для $M \neq N$ всегда выделяют новый слайс.</li>
+<li><strong>Параллелизм и Data Race:</strong><br />
+   Поскольку функция <code>Rotate</code> мутирует входной слайс in-place, конкурентный вызов чтения или поворота над одной матрицей без синхронизации приведет к гонке данных. Если матрица хранится в кэше сервиса, перед поворотом необходимо создать ее копию.</li>
+</ol>
+<hr />
+<h2 id="voprosy-dlya-sobesedovaniya">Вопросы для собеседования</h2>
+
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Как объяснить сложность вслух:</strong><br />
-<em>«Алгоритм выполняет ровно $N^2/2$ операций свопа при транспонировании и $N^2/2$ при реверсе, что в сумме даёт $O(N^2)$ по времени. Дополнительная память — $O(1)$, так как мы используем только регистры для временных переменных. В Go слайс строк модифицируется in-place, что исключает аллокации и снижает нагрузку на GC. Для production-систем с матрицами &gt;1000x1000 я бы рассмотрел блочное транспонирование или 1D flattening для улучшения утилизации L1 кэша».</em></p>
+    <p><strong>Вопрос 1:</strong> Как повернуть матрицу на 90 градусов против часовой стрелки in-place?<br />
+<strong>Ответ:</strong> Два симметричных варианта:<br />
+1. Сначала реверсировать каждую строку, затем транспонировать матрицу относительно главной диагонали: <code>Reverse Rows -&gt; Transpose</code>.<br />
+2. Либо транспонировать матрицу относительно побочной (антидиагонали), а затем отразить по вертикали. Первый способ проще всего реализовать на практике.</p>
   </div>
 </div>
 
-<h2 id="itog">Итог</h2>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос 2:</strong> Как повернуть матрицу на 180 градусов in-place?<br />
+<strong>Ответ:</strong> Поворот на 180° — это два поворота на 90°. В коде это эквивалентно:<br />
+1. Реверсировать порядок строк (перевернуть матрицу по вертикали: строка <code>0</code> со строкой <code>N-1</code>).<br />
+2. Реверсировать элементы внутри каждой строки (перевернуть по горизонтали).<br />
+Либо выполнить один проход парного свопа <code>matrix[i][j] &lt;-&gt; matrix[n-1-i][n-1-j]</code> до середины матрицы.</p>
+  </div>
+</div>
 
-<ol>
-<li><strong>Rotate Image</strong> решается in-place через композицию транспонирования и реверса строк за $O(N^2)$ времени и $O(1)$ памяти.</li>
-<li><strong>В Go:</strong> Многозначный своп <code>a, b = b, a</code> оптимален и безопасен. Функция не создаёт аллокаций, но модифицирует входные данные, что требует явного контракта в API.</li>
-<li><strong>Механика:</strong> <code>[][]int</code> в Go — это слайс указателей. Обход по столбцам при транспонировании вызывает pointer chasing и cache misses. Для высоконагруженных систем предпочтительнее 1D представление или блочные алгоритмы.</li>
-<li><strong>Ловушки:</strong> Нечётные размеры обрабатываются автоматически, но неквадратные матрицы делают in-place поворот невозможным. Параллельное чтение во время модификации ведёт к data race.</li>
-<li><strong>Интервью:</strong> Умейте объяснить математическую эквивалентность шагов, предложить оптимизацию кэш-локальности и переключиться на алгоритм с выделением памяти, если матрица прямоугольная.</li>
-</ol>
-<p>В следующей статье мы усложним обход матрицы, перейдя от простого геометрического поворота к спиральному обходу с изменением направления: <a href="5-spiral-matrix.html" class="wikilink">5. Spiral Matrix</a>, где разберём управление границами, паттерн изменения координат и оптимизацию итераций для обработки данных в потоковом режиме.</p>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос 3:</strong> Как оптимизировать транспонирование для матриц гигантского размера ($N &gt; 4096$), которые не помещаются в L3-кэш?<br />
+<strong>Ответ:</strong> Использовать <strong>блочное транспонирование (Tiling / Cache-Blocking)</strong>. Матрица разбивается на квадратные тайлы размером $B \times B$ (где $B$ подбирается так, чтобы два тайла гарантированно помещались в L1d кэш, например $32 \times 32$ или $64 \times 64$). Алгоритм транспонирует тайлы целиком, сохраняя локальность данных и минимизируя промахи по кэш-линиям.</p>
+  </div>
+</div>
+
+<hr />
+<h2 id="rezyume">Резюме</h2>
+
+<ul>
+<li>Поворот матрицы на 90° по часовой стрелке in-place декомпозируется на две элементарные операции: <strong>Транспонирование главной диагонали + Реверс каждой строки</strong>.</li>
+<li>Временная сложность строго оптимальна: $O(N^2)$, дополнительная память: $O(1)$.</li>
+<li>В Go двумерный слайс <code>[][]int</code> страдает от pointer chasing. Транспонирование вызывает доступ по столбцам с промахами кэша CPU. Для критичных к производительности систем предпочтительнее плоская 1D-раскладка.</li>
+<li>Идиоматичный Go 1.21+ позволяет использовать <code>slices.Reverse</code> для второй фазы алгоритма.</li>
+</ul>
+<p>В следующей лекции мы разберем нелинейный алгоритм обхода матрицы по концентрической траектории: <a href="5-spiral-matrix.html" class="wikilink">5. Spiral Matrix</a>, где научимся строго управлять границами активной зоны сканирования.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2396,7 +2585,7 @@ func RotateLayers(matrix [][]int) {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#vvedenie-geometricheskaya-transformatsiya-bez-vydeleniya-pamyati">Введение: Геометрическая трансформация без выделения памяти</a></li><li class="toc-item toc-h2"><a href="#algoritmicheskiy-pattern-transponirovanie-i-revers">Алгоритмический паттерн: Транспонирование и реверс</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-v-go">Идиоматичная реализация в Go</a></li><li class="toc-item toc-h2"><a href="#mekhanika-pod-kapotom-kesh-pamyat-i-arkhitektura-go">Механика под капотом: Кэш, память и архитектура Go</a></li><li class="toc-item toc-h3"><a href="#1-struktura-int-i-problema-kesh-lokalnosti">1. Структура [][]int и проблема кэш-локальности</a></li><li class="toc-item toc-h3"><a href="#2-escape-analysis-i-allokatsii">2. Escape Analysis и аллокации</a></li><li class="toc-item toc-h3"><a href="#3-alternativa-posloynoe-vrashchenie-layer-by-layer">3. Альтернатива: Послойное вращение (Layer-by-Layer)</a></li><li class="toc-item toc-h2"><a href="#lovushki-i-edge-cases">Ловушки и Edge Cases</a></li><li class="toc-item toc-h3"><a href="#1-nechyotnye-i-chyotnye-razmery">1. Нечётные и чётные размеры</a></li><li class="toc-item toc-h3"><a href="#2-pustaya-matritsa-i-1x1">2. Пустая матрица и 1x1</a></li><li class="toc-item toc-h3"><a href="#3-mutabelnost-i-gonki-dannykh">3. Мутабельность и гонки данных</a></li><li class="toc-item toc-h2"><a href="#podgotovka-k-sobesedovaniyu">Подготовка к собеседованию</a></li><li class="toc-item toc-h3"><a href="#tipovye-voprosy-i-follow-up">Типовые вопросы и follow-up</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#vvedenie-geometricheskaya-transformatsiya-bez-allokatsiy-pamyati">Введение: Геометрическая трансформация без аллокаций памяти</a></li><li class="toc-item toc-h2"><a href="#matematicheskiy-i-algoritmicheskiy-printsip-razlozhenie-na-otrazheniya">Математический и алгоритмический принцип: Разложение на отражения</a></li><li class="toc-item toc-h3"><a href="#trassirovka-preobrazovaniya-koordinat">Трассировка преобразования координат</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#alternativa-posloynyy-chetyrekhtochechnyy-svop-layer-by-layer">Альтернатива: Послойный четырехточечный своп (Layer-by-Layer)</a></li><li class="toc-item toc-h3"><a href="#4-pozitsionnyy-tsikl-perestanovok">4-позиционный цикл перестановок</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-pamyati-i-mechanical-sympathy-problema-int">Архитектура памяти и Mechanical Sympathy: Проблема [][]int</a></li><li class="toc-item toc-h3"><a href="#pointer-chasing-i-cache-thrashing-pri-transponirovanii">Pointer Chasing и Cache Thrashing при транспонировании</a></li><li class="toc-item toc-h3"><a href="#inzhenernoe-reshenie-dlya-prodakshena-splyushchivanie-flattening">Инженерное решение для продакшена: Сплющивание (Flattening)</a></li><li class="toc-item toc-h2"><a href="#analiz-slozhnosti-i-escape-analysis">Анализ сложности и Escape Analysis</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-granichnye-usloviya">Подводные камни и граничные условия</a></li><li class="toc-item toc-h2"><a href="#voprosy-dlya-sobesedovaniya">Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

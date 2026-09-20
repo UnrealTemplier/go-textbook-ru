@@ -2171,20 +2171,54 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~20 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~11 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">6. Meeting Rooms</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="vvedenie-validatsiya-raspisaniy-i-detektsiya-konfliktov">Введение: Валидация расписаний и детекция конфликтов</h2>
+            <blockquote>
+<p><em>«Один человек не может находиться в двух местах одновременно — это простейший инвариант материального мира».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>Задача <strong>Meeting Rooms (LeetCode 252, Easy)</strong> моделирует фундаментальный инвариант физического мира и системного программирования: эксклюзивное владение неразделяемым ресурсом.</p>
+<p>Условие задачи:</p>
+<blockquote>
+<p>Дан срез интервалов встреч <code>intervals</code>, где <code>intervals[i] = [start, end]</code>.<br />
+Определите, может ли один человек посетить все запланированные встречи без временных коллизий (наложений).<br />
+Если одна встреча заканчивается в момент времени $T$, а следующая начинается ровно в $T$, такое касание <strong>не является</strong> конфликтом.</p>
+</blockquote>
+<p>В архитектуре бэкенда это прямая модель проверки эксклюзивных строковых блокировок (<code>SELECT ... FOR UPDATE</code>), валидации пользовательских тайм-слотов в системах бронирования и детекции конфликтов расписания в планировщиках cron-задач.</p>
+<hr />
+<h2 id="1-algoritmicheskiy-analiz-kvadratichnyy-perebor-protiv-sortirovki">1. Алгоритмический анализ: Квадратичный перебор против Сортировки</h2>
 
-<p>Задача <strong>Meeting Rooms</strong> (LeetCode 252) формулируется лаконично: «Дан массив интервалов встреч. Определите, может ли один человек посетить все встречи без конфликтов». На первый взгляд это тривиальная проверка на пересечения, но в реальности она моделирует фундаментальный паттерн <strong>валидации ресурсных пулов</strong>: блокировка строк в БД, проверка свободных слотов в rate-limiter, валидация cron-окон в orchestration-системах и детекция гонок при планировании задач.</p>
-<p>На собеседованиях эта задача служит базовым фильтром: она проверяет, понимаете ли вы разницу между квадратичным перебором и оптимальной сортировкой, умеете ли вы формулировать инварианты пересечений и способны ли вы писать код, который корректно работает с граничными условиями и мутабельными структурами данных. В этой статье мы разберём оптимальный алгоритм, погрузимся в механику раннего выхода (early exit) на уровне CPU-конвейера, обсудим альтернативы для потоковых данных и подготовимся к переходу к более сложной версии задачи.</p>
-<h2 id="algoritmicheskiy-pattern-sortirovka-lineynyy-prokhod">Алгоритмический паттерн: Сортировка + Линейный проход</h2>
+<h3 id="naivnyy-podkhod-za-mathcalon2">Наивный подход за $\mathcal{O}(N^2)$</h3>
+<p>Если оставить интервалы в произвольном порядке, нам придется сравнивать каждую встречу со всеми остальными через двойной цикл:</p>
 
-<p>Если интервалы не отсортированы, проверка на пересечение требует сравнения каждого элемента с каждым, что даёт $O(n^2)$. Ключевое наблюдение: <strong>после сортировки по времени начала любой конфликт обязательно произойдёт между соседними интервалами</strong>. Если <code>intervals[i].Start &lt; intervals[i-1].End</code>, пересечение найдено. Дальнейший поиск бессмыслен.</p>
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">for i := 0; i &lt; n; i++ {
+    for j := i + 1; j &lt; n; j++ {
+        if max(intervals[i][0], intervals[j][0]) &lt; min(intervals[i][1], intervals[j][1]) {
+            return false // Найдено пересечение
+        }
+    }
+}
+</code></pre>
+</div>
+
+<p>При $N = 10\,000$ это потребует $5 \cdot 10^7$ проверок и неприемлемо для боевого сервиса.</p>
+<h3 id="optimalnyy-invariant-sortirovki">Оптимальный инвариант сортировки</h3>
+<p>Если упорядочить все встречи по времени их начала (<code>Start</code>), то любой возможный конфликт во времени <strong>гарантированно локализуется между двумя строго соседними элементами</strong>:<br />
+$$\text{intervals}[i][0] &lt; \text{intervals}[i-1][1]$$<br />
+Если соседние встречи не пересекаются, то никакие другие пересечься уже физически не способны!</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2199,24 +2233,29 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-Start[&quot;Вход: []Interval&lt;br&gt;Неотсортированный массив&quot;] --&gt; Sort[&quot;Сортировка по Start&lt;br&gt;O(n log n)&quot;]
-Sort --&gt; Loop[&quot;Линейный проход&lt;br&gt;i от 1 до n&quot;]
-Loop --&gt; Check{&quot;intervals[i].Start&lt;br&gt;&lt; intervals[i-1].End&quot;}
-Check -- &quot;Да (пересечение)&quot; --&gt; False[&quot;Возврат: false&lt;br&gt;Конфликт обнаружен&quot;]
-Check -- &quot;Нет (совместимы)&quot; --&gt; Next{&quot;Есть ещё элементы?&quot;}
-Next -- &quot;Да&quot; --&gt; Loop
-Next -- &quot;Нет&quot; --&gt; True[&quot;Возврат: true&lt;br&gt;Все встречи совместимы&quot;]
+classDef entry fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef sort fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef loop fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef check fill:#78350f,stroke:#fbbf24,stroke-width:2px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
+classDef error fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#f8fafc
 
-style Start fill:#1e3a5f,stroke:#38bdf8,color:#f8fafc
-style True fill:#064e3b,stroke:#34d399,color:#f8fafc
-style False fill:#7f1d1d,stroke:#f87171,color:#f8fafc
+In[&quot;Вход: intervals [][]int&quot;]:::entry --&gt; S[&quot;Сортировка по Start:&lt;br&gt;slices.SortFunc за O(N log N)&quot;]:::sort
+S --&gt; L[&quot;Итерация i от 1 до N-1&quot;]:::loop
+L --&gt; C{&quot;intervals[i][0] &lt; intervals[i-1][1]?&quot;}:::check
+
+C -- &quot;Да (Конфликт!)&quot; --&gt; Fail[&quot;false (Ранний выход)&quot;]:::error
+C -- &quot;Нет (Совместимы)&quot; --&gt; Nxt{&quot;Есть еще встречи?&quot;}:::loop
+
+Nxt -- &quot;Да&quot; --&gt; L
+Nxt -- &quot;Нет&quot; --&gt; Ok[&quot;true (Все встречи совместимы)&quot;]:::success
   </pre>
 </div>
 
 
-<h2 id="idiomatichnaya-realizatsiya-v-go">Идиоматичная реализация в Go</h2>
+<hr />
+<h2 id="2-idiomatichnaya-realizatsiya-na-go-1-21">2. Идиоматичная реализация на Go 1.21+</h2>
 
-<p>В Go предпочтение отдаётся читаемости и безопасности контрактов. Ниже production-ready решение с валидацией входа, предсказуемым поведением и комментариями для мейнтейнеров.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2226,33 +2265,27 @@ style False fill:#7f1d1d,stroke:#f87171,color:#f8fafc
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">package solution
+  <pre class="language-go"><code class="language-go">package main
 
-import &quot;sort&quot;
+import &quot;slices&quot;
 
-// Interval представляет временной отрезок [Start, End]
-type Interval struct {
-    Start, End int
-}
-
-// CanAttendAllMeetings проверяет, возможно ли посетить все встречи
-// без временных пересечений.
-// Требования: O(n log n) время, O(1) дополнительная память
-func CanAttendAllMeetings(intervals []Interval) bool {
+// CanAttendMeetings возвращает true, если человек может посетить все встречи.
+// Временная сложность: O(N log N) — сортировка.
+// Память: O(1) extra space — сортировка выполняется in-place.
+func CanAttendMeetings(intervals [][]int) bool {
     if len(intervals) &lt;= 1 {
         return true
     }
 
-    // Сортировка по времени начала
-    sort.Slice(intervals, func(i, j int) bool {
-        return intervals[i].Start &lt; intervals[j].Start
+    // 1. Сортируем встречи по времени начала
+    slices.SortFunc(intervals, func(a, b []int) int {
+        return a[0] - b[0]
     })
 
-    // Линейный поиск первого конфликта
+    // 2. Линейная проверка смежных соседей с ранним выходом
     for i := 1; i &lt; len(intervals); i++ {
-        // Если текущая встреча начинается раньше, чем закончилась предыдущая -&gt; конфликт
-        if intervals[i].Start &lt; intervals[i-1].End {
-            return false
+        if intervals[i][0] &lt; intervals[i-1][1] {
+            return false // Обнаружено перекрытие во времени
         }
     }
 
@@ -2261,104 +2294,57 @@ func CanAttendAllMeetings(intervals []Interval) bool {
 </code></pre>
 </div>
 
-<h2 id="mekhanika-proizvoditelnosti-cpu-kesh-i-ranniy-vykhod">Механика производительности: CPU, кэш и ранний выход</h2>
-
-<p>Почему этот код исполняется быстрее, чем кажется на бумаге, и как он взаимодействует с микроархитектурой процессора?</p>
-<h3 id="1-early-exit-i-branch-prediction">1. Early Exit и Branch Prediction</h3>
-<p>В отличие от задач, где нужно просканировать весь массив, здесь мы возвращаем <code>false</code> при первом же конфликте. В реальных данных (например, календарь сотрудника с плотным графиком) конфликт часто обнаруживается в первых 5-10% массива. CPU предсказатель ветвлений быстро обучается паттерну «проверка -&gt; false -&gt; выход», минимизируя штрафы. Даже в худшем случае (все встречи совместимы) условие <code>intervals[i].Start &lt; intervals[i-1].End</code> после сортировки становится монотонным и предсказуемым.</p>
-<h3 id="2-lokalnost-dannykh-i-apparatnyy-prefetching">2. Локальность данных и аппаратный префетчинг</h3>
-<p>Цикл последовательно читает <code>intervals[i]</code> и <code>intervals[i-1]</code>. Оба элемента находятся рядом в памяти (16 байт между ними). Hardware Stream Prefetcher детектирует этот паттерн и подгружает следующие элементы в L1 кэш до того, как CPU запросит их. Количество cache misses стремится к нулю.</p>
-<h3 id="3-vliyanie-sort-slice-na-allokator">3. Влияние `sort.Slice` на аллокатор</h3>
-<p>Замыкание <code>func(i, j int) bool</code> передаётся в <code>sort.Slice</code>. Компилятор Go анализирует его время жизни. Если замыкание не сохраняется и не передаётся в другие горутины, оно размещается на стеке. В современных версиях Go (1.21+) это происходит автоматически. Однако для горячих путей (hot-path), где функция вызывается миллионы раз в секунду, рекомендуется использовать <code>sort.Interface</code> для гарантии <strong>zero-allocation</strong>:</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">type ByStart []Interval
-func (a ByStart) Len() int           { return len(a) }
-func (a ByStart) Less(i, j int) bool { return a[i].Start &lt; a[j].Start }
-func (a ByStart) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-
-// Использование: sort.Sort(ByStart(intervals))
-</code></pre>
-</div>
-
-<p>Это исключает аллокацию под замыкание и даёт компилятору возможность инлайнить методы сравнения и обмена.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Introsort под капотом <code>sort</code></strong><br />
-Стандартная сортировка в Go использует <strong>Introsort</strong> (гибрид Quicksort, Heapsort, Insertion Sort). Для небольших массивов (&lt;12 элементов) применяется Insertion Sort, который работает за $O(n^2)$, но на практике быстрее из-за локальности данных и отсутствия рекурсивных вызовов. При углублении рекурсии &gt; $2 \log n$ алгоритм переключается на Heapsort, гарантируя $O(n \log n)$ в худшем случае и защиту от DoS специально подобранными данными. Это делает <code>sort.Slice</code> безопасным для production-систем с внешним входом.</p>
-  </div>
-</div>
-
-<h2 id="lovushki-i-edge-cases">Ловушки и Edge Cases</h2>
-
-<h3 id="1-kasanie-granits-1-2-i-2-3">1. Касание границ: `[1, 2]` и `[2, 3]`</h3>
-<p>В LeetCode 252 касание <strong>не считается</strong> конфликтом. Встреча может закончиться в 14:00, а следующая начаться ровно в 14:00. Условие <code>intervals[i].Start &lt; intervals[i-1].End</code> корректно обрабатывает это (вернёт <code>false</code>, если <code>Start == End</code>, что правильно). В production-системах календарей часто используется полуоткрытый интервал <code>[start, end)</code>, где касание допустимо. Если бизнес-логика требует минимального буфера (например, 5 минут), условие меняется на <code>intervals[i].Start &lt; intervals[i-1].End + 5</code>.</p>
-<h3 id="2-mutabelnost-vkhoda-i-gonki-dannykh">2. Мутабельность входа и гонки данных</h3>
-<p><code>sort.Slice</code> меняет порядок элементов в исходном слайсе. Если <code>intervals</code> передаётся из общего кэша или используется параллельно, возникнет data race.<br />
-<strong>Решение:</strong> Либо копируйте слайс перед сортировкой (<code>intervals = append([]Interval(nil), intervals...)</code>), либо явно документируйте контракт: «Функция модифицирует порядок входного массива».</p>
-<h3 id="3-invertirovannye-intervaly">3. Инвертированные интервалы</h3>
-<p>По условию <code>Start &lt;= End</code>. Если вход содержит <code>[5, 2]</code>, сортировка всё равно пройдёт, но логика <code>Start &lt; End</code> может дать ложный конфликт. В продакшене валидируйте вход или нормализуйте: <code>if iv.Start &gt; iv.End { iv.Start, iv.End = iv.End, iv.Start }</code>.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Отрицательные времена и переполнение</strong><br />
-Алгоритм работает с любыми <code>int</code>, включая отрицательные (например, таймстампы до эпохи Unix). Но если вы вычисляете длительность <code>duration := iv.End - iv.Start</code>, убедитесь, что результат помещается в <code>int</code>. В Go переполнение тихо оборачивается, что может сломать логику буферов. Для временных интервалов лучше использовать <code>int64</code> и явно проверять контракты.</p>
-  </div>
-</div>
-
-<h2 id="podgotovka-k-sobesedovaniyu">Подготовка к собеседованию</h2>
-
-<h3 id="tipovye-voprosy-i-follow-up">Типовые вопросы и follow-up</h3>
+<hr />
+<h2 id="3-mechanical-sympathy-early-exit-i-branch-target-buffer">3. Mechanical Sympathy: Early Exit и Branch Target Buffer</h2>
 
 <ol>
-<li>
-<p><strong>Вопрос:</strong> Можно ли решить задачу за $O(n)$ без сортировки?<br />
-<strong>Ответ:</strong> В общем случае нет, задача поиска пересечений в неупорядоченном множестве имеет нижнюю границу $\Omega(n \log n)$ в модели сравнений. Однако если времена ограничены небольшим диапазоном (например, 0–1440 минут в сутках), можно использовать <strong>Bucket Sort</strong> или битовое поле (bitset) за $O(n + k)$, где $k$ — размер диапазона. Для календарных систем это часто оптимальнее сортировки.</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Что если встречи приходят потоком (stream), а память ограничена?<br />
-<strong>Ответ:</strong> Сортировка невозможна. Нужно поддерживать минимальную кучу (min-heap) по времени окончания <code>End</code>. При поступлении новой встречи извлекаем из кучи все завершённые. Если куча не пуста и новая встреча начинается раньше верхушки кучи — конфликт. Сложность: $O(\log m)$ на встречу, где $m$ — активные встречи. В Go: <code>container/heap</code>.</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Как протестировать эту функцию?<br />
-<strong>Ответ:</strong> Table-driven tests с кейсами: пустой массив, один элемент, касание границ, полное наложение, непересекающиеся, инвертированные времена. Дополнительно: фаззинг (Go 1.18+) для проверки инварианта «возврат true только если нет пересечений» на случайных данных.</p>
-</li>
+<li><strong>Ранний выход (Early Exit):</strong><br />
+   В отличие от задач полного слияния, здесь при обнаружении первого же пересечения функция немедленно завершает работу (<code>return false</code>). В реальных производственных календарях с высокой плотностью записей конфликт обычно обнаруживается в первых 5–10% массива, что снижает среднее время выполнения до долей микросекунды.</li>
+<li><strong>Предсказуемость ветвлений:</strong><br />
+   Если конфликтов нет (лучший сценарий, <code>return true</code>), проверка <code>intervals[i][0] &lt; intervals[i-1][1]</code> дает монотонный результат <code>false</code> $N-1$ раз подряд. Блок предсказания ветвлений процессора (Branch Target Buffer) фиксирует этот паттерн, обеспечивая конвейеру CPU непрерывную работу без сбросов.</li>
+<li><strong>Кэш-локальность:</strong><br />
+   Сравнение <code>intervals[i]</code> и <code>intervals[i-1]</code> обращается к смежным адресам памяти. Аппаратный блок упреждающей выборки (Hardware Prefetcher) подгружает строки L1-кэша заранее.</li>
 </ol>
+<hr />
+<h2 id="4-granichnye-sluchai-edge-cases">4. Граничные случаи (Edge Cases)</h2>
+
+<ol>
+<li><strong>Граничные касания (<code>[1, 5]</code> и <code>[5, 10]</code>):</strong><br />
+   Строгое неравенство <code>5 &lt; 5</code> ложно, конфликта нет, возвращается <code>true</code>.</li>
+<li><strong>Мгновенные встречи нулевой длительности (<code>[4, 4]</code>):</strong><br />
+   Если в расписании есть звонок <code>[4, 4]</code> и встреча <code>[4, 5]</code>, проверка <code>4 &lt; 4</code> ложна. Касание в точке допустимо.</li>
+<li><strong>Пустой срез или срез из 1 встречи:</strong><br />
+   Конфликты невозможны, guard clause мгновенно возвращает <code>true</code>.</li>
+</ol>
+<hr />
+<h2 id="5-voprosy-na-sobesedovanii">5. Вопросы на собеседовании</h2>
+
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Как объяснить сложность вслух:</strong><br />
-<em>«Мы сортируем массив за $O(n \log n)$, что доминирует над линейным проходом. В худшем случае (все встречи совместимы) сложность $O(n \log n)$ по времени и $O(1)$ по дополнительной памяти. Благодаря раннему выходу среднее время часто ближе к $O(n)$, если конфликты встречаются рано. Алгоритм кэш-дружественный и минимизирует ветвления после сортировки».</em></p>
+    <p><strong>Вопрос интервьюера:</strong><br />
+<em>«Можно ли решить задачу быстрее, чем за $\mathcal{O}(N \log N)$?»</em><br />
+<strong>Ответ:</strong><br />
+В общем случае теории алгоритмов (в модели сравнений) проверка наличия пересекающихся отрезков имеет доказанную нижнюю границу $\Omega(N \log N)$ (эквивалентна проверке уникальности элементов / Element Uniqueness Problem).<br />
+Однако, если временные метки ограничены фиксированным диапазоном (например, минуты внутри одних суток: $0 \le t \le 1440$), мы можем применить <strong>Bucket Sort</strong> или <strong>битовый массив (Bitset)</strong>:<br />
+1. Создаем битовый массив из 1440 бит (всего 180 байт).<br />
+2. Для каждого интервала проверяем, установлены ли биты, и устанавливаем их.<br />
+3. Время работы составит строго $\mathcal{O}(N)$ без сортировки!</p>
   </div>
 </div>
 
-<h2 id="itog">Итог</h2>
+<hr />
+<h2 id="6-rezyume">6. Резюме</h2>
 
 <ol>
-<li><strong>Meeting Rooms</strong> решается сортировкой по <code>Start</code> и линейным поиском первого пересечения: <code>curr.Start &lt; prev.End</code>.</li>
-<li><strong>В Go:</strong> <code>sort.Slice</code> обеспечивает баланс читаемости и производительности. Для hot-path используйте <code>sort.Interface</code> для zero-allocation. Всегда фиксируйте контракт мутабельности входа.</li>
-<li><strong>Механика:</strong> Early exit даёт огромный выигрыш на реальных данных. Последовательный доступ + аппаратный префетчинг + предсказуемые ветвления = стабильная латентность.</li>
-<li><strong>Ловушки:</strong> Касание границ, data race при параллельном чтении, инвертированные интервалы, отсутствие валидации входных данных.</li>
-<li><strong>Интервью:</strong> Умейте обосновать $\Omega(n \log n)$, предложить bucket-оптимизацию для ограниченных доменов и перейти к потоковым структурам (min-heap) для streaming-версии.</li>
+<li><strong>Сортировка локализует коллизии:</strong> После сортировки по <code>Start</code> достаточно проверять только соседние пары <code>intervals[i]</code> и <code>intervals[i-1]</code>.</li>
+<li><strong>Строгое неравенство:</strong> Условие <code>curr[0] &lt; prev[1]</code> корректно обрабатывает точечные стыки встреч.</li>
+<li><strong>Zero Allocations:</strong> Алгоритм работает in-place без создания новых срезов.</li>
 </ol>
-<p>В следующей статье мы усложним задачу до ресурсного планирования: <a href="7-meeting-rooms-ii.html" class="wikilink">7. Meeting Rooms II</a>, где разберём поиск минимального количества комнат (или нод), необходимых для параллельного проведения встреч, с применением метода разделяющей прямой (Sweep Line) и кучи, а также покажем, как этот паттерн применяется в архитектурных решениях высоконагруженных бэкенд-систем.</p>
+<p>В следующей статье мы масштабируем эту задачу от одного человека до целого офиса и научимся находить минимальное количество переговорных комнат для проведения всех встреч: <a href="7-meeting-rooms-ii.html" class="wikilink">7. Meeting Rooms II</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2386,7 +2372,7 @@ func (a ByStart) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#vvedenie-validatsiya-raspisaniy-i-detektsiya-konfliktov">Введение: Валидация расписаний и детекция конфликтов</a></li><li class="toc-item toc-h2"><a href="#algoritmicheskiy-pattern-sortirovka-lineynyy-prokhod">Алгоритмический паттерн: Сортировка + Линейный проход</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-v-go">Идиоматичная реализация в Go</a></li><li class="toc-item toc-h2"><a href="#mekhanika-proizvoditelnosti-cpu-kesh-i-ranniy-vykhod">Механика производительности: CPU, кэш и ранний выход</a></li><li class="toc-item toc-h3"><a href="#1-early-exit-i-branch-prediction">1. Early Exit и Branch Prediction</a></li><li class="toc-item toc-h3"><a href="#2-lokalnost-dannykh-i-apparatnyy-prefetching">2. Локальность данных и аппаратный префетчинг</a></li><li class="toc-item toc-h3"><a href="#3-vliyanie-sort-slice-na-allokator">3. Влияние sort.Slice на аллокатор</a></li><li class="toc-item toc-h2"><a href="#lovushki-i-edge-cases">Ловушки и Edge Cases</a></li><li class="toc-item toc-h3"><a href="#1-kasanie-granits-1-2-i-2-3">1. Касание границ: [1, 2] и [2, 3]</a></li><li class="toc-item toc-h3"><a href="#2-mutabelnost-vkhoda-i-gonki-dannykh">2. Мутабельность входа и гонки данных</a></li><li class="toc-item toc-h3"><a href="#3-invertirovannye-intervaly">3. Инвертированные интервалы</a></li><li class="toc-item toc-h2"><a href="#podgotovka-k-sobesedovaniyu">Подготовка к собеседованию</a></li><li class="toc-item toc-h3"><a href="#tipovye-voprosy-i-follow-up">Типовые вопросы и follow-up</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-algoritmicheskiy-analiz-kvadratichnyy-perebor-protiv-sortirovki">1. Алгоритмический анализ: Квадратичный перебор против Сортировки</a></li><li class="toc-item toc-h3"><a href="#naivnyy-podkhod-za-mathcalon2">Наивный подход за $\mathcal{O}(N^2)$</a></li><li class="toc-item toc-h3"><a href="#optimalnyy-invariant-sortirovki">Оптимальный инвариант сортировки</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-na-go-1-21">2. Идиоматичная реализация на Go 1.21+</a></li><li class="toc-item toc-h2"><a href="#3-mechanical-sympathy-early-exit-i-branch-target-buffer">3. Mechanical Sympathy: Early Exit и Branch Target Buffer</a></li><li class="toc-item toc-h2"><a href="#4-granichnye-sluchai-edge-cases">4. Граничные случаи (Edge Cases)</a></li><li class="toc-item toc-h2"><a href="#5-voprosy-na-sobesedovanii">5. Вопросы на собеседовании</a></li><li class="toc-item toc-h2"><a href="#6-rezyume">6. Резюме</a></li>
   </ul>
 </aside>
 

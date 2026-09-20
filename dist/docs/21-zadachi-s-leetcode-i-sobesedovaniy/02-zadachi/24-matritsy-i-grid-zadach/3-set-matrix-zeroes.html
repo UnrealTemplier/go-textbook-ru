@@ -2171,133 +2171,35 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~23 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">3. Set Matrix Zeroes</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="vvedenie-in-place-transformatsiya-bez-lishnikh-allokatsiy">Введение: In-place трансформация без лишних аллокаций</h2>
-
-<p>Задача <strong>Set Matrix Zeroes</strong> (LeetCode 73) формулируется лаконично, но скрывает под собой фундаментальную проблему управления памятью и кэш-локальностью: </p>
-<blockquote>
-<p>Дана матрица <code>m x n</code>. Если элемент равен <code>0</code>, установите всю его строку и столбец в <code>0</code>. Требуется выполнить это <strong>in-place</strong>, используя $O(1)$ дополнительной памяти.</p>
+            <blockquote>
+<p><em>«Самое надежное место для хранения меток — само рабочее полотно, если только не затереть его прежде времени».</em><br />
+— Брайан Керниган</p>
 </blockquote>
-<p>В реальных высоконагруженных бэкенд-системах эта задача моделирует ситуации, где память строго ограничена: обработка больших разреженных матриц в рекомендательных сервисах, обновление состояний в игровых движках, модификация битовых карт в распределённых хранилищах или batch-обработка телеметрии в embedded-системах. </p>
-<p>На собеседованиях уровня Middle+/Senior эта задача проверяет не только алгоритмическую смекалку, но и понимание того, как структурированы данные в памяти, как работают указатели в Go, и почему избыточные аллокации в hot-path могут стать причиной деградации производительности под нагрузкой. В этой статье мы разберём оптимальный $O(1)$ алгоритм, погрузимся в механику работы с <code>[][]int</code>, проанализируем влияние на CPU-кэши и Garbage Collector, а также подготовимся к каверзным follow-up вопросам.</p>
-<h2 id="algoritmicheskiy-pattern-matritsa-kak-khranilishche-markerov">Алгоритмический паттерн: Матрица как хранилище маркеров</h2>
+<p>Задача <strong>Set Matrix Zeroes (LeetCode 73, Medium)</strong> — это шедевр пространственной оптимизации, проверяющий умение инженера работать с памятью на пределе возможностей:</p>
+<blockquote>
+<p>Дана целочисленная матрица <code>matrix</code> размера $M \times N$.<br />
+Если элемент равен <code>0</code>, установите <strong>всю его строку и весь его столбец</strong> в <code>0</code>.<br />
+Преобразование требуется выполнить <strong>строго In-Place</strong>, используя $\mathcal{O}(1)$ дополнительной памяти.</p>
+</blockquote>
+<p>Любой кандидат может решить эту задачу, создав копию матрицы за $\mathcal{O}(M \cdot N)$ памяти или выделив срезы-маркеры <code>rows []bool</code> и <code>cols []bool</code> за $\mathcal{O}(M + N)$ памяти. Но требование $\mathcal{O}(1)$ отсекает внешние структуры данных и заставляет использовать <strong>саму матрицу как собственное хранилище служебных флагов</strong>.</p>
+<hr />
+<h2 id="1-arkhitekturnyy-insayt-pervaya-stroka-i-stolbets-kak-registry-metok">1. Архитектурный инсайт: Первая строка и столбец как регистры меток</h2>
 
-<p>Наивное решение требует $O(m \cdot n)$ памяти (копия матрицы) или $O(m + n)$ (отдельные массивы для пометки строк и столбцов). Чтобы достичь $O(1)$, мы используем <strong>саму матрицу как хранилище служебных флагов</strong>.</p>
-<p>Ключевая идея: если в ячейке <code>matrix[i][j]</code> найден <code>0</code>, мы можем пометить первую ячейку строки <code>matrix[i][0]</code> и первую ячейку столбца <code>matrix[0][j]</code> нулём. Позже, пройдясь по первым элементам строк и столбцов, мы узнаем, какие именно ряды нужно обнулить.</p>
-<p><strong>Проблема пересечения:</strong> Элемент <code>matrix[0][0]</code> принадлежит одновременно первой строке и первому столбцу. Если мы будем использовать только его как флаг, информация о том, нужно ли обнулять первую строку или первый столбец, потеряется.</p>
-<p><strong>Решение:</strong> Выделяем две отдельные булевы переменные <code>firstRowHasZero</code> и <code>firstColHasZero</code>. Обход делится на четыре чётких этапа:<br />
-1. Сканируем первую строку и первый столбец, сохраняем информацию во внешние флаги.<br />
-2. Сканируем остальную часть матрицы <code>(1..m, 1..n)</code>. При нахождении <code>0</code> ставим маркеры в <code>matrix[i][0]</code> и <code>matrix[0][j]</code>.<br />
-3. Используем маркеры для обнуления внутренних ячеек.<br />
-4. Применяем флаги к первой строке и первому столбцу.</p>
-<h2 id="idiomatichnaya-realizatsiya-v-go">Идиоматичная реализация в Go</h2>
-
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">package solution
-
-// SetZeroes обнуляет строки и столбцы, содержащие хотя бы один 0.
-// Работает in-place, используя O(1) дополнительной памяти.
-// Требования: O(m*n) время, O(1) extra space
-func SetZeroes(matrix [][]int) {
-    if len(matrix) == 0 || len(matrix[0]) == 0 {
-        return
-    }
-
-    m, n := len(matrix), len(matrix[0])
-    firstRowHasZero := false
-    firstColHasZero := false
-
-    // 1. Проверяем наличие нулей в первой строке и первом столбце
-    for j := 0; j &lt; n; j++ {
-        if matrix[0][j] == 0 {
-            firstRowHasZero = true
-            break
-        }
-    }
-    for i := 0; i &lt; m; i++ {
-        if matrix[i][0] == 0 {
-            firstColHasZero = true
-            break
-        }
-    }
-
-    // 2. Сканируем внутреннюю часть матрицы и выставляем маркеры
-    for i := 1; i &lt; m; i++ {
-        for j := 1; j &lt; n; j++ {
-            if matrix[i][j] == 0 {
-                matrix[i][0] = 0
-                matrix[0][j] = 0
-            }
-        }
-    }
-
-    // 3. Обнуляем ячейки на основе маркеров
-    for i := 1; i &lt; m; i++ {
-        for j := 1; j &lt; n; j++ {
-            if matrix[i][0] == 0 || matrix[0][j] == 0 {
-                matrix[i][j] = 0
-            }
-        }
-    }
-
-    // 4. Применяем флаги к первой строке и столбцу
-    if firstRowHasZero {
-        for j := 0; j &lt; n; j++ {
-            matrix[0][j] = 0
-        }
-    }
-    if firstColHasZero {
-        for i := 0; i &lt; m; i++ {
-            matrix[i][0] = 0
-        }
-    }
-}
-</code></pre>
-</div>
-
-<h2 id="mekhanika-pod-kapotom-pamyat-kesh-i-kompilyator">Механика под капотом: Память, кэш и компилятор</h2>
-
-<h3 id="1-struktura-int-v-go">1. Структура `[][]int` в Go</h3>
-<p>В Go двумерная матрица — это <strong>слайс слайсов</strong>, а не непрерывный блок памяти. Каждая строка <code>matrix[i]</code> — это отдельный слайс со своим заголовком (<code>Data</code>, <code>Len</code>, <code>Cap</code>). Это означает, что строки могут быть разбросаны по куче.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Pointer Chasing и кэш-линии</strong><br />
-При доступе к <code>matrix[i][j]</code> CPU выполняет:<br />
-1. Загружает адрес <code>matrix[i]</code> из заголовка слайса.<br />
-2. Разыменовывает указатель (pointer chasing).<br />
-3. Вычисляет смещение <code>j * sizeof(int)</code> и загружает значение.<br />
-Это создаёт дополнительный latency по сравнению с C-style массивом <code>int[M][N]</code>. Однако наш алгоритм обходит матрицу строго по строкам (<code>for i { for j {...} }</code>), что соответствует <strong>Row-Major</strong> порядку. Аппаратный префетчер CPU (Stream Prefetcher) видит последовательный доступ внутри строки и заранее подгружает следующие элементы в L1 кэш, минимизируя штрафы за pointer chasing между строками.</p>
-  </div>
-</div>
-
-<h3 id="2-in-place-modifikatsiya-i-garbage-collector">2. In-place модификация и Garbage Collector</h3>
-<p>Использование внешних булевых флагов вместо <code>make([]int, m+n)</code> полностью исключает аллокации в куче. Escape Analysis поместит <code>firstRowHasZero</code>, <code>firstColHasZero</code>, <code>m</code>, <code>n</code>, <code>i</code>, <code>j</code> на стек. Это критично для long-running сервисов:<br />
-*   <strong>Нулевое давление на GC:</strong> Нет новых объектов для сканирования или очистки.<br />
-*   <strong>Отсутствие фрагментации:</strong> Heap остаётся компактным, что улучшает общую пропускную способность аллокатора.<br />
-*   <strong>Стабильная латентность:</strong> Избегается <code>GC pause</code> во время обработки батчей данных.</p>
-<h3 id="3-optimizatsii-kompilyatora-go">3. Оптимизации компилятора Go</h3>
-<p>Компилятор <code>gc</code> распознаёт паттерн <code>matrix[i][0] == 0</code> внутри вложенных циклов. При включённом <code>GOAMD64=v2+</code> и оптимизациях уровня <code>-l</code>, компилятор:<br />
-*   Выносит проверки границ <code>len(matrix)</code> за пределы циклов (Loop Invariant Code Motion).<br />
-*   Разворачивает мелкие циклы обнуления первой строки/столбца, если <code>n</code> или <code>m</code> известны на этапе компиляции.<br />
-*   Заменяет <code>||</code> на предсказуемые ветвления или условные перемещения (<code>CMOV</code> на x86), если профилировщик покажет, что нули встречаются часто.</p>
+<p>Если в ячейке <code>matrix[i][j] == 0</code>, это означает, что вся строка $i$ и весь столбец $j$ в итоге должны стать нулями.<br />
+Почему бы не спроецировать эту информацию на границы матрицы?<br />
+- Флаг обнуления строки $i$ сохраним в ячейке <code>matrix[i][0]</code>.<br />
+- Флаг обнуления столбца $j$ сохраним в ячейке <code>matrix[0][j]</code>.</p>
+<h3 id="kolliziya-v-tochke-matrix00">Коллизия в точке `matrix[0][0]`</h3>
+<p>Ячейка <code>matrix[0][0]</code> находится на пересечении первого столбца и первой строки. Если записать туда ноль, мы потеряем контекст: относится ли этот ноль к первой строке, к первому столбцу или к обоим сразу?</p>
+<p><strong>Элегантное решение:</strong><br />
+Мы используем две локальные булевы переменные на стеке: <code>firstRowZero</code> и <code>firstColZero</code>. Они изолируют состояние нулевой строки и нулевого столбца, позволяя ячейкам первого ряда выступать в роли чистых маркеров для внутренней части матрицы.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2312,72 +2214,23 @@ func SetZeroes(matrix [][]int) {
   </div>
   <pre class="mermaid">
 flowchart TD
-Start[&quot;Вход: матрица MxN&quot;] --&gt; Check1[&quot;Проверка первой строки&lt;br&gt;Флаг firstRowHasZero&quot;]
-Start --&gt; Check2[&quot;Проверка первой колонки&lt;br&gt;Флаг firstColHasZero&quot;]
-Check1 --&gt; MarkLoop[&quot;Сканирование внутренней части&lt;br&gt;1..M, 1..N&quot;]
-Check2 --&gt; MarkLoop
-MarkLoop --&gt; SetMarkers[&quot;matrix[i][0] = 0&lt;br&gt;matrix[0][j] = 0&quot;]
-SetMarkers --&gt; ApplyLoop[&quot;Применение маркеров&lt;br&gt;Обнуление ячеек по флагу&quot;]
-ApplyLoop --&gt; Finalize[&quot;Обнуление первой строки&lt;br&gt;Обнуление первой колонки&quot;]
-Finalize --&gt; End[&quot;Готовая матрица&lt;br&gt;O(1) extra space&quot;]
+classDef entry fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef step1 fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef step2 fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef step3 fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
 
-style Start fill:#1e3a5f,stroke:#38bdf8,color:#f8fafc
-style End fill:#064e3b,stroke:#34d399,color:#f8fafc
-style MarkLoop fill:#78350f,stroke:#fbbf24,color:#f8fafc
+In[&quot;Матрица M x N&quot;]:::entry --&gt; Step1[&quot;Шаг 1: Фиксация нулей в 0-й строке и 0-м столбце&lt;br&gt;Флаги: firstRowZero, firstColZero&quot;]:::step1
+Step1 --&gt; Step2[&quot;Шаг 2: Сканирование внутренней части (1..M, 1..N)&lt;br&gt;Если matrix[i][j] == 0:&lt;br&gt;matrix[i][0] = 0 и matrix[0][j] = 0&quot;]:::step2
+Step2 --&gt; Step3[&quot;Шаг 3: Обнуление ячеек (1..M, 1..N)&lt;br&gt;Если matrix[i][0] == 0 или matrix[0][j] == 0:&lt;br&gt;matrix[i][j] = 0&quot;]:::step3
+Step3 --&gt; Step4[&quot;Шаг 4: Применение краевых флагов&lt;br&gt;Обнуление строки 0 и столбца 0&quot;]:::step1
+Step4 --&gt; Out[&quot;Итог: In-Place результат за O(1) памяти&quot;]:::success
   </pre>
 </div>
 
 
-<h2 id="lovushki-i-edge-cases">Ловушки и Edge Cases</h2>
-
-<ol>
-<li><strong>Пустая матрица или строка:</strong> <code>len(matrix) == 0 || len(matrix[0]) == 0</code>. Без явной проверки код вызовет панику <code>index out of range</code> при обращении к <code>matrix[0]</code> или <code>matrix[0][j]</code>.</li>
-<li><strong>Матрица 1x1:</strong> Если элемент <code>0</code>, алгоритм корректно выставит оба флага, но циклы <code>1..m</code> и <code>1..n</code> не выполнятся. Финальная проверка флагов обнулит элемент. Работает.</li>
-<li><strong>Порядок обхода:</strong> Критически важно выставлять маркеры <strong>до</strong> применения обнуления. Если перепутать этапы 2 и 3, маркеры в первой строке/столбце будут затёрты нулями до того, как мы их используем для обнуления остальных строк.</li>
-<li><strong>Чтение vs Запись:</strong> Алгоритм модифицирует входные данные. В production API это часто неприемлемо, если данные шарятся между горутинами или кэшируются.</li>
-</ol>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Гонка данных при параллельном обходе</strong><br />
-Если матрица обрабатывается параллельно (например, каждая строка в отдельной горутине), запись <code>matrix[i][0] = 0</code> и <code>matrix[0][j] = 0</code> вызовет <strong>data race</strong>, так как несколько горутин будут писать в первые столбцы/строки одновременно.<br />
-<strong>Решение:</strong> Для конкурентной модификации используйте <code>sync/atomic</code> для битовых масок или <code>sync.RWMutex</code> на уровне строк. Либо откажитесь от $O(1)$ in-place в пользу $O(m+n)$ атомарных флагов, разделив этапы сканирования и применения. На алгоритмическом интервью это редкий кейс, но в системном дизайне high-load обработчиков матриц — обязательный пункт.</p>
-  </div>
-</div>
-
-<h2 id="podgotovka-k-sobesedovaniyu">Подготовка к собеседованию</h2>
-
-<h3 id="tipovye-voprosy-i-follow-up">Типовые вопросы и follow-up</h3>
-
-<ol>
-<li>
-<p><strong>Вопрос:</strong> Почему нельзя использовать только <code>matrix[0][0]</code> как флаг для первой строки и первого столбца?<br />
-<strong>Ответ:</strong> <code>matrix[0][0]</code> — общая ячейка. Если <code>0</code> находится в <code>(0, 5)</code>, мы запишем <code>0</code> в <code>(0,0)</code>. Но мы не поймём, обнулять ли первый столбец. Разделение на <code>firstRowHasZero</code> и <code>firstColHasZero</code> устраняет эту амбигуность.</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Что если матрица доступна только для чтения?<br />
-<strong>Ответ:</strong> In-place невозможен. Требуется $O(m+n)$ памяти для хранения индексов строк и столбцов. Для оптимизации можно использовать <code>[]bool</code> или <code>bitset</code>, что снизит потребление памяти в 8 раз по сравнению с <code>[]int</code>. В Go для битовых карт используется <code>github.com/bits-and-blooms/bitset</code> или ручная работа с <code>[]uint64</code>.</p>
-</li>
-<li>
-<p><strong>Вопрос:</strong> Как адаптировать алгоритм для GPU (CUDA/OpenCL)?<br />
-<strong>Ответ:</strong> На GPU in-place подход с зависимостями между строками плохо масштабируется из-за синхронизации. Лучше использовать <strong>два прохода с атомарными операциями</strong> или <strong>разделение на блоки (tiling)</strong> с использованием shared memory, где каждый поток обрабатывает свой блок, а результаты редукции объединяются на этапе синхронизации.</p>
-</li>
-</ol>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Как объяснить сложность вслух:</strong><br />
-<em>«Алгоритм выполняет ровно четыре прохода по матрице, каждый из которых затрагивает либо строки, либо столбцы, либо всё поле один раз. Итоговая временная сложность строго $O(m \cdot n)$. По памяти мы выделяем только две булевы переменные на стеке, что даёт $O(1)$ extra space. В Go это полностью исключает аллокации в куче, минимизируя паузы GC. Ключевой момент — порядок выполнения: сначала сбор маркеров, затем применение, чтобы не затереть служебные флаги».</em></p>
-  </div>
-</div>
-
-<h3 id="benchmark-i-testirovanie">Бенчмарк и тестирование</h3>
+<hr />
+<h2 id="2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</h2>
 
 
 <div class="code-block" data-lang="go">
@@ -2388,54 +2241,124 @@ style MarkLoop fill:#78350f,stroke:#fbbf24,color:#f8fafc
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func TestSetZeroes(t *testing.T) {
-    tests := []struct {
-        name     string
-        matrix   [][]int
-        expected [][]int
-    }{
-        {
-            name:     &quot;single zero&quot;,
-            matrix:   [][]int{{1, 2}, {3, 0}},
-            expected: [][]int{{1, 0}, {0, 0}},
-        },
-        {
-            name:     &quot;full row and col&quot;,
-            matrix:   [][]int{{0, 1, 2}, {4, 5, 6}},
-            expected: [][]int{{0, 0, 0}, {0, 5, 6}},
-        },
-        {
-            name:     &quot;no zeros&quot;,
-            matrix:   [][]int{{1, 2}, {3, 4}},
-            expected: [][]int{{1, 2}, {3, 4}},
-        },
+  <pre class="language-go"><code class="language-go">package main
+
+// SetZeroes обнуляет строки и столбцы с нулями in-place за O(1) памяти.
+// Временная сложность: O(M * N) — константное число проходов.
+// Пространственная сложность: O(1) extra space — 0 аллокаций в куче.
+func SetZeroes(matrix [][]int) {
+    if len(matrix) == 0 || len(matrix[0]) == 0 {
+        return
     }
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            // Копия для проверки, так как функция in-place
-            res := make([][]int, len(tt.matrix))
-            for i := range tt.matrix {
-                res[i] = make([]int, len(tt.matrix[i]))
-                copy(res[i], tt.matrix[i])
+
+    m, n := len(matrix), len(matrix[0])
+    firstRowZero := false
+    firstColZero := false
+
+    // 1. Проверяем, есть ли нули изначально в первой строке
+    for j := 0; j &lt; n; j++ {
+        if matrix[0][j] == 0 {
+            firstRowZero = true
+            break
+        }
+    }
+
+    // 2. Проверяем, есть ли нули изначально в первом столбце
+    for i := 0; i &lt; m; i++ {
+        if matrix[i][0] == 0 {
+            firstColZero = true
+            break
+        }
+    }
+
+    // 3. Сканируем внутреннюю область (i &gt;= 1, j &gt;= 1) и проставляем маркеры
+    for i := 1; i &lt; m; i++ {
+        for j := 1; j &lt; n; j++ {
+            if matrix[i][j] == 0 {
+                matrix[i][0] = 0 // Помечаем строку i
+                matrix[0][j] = 0 // Помечаем столбец j
             }
-            SetZeroes(res)
-            // Сравнение матриц...
-        })
+        }
+    }
+
+    // 4. Обнуляем внутренние ячейки по маркерам из первой строки и столбца
+    for i := 1; i &lt; m; i++ {
+        for j := 1; j &lt; n; j++ {
+            if matrix[i][0] == 0 || matrix[0][j] == 0 {
+                matrix[i][j] = 0
+            }
+        }
+    }
+
+    // 5. Обнуляем первую строку, если в ней был исходный ноль
+    if firstRowZero {
+        for j := 0; j &lt; n; j++ {
+            matrix[0][j] = 0
+        }
+    }
+
+    // 6. Обнуляем первый столбец, если в нем был исходный ноль
+    if firstColZero {
+        for i := 0; i &lt; m; i++ {
+            matrix[i][0] = 0
+        }
     }
 }
 </code></pre>
 </div>
 
-<h2 id="itog">Итог</h2>
+<hr />
+<h2 id="3-mechanical-sympathy-zero-allocations-i-row-major-kesh">3. Mechanical Sympathy: Zero Allocations и Row-Major кэш</h2>
+
+<h3 id="1-escape-analysis-i-nulevaya-nagruzka-na-gc">1. Escape Analysis и нулевая нагрузка на GC</h3>
+<p>Переменные <code>m</code>, <code>n</code>, <code>firstRowZero</code>, <code>firstColZero</code>, <code>i</code>, <code>j</code> имеют примитивные типы (<code>int</code>, <code>bool</code>) и локальную область видимости.<br />
+Команда <code>go build -gcflags="-m"</code> подтверждает: <strong>ни одна переменная не убегает в кучу</strong>.<br />
+Алгоритм выделяет ровно <strong>0 байт динамической памяти</strong> ($0\text{ allocs/op}$), не создавая работы для сборщика мусора Go.</p>
+<h3 id="2-row-major-obkhod-i-apparatnyy-prefetching">2. Row-Major обход и аппаратный префетчинг</h3>
+<p>Все двойные циклы организованы строго в порядке <code>for i ... for j</code>:<br />
+- Чтение элементов <code>matrix[i][j]</code> идет последовательно с шагом 8 байт вдоль непрерывного базового массива строки.<br />
+- Блок Stream Prefetcher в процессорах x86-64 и ARM64 упреждающе считывает 64-байтовые линии кэша L1, маскируя накладные расходы на разыменование указателя строки.</p>
+<hr />
+<h2 id="4-granichnye-sluchai-edge-cases">4. Граничные случаи (Edge Cases)</h2>
 
 <ol>
-<li><strong>Set Matrix Zeroes</strong> решается за $O(m \cdot n)$ времени и $O(1)$ памяти через использование первых строки и столбца как маркеров, с выделением двух отдельных флагов для обработки пересечения в <code>(0,0)</code>.</li>
-<li><strong>В Go:</strong> Алгоритм полностью стековый, не создаёт аллокаций, не давит на GC. Row-Major обход максимизирует эффективность аппаратного префетчера CPU.</li>
-<li><strong>Механика:</strong> Pointer chasing в <code>[][]int</code> компенсируется последовательным доступом внутри строк. Компилятор устраняет проверки границ и оптимизирует ветвления.</li>
-<li><strong>Ловушки:</strong> Порядок этапов критичен, пустые матрицы требуют защитных проверок, параллельная модификация требует атомарных операций или блокировок.</li>
-<li><strong>Интервью:</strong> Умейте обосновать порядок проходов, предложить альтернативы для read-only матриц и обсудить влияние in-place модификаций на многопоточные системы.</li>
+<li><strong>Матрица $1 \times 1$:</strong><br />
+<code>matrix = &lt;span class="wikilink-unresolved" title="Заметка в разработке"&gt;0&lt;/span&gt;</code>.<br />
+   Оба флага <code>firstRowZero</code> и <code>firstColZero</code> станут <code>true</code>. Внутренние циклы пропустятся, на шагах 5 и 6 ячейка корректно останется <code>0</code>.</li>
+<li><strong>Вся матрица уже состоит из нулей:</strong><br />
+   Все маркеры будут установлены в <code>0</code>, повторные записи нулей не изменят результат.</li>
+<li><strong>В матрице нет ни одного нуля:</strong><br />
+   Флаги останутся <code>false</code>, маркеры не взведутся, матрица останется нетронутой.</li>
 </ol>
-<p>В следующей статье мы перейдём к классической задаче на геометрическую трансформацию и in-place поворот структур: <a href="4-rotate-image.html" class="wikilink">4. Rotate Image</a>, где разберём алгоритм циклического обмена элементов, математическое обоснование слоёв матрицы, оптимизацию доступа к памяти при повороте на 90 градусов и типичные ошибки при работе с индексацией в Go.</p>
+<hr />
+<h2 id="5-voprosy-na-sobesedovanii">5. Вопросы на собеседовании</h2>
+
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Каверзный вопрос интервьюера:</strong><br />
+<em>«А можно ли избавиться даже от двух переменных <code>firstRowZero</code> и <code>firstColZero</code> и обойтись вообще одной переменной <code>col0</code>?»</em><br />
+<strong>Эталонный ответ:</strong><br />
+Да! Ячейку <code>matrix[0][0]</code> можно закрепить исключительно за первой строкой (<code>row0</code>), а состояние первого столбца хранить в единственной переменной <code>col0</code>.<br />
+Тогда при сканировании $i$ от $0$ до $M-1$:<br />
+- Если <code>matrix[i][0] == 0</code>, то <code>col0 = 0</code>.<br />
+- Для столбцов $j$ от $1$ до $N-1$: если <code>matrix[i][j] == 0</code>, то <code>matrix[i][0] = 0</code> и <code>matrix[0][j] = 0</code>.<br />
+При обратном обходе (снизу вверх, чтобы не затереть маркеры) матрица восстанавливается. Однако использование двух независимых булевых флагов считается золотым стандартом читаемости в production-коде.</p>
+  </div>
+</div>
+
+<hr />
+<h2 id="6-rezyume">6. Резюме</h2>
+
+<ol>
+<li><strong>Матрица как хранилище:</strong> Использование границ матрицы в качестве регистров экономит $\mathcal{O}(M + N)$ памяти.</li>
+<li><strong>Изоляция нулевой ячейки:</strong> Флаги <code>firstRowZero</code> и <code>firstColZero</code> предотвращают взаимное затирание первого ряда и колонки.</li>
+<li><strong>Строгий порядок этапов:</strong> Сбор маркеров во внутренней области $\to$ применение маркеров $\to$ обработка границ. Нарушение порядка приведет к тотальному ложному обнулению матрицы.</li>
+</ol>
+<p>В следующей статье мы разберем геометрическую трансформацию матриц и научимся поворачивать изображение на 90 градусов без создания вспомогательных буферов: <a href="4-rotate-image.html" class="wikilink">4. Rotate Image</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2463,7 +2386,7 @@ style MarkLoop fill:#78350f,stroke:#fbbf24,color:#f8fafc
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#vvedenie-in-place-transformatsiya-bez-lishnikh-allokatsiy">Введение: In-place трансформация без лишних аллокаций</a></li><li class="toc-item toc-h2"><a href="#algoritmicheskiy-pattern-matritsa-kak-khranilishche-markerov">Алгоритмический паттерн: Матрица как хранилище маркеров</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-v-go">Идиоматичная реализация в Go</a></li><li class="toc-item toc-h2"><a href="#mekhanika-pod-kapotom-pamyat-kesh-i-kompilyator">Механика под капотом: Память, кэш и компилятор</a></li><li class="toc-item toc-h3"><a href="#1-struktura-int-v-go">1. Структура [][]int в Go</a></li><li class="toc-item toc-h3"><a href="#2-in-place-modifikatsiya-i-garbage-collector">2. In-place модификация и Garbage Collector</a></li><li class="toc-item toc-h3"><a href="#3-optimizatsii-kompilyatora-go">3. Оптимизации компилятора Go</a></li><li class="toc-item toc-h2"><a href="#lovushki-i-edge-cases">Ловушки и Edge Cases</a></li><li class="toc-item toc-h2"><a href="#podgotovka-k-sobesedovaniyu">Подготовка к собеседованию</a></li><li class="toc-item toc-h3"><a href="#tipovye-voprosy-i-follow-up">Типовые вопросы и follow-up</a></li><li class="toc-item toc-h3"><a href="#benchmark-i-testirovanie">Бенчмарк и тестирование</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-arkhitekturnyy-insayt-pervaya-stroka-i-stolbets-kak-registry-metok">1. Архитектурный инсайт: Первая строка и столбец как регистры меток</a></li><li class="toc-item toc-h3"><a href="#kolliziya-v-tochke-matrix00">Коллизия в точке matrix[0][0]</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#3-mechanical-sympathy-zero-allocations-i-row-major-kesh">3. Mechanical Sympathy: Zero Allocations и Row-Major кэш</a></li><li class="toc-item toc-h3"><a href="#1-escape-analysis-i-nulevaya-nagruzka-na-gc">1. Escape Analysis и нулевая нагрузка на GC</a></li><li class="toc-item toc-h3"><a href="#2-row-major-obkhod-i-apparatnyy-prefetching">2. Row-Major обход и аппаратный префетчинг</a></li><li class="toc-item toc-h2"><a href="#4-granichnye-sluchai-edge-cases">4. Граничные случаи (Edge Cases)</a></li><li class="toc-item toc-h2"><a href="#5-voprosy-na-sobesedovanii">5. Вопросы на собеседовании</a></li><li class="toc-item toc-h2"><a href="#6-rezyume">6. Резюме</a></li>
   </ul>
 </aside>
 
