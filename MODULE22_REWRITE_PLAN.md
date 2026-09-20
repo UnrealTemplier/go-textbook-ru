@@ -309,49 +309,49 @@ sources/22. Вопросы и ответы с собеседований по Go
 
 **Новые вопросы:** Q04 (`go build -cover`), Q12 (`b.Loop()`), Q15 (`testing/synctest`), Q25 (`go fix` revamp)
 
-- [ ] **Эпиграф** (Кернигановский о преждевременной оптимизации — Кнут)
-- [ ] **Mermaid:** PGO pipeline (profile → build → optimized binary)
-- [ ] **Mermaid:** Benchmark workflow (написание → `go test -bench` → `benchstat` → вывод)
-- [ ] **Callout `[!TIP]`:** инструменты профилирования — выбор под задачу (CPU / heap / mutex / block)
-- [ ] Интегрировать: Q12 (`b.Loop()` в бенчмарках), Q15 (`testing/synctest`)
-- [ ] **Таблица:** Сравнение оптимизационных инструментов Go (PGO, inlining, escape analysis)
+- [x] **Эпиграф** (Кернигановский о преждевременной оптимизации — Кнут)
+- [x] **Mermaid:** PGO pipeline (profile → build → optimized binary)
+- [x] **Mermaid:** Benchmark workflow (написание → `go test -bench` → `benchstat` → вывод)
+- [x] **Callout `[!TIP]`:** инструменты профилирования — выбор под задачу (CPU / heap / mutex / block)
+- [x] Интегрировать: Q12 (`b.Loop()` в бенчмарках), Q15 (`testing/synctest`)
+- [x] **Таблица:** Сравнение оптимизационных инструментов Go (PGO, inlining, escape analysis)
 
 ### Файл 15: Профилирование и отладка
 
 **Новые вопросы:** Q19 (`FlightRecorder`), Q23 (goroutine leak profiling 1.26), Q29 (goroutineleak GA 1.27)
 
-- [ ] **Эпиграф** (о диагностике — «нельзя оптимизировать то, что нельзя измерить»)
-- [ ] **Mermaid:** pprof архитектура — как данные текут от рантайма до `go tool pprof`
-- [ ] **Mermaid:** Типы профилей и когда применять (CPU / heap / goroutine / mutex / block / goroutineleak)
-- [ ] **Mermaid:** FlightRecorder — кольцевой буфер и сценарий использования
-- [ ] Интегрировать: Q19 (FlightRecorder), Q23+Q29 (goroutineleak profiling)
-- [ ] **Callout `[!TIP]`:** как интерпретировать flamegraph — практическое руководство
+- [x] **Эпиграф** (о диагностике — «нельзя оптимизировать то, что нельзя измерить»)
+- [x] **Mermaid:** pprof архитектура — как данные текут от рантайма до `go tool pprof`
+- [x] **Mermaid:** Типы профилей и когда применять (CPU / heap / goroutine / mutex / block / goroutineleak)
+- [x] **Mermaid:** FlightRecorder — кольцевой буфер и сценарий использования
+- [x] Интегрировать: Q19 (FlightRecorder), Q23+Q29 (goroutineleak profiling)
+- [x] **Callout `[!TIP]`:** как интерпретировать flamegraph — практическое руководство
 
 ### Файл 16: Стандартная библиотека
 
 **Новые вопросы:** Q16 (`encoding/json/v2`), Q30 (`uuid` package)
 
-- [ ] **Эпиграф** (о стандартной библиотеке как основе)
-- [ ] **Mermaid:** Карта ключевых пакетов stdlib (io, sync, context, net, encoding)
-- [ ] **Mermaid:** Сравнение `encoding/json` v1 vs v2 (таблица различий как flowchart)
-- [ ] Интегрировать: Q16 (json/v2), Q30 (uuid — нативный)
-- [ ] **Callout `[!INTERVIEW]`:** «Как правильно закрывать resp.Body в net/http?»
+- [x] **Эпиграф** (о стандартной библиотеке как основе)
+- [x] **Mermaid:** Карта ключевых пакетов stdlib (io, sync, context, net, encoding)
+- [x] **Mermaid:** Сравнение `encoding/json` v1 vs v2 (таблица различий как flowchart)
+- [x] Интегрировать: Q16 (json/v2), Q30 (uuid — нативный)
+- [x] **Callout `[!INTERVIEW]`:** «Как правильно закрывать resp.Body в net/http?»
 
 ### Файл 17: HTTP и сетевое взаимодействие
 
-- [ ] **Эпиграф** (о сетях — Таненбаум или Кернигановский)
-- [ ] **Mermaid:** HTTP/1.1 → HTTP/2 → HTTP/3 (QUIC) — ключевые отличия
-- [ ] **Mermaid:** net/http server pipeline (listener → accept → goroutine → handler)
-- [ ] **Mermaid:** gRPC vs REST — сравнение flow (protobuf, multiplexing)
-- [ ] **Callout `[!WARNING]`:** connection pooling — Transport.MaxIdleConns и утечки
-- [ ] **Callout `[!INTERVIEW]`:** «Как реализовать graceful shutdown HTTP-сервера?»
+- [x] **Эпиграф** (о сетях — Таненбаум или Кернигановский)
+- [x] **Mermaid:** HTTP/1.1 → HTTP/2 → HTTP/3 (QUIC) — ключевые отличия
+- [x] **Mermaid:** net/http server pipeline (listener → accept → goroutine → handler)
+- [x] **Mermaid:** gRPC vs REST — сравнение flow (protobuf, multiplexing)
+- [x] **Callout `[!WARNING]`:** connection pooling — Transport.MaxIdleConns и утечки
+- [x] **Callout `[!INTERVIEW]`:** «Как реализовать graceful shutdown HTTP-сервера?»
 
 ### Критерии приёмки этапа 4:
-- [ ] `python3 builder/build_all.py --all` → exit 0
-- [ ] `python3 builder/audit_all.py` → 0 errors
-- [ ] Каждый файл: эпиграф + минимум 2 Mermaid с цветами
-- [ ] Q12, Q15, Q16, Q19, Q23, Q29, Q30 интегрированы
-- [ ] Коммит: `refactor(module22): этап 4 — производительность, профилирование, stdlib, HTTP (файлы 14–17)`
+- [x] `python3 builder/build_all.py --all` → exit 0
+- [x] `python3 builder/audit_all.py` → 0 errors
+- [x] Каждый файл: эпиграф + минимум 2 Mermaid с цветами
+- [x] Q12, Q15, Q16, Q19, Q23, Q29, Q30 интегрированы
+- [x] Коммит: `refactor(module22): этап 4 — производительность, профилирование, stdlib, HTTP (файлы 14–17)`
 
 ---
 
