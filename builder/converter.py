@@ -315,12 +315,36 @@ class MarkdownConverter:
         return pattern.sub(repl, text)
 
     def _process_headings(self, text: str) -> Tuple[str, List[Dict[str, Any]]]:
-        """Добавление id в заголовки H2..H4 и формирование оглавления (TOC)."""
+        """Добавление id в заголовки H2..H4 и формирование оглавления (TOC).
+
+        Строки внутри fenced code-блоков (``` или ~~~) игнорируются —
+        иначе комментарии Makefile вида '## build: ...' ошибочно попадают в TOC.
+        """
         lines = text.splitlines()
         toc = []
         out_lines = []
+        in_code_block = False
+        fence_marker = ""
 
         for line in lines:
+            stripped = line.strip()
+            # Определяем начало / конец fenced code-блока
+            fence_match = re.match(r"^(`{3,}|~{3,})", stripped)
+            if fence_match:
+                marker = fence_match.group(1)[0] * len(fence_match.group(1))
+                if not in_code_block:
+                    in_code_block = True
+                    fence_marker = marker
+                elif stripped.startswith(fence_marker):
+                    in_code_block = False
+                    fence_marker = ""
+                out_lines.append(line)
+                continue
+
+            if in_code_block:
+                out_lines.append(line)
+                continue
+
             m = re.match(r"^(#{2,4})\s+(.+)$", line)
             if m:
                 level = len(m.group(1))
@@ -328,7 +352,7 @@ class MarkdownConverter:
                 clean_title = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", raw_title)
                 clean_title = re.sub(r"[`*_]", "", clean_title)
                 h_slug = slugify(clean_title, 80)
-                
+
                 toc.append({
                     "level": level,
                     "title": clean_title,

@@ -46,11 +46,31 @@ def normalize_key(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 def extract_headings(content: str) -> List[Tuple[int, str, str]]:
-    """Извлечение всех заголовков H2, H3, H4 и их slug-анкоров."""
+    """Извлечение всех заголовков H2, H3, H4 и их slug-анкоров.
+
+    Игнорирует строки, находящиеся внутри fenced code-блоков (``` или ~~~),
+    чтобы комментарии вида '## build: ...' внутри Makefile-блоков
+    не попадали в Table of Contents.
+    """
     headings = []
+    in_code_block = False
+    fence_marker = ""
     for line in content.splitlines():
-        line = line.strip()
-        m = re.match(r"^(#{2,4})\s+(.+)$", line)
+        stripped = line.strip()
+        # Определяем начало / конец fenced code-блока
+        fence_match = re.match(r"^(`{3,}|~{3,})", stripped)
+        if fence_match:
+            marker = fence_match.group(1)
+            if not in_code_block:
+                in_code_block = True
+                fence_marker = marker[0] * len(marker)  # нормализуем до однородного маркера
+            elif stripped.startswith(fence_marker):
+                in_code_block = False
+                fence_marker = ""
+            continue
+        if in_code_block:
+            continue
+        m = re.match(r"^(#{2,4})\s+(.+)$", stripped)
         if m:
             level = len(m.group(1))
             raw_title = m.group(2).strip()
@@ -341,14 +361,35 @@ class KnowledgeBaseScanner:
             target_part = link_raw.strip()
             display_text = target_part
 
+        # Разбираем возможный anchor.
+        # ВАЖНО: символ '#' может быть частью названия статьи (например, 'C#', 'F#').
+        # Стратегия: если '#' присутствует — сначала пробуем найти статью по полному имени
+        # (с '#'). Только если статья НЕ найдена — считаем '#' разделителем anchor.
+        target_name = target_part
+        anchor_slug = ""
+
         if "#" in target_part:
             t_parts = target_part.split("#", 1)
-            target_name = t_parts[0].strip()
+            candidate_name = t_parts[0].strip()
             anchor_name = t_parts[1].strip()
-            anchor_slug = "#" + slugify(anchor_name)
-        else:
-            target_name = target_part
-            anchor_slug = ""
+
+            # Попытка найти статью по полному имени (с '#') — значит '#' часть названия
+            full_art = self.wikilink_index.get(target_part)
+            if not full_art:
+                full_art = self.wikilink_index.get(normalize_key(target_part))
+            if not full_art and re.match(r"^\d+\.\s*", target_part):
+                m_full = re.match(r"^\d+\.\s*(.+)$", target_part)
+                if m_full:
+                    full_art = self.wikilink_index.get(normalize_key(m_full.group(1)))
+
+            if full_art:
+                # '#' является частью названия, не anchor-разделителем
+                target_name = target_part
+                anchor_slug = ""
+            else:
+                # '#' — разделитель anchor
+                target_name = candidate_name
+                anchor_slug = "#" + slugify(anchor_name) if anchor_name else ""
 
         if not target_name:
             clean_display = display_text.lstrip("#")
@@ -357,7 +398,7 @@ class KnowledgeBaseScanner:
         art = self.wikilink_index.get(target_name)
         if not art:
             art = self.wikilink_index.get(normalize_key(target_name))
-        
+
         if not art:
             m = re.match(r"^\d+\.\s*(.+)$", target_name)
             if m:
