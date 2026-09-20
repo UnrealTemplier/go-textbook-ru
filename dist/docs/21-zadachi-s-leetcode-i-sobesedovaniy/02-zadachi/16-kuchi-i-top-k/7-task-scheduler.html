@@ -2171,38 +2171,29 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~11 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~8 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">7. Task Scheduler</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="zhadnoe-planirovanie-cpu-i-vremya-prostoya">Жадное планирование: CPU и время простоя</h2>
+            <blockquote>
+<p><em>«Искусство планирования состоит в том, чтобы заставить неизбежные паузы работать на общую цель».</em><br />
+— Эдсгер Дейкстра</p>
+</blockquote>
+<h2 id="zhadnoe-planirovanie-cpu-i-minimizatsiya-prostoev">Жадное планирование: CPU и минимизация простоев</h2>
 
-<p>В предыдущих задачах мы использовали кучи для работы с потоками данных или агрегации. Но кучи также являются сердцем любого <strong>Планировщика (Scheduler)</strong> — от операционных систем (Linux CFS) до рантайма Go.</p>
-<p>Задача <strong>Task Scheduler</strong> (LeetCode №621) моделирует работу процессора, который должен выполнить набор задач с учетом ограничений на охлаждение (охлаждение здесь — это метафора зависимости или задержки).</p>
-<p><strong>Условие:</strong> Дан массив символов <code>tasks</code>, представляющий задачи (например, 'A', 'B'), и целое число <code>n</code> (время охлаждения). Между двумя одинаковыми задачами должен быть перерыв как минимум в <code>n</code> единиц времени. В это время процессор может либо выполнять другую задачу, либо простаивать (<code>idle</code>). <br />
-Нужно найти <strong>минимальное количество единиц времени</strong>, необходимое для выполнения всех задач.</p>
+<p>Кучи лежат в основе любого промышленного планировщика задач (OS CPU Scheduler, Go Runtime Scheduler, Kubernetes kube-scheduler).<br />
+Задача <strong>Task Scheduler</strong> (LeetCode №621) моделирует процесс распределения задач на процессоре с учетом фиксированного периода охлаждения (cooldown).</p>
+<p><strong>Условие:</strong> Задан массив символов <code>tasks</code>, представляющий однотипные задачи (например, <code>'A'</code>, <code>'B'</code>), и неотрицательное число $n$ (период кулдауна).<br />
+Между двумя одинаковыми задачами должно пройти не менее $n$ интервалов времени. В эти интервалы процессор может либо выполнять другую доступную задачу, либо простаивать (<code>idle</code>).<br />
+Требуется определить <strong>минимальное суммарное время</strong>, необходимое для выполнения всех задач.</p>
 <hr />
-<h2 id="strategiya-zhadnyy-podkhod-greedy">Стратегия: Жадный подход (Greedy)</h2>
+<h2 id="strategiya-zhadnyy-vybor-naibolee-chastoy-zadachi">Стратегия: Жадный выбор наиболее частой задачи</h2>
 
-<p>Чтобы минимизировать время, нам нужно как можно реже допускать простой процессора (<code>idle</code>). <br />
-<strong>Интуиция:</strong> Самые часто встречающиеся задачи — это наши главные враги, так как именно они создают больше всего обязательных пауз. Значит, их нужно выполнять <strong>как можно раньше</strong>, чтобы "разбавить" их другими задачами в промежутках.</p>
-<h3 id="pochemu-zdes-nuzhna-kucha">Почему здесь нужна Куча?</h3>
-<p>Нам нужно на каждом шаге выбирать задачу, которой осталось выполнить больше всего. После выполнения задачи её частота уменьшается, и нам снова нужно найти текущий максимум. Динамический поиск максимума — это работа для <strong>Max-Heap</strong>.</p>
-<hr />
-<h2 id="algoritm-s-ispolzovaniem-max-heap-i-ocheredi">Алгоритм с использованием Max-Heap и Очереди</h2>
-
-<ol>
-<li><strong>Подсчет:</strong> Считаем частоту каждой задачи (например, 'A': 3, 'B': 3).</li>
-<li><strong>Инициализация:</strong> Кладем все частоты в Max-Heap.</li>
-<li><strong>Цикл планирования:</strong><br />
-   - Извлекаем самую частую задачу из кучи.<br />
-   - Выполняем её (уменьшаем счетчик).<br />
-   - Мы не можем вернуть её в кучу сразу из-за <code>n</code>. Помещаем её в <strong>очередь ожидания</strong> вместе с временем, когда она снова станет доступна.<br />
-   - На каждом тике времени проверяем очередь: если время "заморозки" задачи вышло, возвращаем её в Max-Heap.</li>
-</ol>
+<p>Интуиция оптимального планирования: паузы (<code>idle</code>) возникают исключительно из-за кулдауна наиболее часто встречающихся задач. Следовательно, в каждый момент времени процессор обязан выбирать <strong>задачу с максимальным оставшимся числом повторений</strong>. Это оставляет наибольшее разнообразие для заполнения будущих пауз.</p>
+<p>Для динамического извлечения наиболее частой задачи используется <strong>Max-Heap</strong>, а для отслеживания задач на кулдауне — очередь FIFO.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2216,25 +2207,20 @@
     </button>
   </div>
   <pre class="mermaid">
-graph LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Max-Heap:&lt;br&gt;Задачи, готовые к работе&quot;]:::success --&gt; B[&quot;CPU:&lt;br&gt;Выполнение&quot;]
-B --&gt; C[&quot;Очередь ожидания:&lt;br&gt;Задачи на охлаждении n&quot;]
-C --&gt;|&quot;Время вышло&quot;| A
+flowchart LR
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+
+Heap[&quot;Max-Heap:&lt;br&gt;Задачи, готовые к исполнению&quot;]:::success --&gt;|Извлечение максимума| CPU[&quot;CPU:&lt;br&gt;Выполнение 1 такта&quot;]:::process
+CPU --&gt;|Кулдаун n тактов| Cooldown[&quot;Очередь ожидания:&lt;br&gt;(остаток, время разморозки)&quot;]:::warning
+Cooldown --&gt;|Время вышло| Heap
   </pre>
 </div>
 
 
-<h3 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h3>
+<hr />
+<h2 id="realizatsiya-1-simulyatsiya-cherez-max-heap-i-ochered">Реализация 1: Симуляция через Max-Heap и Очередь</h2>
 
 
 <div class="code-block" data-lang="go">
@@ -2245,12 +2231,12 @@ C --&gt;|&quot;Время вышло&quot;| A
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">import (
-    &quot;container/heap&quot;
-)
+  <pre class="language-go"><code class="language-go">package main
 
-// 1. Стандартный Max-Heap для частот
+import &quot;container/heap&quot;
+
 type MaxHeap []int
+
 func (h MaxHeap) Len() int           { return len(h) }
 func (h MaxHeap) Less(i, j int) bool { return h[i] &gt; h[j] } // Max-Heap
 func (h MaxHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
@@ -2263,44 +2249,40 @@ func (h *MaxHeap) Pop() any {
     return x
 }
 
-type TaskInfo struct {
+type CooldownTask struct {
     count     int
     readyTime int
 }
 
+// leastInterval симулирует планировщик через Max-Heap и очередь кулдауна.
 func leastInterval(tasks []byte, n int) int {
     if n == 0 {
         return len(tasks)
     }
 
-    // Шаг 1: Считаем частоты
     freq := make(map[byte]int)
     for _, t := range tasks {
         freq[t]++
     }
 
-    // Шаг 2: Добавляем в кучу только частоты
     h := &amp;MaxHeap{}
     for _, count := range freq {
         heap.Push(h, count)
     }
 
     time := 0
-    queue := []TaskInfo{} // Очередь для задач на кулдауне
+    queue := make([]CooldownTask, 0, n+1)
 
     for h.Len() &gt; 0 || len(queue) &gt; 0 {
         time++
 
         if h.Len() &gt; 0 {
-            // Берем самую приоритетную (частую) задачу
             count := heap.Pop(h).(int) - 1
             if count &gt; 0 {
-                // Если задача не закончилась, отправляем в очередь ожидания
-                queue = append(queue, TaskInfo{count, time + n})
+                queue = append(queue, CooldownTask{count: count, readyTime: time + n})
             }
         }
 
-        // Если пришло время, возвращаем задачу из очереди в кучу
         if len(queue) &gt; 0 &amp;&amp; queue[0].readyTime == time {
             heap.Push(h, queue[0].count)
             queue = queue[1:]
@@ -2313,17 +2295,15 @@ func leastInterval(tasks []byte, n int) int {
 </div>
 
 <hr />
-<h2 id="matematicheskiy-podkhod-senior-level">Математический подход (Senior Level)</h2>
+<h2 id="realizatsiya-2-matematicheskaya-formula-za-on-vremeni-i-o1-pamyati">Реализация 2: Математическая формула за O(N) времени и O(1) памяти</h2>
 
-<p>На собеседовании в топ-тех компании интервьюер может спросить: <em>"Можно ли решить это без симуляции, за $O(N)$?"</em>.<br />
-Да. Мы можем вычислить "пустоты".</p>
+<p>На Senior-интервью часто ожидают вывод аналитической формулы расчета времени без пошаговой симуляции:</p>
 <ol>
-<li>Найдем максимальную частоту <code>f_max</code> (например, задача 'A' встречается 3 раза).</li>
-<li>Количество самых частых задач <code>n_max</code> (например, если 'A' и 'B' оба встречаются по 3 раза).</li>
-<li>Минимальное время определяется формулой:<br />
-   $$(f_max - 1) * (n + 1) + n_max$$<br />
-   Это блоки, разделенные паузами, плюс последние задачи в финальном блоке.</li>
-<li>Ответ — это максимум между этой формулой и общей длиной <code>len(tasks)</code>.</li>
+<li>Находим максимальную частоту задачи $f_{\max}$ (например, задача <code>'A'</code> встречается $3$ раза).</li>
+<li>Находим количество задач с этой максимальной частотой $k_{\max}$.</li>
+<li>Минимальное время определяется каркасом из $f_{\max} - 1$ блоков длины $n + 1$ плюс финальный неполный блок:<br />
+   $$\text{time} = (f_{\max} - 1) \times (n + 1) + k_{\max}$$</li>
+<li>Если свободных задач достаточно, чтобы полностью заполнить все паузы без простоев, ответ равен общей длине <code>len(tasks)</code>.</li>
 </ol>
 
 <div class="code-block" data-lang="go">
@@ -2334,40 +2314,43 @@ func leastInterval(tasks []byte, n int) int {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func leastIntervalMath(tasks []byte, n int) int {
-    freq := make([]int, 26)
+  <pre class="language-go"><code class="language-go">package main
+
+func leastIntervalMath(tasks []byte, n int) int {
+    counts := [26]int{}
     maxFreq := 0
     for _, t := range tasks {
-        freq[t-'A']++
-        if freq[t-'A'] &gt; maxFreq {
-            maxFreq = freq[t-'A']
+        counts[t-'A']++
+        if counts[t-'A'] &gt; maxFreq {
+            maxFreq = counts[t-'A']
         }
     }
 
     maxCount := 0
-    for _, f := range freq {
-        if f == maxFreq {
+    for _, count := range counts {
+        if count == maxFreq {
             maxCount++
         }
     }
 
-    ans := (maxFreq-1)*(n+1) + maxCount
-    if ans &lt; len(tasks) {
+    totalSlots := (maxFreq-1)*(n+1) + maxCount
+    if totalSlots &lt; len(tasks) {
         return len(tasks)
     }
-    return ans
+    return totalSlots
 }
 </code></pre>
 </div>
 
-<h3 id="otsenka-i-sravnenie">Оценка и сравнение:</h3>
-<ul>
-<li><strong>Симуляция с кучей:</strong> $O(T \log 26)$, где $T$ — общее время. Логически повторяет работу реальных планировщиков, легко расширяется (например, если у задач разные приоритеты).</li>
-<li><strong>Математика:</strong> $O(N)$ по времени, $O(1)$ по памяти. Идеально, если нужно просто число, но не подходит для генерации самой последовательности задач.</li>
-</ul>
-<h2 id="itog">Итог</h2>
+<hr />
+<h2 id="rezyume-razdela-kuchi-i-top-k">Резюме раздела «Кучи и Top K»</h2>
 
-<p>Задачи на планирование через Кучи учат нас <strong>динамическому приоритизированию</strong>. Мы завершили раздел Куч, разобрав их применение от поиска медианы до системного шедулинга. В следующем разделе мы перейдем к структурам, которые позволяют эффективно работать со строками и префиксами — <strong>Префиксным деревьям (Tries)</strong>.</p>
+<ol>
+<li><strong>Бинарная куча в плоском срезе:</strong> $O(1)$ для чтения экстремума, $O(\log N)$ для вставки/извлечения, $O(N)$ для построения через <code>heap.Init</code>.</li>
+<li><strong>Top K инвариант:</strong> Для поиска максимумов используется Min-Heap; для поиска минимумов — Max-Heap.</li>
+<li><strong>Две кучи:</strong> Паттерн разделения потока на две половины обеспечивает динамический поиск медианы за $O(1)$.</li>
+</ol>
+<p>Далее мы переходим к классу алгоритмов, принимающих локально оптимальные решения на каждом шаге: <a href="../17-zhadnye-algoritmy/1-teoriya-zhadnye-algoritmy.html" class="wikilink">1. Теория. Жадные алгоритмы</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2395,7 +2378,7 @@ func leastInterval(tasks []byte, n int) int {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#zhadnoe-planirovanie-cpu-i-vremya-prostoya">Жадное планирование: CPU и время простоя</a></li><li class="toc-item toc-h2"><a href="#strategiya-zhadnyy-podkhod-greedy">Стратегия: Жадный подход (Greedy)</a></li><li class="toc-item toc-h3"><a href="#pochemu-zdes-nuzhna-kucha">Почему здесь нужна Куча?</a></li><li class="toc-item toc-h2"><a href="#algoritm-s-ispolzovaniem-max-heap-i-ocheredi">Алгоритм с использованием Max-Heap и Очереди</a></li><li class="toc-item toc-h3"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#matematicheskiy-podkhod-senior-level">Математический подход (Senior Level)</a></li><li class="toc-item toc-h3"><a href="#otsenka-i-sravnenie">Оценка и сравнение:</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#zhadnoe-planirovanie-cpu-i-minimizatsiya-prostoev">Жадное планирование: CPU и минимизация простоев</a></li><li class="toc-item toc-h2"><a href="#strategiya-zhadnyy-vybor-naibolee-chastoy-zadachi">Стратегия: Жадный выбор наиболее частой задачи</a></li><li class="toc-item toc-h2"><a href="#realizatsiya-1-simulyatsiya-cherez-max-heap-i-ochered">Реализация 1: Симуляция через Max-Heap и Очередь</a></li><li class="toc-item toc-h2"><a href="#realizatsiya-2-matematicheskaya-formula-za-on-vremeni-i-o1-pamyati">Реализация 2: Математическая формула за O(N) времени и O(1) памяти</a></li><li class="toc-item toc-h2"><a href="#rezyume-razdela-kuchi-i-top-k">Резюме раздела «Кучи и Top K»</a></li>
   </ul>
 </aside>
 

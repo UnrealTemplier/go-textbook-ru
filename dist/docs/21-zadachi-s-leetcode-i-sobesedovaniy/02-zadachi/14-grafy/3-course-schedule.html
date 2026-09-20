@@ -2171,114 +2171,27 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~16 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~12 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">3. Course Schedule</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="zavisimosti-i-dedloki-proektirovanie-grafov-ispolneniya">Зависимости и Дедлоки: Проектирование графов исполнения</h2>
-
-<p>В предыдущей статье <a href="2-komponenty-i-tsikly.html" class="wikilink">2. Компоненты и циклы</a> мы разобрали абстрактный механизм поиска циклов с помощью окрашивания вершин графа. Пора применить эту математику к реальной инженерной задаче.</p>
-<p>Задача <strong>Course Schedule</strong> (LeetCode №207) звучит так: <em>Вам нужно пройти <code>numCourses</code> курсов (от <code>0</code> до <code>numCourses - 1</code>). Даны зависимости (prerequisites), где <code>[a, b]</code> означает, что для прохождения курса <code>a</code> вы обязаны сначала пройти курс <code>b</code>. Можете ли вы завершить все курсы?</em></p>
-<p>Для студента это задача про расписание. Для Backend-разработчика это задача про <strong>Оркестрацию и Разрешение зависимостей (Dependency Resolution)</strong>.</p>
-<p>Где это применяется под капотом:<br />
-1. <strong>Пакетные менеджеры</strong>: Как <code>go mod</code>, <code>npm</code> или <code>apt</code> понимают, в каком порядке скачивать и собирать пакеты?<br />
-2. <strong>Внедрение зависимостей (DI)</strong>: Фреймворки вроде <code>uber-go/fx</code> строят граф зависимостей ваших сервисов перед стартом приложения. Если <code>UserService</code> требует <code>DB</code>, а <code>DB</code> требует <code>Config</code>, который требует <code>UserService</code> — мы получаем фатальную кольцевую зависимость (Circular Dependency).<br />
-3. <strong>Оркестраторы</strong>: Apache Airflow или ArgoCD выполняют таски, выстроенные в DAG (Directed Acyclic Graph).</p>
-<p>Если в графе зависимостей есть <strong>цикл</strong>, задача невыполнима. Происходит классический Deadlock. Следовательно, Course Schedule сводится к одной цели: <strong>проверить, является ли данный направленный граф ациклическим (DAG)</strong>.</p>
+            <blockquote>
+<p><em>«Прежде чем возводить башню, убедитесь, что её фундамент не опирается на собственную крышу».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p><strong>LeetCode 207. Course Schedule.</strong> Вам требуется пройти <code>numCourses</code> курсов, пронумерованных от $0$ до $\text{numCourses} - 1$. Задан список предварительных требований <code>prerequisites</code>, где пара $[a, b]$ означает, что для прохождения курса $a$ необходимо <strong>предварительно завершить курс $b$</strong> (ребро $b \rightarrow a$). Требуется определить: возможно ли завершить все курсы?</p>
+<p>Для студента это академическая задача о расписании. Для бэкенд-инженера — это классическая задача <strong>разрешения графа зависимостей (Dependency Resolution)</strong>:<br />
+- <strong>Пакетные менеджеры (<code>go mod</code>, <code>cargo</code>, <code>npm</code>):</strong> определение возможности компиляции проекта без циклических импортов (<code>import cycle not allowed</code>).<br />
+- <strong>Внедрение зависимостей (DI-контейнеры в Go, например <code>uber-go/fx</code>):</strong> валидация графа инициализации микросервиса перед запуском. Если <code>UserService</code> требует <code>Database</code>, <code>Database</code> требует <code>Config</code>, а <code>Config</code> требует <code>UserService</code>, приложение падает при старте с циклической блокировкой.<br />
+- <strong>Оркестрация конвейеров (Airflow, Argo Workflows, CI/CD):</strong> исполнение задач, организованных в направленный ациклический граф (<strong>DAG</strong>).</p>
+<p>Если в графе зависимостей существует хотя бы один цикл, система входит в состояние взаимной блокировки (<strong>Deadlock</strong>). Таким образом, задача Course Schedule эквивалентна строгой проверке: <strong>является ли заданный ориентированный граф ациклическим (DAG)?</strong></p>
 <hr />
-<h2 id="podkhod-1-dfs-i-metod-trekh-tsvetov">Подход 1: DFS и Метод Трех Цветов</h2>
+<h3 id="1-arkhitekturnaya-dilemma-bfs-algoritm-kana-protiv-dfs-tri-tsveta">1. Архитектурная дилемма: BFS (Алгоритм Кана) против DFS (Три цвета)</h3>
 
-<p>Этот подход мы уже реализовали ранее. Мы идем в глубину по цепочке зависимостей. Если в процессе обхода мы натыкаемся на курс, который сейчас находится "в процессе изучения" (в стеке вызовов) — мы нашли цикл.</p>
-<h3 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h3>
-
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func canFinishDFS(numCourses int, prerequisites [][]int) bool {
-    // 1. Строим список смежности (Adjacency List)
-    // graph[i] содержит список курсов, зависящих от курса i
-    graph := make([][]int, numCourses)
-    for _, req := range prerequisites {
-        course, pre := req[0], req[1]
-        graph[pre] = append(graph[pre], course)
-    }
-
-    // 2. Массив состояний для метода трех цветов
-    // 0 - White (не посещен)
-    // 1 - Gray (в процессе обхода текущего пути)
-    // 2 - Black (полностью обработан и проверен, циклов нет)
-    state := make([]uint8, numCourses)
-
-    var dfs func(node int) bool
-    dfs = func(node int) bool {
-        if state[node] == 1 {
-            return false // Нашли цикл (уперлись в серую вершину)
-        }
-        if state[node] == 2 {
-            return true // Уже проверенная безопасная ветка
-        }
-
-        // Красим в серый (добавляем в Call Stack)
-        state[node] = 1
-
-        // Проверяем всех, кто зависит от текущего курса
-        for _, neighbor := range graph[node] {
-            if !dfs(neighbor) {
-                return false // Fast Fail: прокидываем ошибку наверх
-            }
-        }
-
-        // Выходим из узла, красим в черный (безопасно)
-        state[node] = 2
-        return true
-    }
-
-    // 3. Запускаем обход для каждого курса (граф может быть несвязным)
-    for i := 0; i &lt; numCourses; i++ {
-        if state[i] == 0 {
-            if !dfs(i) {
-                return false
-            }
-        }
-    }
-
-    return true
-}
-</code></pre>
-</div>
-
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом: Аллокации списка смежности</span>
-  </div>
-  <div class="callout-body">
-    <p>В строке <code>graph[pre] = append(graph[pre], course)</code> мы вызываем <code>append</code> для потенциально пустых слайсов. Это вызывает микро-аллокации в куче (Heap). <br />
-В условиях жестких ограничений (или HFT систем) мы могли бы аллоцировать один большой плоский массив размером <code>len(prerequisites)</code> и использовать индексы-смещения (Offset Array / CSR формат). Но для 99% бэкенд-задач и LeetCode массива слайсов <code>[][]int</code> более чем достаточно, так как базовый массив <code>graph</code> выделяется непрерывным блоком, обеспечивая приемлемую локальность кэша (Cache Locality).</p>
-  </div>
-</div>
-
-<hr />
-<h2 id="podkhod-2-algoritm-kana-kahns-algorithm-topologicheskaya-sortirovka-cherez-bfs">Подход 2: Алгоритм Кана (Kahn's Algorithm) — Топологическая сортировка через BFS</h2>
-
-<p>Если DFS — это рекурсивное погружение, то Алгоритм Кана (BFS) моделирует реальный процесс прохождения курсов.</p>
-<p>Концепция строится вокруг понятия <strong>In-Degree (Входящая степень)</strong> — это количество невыполненных зависимостей для данного узла.<br />
-1. Мы считаем <code>In-Degree</code> для каждого курса.<br />
-2. Курсы с <code>In-Degree == 0</code> не имеют зависимостей. Мы можем "пройти" их прямо сейчас. Кладем их в очередь (Queue).<br />
-3. Достаем курс из очереди, "проходим" его и "снимаем" зависимость со всех соседних курсов (уменьшаем их <code>In-Degree</code> на 1).<br />
-4. Если у соседа <code>In-Degree</code> стал равен 0, он тоже готов к прохождению — кидаем его в очередь.<br />
-5. В конце сравниваем: совпадает ли количество пройденных курсов с <code>numCourses</code>? Если нет — значит, оставшиеся курсы заблокировали друг друга в цикле.</p>
-<h3 id="vizualizatsiya-algoritma-kana">Визуализация алгоритма Кана</h3>
-
+<p>Для поиска циклов в ориентированном графе существует два канонических метода с одинаковой асимптотикой $O(V + E)$:</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2292,25 +2205,40 @@
     </button>
   </div>
   <pre class="mermaid">
-graph LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Курс 0&lt;br&gt;In-Degree: 0&quot;]:::process --&gt;|&quot;Выполнен. Уменьшаем зависимость&quot;| B[&quot;Курс 1&lt;br&gt;In-Degree: 1 -&gt; 0&quot;]
-B --&gt;|&quot;Добавлен в очередь&quot;| C[&quot;Курс 2&quot;]
+flowchart TD
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+
+Strategies[&quot;Стратегии валидации DAG&quot;]:::entry --&gt; Kahn[&quot;1. Алгоритм Кана (BFS)&lt;br&gt;Входящие степени (in-degree)&lt;br&gt;Эмуляция выполнения&quot;]:::process
+Strategies --&gt; Colors[&quot;2. Метод трёх цветов (DFS)&lt;br&gt;Белый-Серый-Чёрный&lt;br&gt;Стек рекурсии&quot;]:::accent
+
+Kahn --&gt; K1[&quot;Находим узлы с inDegree == 0&quot;]:::process
+K1 --&gt; K2[&quot;Снимаем зависимости с соседей&quot;]:::process
+K2 --&gt; K3[&quot;Все узлы обработаны? -&gt; OK!&quot;]:::success
+
+Colors --&gt; C1[&quot;Gray (1): узел в текущем стеке&quot;]:::warning
+C1 --&gt; C2[&quot;Встреча Gray-узла -&gt; ЦИКЛ!&quot;]:::error
+C2 --&gt; C3[&quot;Все подграфы Black (2) -&gt; OK!&quot;]:::success
   </pre>
 </div>
 
 
-<h3 id="production-ready-realizatsiya-bfs">Production-ready реализация BFS</h3>
+<hr />
+<h3 id="2-podkhod-1-algoritm-kana-kahns-algorithm-bfs-cherez-vkhodyashchie-stepeni">2. Подход 1: Алгоритм Кана (Kahn's Algorithm — BFS через входящие степени)</h3>
 
+<p>Алгоритм Кана моделирует реальный процесс обучения.<br />
+Ключевая метрика — <strong>входящая степень (In-Degree)</strong>: количество незакрытых предварительных зависимостей для каждого курса.</p>
+<ol>
+<li>Подсчитываем <code>inDegree[course]</code> для каждого курса.</li>
+<li>Курсы с <code>inDegree == 0</code> не имеют предварительных требований. Они готовы к немедленному прохождению — помещаем их в очередь FIFO.</li>
+<li>Извлекаем курс из очереди, засчитываем его прохождение (<code>visitedCount++</code>) и уменьшаем <code>inDegree</code> всех его зависимых соседей на $1$.</li>
+<li>Если у соседа <code>inDegree</code> обнуляется, он разблокирован — добавляем его в очередь.</li>
+<li><strong>Финал:</strong> если <code>visitedCount == numCourses</code>, граф ацикличен. Если <code>visitedCount &lt; numCourses</code>, оставшиеся узлы заперты во взаимном цикле!</li>
+</ol>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2320,18 +2248,23 @@ B --&gt;|&quot;Добавлен в очередь&quot;| C[&quot;Курс 2&quot
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func canFinish(numCourses int, prerequisites [][]int) bool {
-    graph := make([][]int, numCourses)
-    inDegree := make([]int, numCourses) // Массив входящих степеней
+  <pre class="language-go"><code class="language-go">package main
 
-    // 1. Строим граф и считаем входящие степени
-    for _, req := range prerequisites {
-        course, pre := req[0], req[1]
+// canFinish проверяет возможность закрытия всех курсов алгоритмом Кана (BFS).
+// Временная сложность: O(V + E) — каждое ребро и вершина обрабатываются ровно один раз.
+// Пространственная сложность: O(V + E) — список смежности и массив inDegree.
+func canFinish(numCourses int, prerequisites [][]int) bool {
+    graph := make([][]int, numCourses)
+    inDegree := make([]int, numCourses)
+
+    // 1. Построение графа: ребро pre -&gt; course (pre разблокирует course)
+    for _, p := range prerequisites {
+        course, pre := p[0], p[1]
         graph[pre] = append(graph[pre], course)
-        inDegree[course]++ // Увеличиваем счетчик зависимостей
+        inDegree[course]++
     }
 
-    // 2. Инициализируем очередь курсами без зависимостей
+    // 2. Инициализируем очередь курсами без предварительных требований
     queue := make([]int, 0, numCourses)
     for i := 0; i &lt; numCourses; i++ {
         if inDegree[i] == 0 {
@@ -2339,55 +2272,101 @@ B --&gt;|&quot;Добавлен в очередь&quot;| C[&quot;Курс 2&quot
         }
     }
 
-    completedCount := 0
+    visitedCount := 0
+    head := 0
 
-    // 3. Обрабатываем очередь
-    for len(queue) &gt; 0 {
-        // Dequeue
-        node := queue[0]
-        queue = queue[1:] 
+    // 3. Волновой обход BFS
+    for head &lt; len(queue) {
+        curr := queue[head]
+        head++
+        visitedCount++
 
-        completedCount++
-
-        // Уменьшаем In-Degree для всех зависимых курсов
-        for _, neighbor := range graph[node] {
-            inDegree[neighbor]--
-            // Если зависимостей больше нет - в очередь
-            if inDegree[neighbor] == 0 {
-                queue = append(queue, neighbor)
+        for _, next := range graph[curr] {
+            inDegree[next]--
+            if inDegree[next] == 0 {
+                queue = append(queue, next)
             }
         }
     }
 
-    // Если смогли пройти все курсы, циклов нет
-    return completedCount == numCourses
+    // Если посещены все вершины — циклов нет
+    return visitedCount == numCourses
 }
 </code></pre>
 </div>
 
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Утечка памяти в очереди</span>
+<hr />
+<h3 id="3-podkhod-2-metod-tryokh-tsvetov-dfs">3. Подход 2: Метод трёх цветов (DFS)</h3>
+
+<p>Если требуется только факт наличия цикла, рекурсивный DFS часто находит его быстрее за счёт раннего обрыва (<strong>Fast Fail</strong>), не сканируя независимые узлы нулевого слоя:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p>В статьях по деревьям (например, в задаче BFS обхода) мы упоминали, что сдвиг слайса <code>queue = queue[1:]</code> оставляет базовый массив в памяти и требует зануления первого элемента <code>queue[0] = nil</code>, чтобы Garbage Collector мог собрать отработанные узлы.</p>
-<p><strong>Почему мы не зануляем элемент здесь?</strong> <br />
-Наша очередь хранит простые числа типа <code>int</code> (значимый тип, Value Type), а не указатели <code>*TreeNode</code>. Garbage Collector в Go сканирует только те сегменты памяти, которые содержат указатели (pointers). Оставшиеся позади числа <code>int</code> в базовом массиве не удерживают никакие другие объекты в куче. Утечки памяти (Memory Leak) объектов не происходит! Это тонкий нюанс работы Go GC, который отлично зайдет на Senior-интервью.</p>
-  </div>
+  <pre class="language-go"><code class="language-go">func canFinishDFS(numCourses int, prerequisites [][]int) bool {
+    graph := make([][]int, numCourses)
+    for _, p := range prerequisites {
+        course, pre := p[0], p[1]
+        graph[pre] = append(graph[pre], course)
+    }
+
+    // 0: White (не посещен), 1: Gray (в стеке вызовов), 2: Black (полностью безопасен)
+    state := make([]uint8, numCourses)
+
+    var dfs func(u int) bool
+    dfs = func(u int) bool {
+        if state[u] == 1 {
+            return false // Обнаружено обратное ребро в стек -&gt; ЦИКЛ!
+        }
+        if state[u] == 2 {
+            return true // Уже проверенный безопасный подграф
+        }
+
+        state[u] = 1 // Помечаем серым
+
+        for _, v := range graph[u] {
+            if !dfs(v) {
+                return false
+            }
+        }
+
+        state[u] = 2 // Окрашиваем в черный
+        return true
+    }
+
+    for i := 0; i &lt; numCourses; i++ {
+        if state[i] == 0 {
+            if !dfs(i) {
+                return false
+            }
+        }
+    }
+
+    return true
+}
+</code></pre>
 </div>
 
 <hr />
-<h2 id="sravnenie-podkhodov-dfs-vs-bfs">Сравнение подходов (DFS vs BFS)</h2>
+<h3 id="4-mekhanicheskaya-simpatiya-ochered-chisel-int-i-garbage-collector">4. Механическая симпатия: Очередь чисел `[]int` и Garbage Collector</h3>
 
-<p>На собеседовании вас обязательно спросят: <em>"Какой алгоритм выбрать?"</em></p>
-<p>Оба алгоритма имеют идентичную асимптотическую сложность:<br />
-- <strong>Время:</strong> $O(V + E)$, где $V$ — курсы, $E$ — зависимости. Мы посещаем каждую вершину и каждое ребро ровно один раз.<br />
-- <strong>Память:</strong> $O(V + E)$ для хранения графа (список смежности) + $O(V)$ для вспомогательных массивов (<code>state</code> или <code>inDegree</code> + <code>queue</code>).</p>
-<p><strong>Выбор зависит от контекста:</strong><br />
-1. Если нужно <strong>просто проверить наличие цикла</strong>, DFS обычно работает чуть быстрее в реальности, так как механизм "Fast Fail" может обнаружить цикл глубоко в графе на первых же шагах и прервать выполнение, в то время как BFS (Kahn) будет честно обрабатывать все независимые узлы слоя 0.<br />
-2. Если в случае успеха вам нужно <strong>вывести правильный порядок прохождения курсов</strong>, Алгоритм Кана (BFS) делает это естественным образом — порядок извлечения из очереди и есть ваш Topological Sort.</p>
-<p>Именно этот второй пункт (вывод порядка выполнения) является логичным продолжением. Что, если нам мало знать факт возможности сборки, и мы должны передать планировщику (Scheduler) точный список действий шаг за шагом? Это переводит нас к следующей задаче: <a href="4-course-schedule-ii.html" class="wikilink">4. Course Schedule II</a>.</p>
+<p>Обратите внимание на структуру очереди в алгоритме Кана: срез <code>queue</code> хранит примитивные значения <code>int</code>, а не указатели <code>*Node</code>.</p>
+<p>В рантайме Go сборщик мусора сканирует только те блоки памяти в куче, которые содержат биты указателей (<code>hasPtrs</code>). Срез <code>[]int</code> полностью прозрачен для фазы Mark сборщика мусора. Сдвиг головы очереди <code>head++</code> не создает утечек памяти, так как оставшиеся позади целые числа не удерживают ссылки на другие объекты.</p>
+<hr />
+<h3 id="rezyume-dlya-intervyu">Резюме для интервью</h3>
+
+<ul>
+<li><strong>Ключевой инвариант:</strong> Задача эквивалентна обнаружению циклов в ориентированном графе (проверка на DAG).</li>
+<li><strong>Kahn vs DFS:</strong>  </li>
+<li><em>Алгоритм Кана (BFS):</em> строит порядок выполнения от корней к листьям, естественен для оркестрации.</li>
+<li><em>Метод трёх цветов (DFS):</em> идеален для мгновенного детектирования Deadlock'ов благодаря Fast Fail.</li>
+</ul>
+<p>В следующей задаче мы расширим алгоритм Кана, научившись восстанавливать точный порядок выполнения всех этапов: <a href="4-course-schedule-ii.html" class="wikilink">4. Course Schedule II</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2415,7 +2394,7 @@ B --&gt;|&quot;Добавлен в очередь&quot;| C[&quot;Курс 2&quot
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#zavisimosti-i-dedloki-proektirovanie-grafov-ispolneniya">Зависимости и Дедлоки: Проектирование графов исполнения</a></li><li class="toc-item toc-h2"><a href="#podkhod-1-dfs-i-metod-trekh-tsvetov">Подход 1: DFS и Метод Трех Цветов</a></li><li class="toc-item toc-h3"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#podkhod-2-algoritm-kana-kahns-algorithm-topologicheskaya-sortirovka-cherez-bfs">Подход 2: Алгоритм Кана (Kahn&#x27;s Algorithm) — Топологическая сортировка через BFS</a></li><li class="toc-item toc-h3"><a href="#vizualizatsiya-algoritma-kana">Визуализация алгоритма Кана</a></li><li class="toc-item toc-h3"><a href="#production-ready-realizatsiya-bfs">Production-ready реализация BFS</a></li><li class="toc-item toc-h2"><a href="#sravnenie-podkhodov-dfs-vs-bfs">Сравнение подходов (DFS vs BFS)</a></li>
+    <li class="toc-item toc-h3"><a href="#1-arkhitekturnaya-dilemma-bfs-algoritm-kana-protiv-dfs-tri-tsveta">1. Архитектурная дилемма: BFS (Алгоритм Кана) против DFS (Три цвета)</a></li><li class="toc-item toc-h3"><a href="#2-podkhod-1-algoritm-kana-kahns-algorithm-bfs-cherez-vkhodyashchie-stepeni">2. Подход 1: Алгоритм Кана (Kahn&#x27;s Algorithm — BFS через входящие степени)</a></li><li class="toc-item toc-h3"><a href="#3-podkhod-2-metod-tryokh-tsvetov-dfs">3. Подход 2: Метод трёх цветов (DFS)</a></li><li class="toc-item toc-h3"><a href="#4-mekhanicheskaya-simpatiya-ochered-chisel-int-i-garbage-collector">4. Механическая симпатия: Очередь чисел []int и Garbage Collector</a></li><li class="toc-item toc-h3"><a href="#rezyume-dlya-intervyu">Резюме для интервью</a></li>
   </ul>
 </aside>
 

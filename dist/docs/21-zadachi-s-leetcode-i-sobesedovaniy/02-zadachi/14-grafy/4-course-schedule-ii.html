@@ -2171,24 +2171,24 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~12 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">4. Course Schedule II</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="ot-proverki-k-ispolneniyu-topologicheskaya-sortirovka">От проверки к исполнению: Топологическая сортировка</h2>
-
-<p>В предыдущей статье <a href="3-course-schedule.html" class="wikilink">3. Course Schedule</a> мы научились отвечать на вопрос "Можно ли вообще собрать этот проект?", выявляя циклические зависимости. Но в реальной инженерии простого ответа <code>true</code> или <code>false</code> недостаточно. </p>
-<p>Планировщику ОС (Scheduler), системе CI/CD (GitLab, GitHub Actions), пакетному менеджеру (go mod) или системе инициализации (systemd) нужен <strong>точный, пошаговый план выполнения</strong>. </p>
-<p>Задача <strong>Course Schedule II</strong> (LeetCode №210) требует вернуть массив — правильную последовательность прохождения всех <code>numCourses</code>. Если граф содержит цикл (Deadlock), мы должны вернуть пустой массив <code>[]</code>.</p>
-<p>Эта алгоритмическая концепция называется <strong>Топологической сортировкой (Topological Sort)</strong>.</p>
+            <blockquote>
+<p><em>«Топологическая сортировка — это искусство находить естественный порядок вещей среди видимого хаоса взаимных обязательств».</em><br />
+— Дональд Эрвин Кнут</p>
+</blockquote>
+<p><strong>LeetCode 210. Course Schedule II.</strong> Вам дано общее количество курсов <code>numCourses</code> (пронумерованных от $0$ до $\text{numCourses} - 1$) и массив предварительных требований <code>prerequisites</code>, где пара $[a, b]$ означает, что курс $b$ должен быть завершен <strong>до</strong> курса $a$ ($b \rightarrow a$). Требуется вернуть <strong>последовательность прохождения курсов</strong>, позволяющую закончить все курсы. Если существует несколько правильных порядков, разрешается вернуть любой из них. Если закончить все курсы невозможно из-за взаимных блокировок, вернуть пустой массив <code>[]</code>.</p>
+<p>Если в задаче Course Schedule I (<a href="3-course-schedule.html" class="wikilink">3. Course Schedule</a>) требовалось лишь подтвердить факт разрешимости зависимостей, то в реальных системах планировщикам (Linux systemd, Kubernetes Kubelet, CI/CD runners, Go compiler) требуется <strong>точный, детерминированный план пошагового выполнения</strong>.</p>
+<p>Такой порядок в теории графов называется <strong>Топологической сортировкой (Topological Sort)</strong>.</p>
 <hr />
-<h2 id="chto-takoe-topologicheskaya-sortirovka">Что такое Топологическая сортировка?</h2>
+<h3 id="1-arkhitektura-topologicheskoy-sortirovki">1. Архитектура топологической сортировки</h3>
 
-<p>Топологическая сортировка применима <strong>только</strong> к направленным ациклическим графам (Directed Acyclic Graph, DAG). <br />
-Это такое упорядочивание вершин, при котором для каждого направленного ребра <code>U -&gt; V</code> вершина <code>U</code> находится в массиве <em>раньше</em>, чем вершина <code>V</code>.</p>
+<p>Топологическая сортировка применима <strong>исключительно к направленным ациклическим графам (DAG)</strong>. Это линейное упорядочивание вершин, при котором для каждого направленного ребра $u \rightarrow v$ вершина $u$ расположена в итоговом массиве <strong>строго раньше</strong> вершины $v$.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2202,29 +2202,39 @@
     </button>
   </div>
   <pre class="mermaid">
-graph LR
-A[&quot;Сборка БД&lt;br&gt;In-Degree: 0&quot;] --&gt;|&quot;Разблокирует&quot;| B[&quot;Сборка Backend&lt;br&gt;In-Degree: 1&quot;]
-C[&quot;Сборка Frontend&lt;br&gt;In-Degree: 0&quot;] --&gt;|&quot;Разблокирует&quot;| D[&quot;Сборка Nginx&lt;br&gt;In-Degree: 2&quot;]
-B --&gt;|&quot;Разблокирует&quot;| D
+flowchart LR
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
 
-style A fill:#064e3b,stroke:#34d399,color:#f8fafc
-style C fill:#064e3b,stroke:#34d399,color:#f8fafc
+DB[&quot;Сборка БД&lt;br&gt;(inDegree: 0)&quot;]:::entry --&gt;|&quot;Разблокирует&quot;| Backend[&quot;Сборка Backend&lt;br&gt;(inDegree: 1)&quot;]:::process
+Frontend[&quot;Сборка Frontend&lt;br&gt;(inDegree: 0)&quot;]:::entry --&gt;|&quot;Разблокирует&quot;| Nginx[&quot;Сборка Nginx&lt;br&gt;(inDegree: 2)&quot;]:::accent
+Backend --&gt;|&quot;Разблокирует&quot;| Nginx
+
+subgraph OrderResult[&quot;Валидный план исполнения&quot;]
+Plan[&quot;[ БД, Frontend, Backend, Nginx ]&quot;]:::success
+end
   </pre>
 </div>
 
 
-<blockquote>
-<p>Топологический порядок для графа выше: <code>[Сборка БД, Сборка Frontend, Сборка Backend, Сборка Nginx]</code>. <br />
-Заметьте, что "БД" и "Frontend" независимы друг от друга, поэтому порядок <code>[Сборка Frontend, Сборка БД, ...]</code> также является абсолютно верным. Топологическая сортировка часто имеет <strong>несколько валидных решений</strong>.</p>
-</blockquote>
-<p>На интервью ожидают, что вы напишете один из двух классических алгоритмов: BFS (Алгоритм Кана) или DFS (Обратный обход).</p>
+<div class="callout callout-note">
+  <div class="callout-header">
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Заметка</span>
+  </div>
+  <div class="callout-body">
+    <p>В графе выше «Сборка БД» и «Сборка Frontend» не зависят друг от друга. Поэтому порядок <code>[Frontend, БД, Backend, Nginx]</code> также является на $100\%$ корректным. Топологический порядок <strong>не уникален</strong>.</p>
+  </div>
+</div>
+
 <hr />
-<h2 id="podkhod-1-bfs-algoritm-kana-inzhenernyy-standart">Подход 1: BFS (Алгоритм Кана) — Инженерный стандарт</h2>
+<h3 id="2-podkhod-1-algoritm-kana-bfs-promyshlennyy-etalon">2. Подход 1: Алгоритм Кана (BFS) — Промышленный эталон</h3>
 
-<p>Алгоритм Кана (Kahn's Algorithm) — это де-факто стандарт для задач на оркестрацию. Он не только ищет циклы, но и <em>естественным образом</em> генерирует топологический порядок, так как мы берем узлы ровно в тот момент, когда они "готовы" к исполнению.</p>
-<h3 id="idiomatichnyy-go-kod-production-ready">Идиоматичный Go-код (Production-ready)</h3>
-
-<p>Мы используем тот же подход, что и в предыдущей задаче, но добавляем сборку результата (slice <code>order</code>).</p>
+<p>Алгоритм Кана формирует топологический порядок естественным образом: узлы попадают в результирующий срез ровно в тот момент, когда все их предварительные зависимости закрыты (<code>inDegree == 0</code>).</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2234,18 +2244,23 @@ style C fill:#064e3b,stroke:#34d399,color:#f8fafc
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func findOrder(numCourses int, prerequisites [][]int) []int {
+  <pre class="language-go"><code class="language-go">package main
+
+// findOrder находит топологический порядок курсов алгоритмом Кана (BFS).
+// Временная сложность: O(V + E) — каждый узел и ребро просматриваются ровно 1 раз.
+// Пространственная сложность: O(V + E) — список смежности и срез результата.
+func findOrder(numCourses int, prerequisites [][]int) []int {
     graph := make([][]int, numCourses)
     inDegree := make([]int, numCourses)
 
-    // 1. Строим граф: зависимость -&gt; зависимый (A разблокирует B)
-    for _, req := range prerequisites {
-        course, pre := req[0], req[1]
+    // 1. Построение графа: ребро pre -&gt; course
+    for _, p := range prerequisites {
+        course, pre := p[0], p[1]
         graph[pre] = append(graph[pre], course)
         inDegree[course]++
     }
 
-    // 2. Инициализируем очередь и преаллоцируем результирующий слайс
+    // 2. Инициализируем очередь курсами без зависимостей
     queue := make([]int, 0, numCourses)
     for i := 0; i &lt; numCourses; i++ {
         if inDegree[i] == 0 {
@@ -2253,30 +2268,29 @@ style C fill:#064e3b,stroke:#34d399,color:#f8fafc
         }
     }
 
-    // Capacity сразу равен numCourses, чтобы избежать реаллокаций в цикле
+    // Предаллоцируем итоговый срез сразу на полную емкость
     order := make([]int, 0, numCourses)
+    head := 0
 
-    // 3. Обрабатываем очередь (BFS)
-    for len(queue) &gt; 0 {
-        node := queue[0]
-        queue = queue[1:] 
+    // 3. Волновой обход
+    for head &lt; len(queue) {
+        curr := queue[head]
+        head++
 
-        // Добавляем готовый курс в итоговый план
-        order = append(order, node)
+        // Курс готов к исполнению — добавляем в итоговый план
+        order = append(order, curr)
 
-        // Разблокируем соседей
-        for _, neighbor := range graph[node] {
-            inDegree[neighbor]--
-            if inDegree[neighbor] == 0 {
-                queue = append(queue, neighbor)
+        for _, next := range graph[curr] {
+            inDegree[next]--
+            if inDegree[next] == 0 {
+                queue = append(queue, next)
             }
         }
     }
 
-    // 4. Проверка на Deadlock
-    // Если мы добавили в план не все курсы, значит оставшиеся образуют цикл
+    // 4. Проверка на цикл: если в план вошли не все курсы — обнаружен Deadlock!
     if len(order) != numCourses {
-        return []int{} // По условию задачи при цикле возвращаем пустой массив
+        return []int{} // По условию задачи возвращаем пустой срез
     }
 
     return order
@@ -2284,27 +2298,12 @@ style C fill:#064e3b,stroke:#34d399,color:#f8fafc
 </code></pre>
 </div>
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Mechanical Sympathy: Capacity слайсов</span>
-  </div>
-  <div class="callout-body">
-    <p>Обратите внимание на строку <code>order := make([]int, 0, numCourses)</code>.<br />
-Многие разработчики пишут просто <code>var order []int</code>. В таком случае вызовы <code>append</code> под капотом будут выделять память: на 0 элементов, потом на 1, 2, 4, 8, 16... Это требует вызовов <code>runtime.growslice</code>, копирования старых данных в новый блок памяти и оставляет мусор для GC.<br />
-Указав Capacity равным <code>numCourses</code> изначально, мы делаем ровно <strong>одну</strong> аллокацию памяти нужного размера. Это паттерн проектирования High-Performance кода в Go.</p>
-  </div>
-</div>
-
 <hr />
-<h2 id="podkhod-2-dfs-obratnyy-obkhod-s-tremya-tsvetami">Подход 2: DFS (Обратный обход с Тремя Цветами)</h2>
+<h3 id="3-podkhod-2-metod-tryokh-tsvetov-dfs-i-zapolnenie-s-kontsa">3. Подход 2: Метод трёх цветов (DFS) и заполнение с конца</h3>
 
-<p>Если вы фанат рекурсии, топологическую сортировку можно реализовать через DFS. Но здесь кроется коварная логическая ловушка, на которой проваливают лайв-кодинг.</p>
-<p>Если мы построили граф как <code>Pre -&gt; Course</code> (Предмет открывает доступ к Курсу), и запускаем DFS, мы спускаемся максимально глубоко по графу. Узел, который мы красим в черный цвет (состояние 2 — обработан) <strong>самым первым</strong>, — это конечный узел графа (тот, кто никого не разблокирует). </p>
-<p>Значит, DFS собирает план выполнения <strong>задом наперед</strong>.<br />
-Нам нужно либо добавлять элементы в массив, а потом перевернуть его (Reverse), либо (что эффективнее) заполнять массив с конца, используя указатель (Index).</p>
-<h3 id="realizatsiya-dfs-s-zapolneniem-s-kontsa">Реализация DFS с заполнением с конца</h3>
-
+<p>При использовании рекурсивного DFS возникает важный нюанс: вершина завершает работу (окрашивается в чёрный цвет) <strong>после того, как исследованы все её потомки</strong>. Это означает, что первым завершится узел-сток (у которого нет зависимых задач).<br />
+Следовательно, DFS возвращает топологический порядок <strong>в обратном направлении</strong>.</p>
+<p>Чтобы не тратить время на разворот массива, мы заполняем срез <code>order</code> <strong>с конца</strong>:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2316,40 +2315,36 @@ style C fill:#064e3b,stroke:#34d399,color:#f8fafc
   </div>
   <pre class="language-go"><code class="language-go">func findOrderDFS(numCourses int, prerequisites [][]int) []int {
     graph := make([][]int, numCourses)
-    for _, req := range prerequisites {
-        course, pre := req[0], req[1]
+    for _, p := range prerequisites {
+        course, pre := p[0], p[1]
         graph[pre] = append(graph[pre], course)
     }
 
-    // Состояния: 0 - White, 1 - Gray (в стеке), 2 - Black (обработан)
-    state := make([]uint8, numCourses)
-
-    // Аллоцируем массив нужной длины, заполненный нулями
+    state := make([]uint8, numCourses) // 0: White, 1: Gray, 2: Black
     order := make([]int, numCourses)
-    // Указатель для заполнения с конца
-    insertIdx := numCourses - 1 
+    insertIdx := numCourses - 1 // Заполнение среза с правого конца
 
-    var dfs func(node int) bool
-    dfs = func(node int) bool {
-        if state[node] == 1 {
+    var dfs func(u int) bool
+    dfs = func(u int) bool {
+        if state[u] == 1 {
             return false // Цикл!
         }
-        if state[node] == 2 {
-            return true // Уже обработан
+        if state[u] == 2 {
+            return true
         }
 
-        state[node] = 1
+        state[u] = 1
 
-        for _, neighbor := range graph[node] {
-            if !dfs(neighbor) {
+        for _, v := range graph[u] {
+            if !dfs(v) {
                 return false
             }
         }
 
-        state[node] = 2
-        // САМОЕ ВАЖНОЕ: добавляем узел в план после обработки всех его потомков
-        order[insertIdx] = node
-        insertIdx-- // Сдвигаем указатель влево
+        state[u] = 2
+        // Узел обработан — записываем на текущую свободную позицию с конца
+        order[insertIdx] = u
+        insertIdx--
 
         return true
     }
@@ -2357,7 +2352,7 @@ style C fill:#064e3b,stroke:#34d399,color:#f8fafc
     for i := 0; i &lt; numCourses; i++ {
         if state[i] == 0 {
             if !dfs(i) {
-                return []int{} // При цикле возвращаем пустой массив
+                return []int{}
             }
         }
     }
@@ -2367,25 +2362,50 @@ style C fill:#064e3b,stroke:#34d399,color:#f8fafc
 </code></pre>
 </div>
 
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Какой подход лучше использовать на проде?<br />
-<strong>Ответ:</strong> BFS (Kahn's Algorithm) предпочтительнее для оркестрации. Он не расходует стек вызовов горутины, что критично для графов с длинными цепочками зависимостей. Более того, BFS можно легко адаптировать под <strong>параллельное выполнение</strong> независимых задач (например, запуск нескольких горутин-воркеров для сборки пакетов с <code>In-Degree == 0</code>), в то время как классический рекурсивный DFS строго последователен.</p>
-  </div>
-</div>
-
 <hr />
-<h2 id="kraevye-sluchai-gotchas-edge-cases">Краевые случаи (Gotchas & Edge Cases)</h2>
+<h3 id="4-mechanical-sympathy-estestvennyy-parallelizm-algoritma-kana">4. Mechanical Sympathy: Естественный параллелизм алгоритма Кана</h3>
 
-<p>При решении Course Schedule II нужно вслух проговорить интервьюеру следующие сценарии:<br />
-1 - <strong>Изолированные вершины (Несвязный граф)</strong>: Курс может вообще не иметь зависимостей и не быть чьей-либо зависимостью. Наши алгоритмы обрабатывают это корректно: Kahn добавит его в очередь на старте, а внешний цикл <code>for i := 0; i &lt; numCourses</code> в DFS запустит обход с него напрямую.<br />
-2 - <strong>Пустой массив <code>prerequisites</code></strong>: Это значит, что курсы можно проходить в любом порядке. Kahn вернет <code>[0, 1, 2, ..., numCourses-1]</code>.<br />
-3 - <strong>Цикл на старте</strong>: Например, <code>prerequisites = &lt;span class="wikilink-unresolved" title="Заметка в разработке"&gt;1,0],[0,1&lt;/span&gt;</code>. Ни один курс не попадет в очередь (так как у всех <code>In-Degree &gt; 0</code>), длина <code>order</code> будет 0, что не равно <code>numCourses</code>, и алгоритм корректно вернет <code>[]</code>.</p>
-<p>Мы закончили с классическими направленными графами и зависимостями. Теперь пора переходить к другой, не менее популярной форме представления графов на собеседованиях — <strong>двумерным матрицам (Сеткам / Grids)</strong>. Начнем с абсолютного хита алгоритмических интервью, который дают почти во всех компаниях: <a href="5-number-of-islands.html" class="wikilink">5. Number of Islands</a>.</p>
+<p>На системных собеседованиях часто задают вопрос:<br />
+<em>«Какой из двух алгоритмов (Kahn BFS или DFS) лучше подходит для реального планировщика сборки (Job Scheduler)?»</em></p>
+<p><strong>Ответ Senior-инженера:</strong><br />
+Алгоритм Кана (<strong>BFS</strong>) категорически превосходит DFS по двум причинам:<br />
+1. <strong>Защита от Stack Overflow:</strong> он плоский и не расходует стек вызовов горутины при длинных цепочках зависимостей ($N &gt; 10^5$).<br />
+2. <strong>Естественный параллелизм:</strong> все задачи, одновременно находящиеся в очереди <code>queue</code> на каждом шаге, имеют <code>inDegree == 0</code>. Они <strong>полностью независимы друг от друга</strong> и могут быть параллельно отправлены в пул рабочих горутин (<code>Worker Pool</code>) для одновременного исполнения на разных ядрах CPU!</p>
+<hr />
+<h3 id="rezyume-dlya-intervyu">Резюме для интервью</h3>
+
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Характеристика</th>
+<th>Алгоритм Кана (BFS)</th>
+<th>DFS (Обратный обход)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Порядок формирования</strong></td>
+<td>Прямой (от источников к стокам)</td>
+<td>Обратный (заполнение с конца)</td>
+</tr>
+<tr>
+<td><strong>Память в куче</strong></td>
+<td>Предаллокация <code>make([]int, 0, N)</code></td>
+<td>Заполнение массива <code>make([]int, N)</code> с конца</td>
+</tr>
+<tr>
+<td><strong>Параллелизм</strong></td>
+<td>Легко распараллеливается на горутины</td>
+<td>Строго последовательный</td>
+</tr>
+<tr>
+<td><strong>Обнаружение цикла</strong></td>
+<td><code>len(order) != numCourses</code></td>
+<td>Встреча <code>state[v] == Gray</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>В следующей задаче мы вернемся к двумерным сеткам и рассмотрим классическую задачу на подсчет связных компонент: <a href="5-number-of-islands.html" class="wikilink">5. Number of Islands</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2413,7 +2433,7 @@ style C fill:#064e3b,stroke:#34d399,color:#f8fafc
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#ot-proverki-k-ispolneniyu-topologicheskaya-sortirovka">От проверки к исполнению: Топологическая сортировка</a></li><li class="toc-item toc-h2"><a href="#chto-takoe-topologicheskaya-sortirovka">Что такое Топологическая сортировка?</a></li><li class="toc-item toc-h2"><a href="#podkhod-1-bfs-algoritm-kana-inzhenernyy-standart">Подход 1: BFS (Алгоритм Кана) — Инженерный стандарт</a></li><li class="toc-item toc-h3"><a href="#idiomatichnyy-go-kod-production-ready">Идиоматичный Go-код (Production-ready)</a></li><li class="toc-item toc-h2"><a href="#podkhod-2-dfs-obratnyy-obkhod-s-tremya-tsvetami">Подход 2: DFS (Обратный обход с Тремя Цветами)</a></li><li class="toc-item toc-h3"><a href="#realizatsiya-dfs-s-zapolneniem-s-kontsa">Реализация DFS с заполнением с конца</a></li><li class="toc-item toc-h2"><a href="#kraevye-sluchai-gotchas-edge-cases">Краевые случаи (Gotchas &amp; Edge Cases)</a></li>
+    <li class="toc-item toc-h3"><a href="#1-arkhitektura-topologicheskoy-sortirovki">1. Архитектура топологической сортировки</a></li><li class="toc-item toc-h3"><a href="#2-podkhod-1-algoritm-kana-bfs-promyshlennyy-etalon">2. Подход 1: Алгоритм Кана (BFS) — Промышленный эталон</a></li><li class="toc-item toc-h3"><a href="#3-podkhod-2-metod-tryokh-tsvetov-dfs-i-zapolnenie-s-kontsa">3. Подход 2: Метод трёх цветов (DFS) и заполнение с конца</a></li><li class="toc-item toc-h3"><a href="#4-mechanical-sympathy-estestvennyy-parallelizm-algoritma-kana">4. Mechanical Sympathy: Естественный параллелизм алгоритма Кана</a></li><li class="toc-item toc-h3"><a href="#rezyume-dlya-intervyu">Резюме для интервью</a></li>
   </ul>
 </aside>
 

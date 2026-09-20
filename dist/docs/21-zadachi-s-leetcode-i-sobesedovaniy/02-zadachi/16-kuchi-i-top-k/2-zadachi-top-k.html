@@ -2171,25 +2171,28 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~9 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. Задачи Top K</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="pattern-top-k-poisk-elity-v-dannykh">Паттерн Top K: Поиск "Элиты" в данных</h2>
+            <blockquote>
+<p><em>«Не сортируйте всё море данных, если вам нужно лишь зачерпнуть горсть лучших жемчужин».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="pattern-top-k-vydelenie-klyuchevykh-sushchnostey">Паттерн Top K: Выделение ключевых сущностей</h2>
 
-<p>В реальных высоконагруженных системах мы редко хотим получить абсолютно все данные. Бизнесу нужны выжимки:<br />
-- 10 самых популярных товаров за сутки (Top K Frequent).<br />
-- 5 ближайших водителей такси к пользователю (K Closest).<br />
-- 100 самых активных пользователей для рассылки (Top K Largest).</p>
-<p>Когда на алгоритмическом собеседовании вы слышите фразы <em>"наибольшие"</em>, <em>"наименьшие"</em>, <em>"самые частые"</em> в связке с конкретным числом <strong>K</strong>, в вашей голове должна мгновенно загораться неоновая вывеска: <strong>ИСПОЛЬЗОВАТЬ КУЧУ (HEAP)</strong>.</p>
-<p>В этой статье мы разберем архитектурный паттерн решения задач класса Top K, сравним его с сортировкой и заглянем под капот работы памяти процессора.</p>
+<p>В высоконагруженных бэкенд-системах редко требуется упорядочивать весь массив данных. Бизнес-логика почти всегда оперирует топ-выборками:<br />
+- $10$ наиболее популярных поисковых запросов за последний час (Trending Topics).<br />
+- $5$ ближайших к клиенту курьеров в гео-сервисе (K Closest).<br />
+- $100$ наиболее подозрительных IP-адресов в антифрод-шлюзе (Top K Frequent).</p>
+<p>Когда в условии задачи или бизнес-требованиях фигурируют формулировки: <em>«наибольшие»</em>, <em>«наименьшие»</em>, <em>«наиболее частые»</em> в сочетании с конкретным лимитом <strong>$K$</strong>, первым выбором инженера должен стать <strong>паттерн «Куча размера K»</strong>.</p>
 <hr />
 <h2 id="naivnyy-podkhod-polnaya-sortirovka">Наивный подход: Полная сортировка</h2>
 
-<p>Самое первое и интуитивное решение, которое пишет Junior-разработчик — собрать все данные в массив (слайс), отсортировать его и взять первые <code>K</code> элементов.</p>
+<p>Интуитивное решение новичка — загрузить все элементы в срез, отсортировать его и взять первые $K$ значений:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2200,9 +2203,8 @@
     </button>
   </div>
   <pre class="language-go"><code class="language-go">func getTopKNaive(nums []int, k int) []int {
-    // В Go 1.21+ используем обобщенную сортировку
     slices.SortFunc(nums, func(a, b int) int {
-        return b - a // Сортируем по убыванию
+        return b - a // Сортировка по убыванию
     })
     return nums[:k]
 }
@@ -2212,30 +2214,29 @@
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Проблема масштаба</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
   </div>
   <div class="callout-body">
-    <p>Этот код отлично работает для массива из 1000 элементов. Временная сложность: $O(N \log N)$.<br />
-Но что, если <code>nums</code> — это лог-файл транзакций за год размером 500 Гигабайт, а нам нужно найти всего $K=10$ самых крупных переводов? <br />
-Вы не сможете загрузить 500 ГБ в оперативную память для выполнения <code>slices.Sort</code>. Вам придется писать внешнюю сортировку (External Sort) на диске (SSD/HDD), что убьет IO подсистему и займет часы. Нам нужен алгоритм, который забирает данные <strong>потоком (Streaming)</strong> и требует минимум оперативной памяти.</p>
+    <p><strong>Ловушка / Gotcha: Проблема бесконечных потоков и памяти</strong><br />
+Полная сортировка требует $O(N \log N)$ времени и предполагает, что весь массив находится в оперативной памяти.<br />
+Если <code>nums</code> — это суточный лог транзакций объемом в $200\text{ ГБ}$, загрузить его в RAM для <code>slices.Sort</code> невозможно. Попытка применить внешнюю дисковую сортировку (External Sort) приведет к деградации дисковой подсистемы I/O. Нам необходим алгоритм, работающий в <strong>потоковом режиме (Streaming)</strong> с константной памятью $O(K)$.</p>
   </div>
 </div>
 
 <hr />
-<h2 id="arkhitektura-resheniya-pattern-kucha-razmera-k">Архитектура решения: Паттерн "Куча размера K"</h2>
+<h2 id="arkhitektura-resheniya-invertirovannyy-vybor-kuchi">Архитектура решения: Инвертированный выбор кучи</h2>
 
-<p>Бинарная куча, которую мы разобрали в <a href="1-teoriya-kuchi.html" class="wikilink">1. Теория. Кучи</a>, позволяет нам поддерживать список кандидатов в "Топ", не храня все остальные данные.</p>
-<p><strong>Главный контринтуитивный парадокс паттерна Top K:</strong><br />
-- Чтобы найти $K$ <strong>наибольших</strong> элементов, нужно использовать <strong>Min-Heap (Минимальную кучу)</strong>.<br />
-- Чтобы найти $K$ <strong>наименьших</strong> элементов, нужно использовать <strong>Max-Heap (Максимальную кучу)</strong>.</p>
-<h3 id="pochemu-dlya-naibolshikh-nuzhna-min-heap">Почему для "наибольших" нужна Min-Heap?</h3>
+<p>Ключевой математический парадокс паттерна Top K:<br />
+- <strong>Для поиска $K$ НАИБОЛЬШИХ элементов используется Min-Heap (Минимальная куча).</strong><br />
+- <strong>Для поиска $K$ НАИМЕНЬШИХ элементов используется Max-Heap (Максимальная куча).</strong></p>
+<h3 id="pochemu-dlya-poiska-maksimumov-nuzhna-imenno-min-heap">Почему для поиска максимумов нужна именно Min-Heap?</h3>
 
-<p>Представьте, что $K = 3$. Мы ищем 3 самых богатых людей. <br />
-Мы заводим Min-Heap. Особенность Min-Heap в том, что самый <strong>бедный</strong> из этой тройки всегда находится на самом верху (в корне кучи <code>heap[0]</code>). </p>
-<p>Когда приходит новый человек из потока данных, нам нужно принять решение: достоин ли он войти в Топ-3? <br />
-Мы просто сравниваем его с корнем кучи (самым бедным из топа). <br />
-- Если новый человек беднее корня, мы его игнорируем. <br />
-- Если он богаче корня — мы "выгоняем" корень (<code>Pop</code>) и добавляем нового человека (<code>Push</code>).</p>
+<p>Пусть $K = 3$. Мы ищем $3$ наиболее крупных числа в потоке.<br />
+Мы инициализируем Min-Heap размера $3$. В корне <code>heap[0]</code> всегда находится <strong>наименьший элемент из тройки лидеров</strong> (слабейший кандидат в топе).</p>
+<p>Когда из потока данных поступает очередной элемент $X$:<br />
+1. Мы сравниваем $X$ с корнем кучи.<br />
+2. Если $X \le \text{корень}$, новый элемент не может претендовать на место в топ-3 — он отбрасывается за $O(1)$.<br />
+3. Если $X &gt; \text{корень}$, слабый кандидат вытесняется (<code>Pop</code>), а $X$ добавляется в кучу (<code>Push</code>), занимая свое место за $O(\log K)$.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2249,94 +2250,52 @@
     </button>
   </div>
   <pre class="mermaid">
-graph TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Входящий поток:&lt;br&gt;8, 2, 10, 5, 15&quot;]:::system --&gt; B[&quot;Состояние Min-Heap размера 3&quot;]
+flowchart TD
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
 
-subgraph &quot;Шаг 1: Добавили первые 3 (8, 2, 10)&quot;
-H1[&quot;Корень: 2&lt;br&gt;Дети: 8, 10&quot;]:::process
-end
-
-subgraph &quot;Шаг 2: Приходит 5&quot;
-C{&quot;5 &gt; Корень 2?&quot;}:::success --&gt;|&quot;Да - Pop 2, Push 5&quot;| H2[&quot;Корень: 5&lt;br&gt;Дети: 8, 10&quot;]
-end
-
-subgraph &quot;Шаг 3: Приходит 15&quot;
-D{&quot;15 &gt; Корень 5?&quot;}:::success --&gt;|&quot;Да - Pop 5, Push 15&quot;| H3[&quot;Корень: 8&lt;br&gt;Дети: 15, 10&quot;]
-end
-
-B --&gt; H1
-H1 --&gt; C
-H2 --&gt; D
+Stream[&quot;Входящий поток: 8, 2, 10, 5, 15&quot;]:::entry --&gt; Step1[&quot;Шаг 1: Накопили 3 элемента (8, 2, 10)&lt;br&gt;Min-Heap: Корень = 2, Дети = 8, 10&quot;]:::process
+Step1 --&gt; Step2{&quot;Пришло число 5:&lt;br&gt;5 &gt; Корень (2)?&quot;}:::warning
+Step2 --&gt;|Да: Вытеснение| Heap2[&quot;Шаг 2: Pop(2), Push(5)&lt;br&gt;Min-Heap: Корень = 5, Дети = 8, 10&quot;]:::process
+Heap2 --&gt; Step3{&quot;Пришло число 15:&lt;br&gt;15 &gt; Корень (5)?&quot;}:::warning
+Step3 --&gt;|Да: Вытеснение| Heap3[&quot;Шаг 3: Pop(5), Push(15)&lt;br&gt;Min-Heap: Корень = 8, Дети = 15, 10&quot;]:::success
   </pre>
 </div>
 
 
-<h3 id="otsenka-slozhnosti">Оценка сложности</h3>
-<ul>
-<li><strong>Память:</strong> $O(K)$. Нам нужен слайс размером ровно <code>K</code>. Для $K=10$ это всего 80 байт. Это легко помещается в L1-кэш процессора, работает со скоростью света и позволяет обрабатывать бесконечные потоки данных (Data Streams).</li>
-<li><strong>Время:</strong> Вставка и удаление из кучи занимают $O(\log K)$. Мы делаем это (в худшем случае) для каждого из $N$ элементов. Итоговое время: $O(N \log K)$. <br />
-Так как обычно $K \ll N$ (например $K=10, N=1,000,000$), логарифм от $K$ — это крошечная константа ($\log_2 10 \approx 3.3$). Алгоритм работает почти за линейное время $O(N)$.</li>
-</ul>
 <hr />
-<h2 id="mechanical-sympathy-kesh-protsessora-i-kucha">Mechanical Sympathy: Кэш процессора и Куча</h2>
+<h2 id="mechanical-sympathy-rezidentnost-v-l1-keshe">Mechanical Sympathy: Резидентность в L1-кэше</h2>
 
-<p>Давайте посмотрим на операцию проверки элемента с точки зрения "железа":</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// val - новый элемент из потока
-if val &gt; h.IntHeap[0] { // Обращение к корню
-    heap.Pop(h)
-    heap.Push(h, val)
-}
-</code></pre>
-</div>
-
-<p>Куча в Go — это обычный слайс (непрерывный кусок памяти). Корень всегда находится по индексу <code>0</code>. <br />
-Так как размер слайса равен $K$ (и обычно он мал), <strong>весь этот слайс постоянно живет в самом быстром L1-кэше ядра процессора</strong>. <br />
-Проверка <code>val &gt; h.IntHeap[0]</code> не требует похода в основную оперативную память (RAM). Это означает, что для 99% элементов потока, которые не проходят проверку (не достойны войти в Топ), отбраковка происходит за считанные такты CPU. Алгоритм не просто математически эффективен $O(N \log K)$, он еще и максимально аппаратно-дружелюбен (Hardware-Friendly).</p>
+<p>Оценим алгоритм с точки зрения архитектуры процессора:</p>
+<ol>
+<li><strong>Память:</strong> Срез кучи имеет фиксированный размер $K$. Для $K = 10$ срез занимает всего $80$ байт.</li>
+<li><strong>L1 Data Cache:</strong> Этот массив целиком и постоянно находится в сверхбыстром кэше первого уровня L1 ($32\text{–}64\text{ КБ}$).</li>
+<li><strong>Отсечение за $O(1)$:</strong> Для подавляющего большинства элементов потока условие <code>val &lt;= h[0]</code> вычисляется за $1\text{–}2$ процессорных такта без обращения к системной шине памяти.</li>
+<li><strong>Временная сложность:</strong> $O(N \log K)$. Поскольку $K \ll N$ (например, $K = 10$, $N = 10^7$), логарифм $\log_2 10 \approx 3.32$ является пренебрежимо малой константой: алгоритм работает практически линейно.</li>
+</ol>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование: Куча vs Quickselect</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Продвинутый интервьюер спросит вас: <em>"А можно ли решить задачу Top K за $O(N)$ времени?"</em><br />
-Да, можно. Существует алгоритм <strong>Quickselect</strong> (Основанный на логике QuickSort), который в среднем случае находит k-й элемент за $O(N)$. <br />
-<strong>Но у него есть два фатальных недостатка для бэкенда:</strong><br />
-1. Он работает <strong>только с массивами в памяти (In-memory)</strong>. Он должен переставлять элементы внутри массива. Он не работает с бесконечными потоками (Streams) или огромными файлами, которые не влезают в RAM.<br />
-2. В худшем случае (при неудачном выборе опорного элемента - pivot) его сложность деградирует до $O(N^2)$.<br />
-Поэтому для потоковой обработки и гарантии предсказуемой задержки (Latency) в production всегда выбирают Кучу.</p>
+    <p><strong>Сравнение: Min-Heap против Quickselect</strong><br />
+На собеседовании вас могут спросить: <em>«Алгоритм Quickselect находит k-й элемент в среднем за $O(N)$. Зачем использовать кучу за $O(N \log K)$?»</em><br />
+<strong>Ответ:</strong> Quickselect требует хранения всего массива в памяти и мутирует его in-place. Он неприменим для потоковых данных (Kafka, gRPC-стримы) и терабайтных файлов. Куча размера $K$ универсальна, потокобезопасна и не требует знания общего числа элементов $N$.</p>
   </div>
 </div>
 
 <hr />
-<h2 id="rezyume-shablon-resheniya">Резюме: Шаблон решения</h2>
+<h2 id="rezyume-shablon-resheniya-zadach-top-k">Резюме: Шаблон решения задач Top K</h2>
 
-<p>Для любой задачи формата "Найди K самых X", ваш алгоритм в Go будет выглядеть так:<br />
-1. Выбрать правильную кучу: для Top K "Самых больших" пишем Min-Heap. Для Top K "Самых маленьких" пишем Max-Heap.<br />
-2. Преаллоцировать структуру кучи с <code>Capacity = K</code> (чтобы избежать реаллокаций).<br />
-3. Пройтись по данным:<br />
-   - Если размер кучи <code>&lt; K</code>, просто делаем <code>Push</code>.<br />
-   - Если размер <code>== K</code>, смотрим на корень. Если новый элемент "лучше" корня (больше для Min-Heap, меньше для Max-Heap), делаем <code>Pop</code> и <code>Push</code>.<br />
-4. В конце куча будет содержать искомые K элементов.</p>
-<p>С теорией покончено. Пора применить этот шаблон к самой популярной задаче из этой категории, которая попадается на собеседованиях почти в 100% случаев, если секция посвящена структурам данных. Переходим к практике: <a href="3-kth-largest-element-in-array.html" class="wikilink">3. Kth Largest Element in Array</a>.</p>
+<ol>
+<li><strong>Выбор инварианта:</strong> для Top K максимальных — Min-Heap; для Top K минимальных — Max-Heap.</li>
+<li><strong>Преаллокация памяти:</strong> инициализируйте срез с <code>capacity = K</code> во избежание реаллокаций.</li>
+<li><strong>Оптимизация замены:</strong> используйте <code>h[0] = val; heap.Fix(&amp;h, 0)</code> вместо связки <code>Pop() + Push()</code>.</li>
+</ol>
+<p>Перейдем к фундаментальной задаче этого семейства: <a href="3-kth-largest-element-in-array.html" class="wikilink">3. Kth Largest Element in Array</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2364,7 +2323,7 @@ if val &gt; h.IntHeap[0] { // Обращение к корню
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#pattern-top-k-poisk-elity-v-dannykh">Паттерн Top K: Поиск &quot;Элиты&quot; в данных</a></li><li class="toc-item toc-h2"><a href="#naivnyy-podkhod-polnaya-sortirovka">Наивный подход: Полная сортировка</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-resheniya-pattern-kucha-razmera-k">Архитектура решения: Паттерн &quot;Куча размера K&quot;</a></li><li class="toc-item toc-h3"><a href="#pochemu-dlya-naibolshikh-nuzhna-min-heap">Почему для &quot;наибольших&quot; нужна Min-Heap?</a></li><li class="toc-item toc-h3"><a href="#otsenka-slozhnosti">Оценка сложности</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-kesh-protsessora-i-kucha">Mechanical Sympathy: Кэш процессора и Куча</a></li><li class="toc-item toc-h2"><a href="#rezyume-shablon-resheniya">Резюме: Шаблон решения</a></li>
+    <li class="toc-item toc-h2"><a href="#pattern-top-k-vydelenie-klyuchevykh-sushchnostey">Паттерн Top K: Выделение ключевых сущностей</a></li><li class="toc-item toc-h2"><a href="#naivnyy-podkhod-polnaya-sortirovka">Наивный подход: Полная сортировка</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-resheniya-invertirovannyy-vybor-kuchi">Архитектура решения: Инвертированный выбор кучи</a></li><li class="toc-item toc-h3"><a href="#pochemu-dlya-poiska-maksimumov-nuzhna-imenno-min-heap">Почему для поиска максимумов нужна именно Min-Heap?</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-rezidentnost-v-l1-keshe">Mechanical Sympathy: Резидентность в L1-кэше</a></li><li class="toc-item toc-h2"><a href="#rezyume-shablon-resheniya-zadach-top-k">Резюме: Шаблон решения задач Top K</a></li>
   </ul>
 </aside>
 

@@ -2171,27 +2171,31 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~16 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~11 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">5. Accounts Merge</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="skleyka-profiley-identity-resolution-v-realnom-mire">Склейка профилей (Identity Resolution) в реальном мире</h2>
+            <blockquote>
+<p><em>«Отделяйте алгоритмические примитивы от прикладных данных — и ваш код обретет скорость и ясность».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="skleyka-profiley-identity-resolution-v-realnom-mire">Склейка профилей (Identity Resolution) в реальном мире</h2>
 
-<p>В предыдущих статьях (см. <a href="1-teoriya-union-find.html" class="wikilink">1. Теория. Union Find</a> и <a href="3-number-of-connected-components.html" class="wikilink">3. Number of Connected Components</a>) мы работали с DSU в идеальных лабораторных условиях: наши узлы были заботливо пронумерованы от <code>0</code> до <code>N-1</code>. Процессор обожает такие данные, ведь они идеально ложатся в индексы массивов.</p>
-<p>Но в реальном Enterprise-бэкенде (особенно в CRM, системах антифрода и Data Lakes) графы строятся не на абстрактных числах, а на бизнес-сущностях. <br />
-Пользователь может зарегистрироваться с ноутбука по email, а через месяц войти с телефона по номеру. Система создает два разных профиля. Когда пользователь делает заказ, указывая и email, и телефон, система должна понять, что это <strong>один и тот же человек</strong>, и объединить его историю покупок. Этот процесс называется <strong>Identity Resolution</strong>.</p>
-<p>Задача <strong>Accounts Merge</strong> (LeetCode №721) моделирует именно этот сценарий.</p>
-<p><strong>Условие:</strong> Дан массив аккаунтов, где <code>accounts[i][0]</code> — это имя (Name), а остальные элементы <code>accounts[i][1:]</code> — это email-адреса этого человека. <br />
-Два аккаунта принадлежат одному человеку, если у них есть <strong>хотя бы один общий email</strong>. Заметьте: даже если имена совпадают (оба "John"), но общих email нет — это два разных человека. И наоборот, если имена совпадают и есть общий email, их нужно слить в один аккаунт. <br />
-Нужно вернуть склеенные аккаунты, где первым элементом идет имя, а дальше — отсортированные по алфавиту уникальные email-адреса.</p>
+<p>В предыдущих статьях (<a href="1-teoriya-union-find.html" class="wikilink">1. Теория. Union Find</a> и <a href="3-number-of-connected-components.html" class="wikilink">3. Number of Connected Components</a>) мы применяли DSU к числовым индексам от $0$ до $N - 1$. Процессор идеально обрабатывает такие массивы благодаря прямой адресной арифметике.</p>
+<p>Но в продакшен-бэкенде (CRM, антифрод-системы, биллинг) сущности представлены строками: Email-адресами, телефонными номерами, UUID устройств.<br />
+Пользователь может зарегистрироваться с ноутбука по Email, а через месяц войти со смартфона по номеру телефона. При совершении заказа клиент указывает и Email, и телефон. Система обязана мгновенно распознать, что это <strong>одна и та же личность</strong>, и объединить профили. Этот процесс называется <strong>Identity Resolution</strong>.</p>
+<p>Задача <strong>Accounts Merge</strong> (LeetCode №721) моделирует именно этот промышленный сценарий.</p>
+<p><strong>Условие:</strong> Задан список аккаунтов <code>accounts</code>, где <code>accounts[i][0]</code> — имя пользователя (Name), а последующие элементы <code>accounts[i][1:]</code> — принадлежащие ему Email-адреса.<br />
+Два аккаунта относятся к одному человеку, если у них есть <strong>хотя бы один общий Email</strong>. При этом одинаковые имена без пересечения адресов могут принадлежать разным людям (тезкам).<br />
+Требуется вернуть склеенные профили: имя пользователя и отсортированный по алфавиту список уникальных адресов.</p>
 <hr />
-<h2 id="arkhitekturnaya-problema-stroki-vmesto-chisel">Архитектурная проблема: Строки вместо чисел</h2>
+<h2 id="arkhitekturnyy-vybor-mapy-v-dsu-protiv-translyatsii-dannykh">Архитектурный выбор: Мапы в DSU против трансляции данных</h2>
 
-<p>Каждый уникальный <code>email</code> — это узел графа. Если два email лежат в одном аккаунте, между ними есть ребро. Нам нужно найти компоненты связности.</p>
-<p>Первая интуиция джуниора — переписать структуру DSU так, чтобы она работала со строками:</p>
+<p>Каждый уникальный Email — вершина графа. Email-адреса, входящие в одну учетную запись, соединены ребрами. Нам нужно найти компоненты связности.</p>
+<p>Типичный антипаттерн — попытка переписать DSU напрямую под строки:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2201,22 +2205,22 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// АНТИПАТТЕРН: DSU на мапах
-type BadDSU struct {
+  <pre class="language-go"><code class="language-go">// АНТИПАТТЕРН: DSU на основе map[string]string
+type BadStringDSU struct {
     parent map[string]string
     size   map[string]int
 }
 </code></pre>
 </div>
 
-<p>Почему на собеседовании в BigTech это вызовет вопросы?<br />
-Операция <code>Find</code> требует прыжков по родителям (<code>parent[x]</code>). В случае с <code>map[string]string</code>, каждый прыжок — это вычисление хэша от строки, обход бакетов хэш-таблицы (сопровождаемый промахами кэша CPU) и побайтовое сравнение строк. Алгоритм Аккермана $O(\alpha(N))$ потеряет всю свою магию из-за гигантских константных накладных расходов.</p>
+<p>Почему это провал на архитектурном собеседовании?<br />
+Каждый шаг <code>Find</code> в <code>map[string]string</code> превращается в вычисление хэша строки, поиск бакета в куче, разыменование указателей и побайтовое сравнение <code>memcmp</code>. Теоретическая асимптотика $O(\alpha(N))$ деградирует из-за огромных накладных расходов.</p>
 <h3 id="reshenie-senior-inzhenera-data-oriented-design">Решение Senior-инженера: Data-Oriented Design</h3>
 
-<p>Мы разделяем логику:<br />
-1. <strong>Трансляция (Маппинг):</strong> Мы один раз присваиваем каждому уникальному email целочисленный ID (от <code>0</code> до <code>K-1</code>).<br />
-2. <strong>Алгоритм (DSU):</strong> Запускаем наш сверхбыстрый шаблон DSU на плоских массивах <code>[]int</code>.<br />
-3. <strong>Агрегация:</strong> Собираем email-ы обратно в группы, опираясь на их корневые ID.</p>
+<p>Мы строго разделяем архитектурные слои:<br />
+1. <strong>Слой трансляции:</strong> один раз присваиваем каждому уникальному Email целочисленный ID (от $0$ до $K - 1$).<br />
+2. <strong>Алгоритмическое ядро:</strong> запускаем эталонный DSU на плоских срезах <code>[]int</code>.<br />
+3. <strong>Слой агрегации:</strong> группируем исходные адреса по идентификаторам их корневых представителей.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2230,38 +2234,32 @@ type BadDSU struct {
     </button>
   </div>
   <pre class="mermaid">
-graph TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-subgraph &quot;Бизнес-логика&quot;
-A[&quot;johnsmith\@mail.com&quot;]:::process
-B[&quot;john00\@mail.com&quot;]:::process
-C[&quot;john_newyork\@mail.com&quot;]:::process
+flowchart TD
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+subgraph Business[&quot;Слой бизнес-логики&quot;]
+A[&quot;johnsmith@mail.com&quot;]:::entry
+B[&quot;john00@mail.com&quot;]:::entry
+C[&quot;john_ny@mail.com&quot;]:::entry
 end
 
-subgraph &quot;Слой трансляции&quot;
+subgraph Translation[&quot;Слой трансляции (Хэш-таблица)&quot;]
 D[&quot;ID: 0&quot;]:::process
 E[&quot;ID: 1&quot;]:::process
 F[&quot;ID: 2&quot;]:::process
 end
 
-subgraph &quot;Алгоритмическое ядро DSU - плоские массивы&quot;
-G[&quot;parent-0 = 0&quot;]:::process
-H[&quot;parent-1 = 0&quot;]:::process
-I[&quot;parent-2 = 0&quot;]:::process
+subgraph Kernel[&quot;Алгоритмическое ядро DSU ([]int)&quot;]
+G[&quot;parent[0] = 0&quot;]:::accent
+H[&quot;parent[1] = 0&quot;]:::accent
+I[&quot;parent[2] = 0&quot;]:::accent
 end
 
-A -.-&gt;|&quot;map-string-int&quot;| D
-B -.-&gt;|&quot;map-string-int&quot;| E
-C -.-&gt;|&quot;map-string-int&quot;| F
+A -.-&gt; D
+B -.-&gt; E
+C -.-&gt; F
 
 D ==&gt; G
 E ==&gt; H
@@ -2273,7 +2271,6 @@ F ==&gt; I
 <hr />
 <h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
 
-<p>Код ниже разбит на четкие логические блоки. Мы используем наш стандартный шаблон DSU без изменений.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2283,9 +2280,11 @@ F ==&gt; I
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">import &quot;sort&quot;
+  <pre class="language-go"><code class="language-go">package main
 
-// 1. Стандартный, высокопроизводительный DSU
+import &quot;sort&quot;
+
+// 1. Стандартный DSU на плоских массивах целых чисел
 type DSU struct {
     parent []int
     size   []int
@@ -2325,14 +2324,13 @@ func (d *DSU) Union(x, y int) {
     }
 }
 
-// 2. Основная бизнес-логика
+// 2. Основная бизнес-логика слияния аккаунтов
 func accountsMerge(accounts [][]string) [][]string {
     emailToID := make(map[string]int)
     emailToName := make(map[string]string)
     idCounter := 0
 
-    // Шаг 1: Присваиваем каждому уникальному email свой ID 
-    // и запоминаем, какому имени он принадлежит
+    // Шаг 1: Присваиваем каждому уникальному email целочисленный ID
     for _, acc := range accounts {
         name := acc[0]
         for i := 1; i &lt; len(acc); i++ {
@@ -2345,41 +2343,33 @@ func accountsMerge(accounts [][]string) [][]string {
         }
     }
 
-    // Шаг 2: Инициализируем DSU и связываем email-ы из одних аккаунтов
+    // Шаг 2: Инициализируем DSU и объединяем email-адреса внутри одного профиля
     dsu := NewDSU(idCounter)
     for _, acc := range accounts {
-        // Берем первый email в аккаунте как опорный
         firstEmailID := emailToID[acc[1]]
-        // Объединяем с ним все остальные email в этом аккаунте
         for i := 2; i &lt; len(acc); i++ {
             dsu.Union(firstEmailID, emailToID[acc[i]])
         }
     }
 
-    // Шаг 3: Группируем email-ы по их корневому ID в DSU
+    // Шаг 3: Группируем адреса по корневому представителю компоненты
     rootToEmails := make(map[int][]string)
-    for email, emailID := range emailToID {
-        rootID := dsu.Find(emailID)
+    for email, id := range emailToID {
+        rootID := dsu.Find(id)
         rootToEmails[rootID] = append(rootToEmails[rootID], email)
     }
 
-    // Шаг 4: Формируем итоговый результат
-    // Выделяем память под слайс сразу нужного размера (Mechanical Sympathy)
+    // Шаг 4: Формируем итоговый результат с преаллокацией памяти
     res := make([][]string, 0, len(rootToEmails))
-
     for _, emails := range rootToEmails {
-        // Сортируем email-ы лексикографически (требование задачи)
         sort.Strings(emails)
 
-        // Получаем имя (все email в этой группе принадлежат одному имени)
         name := emailToName[emails[0]]
+        merged := make([]string, 0, len(emails)+1)
+        merged = append(merged, name)
+        merged = append(merged, emails...)
 
-        // Преаллоцируем слайс: 1 место под имя + количество email
-        mergedAccount := make([]string, 0, len(emails)+1)
-        mergedAccount = append(mergedAccount, name)
-        mergedAccount = append(mergedAccount, emails...)
-
-        res = append(res, mergedAccount)
+        res = append(res, merged)
     }
 
     return res
@@ -2387,44 +2377,34 @@ func accountsMerge(accounts [][]string) [][]string {
 </code></pre>
 </div>
 
-<div class="callout callout-warning">
+<div class="callout callout-interview">
   <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Аллокации при `append`</span>
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Обратите внимание на строки создания слайсов в Шаге 4:<br />
+    <p><strong>Mechanical Sympathy: Преаллокация срезов</strong><br />
+Обратите внимание на предварительное задание емкости:<br />
 <code>res := make([][]string, 0, len(rootToEmails))</code><br />
-<code>mergedAccount := make([]string, 0, len(emails)+1)</code><br />
-Если вы напишете <code>var res [][]string</code> или <code>mergedAccount := []string{name}</code>, вы заставите рантайм Go многократно вызывать <code>runtime.growslice</code>, выделять новые массивы в куче и копировать данные при каждом <code>append</code>. Задание Capacity заранее — это обязательный маркер опытного Go-инженера.</p>
+<code>merged := make([]string, 0, len(emails)+1)</code><br />
+Задание <code>capacity</code> исключает вызовы <code>runtime.growslice</code>, повторные аллокации в куче и копирование элементов при каждом <code>append</code>.</p>
   </div>
 </div>
 
 <hr />
-<h2 id="pod-kapotom-stroki-gc-i-sortirovka">Под капотом: Строки, GC и Сортировка</h2>
+<h2 id="pod-kapotom-stroki-gc-i-slozhnost">Под капотом: Строки, GC и сложность</h2>
 
-<p>Давайте разберем, насколько наш код эффективен с точки зрения рантайма Go.</p>
 <ol>
-<li>
-<p><strong>Строки (Strings) в Go:</strong><br />
-Строка в Go — это структура <code>StringHeader</code>, содержащая указатель на базовый массив байт и длину (всего 16 байт на 64-битной архитектуре). <br />
-Когда мы копируем email в <code>rootToEmails</code> или <code>mergedAccount</code>, мы копируем <strong>только заголовки (16 байт)</strong>. Сами текстовые данные (массивы байт) остаются в исходном месте, выделенном при чтении входных аргументов <code>accounts</code>. Мы не создаем копий строк в памяти!</p>
-</li>
-<li>
-<p><strong>Сортировка <code>sort.Strings</code>:</strong><br />
-Функция переставляет местами те самые 16-байтные заголовки. При сравнении двух строк рантайм Go сначала сравнивает их длины, а затем (если нужно) делает быстрый ассемблерный вызов <code>memcmp</code> для базовых массивов байт.</p>
-</li>
-<li>
-<p><strong>Сложность:</strong><br />
-   - <strong>Время:</strong> $O(N \cdot K \cdot \log(N \cdot K))$, где $N$ — количество аккаунтов, $K$ — максимальное число email в аккаунте. Основное время тратится не на DSU (который работает за около $O(1)$), а на <strong>сортировку</strong> итоговых групп <code>sort.Strings(emails)</code>.<br />
-   - <strong>Память:</strong> $O(N \cdot K)$. Мы создали <code>map</code> для отображения строк в числа, DSU размером с количество уникальных email, и структуру для группировки. В худшем случае все email уникальны, и мы потратим память, пропорциональную размеру входа.</p>
-</li>
+<li><strong>Заголовки строк (StringHeader):</strong> Строка в Go — 16-байтная структура из указателя на байты и длины. При перемещении строк в <code>rootToEmails</code> копируются лишь эти 16 байт: исходные массивы символов не дублируются в памяти.</li>
+<li><strong>Асимптотическая сложность:</strong><br />
+   - <strong>Время:</strong> $O(N \cdot K \cdot \log(N \cdot K))$, где $N$ — число аккаунтов, $K$ — максимальное число email в профиле. Основное время тратится на лексикографическую сортировку <code>sort.Strings</code>, тогда как операции DSU работают практически за $O(1)$.<br />
+   - <strong>Память:</strong> $O(N \cdot K)$ для таблиц трансляции и DSU.</li>
 </ol>
-<h2 id="itog">Итог</h2>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
-<p>Задача <strong>Accounts Merge</strong> учит нас важнейшему принципу проектирования: <strong>отделяйте бизнес-сущности от алгоритмических примитивов</strong>.<br />
-Не пытайтесь заставить DSU, графы или деревья работать напрямую со строками или тяжелыми структурами (OOP-подход). Транслируйте их в скаляры (целые числа), "скормите" быстрым алгоритмам на плоских массивах (Data-Oriented approach), а затем смапьте результаты обратно. Это ключ к написанию высоконагруженного бэкенда на Go.</p>
-<p>Мы научились склеивать компоненты и находить избыточные связи в неориентированных сетях. Но что определяет, является ли граф вообще деревом? Существуют строгие правила, по которым сеть признается валидной иерархией. Этот концепт (и финальный босс раздела про компоненты) мы разберем в следующей задаче: <a href="6-graph-valid-tree.html" class="wikilink">6. Graph Valid Tree</a>.</p>
+<p>Паттерн трансляции строк в плоские скалярные индексы — ключевой прием высокопроизводительного программирования на Go: бизнес-сущности остаются на границе приложения, а алгоритмическое ядро оперирует компактными непрерывными массивами.</p>
+<p>В следующей задаче мы разберем математические критерии проверки дерева на валидность: <a href="6-graph-valid-tree.html" class="wikilink">6. Graph Valid Tree</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2452,7 +2432,7 @@ func accountsMerge(accounts [][]string) [][]string {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#skleyka-profiley-identity-resolution-v-realnom-mire">Склейка профилей (Identity Resolution) в реальном мире</a></li><li class="toc-item toc-h2"><a href="#arkhitekturnaya-problema-stroki-vmesto-chisel">Архитектурная проблема: Строки вместо чисел</a></li><li class="toc-item toc-h3"><a href="#reshenie-senior-inzhenera-data-oriented-design">Решение Senior-инженера: Data-Oriented Design</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#pod-kapotom-stroki-gc-i-sortirovka">Под капотом: Строки, GC и Сортировка</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#skleyka-profiley-identity-resolution-v-realnom-mire">Склейка профилей (Identity Resolution) в реальном мире</a></li><li class="toc-item toc-h2"><a href="#arkhitekturnyy-vybor-mapy-v-dsu-protiv-translyatsii-dannykh">Архитектурный выбор: Мапы в DSU против трансляции данных</a></li><li class="toc-item toc-h3"><a href="#reshenie-senior-inzhenera-data-oriented-design">Решение Senior-инженера: Data-Oriented Design</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#pod-kapotom-stroki-gc-i-slozhnost">Под капотом: Строки, GC и сложность</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

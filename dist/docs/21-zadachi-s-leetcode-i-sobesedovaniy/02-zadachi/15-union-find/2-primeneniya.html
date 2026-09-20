@@ -2171,27 +2171,31 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. Применения</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="instrument-dlya-dinamicheskogo-mira-gde-dsu-nezamenim">Инструмент для динамического мира: Где DSU незаменим</h2>
+            <blockquote>
+<p><em>«Жадный выбор в правильном порядке превращает сложнейшую топологическую задачу в простую цепочку локальных решений».</em><br />
+— Джозеф Крускал</p>
+</blockquote>
+<h2 id="instrument-dlya-dinamicheskogo-mira-gde-dsu-nezamenim">Инструмент для динамического мира: Где DSU незаменим</h2>
 
-<p>В статье <a href="1-teoriya-union-find.html" class="wikilink">1. Теория. Union Find</a> мы разобрали математический аппарат Системы непересекающихся множеств (DSU) и выяснили, что благодаря массивам и плоской памяти (Data-Oriented Design) она работает за почти константное время $O(\alpha(N))$. </p>
-<p>Но зачем нам учить эту структуру, если мы уже умеем обходить графы с помощью DFS и BFS? </p>
-<p>Ответ кроется в слове <strong>"Динамика"</strong>. DFS и BFS — это инструменты для <em>статичных</em> графов. Они анализируют слепок системы в конкретный момент времени. DSU — это инструмент для систем, которые <em>меняются прямо сейчас</em>.</p>
-<p>В этой статье мы разберем четыре главных архитектурных паттерна, где применение Union-Find на собеседовании или в production-коде является единственно верным решением.</p>
+<p>В статье <a href="1-teoriya-union-find.html" class="wikilink">1. Теория. Union Find</a> мы разобрали математический аппарат Системы непересекающихся множеств (DSU) и выяснили, что благодаря плоским массивам в непрерывной памяти (Data-Oriented Design) операции <code>Find</code> и <code>Union</code> выполняются за амортизированное время $O(\alpha(N)) \approx O(1)$.</p>
+<p>Зачем учить специализированную структуру, если мы уже освоили обходы графов DFS и BFS?</p>
+<p>Ответ кроется в слове <strong>«Динамика»</strong>. DFS и BFS — инструменты анализа <em>статических</em> графов, делающие снимок системы в фиксированный момент времени. DSU — инструмент для систем, топология которых <em>эволюционирует в реальном времени</em>.</p>
+<p>Ниже представлены четыре ключевых архитектурных паттерна, в которых DSU является безальтернативным решением.</p>
 <hr />
 <h2 id="pattern-1-dinamicheskaya-svyaznost-dynamic-connectivity">Паттерн 1: Динамическая связность (Dynamic Connectivity)</h2>
 
-<p>Представьте, что вы пишете мониторинг для P2P-сети или кластера баз данных. Изначально у вас $N$ изолированных серверов. Каждую секунду между какими-то двумя серверами поднимается TCP-соединение (появляется ребро). <br />
-Вам нужно в реальном времени отвечать на вопрос: <em>"Сколько сейчас изолированных подсетей (компонент связности) осталось?"</em></p>
-<p>Если использовать DFS: при добавлении каждого нового ребра нам придется заново запускать обход всего графа, что даст временную сложность $O(V + E)$ на каждый чих сети. При тысячах подключений в секунду CPU будет уничтожен.</p>
+<p>Представьте систему распределенного мониторинга кластера баз данных или P2P-сети. Изначально в наличии $N$ изолированных серверов. По мере обнаружения пиров каждые несколько миллисекунд регистрируется новое соединение (ребро).<br />
+Требуется непрерывно отвечать на запрос: <em>«Сколько изолированных сегментов сети (Network Partitions / Split-Brain) существует в данный момент?»</em>.</p>
+<p>При использовании DFS: добавление каждого нового ребра требует повторного обхода графа ($O(V + E)$). Под потоком сетевых событий процессор неизбежно захлебнется.</p>
 <p><strong>Решение через DSU:</strong><br />
-Мы модифицируем структуру Union-Find, добавляя счетчик компонент. Изначально счетчик равен $N$. При каждом успешном <code>Union</code> (когда мы объединяем два <em>разных</em> множества), счетчик уменьшается на 1.</p>
+Расширяем DSU счетчиком компонент <code>components</code>. Изначально счетчик равен $N$. При каждом успешном вызове <code>Union</code> (когда сливаются два ранее разобщенных множества) уменьшаем счетчик на $1$.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2204,14 +2208,14 @@
   <pre class="language-go"><code class="language-go">type DSU struct {
     parent     []int
     size       []int
-    components int // Счетчик изолированных кластеров
+    components int // Текущее число изолированных кластеров
 }
 
 func NewDSU(n int) *DSU {
     dsu := &amp;DSU{
         parent:     make([]int, n),
         size:       make([]int, n),
-        components: n, // Изначально N компонент
+        components: n, // На старте каждый узел изолирован
     }
     for i := 0; i &lt; n; i++ {
         dsu.parent[i] = i
@@ -2220,7 +2224,12 @@ func NewDSU(n int) *DSU {
     return dsu
 }
 
-// ... реализация Find с path compression ...
+func (d *DSU) Find(x int) int {
+    if d.parent[x] != x {
+        d.parent[x] = d.Find(d.parent[x])
+    }
+    return d.parent[x]
+}
 
 func (d *DSU) Union(x, y int) bool {
     rootX := d.Find(x)
@@ -2238,8 +2247,8 @@ func (d *DSU) Union(x, y int) bool {
         d.size[rootX] += d.size[rootY]
     }
 
-    // Два множества слились в одно, общее число компонент уменьшилось
-    d.components-- 
+    // Два множества объединились — количество компонент уменьшилось
+    d.components--
     return true
 }
 </code></pre>
@@ -2248,24 +2257,25 @@ func (d *DSU) Union(x, y int) bool {
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Хранение поля <code>components</code> внутри DSU — это стандартный прием для Senior-разработчиков. Это превращает задачу вычисления компонент из $O(N)$ в $O(1)$. Достаточно просто вернуть <code>d.components</code>.</p>
+    <p><strong>Совет для собеседования</strong><br />
+Инкапсуляция поля <code>components</code> внутри структуры DSU — визитная карточка опытного инженера. Это снижает сложность запроса числа компонент с $O(V + E)$ до $O(1)$.</p>
   </div>
 </div>
 
 <hr />
-<h2 id="pattern-2-minimalnoe-ostovnoe-derevo-kruskals-algorithm">Паттерн 2: Минимальное остовное дерево (Kruskal's Algorithm)</h2>
+<h2 id="pattern-2-minimalnoe-ostovnoe-derevo-algoritm-kruskala">Паттерн 2: Минимальное остовное дерево (Алгоритм Крускала)</h2>
 
-<p><strong>Сценарий:</strong> Вам нужно проложить оптоволокно между 10 дата-центрами. Кабели стоят по-разному в зависимости от ландшафта (взвешенный граф). Вам нужно соединить все ДЦ так, чтобы общая стоимость кабеля была минимальной, и при этом не было колец (лишних трат).</p>
-<p>Эта задача называется поиском Минимального остовного дерева (Minimum Spanning Tree, MST). <strong>Алгоритм Крускала</strong> решает её невероятно изящно с помощью DSU:</p>
+<p><strong>Сценарий:</strong> требуется объединить $N$ дата-центров магистральными оптоволоконными линиями. Стоимость прокладки кабеля между узлами различается (взвешенный граф). Нужно соединить все площадки с минимальными совокупными затратами, исключив кольцевые избыточные соединения.</p>
+<p>Это классическая задача поиска <strong>минимального остовного дерева (Minimum Spanning Tree, MST)</strong>. <strong>Алгоритм Крускала</strong> решает её жадным методом с помощью DSU:</p>
 <ol>
-<li>Сортируем все возможные ребра по возрастанию их веса (цены).</li>
-<li>Берем самое дешевое ребро и пытаемся сделать <code>Union(u, v)</code>.</li>
-<li>Если <code>Union</code> возвращает <code>true</code> (узлы были не связаны), мы добавляем ребро в наш план (покупаем кабель).</li>
-<li>Если <code>Union</code> возвращает <code>false</code> (узлы УЖЕ связаны через другие ДЦ), мы пропускаем это ребро — оно создаст цикл и лишние траты.</li>
-<li>Заканчиваем, когда добавили $V-1$ ребер.</li>
+<li>Сортируем все доступные ребра по возрастанию стоимости ($O(E \log E)$).</li>
+<li>Последовательно берем самое дешевое ребро и вызываем <code>Union(u, v)</code>.</li>
+<li>Если <code>Union</code> возвращает <code>true</code> (узлы находились в разных компонентах), ребро включается в остовное дерево.</li>
+<li>Если <code>Union</code> возвращает <code>false</code> (узлы уже соединены обходным маршрутом), ребро отбрасывается, предотвращая появление цикла.</li>
+<li>Процесс останавливается при добавлении $V - 1$ ребер.</li>
 </ol>
 
 <div class="mermaid-wrapper">
@@ -2280,70 +2290,65 @@ func (d *DSU) Union(x, y int) bool {
     </button>
   </div>
   <pre class="mermaid">
-graph TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Сортировка всех ребер&lt;br&gt;по весу O-E log E&quot;]:::process --&gt; B[&quot;Берем минимальное ребро u-v&quot;]
-B --&gt; C{&quot;DSU.Find-u == DSU.Find-v&quot;}
-C --&gt;|Да - Это цикл| D[&quot;Отбрасываем ребро&quot;]
-C --&gt;|Нет - Разные подсети| E[&quot;DSU.Union-u, v&lt;br&gt;Добавляем в MST&quot;]
-D --&gt; F{&quot;Добавлено V-1 ребер?&quot;}
+flowchart TD
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+A[&quot;Сортировка всех ребер по весу&lt;br&gt;O(E log E)&quot;]:::entry --&gt; B[&quot;Берем минимальное ребро (u, v)&quot;]:::process
+B --&gt; C{&quot;DSU.Find(u) == DSU.Find(v)&quot;}:::warning
+C --&gt;|Да: Цикл| D[&quot;Отбрасываем ребро&quot;]:::error
+C --&gt;|Нет: Разные компоненты| E[&quot;DSU.Union(u, v)&lt;br&gt;Добавляем ребро в MST&quot;]:::success
+D --&gt; F{&quot;Добавлено V - 1 ребер?&quot;}:::warning
 E --&gt; F
 F --&gt;|Нет| B
-F --&gt;|Да| G[&quot;MST Построено&quot;]
+F --&gt;|Да| G[&quot;MST успешно построено!&quot;]:::success
   </pre>
 </div>
 
 
-<div class="callout callout-info">
+<hr />
+<h2 id="pattern-3-ekvivalentnost-i-deduplikatsiya-identity-resolution">Паттерн 3: Эквивалентность и дедупликация (Identity Resolution)</h2>
+
+<p>В высоконагруженных бэкенд-системах регулярно возникает задача склейки профилей пользователей:<br />
+- Заказ 1 оформлен на Email $A$ и телефон $X$.<br />
+- Заказ 2 оформлен на Email $B$ и телефон $X$.<br />
+- Заказ 3 оформлен на Email $B$ и телефон $Y$.</p>
+<p>Из совпадения телефонов следует, что Заказ 1 и Заказ 2 сделаны одним клиентом. Из совпадения Email следует, что Заказ 2 и Заказ 3 также принадлежат ему. Следовательно, все три профиля образуют единый <strong>класс эквивалентности</strong>.</p>
+<p>DSU идеально подходит для объединения таких транзитивных сущностей. Мы сопоставляем строковые идентификаторы (Email, телефон) целочисленным индексам через хэш-таблицу, а затем выполняем серию вызовов <code>Union(id1, id2)</code>.<br />
+Этот паттерн всесторонне разобран в задаче <a href="5-accounts-merge.html" class="wikilink">5. Accounts Merge</a>.</p>
+<hr />
+<h2 id="pattern-4-obnaruzhenie-tsiklov-v-neorientirovannykh-grafakh">Паттерн 4: Обнаружение циклов в неориентированных графах</h2>
+
+<p>Если в неориентированном графе операция <code>Union(u, v)</code> возвращает <code>false</code> (то есть <code>Find(u) == Find(v)</code>), ребро $(u, v)$ гарантированно образует <strong>цикл</strong>.</p>
+<div class="callout callout-warning">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом: Предиктор ветвлений (Branch Predictor)</span>
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
   </div>
   <div class="callout-body">
-    <p>Алгоритм Крускала обожает современные процессоры. После сортировки ребер (которая тоже cache-friendly, если использовать <code>[]struct</code>), мы входим в жесткий цикл с вызовом <code>Union</code>. <br />
-Поскольку DSU использует плоские массивы и быстро "сплющивает" пути, процессор отлично предсказывает ветвления (Branch Prediction) и минимизирует сбросы конвейера (Pipeline Flushes). На плотных графах Крускал с DSU часто работает быстрее, чем алгоритм Прима (аналог Дейкстры для MST).</p>
+    <p><strong>Ограничение по направленности ребер:</strong><br />
+DSU детектирует циклы <strong>строго в неориентированных графах</strong>.<br />
+В ориентированных графах связи $A \rightarrow B$ и $A \rightarrow C \rightarrow B$ не образуют цикл, однако наивный DSU посчитает их принадлежащими одному множеству. Для ориентированных графов применяются алгоритм Кана (BFS) или поиск обратных ребер через DFS (см. <a href="../14-grafy/3-course-schedule.html" class="wikilink">3. Course Schedule</a>).</p>
   </div>
 </div>
 
 <hr />
-<h2 id="pattern-3-ekvivalentnost-i-sliyanie-sushchnostey-identity-resolution">Паттерн 3: Эквивалентность и слияние сущностей (Identity Resolution)</h2>
+<h2 id="rezyume-chek-list-vybora-union-find">Резюме: Чек-лист выбора Union-Find</h2>
 
-<p>В бэкенде часто возникает задача "склейки" профилей пользователей (Identity Resolution). <br />
-- Профиль 1 имеет Email <code>A</code>.<br />
-- Профиль 2 имеет Phone <code>B</code>.<br />
-- В систему поступает заказ, где указан Email <code>A</code> и Phone <code>B</code>. <br />
-Вывод: Профиль 1 и Профиль 2 — это один и тот же человек. Их нужно объединить в один кластер.</p>
-<p>Здесь нет явного графа. Здесь есть <strong>Классы эквивалентности (Equivalence Classes)</strong>. DSU идеально подходит для этого. Мы можем использовать <code>map[string]string</code> вместо <code>[]int</code> в качестве массива <code>parent</code>, если ключами являются строки (email или телефон), либо сначала замаппить все уникальные строки в целочисленные ID.</p>
-<p>На LeetCode эта концепция встречается в сложной задаче <strong>Accounts Merge</strong> (№721), где нужно объединить аккаунты, имеющие общие email-адреса. Без DSU эта задача превращается в кошмар со множеством вложенных <code>map</code> и рекурсивных вызовов DFS, где легко поймать Stack Overflow. С DSU — это просто последовательность операций <code>Union(email1, email2)</code>.</p>
-<hr />
-<h2 id="pattern-4-poisk-izbytochnykh-svyazey-detektor-tsiklov">Паттерн 4: Поиск избыточных связей (Детектор циклов)</h2>
-
-<p>Этот паттерн мы подробно реализовали в задаче о шторме широковещательных пакетов. <br />
-Если в <em>неориентированном</em> графе при добавлении ребра <code>(u, v)</code> операция <code>Union(u, v)</code> возвращает <code>false</code> (то есть <code>Find(u) == Find(v)</code>), мы со стопроцентной вероятностью нашли <strong>цикл</strong>.</p>
-<p><strong>Важное ограничение:</strong> DSU находит циклы только в <strong>неориентированных</strong> графах. <br />
-Если граф <em>ориентированный</em> (стрелки имеют направление, как в зависимостях модулей <code>go mod</code>), DSU использовать <strong>нельзя</strong>. В ориентированных графах пути <code>A -&gt; B</code> и <code>A -&gt; C -&gt; B</code> не всегда образуют цикл, но DSU скажет, что они в одном множестве. Для ориентированных графов используйте DFS (Трехцветный метод) или BFS (Алгоритм Кана).</p>
-<hr />
-<h2 id="itog-chek-list-dlya-vybora-dsu">Итог: Чек-лист для выбора DSU</h2>
-
-<p>Используйте Union-Find, если на архитектурной секции или лайв-кодинге звучит:<br />
-1. "Группировка" или "Кластеризация".<br />
-2. Ребра/связи добавляются <em>со временем</em> (streaming data).<br />
-3. Нужно проверить, находятся ли объекты в одной "сети" / "группе".<br />
-4. Требуется найти Минимальное остовное дерево (MST).</p>
-<p>Не пытайтесь использовать DSU, если:<br />
-1. Граф ориентированный (Directed Graph).<br />
-2. Нужно найти <em>маршрут</em> или <em>кратчайший путь</em> (DSU не знает маршрутов, он знает только факт принадлежности).<br />
-3. Ребра <em>удаляются</em> (DSU поддерживает только добавление; удаление требует персистентных структур, что выходит за рамки любых собеседований).</p>
-<p>С теорией покончено. Теперь у нас есть полностью готовая заготовка (boilerplate) структуры <code>DSU</code> со счетчиком компонент, и мы можем порвать любую задачу, связанную с кластеризацией графов. Начнем с классики, где применение DSU сокращает код в три раза по сравнению с DFS: <a href="3-number-of-connected-components.html" class="wikilink">3. Number of Connected Components</a>.</p>
+<p><strong>Выбирайте DSU, если:</strong><br />
+1. Требуется непрерывная кластеризация данных, поступающих в реальном времени.<br />
+2. Необходимо поддерживать количество компонент связности за $O(1)$.<br />
+3. Строится минимальное остовное дерево алгоритмом Крускала.<br />
+4. Выполняется дедупликация сущностей (Identity Resolution).<br />
+5. Ищутся циклы в неориентированном графе.</p>
+<p><strong>Не используйте DSU, если:</strong><br />
+1. Граф ориентированный.<br />
+2. Требуется найти физический маршрут или кратчайшее расстояние (для этого нужны BFS или алгоритм Дейкстры).<br />
+3. Требуется эффективное удаление ребер.</p>
+<p>Перейдем к практическому кодингу базовой задачи кластеризации: <a href="3-number-of-connected-components.html" class="wikilink">3. Number of Connected Components</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2371,7 +2376,7 @@ F --&gt;|Да| G[&quot;MST Построено&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#instrument-dlya-dinamicheskogo-mira-gde-dsu-nezamenim">Инструмент для динамического мира: Где DSU незаменим</a></li><li class="toc-item toc-h2"><a href="#pattern-1-dinamicheskaya-svyaznost-dynamic-connectivity">Паттерн 1: Динамическая связность (Dynamic Connectivity)</a></li><li class="toc-item toc-h2"><a href="#pattern-2-minimalnoe-ostovnoe-derevo-kruskals-algorithm">Паттерн 2: Минимальное остовное дерево (Kruskal&#x27;s Algorithm)</a></li><li class="toc-item toc-h2"><a href="#pattern-3-ekvivalentnost-i-sliyanie-sushchnostey-identity-resolution">Паттерн 3: Эквивалентность и слияние сущностей (Identity Resolution)</a></li><li class="toc-item toc-h2"><a href="#pattern-4-poisk-izbytochnykh-svyazey-detektor-tsiklov">Паттерн 4: Поиск избыточных связей (Детектор циклов)</a></li><li class="toc-item toc-h2"><a href="#itog-chek-list-dlya-vybora-dsu">Итог: Чек-лист для выбора DSU</a></li>
+    <li class="toc-item toc-h2"><a href="#instrument-dlya-dinamicheskogo-mira-gde-dsu-nezamenim">Инструмент для динамического мира: Где DSU незаменим</a></li><li class="toc-item toc-h2"><a href="#pattern-1-dinamicheskaya-svyaznost-dynamic-connectivity">Паттерн 1: Динамическая связность (Dynamic Connectivity)</a></li><li class="toc-item toc-h2"><a href="#pattern-2-minimalnoe-ostovnoe-derevo-algoritm-kruskala">Паттерн 2: Минимальное остовное дерево (Алгоритм Крускала)</a></li><li class="toc-item toc-h2"><a href="#pattern-3-ekvivalentnost-i-deduplikatsiya-identity-resolution">Паттерн 3: Эквивалентность и дедупликация (Identity Resolution)</a></li><li class="toc-item toc-h2"><a href="#pattern-4-obnaruzhenie-tsiklov-v-neorientirovannykh-grafakh">Паттерн 4: Обнаружение циклов в неориентированных графах</a></li><li class="toc-item toc-h2"><a href="#rezyume-chek-list-vybora-union-find">Резюме: Чек-лист выбора Union-Find</a></li>
   </ul>
 </aside>
 

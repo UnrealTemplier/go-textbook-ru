@@ -2171,26 +2171,30 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~16 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">1. Теория. Union Find</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="sistema-neperesekayushchikhsya-mnozhestv-dsu">Система непересекающихся множеств (DSU)</h2>
+            <blockquote>
+<p><em>«Простота структуры данных часто важнее сложности алгоритмов, которые над ней работают».</em><br />
+— Роберт Тарджан</p>
+</blockquote>
+<h2 id="sistema-neperesekayushchikhsya-mnozhestv-disjoint-set-union-dsu">Система непересекающихся множеств (Disjoint Set Union, DSU)</h2>
 
-<p>В разделе про графы, разбирая задачу <a href="../14-grafy/7-redundant-connection.html" class="wikilink">7. Redundant Connection</a>, мы вскользь познакомились с элегантной структурой данных — <strong>Union-Find</strong> (также известной как <strong>Disjoint Set Union, DSU</strong> или Система непересекающихся множеств). </p>
-<p>DFS и BFS отлично справляются с анализом статических графов, где все ребра известны заранее. Но в распределенных системах сети <strong>динамические</strong>:<br />
-- Новые узлы подключаются к кластеру.<br />
-- Кабели прокладываются между дата-центрами.<br />
-- В социальной сети пользователи добавляют друг друга в друзья в реальном времени.</p>
-<p>Если после каждого добавления связи нам нужно отвечать на вопрос <em>"Связаны ли теперь узел А и узел Б?"</em>, запуск DFS даст сложность $O(V + E)$ на каждый запрос. Для миллиона узлов система мгновенно ляжет.</p>
-<p>Union-Find создана именно для <strong>Динамической связности (Dynamic Connectivity)</strong>. Она отвечает на запросы объединения и проверки связности практически за $O(1)$.</p>
+<p>В разделе про графы, разбирая задачу <a href="../14-grafy/7-redundant-connection.html" class="wikilink">7. Redundant Connection</a>, мы познакомились с компактной структурой данных — <strong>Union-Find</strong> (также известной как <strong>Disjoint Set Union, DSU</strong> или Система непересекающихся множеств). </p>
+<p>DFS и BFS отлично справляются с анализом статических графов, где вся топология известна заранее. Но в реальных распределенных системах сети <strong>динамические</strong>:<br />
+- Новые узлы подключаются к кластеру в рантайме.<br />
+- Каналы связи между дата-центрами динамически поднимаются и деградируют.<br />
+- В P2P-сетях и распределенных реестрах пиры обмениваются данными и образуют новые группы в реальном времени.</p>
+<p>Если после каждого добавления ребра отвечать на вопрос: <em>«Связаны ли теперь узел $A$ и узел $B$?»</em>, повторный запуск DFS даст сложность $O(V + E)$ на каждый запрос. Для миллиона узлов система мгновенно окажется перегружена.</p>
+<p>Union-Find создана именно для решения проблемы <strong>динамической связности (Dynamic Connectivity)</strong>. Она обрабатывает запросы объединения и проверки связности практически за константное время $O(\alpha(N)) \approx O(1)$.</p>
 <hr />
 <h2 id="arkhitektura-dsu-massivy-vmesto-ukazateley">Архитектура DSU: Массивы вместо указателей</h2>
 
-<p>Классическое дерево в Go (как мы видели в разделе деревьев) строится на указателях:</p>
+<p>Классическое дерево общего назначения строится на указателях:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2200,7 +2204,7 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// Так мы НЕ будем делать в DSU
+  <pre class="language-go"><code class="language-go">// Антипаттерн для высоконагруженного DSU
 type Node struct {
     Val    int
     Parent *Node
@@ -2208,7 +2212,7 @@ type Node struct {
 </code></pre>
 </div>
 
-<p>Union-Find отбрасывает ООП-подход в пользу <strong>Data-Oriented Design (Специфичного для данных проектирования)</strong>. Мы используем плоские массивы.</p>
+<p>Union-Find отбрасывает тяжелый указательный подход в пользу <strong>Data-Oriented Design</strong>: всё состояние размещается в компактных плоских массивах.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2220,7 +2224,7 @@ type Node struct {
   </div>
   <pre class="language-go"><code class="language-go">type DSU struct {
     parent []int // Хранит индекс родителя для каждого узла
-    size   []int // Хранит размер дерева (используется только для корней)
+    size   []int // Хранит размер компоненты (используется только для корней)
 }
 
 func NewDSU(n int) *DSU {
@@ -2229,35 +2233,36 @@ func NewDSU(n int) *DSU {
         size:   make([]int, n),
     }
     for i := 0; i &lt; n; i++ {
-        dsu.parent[i] = i // Изначально каждый узел — корень своего собственного дерева
-        dsu.size[i] = 1   // Размер каждого дерева равен 1
+        dsu.parent[i] = i // Изначально каждый узел — корень собственного дерева
+        dsu.size[i] = 1   // Размер начального дерева равен 1
     }
     return dsu
 }
 </code></pre>
 </div>
 
-<div class="callout callout-info">
+<div class="callout callout-note">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом: Mechanical Sympathy и Garbage Collector</span>
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Заметка</span>
   </div>
   <div class="callout-body">
-    <p>Почему плоские <code>[]int</code> настолько лучше указателей <code>*Node</code>?<br />
-1. <strong>Аллокации:</strong> <code>make([]int, n)</code> выделяет память в куче <strong>ровно один раз</strong> единым непрерывным блоком. Создание $N$ структур <code>Node</code> потребует $N$ аллокаций, разбросанных по всей куче.<br />
-2. <strong>Локальность кэша (Cache Locality):</strong> Когда процессор обращается к <code>parent[i]</code>, он загружает в кэш L1 целую кэш-линию (64 байта), забирая вместе с <code>parent[i]</code> еще 7 соседних элементов. Поиск по массиву работает со скоростью пропускной способности RAM. Указатели же вызывают промахи кэша (Cache Misses).<br />
-3. <strong>Garbage Collector:</strong> Слайс примитивов <code>[]int</code> не содержит указателей. Сборщик мусора (GC) в Go не сканирует содержимое таких слайсов в фазе Mark. Если у вас DSU на 10 миллионов элементов, GC просто игнорирует эти 80 Мегабайт, экономя такты CPU.</p>
+    <p><strong>Под капотом: Mechanical Sympathy и Garbage Collector</strong><br />
+Почему плоские срезы <code>[]int</code> превосходят деревья на указателях <code>*Node</code>?<br />
+1. <strong>Zero Fragmentation:</strong> <code>make([]int, n)</code> выделяет память в куче <strong>ровно один раз</strong> непрерывным блоком. Создание $N$ структур <code>Node</code> потребует $N$ аллокаций, разбросанных по разным адресам.<br />
+2. <strong>Локальность кэша (Spatial Locality):</strong> При обращении к <code>parent[i]</code> процессор загружает целую кэш-линию L1 ($64$ байта), попутно забирая еще 7 соседних элементов. Поиск по массиву работает со скоростью пропускной способности RAM. Указатели же вызывают постоянные Cache Misses (Pointer Chasing).<br />
+3. <strong>Разгрузка GC:</strong> Слайс примитивов <code>[]int</code> не содержит указателей. Сборщик мусора Go в фазе Mark просто пропускает такие объекты, не тратя драгоценные такты CPU на обход графа ссылок.</p>
   </div>
 </div>
 
 <hr />
 <h2 id="dve-magii-dsu-find-i-union">Две магии DSU: Find и Union</h2>
 
-<p>В основе структуры лежат две операции. Без специальных оптимизаций они могут выродиться в связный список ($O(N)$), но с двумя хитростями их сложность падает до $O(1)$.</p>
-<h3 id="1-operatsiya-find-i-szhatie-putey-path-compression">1. Операция Find и Сжатие путей (Path Compression)</h3>
+<p>В основе структуры лежат две базовые операции. Без оптимизаций дерево может выродиться в цепочку глубиной $O(N)$, но с двумя классическими эвристиками время сводится к $O(1)$.</p>
+<h3 id="1-operatsiya-find-i-szhatie-putey-path-compression">1. Операция Find и сжатие путей (Path Compression)</h3>
 
-<p>Операция <code>Find(x)</code> ищет <strong>Корень (Представителя)</strong> множества, к которому принадлежит <code>x</code>. Корень — это узел, у которого <code>parent[x] == x</code>.</p>
-<p><strong>Оптимизация:</strong> Когда мы идем от узла к корню, мы проходим цепочку промежуточных родителей. Зачем проходить их снова в следующий раз? Давайте в процессе возврата из рекурсии <strong>перевесим все пройденные узлы напрямую к корню</strong>. Это называется Сжатием путей.</p>
+<p>Операция <code>Find(x)</code> ищет <strong>Корень (Представителя)</strong> множества, к которому принадлежит узел $x$. Корень характеризуется инвариантом: <code>parent[x] == x</code>.</p>
+<p><strong>Оптимизация:</strong> при подъеме к корню мы проходим цепочку промежуточных предков. На обратном ходе рекурсии мы <strong>переподвешиваем все пройденные вершины напрямую к корню</strong>. Дерево моментально сплющивается, и любые последующие вызовы <code>Find</code> отрабатывают за один шаг.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2268,10 +2273,8 @@ func NewDSU(n int) *DSU {
     </button>
   </div>
   <pre class="language-go"><code class="language-go">func (d *DSU) Find(x int) int {
-    // Если x не является своим собственным родителем, значит он не корень
     if d.parent[x] != x {
-        // Рекурсивно ищем корень и СРАЗУ перезаписываем родителя x.
-        // Это &quot;сплющивает&quot; дерево.
+        // Сплющивание дерева: переподвешиваем родителя напрямую к корню
         d.parent[x] = d.Find(d.parent[x])
     }
     return d.parent[x]
@@ -2292,37 +2295,31 @@ func NewDSU(n int) *DSU {
     </button>
   </div>
   <pre class="mermaid">
-graph BT
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-subgraph &quot;Дерево до Find-4&quot;
-D[&quot;Узел 4&quot;]:::process --&gt;|&quot;parent&quot;| C[&quot;Узел 3&quot;]
-C --&gt;|&quot;parent&quot;| B[&quot;Узел 2&quot;]
-B --&gt;|&quot;parent&quot;| A[&quot;Узел 1 - Корень&quot;]
+flowchart BT
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+
+subgraph Before[&quot;Дерево до Find(4)&quot;]
+D1[&quot;Узел 4&quot;]:::process --&gt; C1[&quot;Узел 3&quot;]:::process
+C1 --&gt; B1[&quot;Узел 2&quot;]:::process
+B1 --&gt; A1[&quot;Узел 1 (Корень)&quot;]:::accent
 end
 
-subgraph &quot;После Find-4 - Сжатие путей&quot;
-D2[&quot;Узел 4&quot;]:::process --&gt;|&quot;parent&quot;| A2[&quot;Узел 1 - Корень&quot;]
-C2[&quot;Узел 3&quot;] --&gt;|&quot;parent&quot;| A2
-B2[&quot;Узел 2&quot;] --&gt;|&quot;parent&quot;| A2
+subgraph After[&quot;После Find(4) — Сжатие путей&quot;]
+D2[&quot;Узел 4&quot;]:::success --&gt; A2[&quot;Узел 1 (Корень)&quot;]:::accent
+C2[&quot;Узел 3&quot;]:::success --&gt; A2
+B2[&quot;Узел 2&quot;]:::success --&gt; A2
 end
   </pre>
 </div>
 
 
-<h3 id="2-operatsiya-union-i-obedinenie-po-razmeru-union-by-size">2. Операция Union и Объединение по размеру (Union by Size)</h3>
+<h3 id="2-operatsiya-union-i-obedinenie-po-razmeru-union-by-size">2. Операция Union и объединение по размеру (Union by Size)</h3>
 
-<p>Операция <code>Union(x, y)</code> объединяет множества, в которых находятся <code>x</code> и <code>y</code>. </p>
-<p>Мы находим корень <code>x</code> (пусть это <code>rootX</code>) и корень <code>y</code> (пусть <code>rootY</code>). Чтобы объединить множества, нам нужно сделать один корень родителем другого: <code>parent[rootX] = rootY</code>.</p>
-<p><strong>Оптимизация:</strong> Если мы подвесим большое, глубокое дерево к маленькому, общая глубина нового дерева сильно увеличится (что замедлит будущие <code>Find</code>). Нам нужно всегда <strong>подвешивать меньшее дерево к корню большего</strong>. Для этого мы и храним массив <code>size</code>.</p>
+<p>Операция <code>Union(x, y)</code> объединяет множества элементов $x$ и $y$.<br />
+Мы находим корень <code>rootX</code> и корень <code>rootY</code>. Чтобы объединить множества, делаем один корень родителем другого: <code>parent[rootX] = rootY</code>.</p>
+<p><strong>Оптимизация:</strong> если подвесить большее дерево к меньшему, глубина результирующего дерева возрастет. Мы всегда <strong>подвешиваем меньшее поддерево к корню большего</strong>. Для этого мы храним массив <code>size</code>.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2332,20 +2329,19 @@ end
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// Возвращает true, если объединение произошло.
-// Возвращает false, если x и y УЖЕ были в одном множестве (найден цикл).
+  <pre class="language-go"><code class="language-go">// Union возвращает true при успешном слиянии и false, если узлы уже были в одном множестве.
 func (d *DSU) Union(x, y int) bool {
     rootX := d.Find(x)
     rootY := d.Find(y)
 
     if rootX == rootY {
-        return false // Они уже в одном множестве
+        return false // Узлы уже принадлежат одному компоненту (найден цикл)
     }
 
-    // Подвешиваем меньшее дерево к большему
+    // Подвешиваем меньшее поддерево к большему
     if d.size[rootX] &lt; d.size[rootY] {
         d.parent[rootX] = rootY
-        d.size[rootY] += d.size[rootX] // Обновляем размер нового корня
+        d.size[rootY] += d.size[rootX]
     } else {
         d.parent[rootY] = rootX
         d.size[rootX] += d.size[rootY]
@@ -2359,50 +2355,50 @@ func (d *DSU) Union(x, y int) bool {
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Существует альтернатива <code>Union by Size</code> — это <code>Union by Rank</code> (по рангу/высоте дерева). Логика идентична, но мы храним не количество узлов, а приблизительную высоту дерева. <br />
-На практике <code>Size</code> предпочтительнее, так как во многих задачах на графы нас часто просят вывести <em>"размер компоненты связности"</em> (например: "Какого размера самый большой кластер серверов?"). Массив <code>size</code> уже содержит готовый ответ <code>d.size[d.Find(x)]</code> за $O(1)$!</p>
+    <p><strong>Совет для собеседования: Union by Size против Union by Rank</strong><br />
+Существует альтернатива <code>Union by Size</code> — <code>Union by Rank</code> (по рангу/глубине дерева).<br />
+На практике <code>Size</code> предпочтительнее: во многих задачах требуется вернуть размер компоненты связности (например, «сколько серверов в крупнейшем сегменте?»). Массив <code>size</code> сразу содержит готовый ответ <code>d.size[d.Find(x)]</code> за $O(1)$ без дополнительных обходов.</p>
   </div>
 </div>
 
 <hr />
-<h2 id="asimptoticheskaya-slozhnost-i-funktsiya-akkermana">Асимптотическая сложность и Функция Аккермана</h2>
+<h2 id="asimptoticheskaya-slozhnost-i-obratnaya-funktsiya-akkermana">Асимптотическая сложность и обратная функция Аккермана</h2>
 
-<p>На хардовом интервью вас могут попросить оценить точную временную сложность этих операций.<br />
-Ответ $O(1)$ технически неверен, но на практике это именно так.</p>
-<p>Если мы используем <strong>обе</strong> оптимизации (Сжатие путей + Объединение по размеру), амортизированное время выполнения любой операции <code>Find</code> или <code>Union</code> составляет $O(\alpha(N))$.</p>
-<p>$\alpha(N)$ — это <strong>Обратная функция Аккермана (Inverse Ackermann function)</strong>.<br />
-Она растет настолько медленно, что для любых мыслимых в физической Вселенной значений $N$ (вплоть до $10^{80}$ атомов во Вселенной), значение $\alpha(N)$ не превышает $5$.<br />
-С точки зрения инженерии процессора, $5$ тактов на итерацию — это константа. Поэтому мы смело называем это околоконстантным временем $O(1)$.</p>
+<p>При совместном использовании Path Compression и Union by Size амортизированное время выполнения любой операции <code>Find</code> или <code>Union</code> составляет строго $O(\alpha(N))$.</p>
+<p>$\alpha(N)$ — <strong>Обратная функция Аккермана (Inverse Ackermann Function)</strong>.<br />
+Она растет настолько медленно, что для любых практически возможных в физической Вселенной значений $N \le 10^{80}$ значение $\alpha(N) \le 4$.<br />
+Для современного процессора $4$ операции — это константа, поэтому асимптотику DSU на практике считают эквивалентной $O(1)$.</p>
 <ul>
-<li><strong>Время создания DSU:</strong> $O(N)$, так как нужно инициализировать массивы <code>parent</code> и <code>size</code>.</li>
-<li><strong>Время Find / Union:</strong> $O(\alpha(N)) \approx O(1)$.</li>
-<li><strong>Память:</strong> $O(N)$ для хранения двух плоских массивов.</li>
+<li><strong>Инициализация DSU:</strong> $O(N)$ для выделения срезов <code>parent</code> и <code>size</code>.</li>
+<li><strong>Операции Find / Union:</strong> $O(\alpha(N)) \approx O(1)$.</li>
+<li><strong>Пространственная сложность:</strong> $O(N)$ для двух плоских срезов.</li>
 </ul>
 <hr />
 <h2 id="rezyume-kogda-primenyat-union-find">Резюме: Когда применять Union-Find?</h2>
 
-<p>У вас должен загораться "ментальный триггер" на DSU, если в задаче на LeetCode или на секции System Design есть следующие условия:<br />
-1. <strong>Динамическое добавление ребер</strong>: Связи между объектами появляются последовательно во времени.<br />
-2. <strong>Проверка связности (Connectivity)</strong>: Вопросы типа "Могут ли A и B общаться друг с другом?".<br />
-3. <strong>Кластеризация</strong>: Разбиение объектов на непересекающиеся группы (компоненты).<br />
-4. <strong>Поиск лишнего ребра (цикла) в неориентированном графе</strong>: Как только <code>Union(u, v)</code> возвращает <code>false</code>, вы нашли цикл.<br />
-5. <strong>Алгоритм Крускала (Kruskal's Algorithm)</strong>: Поиск минимального остовного дерева (MST).</p>
+<p>Структура данных DSU идеально подходит для следующих сценариев:<br />
+1. <strong>Динамическое добавление ребер:</strong> Связи появляются последовательно в потоке событий.<br />
+2. <strong>Проверка связности:</strong> Быстрый ответ на вопрос: «Принадлежат ли узлы $A$ и $B$ одному кластеру?».<br />
+3. <strong>Кластеризация:</strong> Разбиение объектов на изолированные непересекающиеся группы.<br />
+4. <strong>Обнаружение циклов в неориентированном графе:</strong> Как только <code>Union(u, v)</code> возвращает <code>false</code>, зафиксирован цикл.<br />
+5. <strong>Алгоритм Крускала (Kruskal's Algorithm):</strong> Построение минимального остовного дерева (MST).</p>
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Чего DSU не умеет?</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
   </div>
   <div class="callout-body">
-    <p>DSU <strong>не умеет удалять ребра</strong> с сохранением $O(\alpha(N))$ сложности. Если в задаче сказано "связь между серверами оборвалась", классический Union-Find вам не поможет (потребуются сложные структуры типа Dynamic Connectivity over Link-Cut Trees или откат операций).<br />
-DSU <strong>не умеет находить кратчайший путь</strong>. Он знает только <em>факт</em> связности, но не маршрут. Для маршрутов используйте BFS или Дейкстру.<br />
-DSU предназначен <strong>только для неориентированных графов</strong>.</p>
+    <p><strong>Ловушка / Gotcha: Границы применимости DSU</strong><br />
+1. DSU <strong>не поддерживает удаление ребер</strong> с сохранением суб-логарифмической сложности.<br />
+2. DSU <strong>не находит маршрутов</strong> и кратчайших путей: структура знает лишь факт связности.<br />
+3. DSU применим <strong>исключительно для неориентированных графов</strong>. В ориентированных графах для поиска циклов используются алгоритм Кана (BFS) или трехцветный DFS.</p>
   </div>
 </div>
 
-<p>Теперь, когда у нас есть математически идеальная структура в арсенале, давайте посмотрим, в каких типовых задачах она применяется, и какие шаблоны кода стоит выучить наизусть. Переходим к практическому разбору: <a href="2-primeneniya.html" class="wikilink">2. Применения</a>.</p>
+<p>Теперь перейдем к практическим паттернам применения DSU: <a href="2-primeneniya.html" class="wikilink">2. Применения</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2430,7 +2426,7 @@ DSU предназначен <strong>только для неориентиро�
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#sistema-neperesekayushchikhsya-mnozhestv-dsu">Система непересекающихся множеств (DSU)</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-dsu-massivy-vmesto-ukazateley">Архитектура DSU: Массивы вместо указателей</a></li><li class="toc-item toc-h2"><a href="#dve-magii-dsu-find-i-union">Две магии DSU: Find и Union</a></li><li class="toc-item toc-h3"><a href="#1-operatsiya-find-i-szhatie-putey-path-compression">1. Операция Find и Сжатие путей (Path Compression)</a></li><li class="toc-item toc-h3"><a href="#2-operatsiya-union-i-obedinenie-po-razmeru-union-by-size">2. Операция Union и Объединение по размеру (Union by Size)</a></li><li class="toc-item toc-h2"><a href="#asimptoticheskaya-slozhnost-i-funktsiya-akkermana">Асимптотическая сложность и Функция Аккермана</a></li><li class="toc-item toc-h2"><a href="#rezyume-kogda-primenyat-union-find">Резюме: Когда применять Union-Find?</a></li>
+    <li class="toc-item toc-h2"><a href="#sistema-neperesekayushchikhsya-mnozhestv-disjoint-set-union-dsu">Система непересекающихся множеств (Disjoint Set Union, DSU)</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-dsu-massivy-vmesto-ukazateley">Архитектура DSU: Массивы вместо указателей</a></li><li class="toc-item toc-h2"><a href="#dve-magii-dsu-find-i-union">Две магии DSU: Find и Union</a></li><li class="toc-item toc-h3"><a href="#1-operatsiya-find-i-szhatie-putey-path-compression">1. Операция Find и сжатие путей (Path Compression)</a></li><li class="toc-item toc-h3"><a href="#2-operatsiya-union-i-obedinenie-po-razmeru-union-by-size">2. Операция Union и объединение по размеру (Union by Size)</a></li><li class="toc-item toc-h2"><a href="#asimptoticheskaya-slozhnost-i-obratnaya-funktsiya-akkermana">Асимптотическая сложность и обратная функция Аккермана</a></li><li class="toc-item toc-h2"><a href="#rezyume-kogda-primenyat-union-find">Резюме: Когда применять Union-Find?</a></li>
   </ul>
 </aside>
 

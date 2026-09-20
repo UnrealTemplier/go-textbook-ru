@@ -2178,21 +2178,18 @@
           </header>
 
           <div class="article-markdown">
-            <h2 id="fundament-analiza-grafov-komponenty-i-tsikly">Фундамент анализа графов: Компоненты и Циклы</h2>
-
-<p>В прошлой статье <a href="1-teoriya-grafy.html" class="wikilink">1. Теория. Графы</a> мы определились с тем, как эффективно хранить графы в памяти Go (<code>[][]int</code> вместо <code>map</code>), чтобы не злить кэш процессора. Теперь перейдем к двум самым важным свойствам любой сетевой структуры: <strong>Связности</strong> и <strong>Ацикличности</strong>.</p>
-<p>В мире бэкенда эти абстракции решают вполне конкретные задачи:<br />
-- <strong>Компоненты связности</strong>: Разделена ли наша P2P-сеть или кластер баз данных (Network Partition/Split Brain)? Могут ли микросервисы достучаться друг до друга?<br />
-- <strong>Поиск циклов</strong>: Нет ли у нас Deadlock-а в транзакциях? Не создали ли мы кольцевую зависимость (Circular Dependency) при внедрении зависимостей (DI)? Не уйдет ли наш роутер в бесконечный цикл при пересылке пакета?</p>
-<p>На собеседованиях 80% графовых задач сводятся к выявлению одной из этих двух характеристик.</p>
+            <blockquote>
+<p><em>«Глубинный обход графа открывает нам его скрытую анатомию: мосты, точки сочленения и невидимые циклы, грозящие бесконечным тупиком».</em><br />
+— Роберт Тарджан</p>
+</blockquote>
+<p>В предыдущей главе (<a href="1-teoriya-grafy.html" class="wikilink">1. Теория. Графы</a>) мы изучили способы эффективного представления графов в оперативной памяти Go. Теперь перейдем к двум фундаментальным топологическим характеристикам любой сетевой структуры: <strong>Связности (Connectivity)</strong> и <strong>Ацикличности (Acyclicity)</strong>.</p>
+<p>В инженерной практике эти концепции решают критически важные прикладные задачи:<br />
+- <strong>Компоненты связности:</strong> выявление сетевых расколов в распределённых кластерах (<strong>Network Partition / Split-Brain</strong> в etcd, Consul, Raft) и кластеризация пользователей в графах рекомендаций.<br />
+- <strong>Обнаружение циклов:</strong> предотвращение взаимных блокировок транзакций в СУБД (<strong>Deadlock Detection</strong>), циклических ссылок при внедрении зависимостей (<strong>Circular Dependency</strong> в DI-контейнерах) и зацикливания пакетов в протоколах маршрутизации.</p>
 <hr />
-<h2 id="1-komponenty-svyaznosti-connected-components">1. Компоненты связности (Connected Components)</h2>
+<h3 id="1-komponenty-svyaznosti-v-neorientirovannykh-grafakh">1. Компоненты связности в неориентированных графах</h3>
 
-<p><strong>Компонента связности</strong> в неориентированном графе — это подмножество вершин, где из любой вершины можно добраться до любой другой, и к этому подмножеству нельзя добавить больше ни одной вершины (оно максимально).</p>
-<p>Если граф разорван на части — у него несколько компонент связности.</p>
-<h3 id="algoritm-pokraska-ili-zalivka-flood-fill">Алгоритм: Покраска или Заливка (Flood Fill)</h3>
-
-<p>Задача поиска всех компонент сводится к тому, чтобы "закрасить" все достижимые узлы одним цветом, затем найти первый незакрашенный узел и начать красить вторым цветом, и так далее.</p>
+<p><strong>Компонента связности</strong> в неориентированном графе — это максимальное подмножество вершин, в котором между любыми двумя вершинами существует хотя бы один путь. Если граф разорван на изолированные кластеры, количество компонент связности больше $1$.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2206,32 +2203,32 @@
     </button>
   </div>
   <pre class="mermaid">
-graph TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-subgraph &quot;Компонента 1&quot;
-A[&quot;Узел 0&quot;] --- B[&quot;Узел 1&quot;]
-B --- C[&quot;Узел 2&quot;]
+flowchart LR
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+
+subgraph C1[&quot;Компонента связности 1&quot;]
+A[&quot;Узел 0&quot;]:::process --- B[&quot;Узел 1&quot;]:::process
+B --- C[&quot;Узел 2&quot;]:::process
 end
 
-subgraph &quot;Компонента 2&quot;
-D[&quot;Узел 3&quot;] --- E[&quot;Узел 4&quot;]
+subgraph C2[&quot;Компонента связности 2 (Изолированная)&quot;]
+D[&quot;Узел 3&quot;]:::accent --- E[&quot;Узел 4&quot;]:::accent
 end
   </pre>
 </div>
 
 
-<h3 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h3>
-
-<p>Решим типовую подзадачу: дан $N$ (количество узлов от 0 до $N-1$) и список неориентированных ребер. Нужно найти количество компонент.</p>
+<h4 id="algoritm-vydeleniya-komponent-volnovoy-flood-fill">Алгоритм выделения компонент: Волновой Flood Fill</h4>
+<ol>
+<li>Инициализируем массив <code>visited := make([]bool, n)</code>.</li>
+<li>Запускаем внешний цикл от $0$ до $n-1$.</li>
+<li>Если вершина $i$ еще не посещена — мы нашли новую компоненту! Увеличиваем счетчик и запускаем DFS/BFS для пометки всех достижимых вершин.</li>
+</ol>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2241,20 +2238,23 @@ end
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func countComponents(n int, edges [][]int) int {
-    // 1. Строим список смежности
+  <pre class="language-go"><code class="language-go">package main
+
+// countComponents подсчитывает число компонент связности в неориентированном графе.
+// Временная сложность: O(V + E) — каждое ребро и вершина просматриваются константное число раз.
+// Пространственная сложность: O(V + E) — список смежности и булев массив visited.
+func countComponents(n int, edges [][]int) int {
+    // 1. Построение списка смежности на непрерывных срезах
     graph := make([][]int, n)
-    for _, edge := range edges {
-        u, v := edge[0], edge[1]
+    for _, e := range edges {
+        u, v := e[0], e[1]
         graph[u] = append(graph[u], v)
         graph[v] = append(graph[v], u)
     }
 
-    // 2. Массив посещенных вершин
     visited := make([]bool, n)
     components := 0
 
-    // Функция обхода (DFS)
     var dfs func(node int)
     dfs = func(node int) {
         visited[node] = true
@@ -2265,11 +2265,11 @@ end
         }
     }
 
-    // 3. Ищем непосещенные узлы
+    // 2. Внешний цикл поиска изолированных кластеров
     for i := 0; i &lt; n; i++ {
         if !visited[i] {
-            components++ // Нашли новую изолированную группу
-            dfs(i)       // Закрашиваем всю группу
+            components++ // Обнаружен новый кластер
+            dfs(i)       // Полная заливка кластера
         }
     }
 
@@ -2278,29 +2278,31 @@ end
 </code></pre>
 </div>
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом: Плотность упаковки булевых массивов</span>
+<hr />
+<h3 id="2-poisk-tsiklov-v-orientirovannykh-grafakh-metod-tryokh-tsvetov">2. Поиск циклов в ориентированных графах: Метод трёх цветов</h3>
+
+<p>В неориентированном графе для обнаружения цикла достаточно простого правила: если мы пришли в уже посещённую вершину (и это не наш непосредственный родитель), то в графе есть цикл.</p>
+<p>В <strong>ориентированных графах (Directed Graphs)</strong> это правило перестаёт работать!<br />
+Схождение двух независимых путей в один узел (например, $A \rightarrow C$ и $B \rightarrow C$) <strong>не образует цикла</strong>:</p>
+
+<div class="code-block" data-lang="ascii">
+  <div class="code-header">
+    <span class="code-lang-tag">DIAGRAM</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p>Тип <code>bool</code> в Go занимает 1 байт (8 бит), хотя логически требует лишь 1 бит. Массив <code>make([]bool, n)</code> из 100,000 элементов займет 100 КБ, что легко помещается в L2-кэш процессора.<br />
-Если вы хотите показать хардкорный System Design на интервью при $N &gt; 10^8$, можно упомянуть реализацию <code>visited</code> через <strong>Bitset</strong> (<code>[]uint64</code>), где каждый бит отвечает за свой узел. Это сократит потребление памяти в 8 раз и ускорит сканирование непосещенных узлов через битовые операции. Но для LeetCode обычного <code>[]bool</code> достаточно.</p>
-  </div>
+  <pre class="language-ascii"><code class="language-ascii">      A ──► C ◄── B    (Ромб: это НЕ цикл!)
+</code></pre>
 </div>
 
-<hr />
-<h2 id="2-poisk-tsiklov-cycle-detection">2. Поиск циклов (Cycle Detection)</h2>
-
-<p>Если компоненты связности чаще ищут в неориентированных графах, то циклы — головная боль <strong>ориентированных</strong> графов (Directed Graphs).</p>
-<p>В неориентированном графе цикл найти тривиально: если во время обхода мы уткнулись в уже посещенную вершину (и это не тот узел, откуда мы только что пришли) — это цикл.</p>
-<p>В <strong>ориентированном графе</strong> всё сложнее. Схождение двух разных путей в один узел не означает цикл. Цикл возникает только тогда, когда мы встречаем так называемое <strong>Back-edge (Обратное ребро)</strong> — ребро, указывающее на предка, который <em>в данный момент находится в стеке вызовов</em>.</p>
-<h3 id="metod-trekh-tsvetov-white-gray-black">Метод Трех Цветов (White-Gray-Black)</h3>
-
-<p>Для ориентированных графов одного флага <code>visited</code> недостаточно. Нам нужны состояния:<br />
-1 - <strong>White (0)</strong>: Вершина еще не посещалась.<br />
-2 - <strong>Gray (1)</strong>: Вершина посещена, мы всё еще обходим её потомков (она находится в Call Stack).<br />
-3 - <strong>Black (2)</strong>: Вершина и все её потомки полностью обработаны.</p>
+<p>Цикл возникает исключительно тогда, когда ребро ведёт к предку, который <strong>прямо сейчас находится в текущем стеке вызовов (Call Stack)</strong>. Такое ребро называется <strong>обратным (Back-edge)</strong>.</p>
+<h4 id="tryokhtsvetnaya-markirovka-white-gray-black">Трёхцветная маркировка (White-Gray-Black)</h4>
+<p>Каждой вершине присваивается одно из трёх состояний:<br />
+- ⚪ <strong>White (0 — Белый):</strong> вершина ещё не исследовалась.<br />
+- 🟡 <strong>Gray (1 — Серый):</strong> вершина посещена, и в данный момент обходятся её потомки (вершина находится в стеке вызовов текущей цепочки).<br />
+- ⚫ <strong>Black (2 — Чёрный):</strong> вершина и все её потомки полностью исследованы, обход подграфа завершён.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2314,21 +2316,35 @@ end
     </button>
   </div>
   <pre class="mermaid">
-graph TD
-A[&quot;Узел 1&lt;br&gt;Gray - В стеке&quot;] --&gt; B[&quot;Узел 2&lt;br&gt;Gray - В стеке&quot;]
-B --&gt; C[&quot;Узел 3&lt;br&gt;White - Не посещен&quot;]
-B --&gt; D[&quot;Узел 4&lt;br&gt;Black - Обработан&quot;]
-C --&gt;|&quot;Back-edge&lt;br&gt;ЦИКЛ!&quot;| A
+flowchart TD
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
 
-style A fill:#334155,stroke:#64748b,color:#f8fafc
-style B fill:#334155,stroke:#64748b,color:#f8fafc
-style C fill:#334155,stroke:#94a3b8,color:#f8fafc
-style D fill:#555,stroke:#333,color:#fff
+A[&quot;Узел 1 (Gray: в стеке)&quot;]:::warning --&gt; B[&quot;Узел 2 (Gray: в стеке)&quot;]:::warning
+B --&gt; C[&quot;Узел 3 (Gray: в стеке)&quot;]:::warning
+B --&gt; D[&quot;Узел 4 (Black: завершён)&quot;]:::process
+C --&gt;|&quot;Back-edge в Серый узел:&lt;br&gt;ЦИКЛ ОБНАРУЖЕН!&quot;| A
   </pre>
 </div>
 
 
-<h3 id="idiomatichnyy-go-kod-detektor-tsiklov">Идиоматичный Go-код: Детектор циклов</h3>
+<div class="callout callout-note">
+  <div class="callout-header">
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Заметка</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Инвариант детектирования цикла:</strong><br />
+Если в процессе обхода мы встречаем соседа, окрашенного в <strong>серый цвет (<code>Gray == 1</code>)</strong>, в ориентированном графе гарантированно обнаружен <strong>цикл</strong>!</p>
+  </div>
+</div>
+
+<hr />
+<h3 id="3-idiomaticheskaya-realizatsiya-detektora-tsiklov-na-go">3. Идиоматическая реализация детектора циклов на Go</h3>
 
 
 <div class="code-block" data-lang="go">
@@ -2339,39 +2355,45 @@ style D fill:#555,stroke:#333,color:#fff
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func hasCycle(n int, graph [][]int) bool {
-    // Используем uint8 вместо int для экономии памяти и 
-    // лучшей утилизации кэш-линий процессора.
-    // 0 = White, 1 = Gray, 2 = Black
+  <pre class="language-go"><code class="language-go">package main
+
+// hasCycle проверяет наличие циклов в ориентированном графе методом трех цветов.
+// Временная сложность: O(V + E) — каждый узел красится в серый и черный строго 1 раз.
+// Пространственная сложность: O(V) — стек рекурсии и массив цветов.
+func hasCycle(n int, graph [][]int) bool {
+    const (
+        white uint8 = 0 // Не посещен
+        gray  uint8 = 1 // В процессе обхода (в стеке)
+        black uint8 = 2 // Полностью завершен
+    )
+
     colors := make([]uint8, n)
 
     var dfs func(node int) bool
     dfs = func(node int) bool {
-        // Красим текущий узел в серый (добавляем в &quot;стек&quot;)
-        colors[node] = 1
+        colors[node] = gray // Помещаем в текущую цепочку
 
         for _, neighbor := range graph[node] {
-            if colors[neighbor] == 1 {
-                // Сосед серый! Мы нашли обратное ребро в текущем пути.
+            // Обнаружено обратное ребро к серому предку -&gt; ЦИКЛ!
+            if colors[neighbor] == gray {
                 return true
             }
-            if colors[neighbor] == 0 {
-                // Если сосед белый, идем в него
+            // Белый сосед -&gt; рекурсивный спуск
+            if colors[neighbor] == white {
                 if dfs(neighbor) {
-                    return true // Прокидываем ошибку наверх (Fast Fail)
+                    return true // Fast Fail проброс наверх
                 }
             }
-            // Если сосед черный (2), игнорируем его — это просто кросс-ребро.
+            // Черных соседей просто игнорируем (они уже проверены и безопасны)
         }
 
-        // Все потомки обработаны, красим в черный (убираем из &quot;стека&quot;)
-        colors[node] = 2
+        colors[node] = black // Завершаем обработку подграфа
         return false
     }
 
-    // Граф может быть несвязным, поэтому запускаем обход из каждой белой вершины
+    // Запускаем обход для каждой еще не посещенной вершины (граф может быть несвязным)
     for i := 0; i &lt; n; i++ {
-        if colors[i] == 0 {
+        if colors[i] == white {
             if dfs(i) {
                 return true
             }
@@ -2386,29 +2408,58 @@ style D fill:#555,stroke:#333,color:#fff
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Black-узлы</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
   </div>
   <div class="callout-body">
-    <p>Многие кандидаты забывают красить узлы в черный (состояние 2) при возврате из рекурсии и просто сбрасывают их обратно в белый (состояние 0) — паттерн Backtracking-а.<br />
-<strong>Это фатальная ошибка асимптотики.</strong> Если вы будете сбрасывать узлы в белый, алгоритм начнет заново обходить одни и те же поддеревья из других путей. Сложность деградирует с $O(V + E)$ до экспоненциальной $O(2^V)$. Черный цвет гарантирует, что мы посетим каждый узел <em>ровно один раз</em>.</p>
+    <p><strong>Фатальная ошибка новичков (Сброс в White вместо Black):</strong><br />
+Многие разработчики путают поиск циклов с бэктрекингом и после обхода детей сбрасывают цвет обратно в <code>white (0)</code>: <code>colors[node] = 0</code>.<br />
+Это приводит к катастрофическому взрыву сложности с $O(V + E)$ до <strong>экспоненциальной $O(2^V)$</strong>, так как один и тот же подграф будет многократно переобследоваться из других путей. Чёрный цвет (<code>black = 2</code>) — это гарантия того, что узел полностью валиден и к нему не нужно возвращаться.</p>
   </div>
 </div>
 
-<h3 id="mechanical-sympathy-grafy-i-garbage-collector-gc">Mechanical Sympathy: Графы и Garbage Collector (GC)</h3>
-
-<p>Знаете ли вы, что Go-рантайм использует именно этот метод Трех Цветов (Tricolor Mark-and-Sweep алгоритм) для работы сборщика мусора? <br />
-Вся память вашего приложения — это направленный граф, где структуры — это узлы, а указатели — это направленные ребра. <br />
-GC в Go ищет <strong>компоненты связности</strong>, достижимые из корней (глобальных переменных и стеков горутин). Объекты красятся в серый (добавлены в очередь на сканирование), затем в черный (отсканированы). Все белые объекты в конце цикла GC удаляются. <br />
-Понимание графов на этом уровне отличает кодера от инженера.</p>
 <hr />
-<h2 id="itog">Итог</h2>
+<h3 id="4-mekhanicheskaya-simpatiya-svyaz-s-go-garbage-collector">4. Механическая симпатия: Связь с Go Garbage Collector</h3>
 
-<ol>
-<li><strong>Компоненты связности</strong> в неориентированном графе находятся простым DFS/BFS и одним булевым массивом <code>visited</code>.</li>
-<li><strong>Поиск циклов</strong> в ориентированном графе требует трех состояний (White/Gray/Black). Встреча серого узла = цикл.</li>
-<li>Использование <code>[]uint8</code> для массива состояний позволяет плотнее упаковывать данные в кэш-линии CPU, снижая количество промахов кэша (Cache Misses).</li>
-</ol>
-<p>Поиск циклов — это не просто проверка "есть/нет". Этот механизм является фундаментом для решения задач с зависимостями. Как отсортировать задачи так, чтобы каждая выполнялась только после завершения её зависимостей (например, сборка Docker-образов или модулей в <code>go mod</code>)? Об этом мы поговорим в разборе одной из самых популярных задач с LeetCode: <a href="3-course-schedule.html" class="wikilink">3. Course Schedule</a>.</p>
+<p>Знаете ли вы, что рантайм Go использует алгоритм трёх цветов прямо во время работы вашего сервиса?</p>
+<p>Память процесса Go — это направленный граф объектов в куче:<br />
+- <strong>Белые объекты (White):</strong> кандидаты на удаление (память будет освобождена).<br />
+- <strong>Серые объекты (Gray):</strong> объекты, найденные сборщиком мусора, чьи внутренние указатели ещё не отсканированы (находятся в очереди сканирования <code>gcWork</code>).<br />
+- <strong>Чёрные объекты (Black):</strong> живые объекты, все ссылки из которых полностью проверены.</p>
+<p>Понимание топологии графов позволяет инженеру осознавать, как структуры данных в коде влияют на паузы GC и задержки аллокаций.</p>
+<hr />
+<h3 id="rezyume-dlya-intervyu">Резюме для интервью</h3>
+
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Задача</th>
+<th>Тип графа</th>
+<th>Механизм проверки</th>
+<th>Сложность</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Компоненты связности</strong></td>
+<td>Неориентированный</td>
+<td>Двухцветный массив <code>visited</code> (<code>bool</code>)</td>
+<td>$O(V + E)$</td>
+</tr>
+<tr>
+<td><strong>Поиск циклов</strong></td>
+<td>Ориентированный</td>
+<td>Трёхцветная маркировка (White-Gray-Black)</td>
+<td>$O(V + E)$</td>
+</tr>
+<tr>
+<td><strong>Ключевой маркер цикла</strong></td>
+<td>Ориентированный</td>
+<td>Встреча соседа со статусом <code>Gray</code> (в стеке)</td>
+<td>$O(1)$ на проверку</td>
+</tr>
+</tbody>
+</table></div>
+<p>В следующей задаче мы применим поиск циклов к разрешению зависимостей в учебных планах и сборках проектов: <a href="3-course-schedule.html" class="wikilink">3. Course Schedule</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2436,7 +2487,7 @@ GC в Go ищет <strong>компоненты связности</strong>, до
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#fundament-analiza-grafov-komponenty-i-tsikly">Фундамент анализа графов: Компоненты и Циклы</a></li><li class="toc-item toc-h2"><a href="#1-komponenty-svyaznosti-connected-components">1. Компоненты связности (Connected Components)</a></li><li class="toc-item toc-h3"><a href="#algoritm-pokraska-ili-zalivka-flood-fill">Алгоритм: Покраска или Заливка (Flood Fill)</a></li><li class="toc-item toc-h3"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#2-poisk-tsiklov-cycle-detection">2. Поиск циклов (Cycle Detection)</a></li><li class="toc-item toc-h3"><a href="#metod-trekh-tsvetov-white-gray-black">Метод Трех Цветов (White-Gray-Black)</a></li><li class="toc-item toc-h3"><a href="#idiomatichnyy-go-kod-detektor-tsiklov">Идиоматичный Go-код: Детектор циклов</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-grafy-i-garbage-collector-gc">Mechanical Sympathy: Графы и Garbage Collector (GC)</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h3"><a href="#1-komponenty-svyaznosti-v-neorientirovannykh-grafakh">1. Компоненты связности в неориентированных графах</a></li><li class="toc-item toc-h4"><a href="#algoritm-vydeleniya-komponent-volnovoy-flood-fill">Алгоритм выделения компонент: Волновой Flood Fill</a></li><li class="toc-item toc-h3"><a href="#2-poisk-tsiklov-v-orientirovannykh-grafakh-metod-tryokh-tsvetov">2. Поиск циклов в ориентированных графах: Метод трёх цветов</a></li><li class="toc-item toc-h4"><a href="#tryokhtsvetnaya-markirovka-white-gray-black">Трёхцветная маркировка (White-Gray-Black)</a></li><li class="toc-item toc-h3"><a href="#3-idiomaticheskaya-realizatsiya-detektora-tsiklov-na-go">3. Идиоматическая реализация детектора циклов на Go</a></li><li class="toc-item toc-h3"><a href="#4-mekhanicheskaya-simpatiya-svyaz-s-go-garbage-collector">4. Механическая симпатия: Связь с Go Garbage Collector</a></li><li class="toc-item toc-h3"><a href="#rezyume-dlya-intervyu">Резюме для интервью</a></li>
   </ul>
 </aside>
 

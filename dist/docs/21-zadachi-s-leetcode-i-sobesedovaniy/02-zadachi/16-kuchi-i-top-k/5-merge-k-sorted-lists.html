@@ -2171,31 +2171,34 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~8 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">5. Merge K Sorted Lists</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="orkestratsiya-potokov-sliyanie-otsortirovannykh-dannykh">Оркестрация потоков: Слияние отсортированных данных</h2>
+            <blockquote>
+<p><em>«Слияние упорядоченных последовательностей — самый естественный способ построения порядка из разрозненных фрагментов».</em><br />
+— Джон фон Нейман</p>
+</blockquote>
+<h2 id="orkestratsiya-potokov-sliyanie-otsortirovannykh-dannykh">Оркестрация потоков: Слияние отсортированных данных</h2>
 
-<p>В системном программировании и архитектуре баз данных есть фундаментальная проблема: <strong>Агрегация отсортированных шардов</strong>.<br />
-Представьте, что у вас есть 10 серверов баз данных (шардов). Вы делаете запрос: <code>SELECT * FROM logs ORDER BY timestamp DESC</code>. Каждый шард возвращает вам <em>свой</em> отсортированный поток логов. Вам нужно на лету слить эти 10 потоков в один общий отсортированный ответ для клиента, не загружая все терабайты данных в оперативную память балансировщика.</p>
-<p>Эта операция — основа алгоритма внешней сортировки (External Sort), который используется в СУБД (PostgreSQL, ClickHouse) для слияния данных с диска. </p>
-<p>Задача <strong>Merge k Sorted Lists</strong> (LeetCode №23) моделирует именно этот процесс на классических связных списках (Linked Lists).</p>
-<p><strong>Условие:</strong> Дан массив из <code>k</code> связных списков, каждый из которых отсортирован по возрастанию. Нужно слить их все в один отсортированный связный список и вернуть его голову.</p>
+<p>В архитектуре высоконагруженных хранилищ и баз данных регулярно возникает задача <strong>агрегации упорядоченных шардов</strong>.<br />
+Представьте кластер из $K$ узлов шардированной БД (PostgreSQL, ClickHouse). Выполняется запрос: <code>SELECT * FROM logs ORDER BY timestamp ASC</code>. Каждый шард возвращает клиенту <em>свой</em> отсортированный поток данных.<br />
+Задача балансировщика — на лету объединить эти $K$ потоков в единую глобально отсортированную последовательность, не буферизируя терабайты данных в RAM.</p>
+<p>Эта механика лежит в основе внешней сортировки (External Merge Sort). Задача <strong>Merge k Sorted Lists</strong> (LeetCode №23) моделирует данный процесс на связных списках.</p>
+<p><strong>Условие:</strong> Дан массив из $k$ связных списков, каждый из которых упорядочен по возрастанию. Требуется объединить их в один отсортированный связный список и вернуть его голову.</p>
 <hr />
-<h2 id="podkhod-1-min-heap-potokovaya-obrabotka">Подход 1: Min-Heap (Потоковая обработка)</h2>
+<h2 id="podkhod-1-min-heap-potokovaya-agregatsiya">Подход 1: Min-Heap (Потоковая агрегация)</h2>
 
-<p>Если у нас есть $K$ отсортированных списков, самый маленький элемент гарантированно находится <strong>среди голов (первых узлов)</strong> этих $K$ списков. <br />
-Мы можем завести Минимальную кучу (Min-Heap) и положить туда по одному (первому) элементу из каждого списка. </p>
+<p>В любой момент времени наименьший из невыбранных элементов гарантированно находится среди <strong>голов (первых элементов)</strong> текущих $K$ списков.</p>
 <p><strong>Алгоритм:</strong><br />
-1. Инициализируем Min-Heap и кладем в нее головы всех <code>K</code> списков.<br />
-2. Извлекаем из кучи минимальный узел (Pop). Этот узел точно является глобальным минимумом на текущий момент.<br />
-3. Добавляем этот узел в наш итоговый результирующий список.<br />
-4. Если у извлеченного узла есть следующий элемент (<code>node.Next != nil</code>), мы добавляем этот следующий элемент в кучу (Push).<br />
-5. Повторяем, пока куча не опустеет.</p>
+1. Помещаем головы всех непустых списков в Min-Heap.<br />
+2. Извлекаем минимальный узел из кучи (<code>Pop</code>). Этот узел является глобальным минимумом текущего состояния.<br />
+3. Добавляем его в результирующий список.<br />
+4. Если у извлеченного узла существует следующий элемент (<code>node.Next != nil</code>), добавляем его в кучу (<code>Push</code>).<br />
+5. Повторяем шаг до полного исчерпания кучи.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2209,42 +2212,32 @@
     </button>
   </div>
   <pre class="mermaid">
-graph TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-subgraph &quot;Отсортированные потоки (Списки)&quot;
-L1[&quot;L1: [1] -&gt; 4 -&gt; 5&quot;]
-L2[&quot;L2: [1] -&gt; 3 -&gt; 4&quot;]
-L3[&quot;L3: [2] -&gt; 6&quot;]
+flowchart TD
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+
+subgraph Streams[&quot;Отсортированные потоки&quot;]
+L1[&quot;L1: [1] -&gt; 4 -&gt; 5&quot;]:::process
+L2[&quot;L2: [1] -&gt; 3 -&gt; 4&quot;]:::process
+L3[&quot;L3: [2] -&gt; 6&quot;]:::process
 end
 
-subgraph &quot;Min-Heap (размер K=3)&quot;
-H[&quot;Куча хранит текущие головы:&lt;br&gt;Min(1, 1, 2)&quot;]
+subgraph Heap[&quot;Min-Heap размера K = 3&quot;]
+H[&quot;Текущие головы:&lt;br&gt;Min(1, 1, 2)&quot;]:::accent
 end
 
-subgraph &quot;Результирующий поток&quot;
-R[&quot;Result: 1 -&gt; ...&quot;]:::success
+subgraph Result[&quot;Результирующий поток&quot;]
+R[&quot;Result: 1 -&gt; 1 -&gt; 2 -&gt; ...&quot;]:::success
 end
 
-L1 -.-&gt;|&quot;Добавляем голову&quot;| H
-L2 -.-&gt;|&quot;Добавляем голову&quot;| H
-L3 -.-&gt;|&quot;Добавляем голову&quot;| H
-
-H -.-&gt;|&quot;Pop Min&quot;| R
-R -.-&gt;|&quot;Двигаем указатель L1.Next&quot;| L1
+L1 -.-&gt; H
+L2 -.-&gt; H
+L3 -.-&gt; H
+H --&gt;|Pop Min| R
   </pre>
 </div>
 
-
-<h3 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h3>
 
 
 <div class="code-block" data-lang="go">
@@ -2255,19 +2248,19 @@ R -.-&gt;|&quot;Двигаем указатель L1.Next&quot;| L1
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">import &quot;container/heap&quot;
+  <pre class="language-go"><code class="language-go">package main
 
-// Определение узла связного списка (дается LeetCode)
+import &quot;container/heap&quot;
+
 type ListNode struct {
     Val  int
     Next *ListNode
 }
 
-// 1. Бойлерплейт для кучи, хранящей указатели на узлы
+// MinHeap для указателей на узлы списка
 type MinHeap []*ListNode
 
 func (h MinHeap) Len() int           { return len(h) }
-// Сравниваем узлы по их значению
 func (h MinHeap) Less(i, j int) bool { return h[i].Val &lt; h[j].Val }
 func (h MinHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 
@@ -2283,33 +2276,28 @@ func (h *MinHeap) Pop() any {
     return x
 }
 
-// 2. Основная логика
+// mergeKListsHeap объединяет K списков через Min-Heap.
+// Временная сложность: O(N * log K), где N — суммарное число узлов, K — число списков.
+// Пространственная сложность: O(K) для кучи.
 func mergeKListsHeap(lists []*ListNode) *ListNode {
     h := &amp;MinHeap{}
     heap.Init(h)
 
-    // Инициализируем кучу головами всех непустых списков
     for _, list := range lists {
         if list != nil {
             heap.Push(h, list)
         }
     }
 
-    // Используем паттерн &quot;Фиктивный узел&quot; (Dummy Node)
-    // Это избавляет от необходимости писать if head == nil при вставке первого элемента
+    // Паттерн Dummy Node для упрощения работы с головой списка
     dummy := &amp;ListNode{}
     curr := dummy
 
-    // Пока в куче есть узлы
     for h.Len() &gt; 0 {
-        // Достаем минимальный узел
         minNode := heap.Pop(h).(*ListNode)
-
-        // Прицепляем его к результату
         curr.Next = minNode
         curr = curr.Next
 
-        // Если у этого списка есть продолжение, кидаем его в кучу
         if minNode.Next != nil {
             heap.Push(h, minNode.Next)
         }
@@ -2320,23 +2308,15 @@ func mergeKListsHeap(lists []*ListNode) *ListNode {
 </code></pre>
 </div>
 
-<h3 id="mechanical-sympathy-otsenka-i-nyuansy">Mechanical Sympathy: Оценка и нюансы</h3>
-<ul>
-<li><strong>Время:</strong> $O(N \log K)$, где $N$ — общее количество всех узлов во всех списках, а $K$ — количество списков. Куча никогда не вырастает больше размера $K$. Вставка и извлечение стоят $O(\log K)$.</li>
-<li><strong>Память:</strong> $O(K)$ для хранения кучи. Мы <strong>не создаем новые узлы</strong>, мы просто перевешиваем указатели (<code>Next</code>).</li>
-<li><strong>Цена интерфейсов:</strong> Опять же, мы используем пакет <code>container/heap</code>, что приводит к упаковке <code>*ListNode</code> в <code>any</code>. Для связных списков, которые и так фрагментированы в куче (Pointer Chasing), это не так критично, но в сверхбыстрых системах этот оверхед можно убрать, написав дженерик-кучу.</li>
-</ul>
 <hr />
 <h2 id="podkhod-2-razdelyay-i-vlastvuy-divide-conquer">Подход 2: Разделяй и властвуй (Divide & Conquer)</h2>
 
-<p>Подход с кучей идеален для потоковой передачи данных по сети. Но если все списки <strong>уже лежат в оперативной памяти</strong>, мы можем обойтись вообще без дополнительных структур данных, используя паттерн слияния (как в сортировке слиянием — Merge Sort).</p>
-<p>Мы можем написать вспомогательную функцию <code>mergeTwoLists</code>, которая сливает два списка за $O(L_1 + L_2)$. <br />
-Затем мы берем наш массив из $K$ списков и начинаем сливать их попарно:<br />
-- 0-й с 1-м -&gt; новый список А<br />
-- 2-й с 3-м -&gt; новый список Б<br />
-И так далее. Массив из $K$ списков превращается в массив из $K/2$ списков. Повторяем процесс, пока не останется 1 список.</p>
-<h3 id="idiomatichnaya-realizatsiya-in-place">Идиоматичная реализация (In-Place)</h3>
-
+<p>Если все списки уже загружены в оперативную память, можно применить попарное слияние (Divide &amp; Conquer) без использования дополнительных структур данных:</p>
+<ol>
+<li>Сливаем списки попарно: $0$-й с $1$-м, $2$-й с $3$-м и т.д.</li>
+<li>Количество списков уменьшается вдвое: с $K$ до $K/2$.</li>
+<li>Повторяем процедуру за $\lceil\log_2 K\rceil$ раундов.</li>
+</ol>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2346,7 +2326,8 @@ func mergeKListsHeap(lists []*ListNode) *ListNode {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// Вспомогательная функция слияния ДВУХ списков
+  <pre class="language-go"><code class="language-go">package main
+
 func mergeTwoLists(l1, l2 *ListNode) *ListNode {
     dummy := &amp;ListNode{}
     curr := dummy
@@ -2362,7 +2343,6 @@ func mergeTwoLists(l1, l2 *ListNode) *ListNode {
         curr = curr.Next
     }
 
-    // Прицепляем хвост того списка, который не закончился
     if l1 != nil {
         curr.Next = l1
     } else {
@@ -2372,29 +2352,26 @@ func mergeTwoLists(l1, l2 *ListNode) *ListNode {
     return dummy.Next
 }
 
-// Главная функция: Разделяй и властвуй
+// mergeKLists объединяет K списков методом Divide &amp; Conquer.
+// Временная сложность: O(N * log K).
+// Пространственная сложность: O(1) in-place при попарной склейке.
 func mergeKLists(lists []*ListNode) *ListNode {
     if len(lists) == 0 {
         return nil
     }
 
-    // Будем сужать окно массива, пока не останется 1 элемент
     for len(lists) &gt; 1 {
         var merged []*ListNode
 
-        // Идем с шагом 2, сливая пары
         for i := 0; i &lt; len(lists); i += 2 {
             l1 := lists[i]
             var l2 *ListNode
             if i+1 &lt; len(lists) {
                 l2 = lists[i+1]
             }
-
-            // Сливаем и добавляем в новый массив текущей итерации
             merged = append(merged, mergeTwoLists(l1, l2))
         }
 
-        // Переходим к следующему &quot;уровню&quot; дерева слияний
         lists = merged
     }
 
@@ -2403,20 +2380,14 @@ func mergeKLists(lists []*ListNode) *ListNode {
 </code></pre>
 </div>
 
-<h3 id="sravnenie-s-min-heap">Сравнение с Min-Heap</h3>
+<hr />
+<h2 id="arkhitekturnoe-sravnenie">Архитектурное сравнение</h2>
 
-<p>Оба подхода имеют одинаковую временную сложность $O(N \log K)$. <br />
-- В случае кучи логарифм возникает из-за операций <code>Sift Down/Up</code> при каждой вставке.<br />
-- В случае Divide &amp; Conquer логарифм возникает из-за глубины "дерева слияний" (мы делим массив $K$ пополам $\log_2 K$ раз).</p>
-<p><strong>Что выберет Senior?</strong><br />
-В чистом виде на LeetCode подход <strong>Divide &amp; Conquer</strong> часто отрабатывает <strong>быстрее</strong> (в миллисекундах) и требует строго $O(1)$ дополнительной памяти (переиспользование массива <code>lists</code> можно сделать in-place без выделения нового слайса <code>merged</code>). Это происходит из-за отсутствия boxing/unboxing интерфейсов и отсутствия накладных расходов на вызовы <code>heap.Push/Pop</code>.</p>
-<p>Однако, если интервьюер спрашивает: <em>"А что если списки не влезают в память, и мы читаем их итераторами из сети?"</em>, вы должны использовать вариант с <strong>Min-Heap</strong>. Divide &amp; Conquer требует полного доступа к связным спискам, а Min-Heap потребляет данные по одному узлу (lazy evaluation).</p>
-<h2 id="itog">Итог</h2>
-
-<p>Задачи на K-элементов (Top K, Merge K) — это краеугольный камень системного дизайна на уровне алгоритмов. <br />
-- Для работы с частотами и скользящими окнами в потоке данных — используйте <strong>Min-Heap</strong>.<br />
-- Для слияния статических In-Memory структур — используйте <strong>Divide &amp; Conquer</strong>.</p>
-<p>На этом мы завершаем раздел структур данных, отвечающих за экстремумы и ранжирование, и переходим к следующему классу задач, где нас интересует не порядок элементов, а быстрый доступ и вычисление суммы на отрезках.</p>
+<ul>
+<li><strong>Min-Heap:</strong> $O(K)$ памяти, идеально для потоковых данных (Lazy Evaluation / Streaming). Узлы считываются по одному по мере продвижения.</li>
+<li><strong>Divide &amp; Conquer:</strong> $O(1)$ памяти, превосходная производительность на массивах в оперативной памяти (отсутствует overhead на интерфейсы <code>container/heap</code>).</li>
+</ul>
+<p>Далее мы разберем паттерн балансировки двух куч для расчета динамической медианы в реальном времени: <a href="6-find-median-from-data-stream.html" class="wikilink">6. Find Median from Data Stream</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2444,7 +2415,7 @@ func mergeKLists(lists []*ListNode) *ListNode {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#orkestratsiya-potokov-sliyanie-otsortirovannykh-dannykh">Оркестрация потоков: Слияние отсортированных данных</a></li><li class="toc-item toc-h2"><a href="#podkhod-1-min-heap-potokovaya-obrabotka">Подход 1: Min-Heap (Потоковая обработка)</a></li><li class="toc-item toc-h3"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-otsenka-i-nyuansy">Mechanical Sympathy: Оценка и нюансы</a></li><li class="toc-item toc-h2"><a href="#podkhod-2-razdelyay-i-vlastvuy-divide-conquer">Подход 2: Разделяй и властвуй (Divide &amp; Conquer)</a></li><li class="toc-item toc-h3"><a href="#idiomatichnaya-realizatsiya-in-place">Идиоматичная реализация (In-Place)</a></li><li class="toc-item toc-h3"><a href="#sravnenie-s-min-heap">Сравнение с Min-Heap</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#orkestratsiya-potokov-sliyanie-otsortirovannykh-dannykh">Оркестрация потоков: Слияние отсортированных данных</a></li><li class="toc-item toc-h2"><a href="#podkhod-1-min-heap-potokovaya-agregatsiya">Подход 1: Min-Heap (Потоковая агрегация)</a></li><li class="toc-item toc-h2"><a href="#podkhod-2-razdelyay-i-vlastvuy-divide-conquer">Подход 2: Разделяй и властвуй (Divide &amp; Conquer)</a></li><li class="toc-item toc-h2"><a href="#arkhitekturnoe-sravnenie">Архитектурное сравнение</a></li>
   </ul>
 </aside>
 

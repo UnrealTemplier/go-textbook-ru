@@ -2171,26 +2171,30 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~8 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">4. Top K Frequent Elements</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="biznes-tsennost-chastotnosti-ot-abstraktsii-k-analitike">Бизнес-ценность частотности: От абстракции к аналитике</h2>
+            <blockquote>
+<p><em>«Знание того, что происходит часто, важнее знания того, что происходит вообще».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="biznes-tsennost-chastotnosti-ot-abstraktsii-k-analitike">Бизнес-ценность частотности: От абстракции к аналитике</h2>
 
-<p>В предыдущей статье <a href="3-kth-largest-element-in-array.html" class="wikilink">3. Kth Largest Element in Array</a> мы искали $K$-е по величине число, оперируя исключительно самими значениями элементов. Но в реальных бэкенд-системах (и на системных секциях FAANG) нас редко интересуют просто большие числа. </p>
-<p>Нас интересуют <strong>частоты (Frequencies)</strong>:<br />
-- <strong>Антифрод (Rate Limiting)</strong>: Найти 10 IP-адресов, с которых идет больше всего запросов.<br />
-- <strong>Аналитика</strong>: Вывести 5 самых популярных товаров на главной странице (Trending).<br />
-- <strong>Кэширование</strong>: Алгоритм LFU (Least Frequently Used) должен знать, какие ключи запрашиваются реже всего, чтобы вытеснить их из памяти.</p>
-<p>Задача <strong>Top K Frequent Elements</strong> (LeetCode №347) просит нас вернуть $K$ наиболее часто встречающихся элементов из массива.</p>
-<p>Здесь мы комбинируем два инструмента: хэш-таблицы для агрегации и кучи (или корзины) для ранжирования.</p>
+<p>В задаче <a href="3-kth-largest-element-in-array.html" class="wikilink">3. Kth Largest Element in Array</a> мы находили $k$-й по величине элемент, ранжируя сами числовые значения. В промышленной разработке чаще требуется ранжировать сущности по <strong>частоте их появления (Frequency)</strong>:<br />
+- <strong>Rate Limiting / WAF:</strong> выявление $10$ наиболее активных IP-адресов, создающих паразитный трафик.<br />
+- <strong>E-Commerce:</strong> вывод $5$ наиболее продаваемых товаров на главной витрине (Trending Items).<br />
+- <strong>Кэширование (LFU):</strong> определение наименее востребованных ключей для вытеснения из оперативной памяти.</p>
+<p>Задача <strong>Top K Frequent Elements</strong> (LeetCode №347) требует вернуть $K$ наиболее часто встречающихся элементов из массива.</p>
+<p>Решение задачи строится в два этапа:<br />
+1. <strong>Агрегация:</strong> подсчет частот через <code>map[int]int</code>.<br />
+2. <strong>Ранжирование:</strong> выбор топ-$K$ кандидатов с помощью <strong>Min-Heap</strong> либо <strong>Bucket Sort</strong>.</p>
 <hr />
-<h2 id="shag-1-fundament-agregatsiya-chastot">Шаг 1: Фундамент — Агрегация частот</h2>
+<h2 id="shag-1-agregatsiya-chastot">Шаг 1: Агрегация частот</h2>
 
-<p>Независимо от того, какой алгоритм ранжирования мы выберем дальше, первым шагом мы обязаны собрать частотный словарь. В Go для этого идеально подходит <code>map[int]int</code>.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2200,29 +2204,28 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">freqMap := make(map[int]int)
+  <pre class="language-go"><code class="language-go">freqMap := make(map[int]int, len(nums))
 for _, num := range nums {
     freqMap[num]++
 }
 </code></pre>
 </div>
 
-<div class="callout callout-info">
+<div class="callout callout-note">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом: Размер map</span>
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Заметка</span>
   </div>
   <div class="callout-body">
-    <p>Если вы заранее знаете, что в массиве из $N$ элементов может быть много уникальных чисел (например, ID товаров), хорошим тоном будет задать <code>Capacity</code> для мапы при создании: <code>make(map[int]int, len(nums))</code>. Это избавит рантайм Go от необходимости делать дорогостоящие эвакуации бакетов (map growth / rehashing) при заполнении мапы.</p>
+    <p><strong>Mechanical Sympathy: Емкость хэш-таблицы</strong><br />
+Предварительное задание <code>capacity</code> через <code>make(map[int]int, len(nums))</code> минимизирует количество эвакуаций бакетов (map growth/rehashing) в рантайме Go, избавляя сборщик мусора от лишней работы.</p>
   </div>
 </div>
 
 <hr />
-<h2 id="podkhod-1-min-heap-potokovyy-i-universalnyy">Подход 1: Min-Heap (Потоковый и универсальный)</h2>
+<h2 id="podkhod-1-min-heap-razmera-k">Подход 1: Min-Heap размера K</h2>
 
-<p>Используя паттерн, описанный в <a href="2-zadachi-top-k.html" class="wikilink">2. Задачи Top K</a>, мы применяем <strong>Минимальную кучу (Min-Heap) размера K</strong>.</p>
-<p>Но теперь элементами кучи будут не просто числа, а структуры <code>Item</code>, содержащие само значение и его частоту. <br />
-<strong>Ключевое отличие:</strong> Куча сортирует элементы <em>по их частоте</em>, а не по значению.</p>
+<p>Мы применяем Min-Heap, где элементы упорядочены <strong>по частоте встречаемости</strong>. Корень кучи всегда содержит элемент с минимальной частотой из текущего топ-$K$.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2232,20 +2235,19 @@ for _, num := range nums {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">import &quot;container/heap&quot;
+  <pre class="language-go"><code class="language-go">package main
 
-// 1. Описываем структуру элемента
+import &quot;container/heap&quot;
+
 type Item struct {
     val   int
     count int
 }
 
-// 2. Реализуем интерфейс кучи
 type MinHeap []Item
 
 func (h MinHeap) Len() int           { return len(h) }
-// ВАЖНО: Сравниваем по частоте, чтобы наименее частый был в корне
-func (h MinHeap) Less(i, j int) bool { return h[i].count &lt; h[j].count }
+func (h MinHeap) Less(i, j int) bool { return h[i].count &lt; h[j].count } // Сравнение по частоте
 func (h MinHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 
 func (h *MinHeap) Push(x any) {
@@ -2260,28 +2262,26 @@ func (h *MinHeap) Pop() any {
     return x
 }
 
+// topKFrequentHeap находит K самых частых элементов через Min-Heap.
+// Временная сложность: O(N * log K).
+// Пространственная сложность: O(N) для map + O(K) для кучи.
 func topKFrequentHeap(nums []int, k int) []int {
-    // 1. Агрегация частот
     freqMap := make(map[int]int)
     for _, num := range nums {
         freqMap[num]++
     }
 
-    // 2. Инициализируем кучу емкостью K
     h := make(MinHeap, 0, k)
 
-    // 3. Поддерживаем размер кучи равным K
     for val, count := range freqMap {
         if h.Len() &lt; k {
             heap.Push(&amp;h, Item{val: val, count: count})
         } else if count &gt; h[0].count {
-            // Если новый элемент встречается чаще, чем &quot;худший&quot; из нашего Топ-K
             h[0] = Item{val: val, count: count}
-            heap.Fix(&amp;h, 0) // Оптимизация Sift Down без аллокаций
+            heap.Fix(&amp;h, 0)
         }
     }
 
-    // 4. Собираем результат
     res := make([]int, 0, k)
     for _, item := range h {
         res = append(res, item.val)
@@ -2292,17 +2292,11 @@ func topKFrequentHeap(nums []int, k int) []int {
 </code></pre>
 </div>
 
-<h3 id="otsenka-slozhnosti">Оценка сложности</h3>
-<ul>
-<li><strong>Время:</strong> $O(N \log K)$. Сбор частот занимает $O(N)$. Проход по мапе из $U$ уникальных элементов (где $U \le N$) с вставкой в кучу занимает $O(U \log K)$. Поскольку $K \le U \le N$, итоговое время асимптотически равно $O(N \log K)$.</li>
-<li><strong>Память:</strong> $O(N)$ для хэш-таблицы + $O(K)$ для кучи.</li>
-</ul>
 <hr />
-<h2 id="podkhod-2-korzinnaya-sortirovka-bucket-sort-uroven-senior">Подход 2: Корзинная сортировка (Bucket Sort) - Уровень Senior</h2>
+<h2 id="podkhod-2-korzinnaya-sortirovka-bucket-sort-za-on">Подход 2: Корзинная сортировка (Bucket Sort) за O(N)</h2>
 
-<p>Интервьюер может задать вопрос: <em>"А можно ли решить эту задачу за чистое $O(N)$ время?"</em></p>
-<p>Да, можно. Мы можем использовать свойство конкретно этой задачи: <strong>Частота любого элемента не может превышать размер массива $N$.</strong> <br />
-Следовательно, мы можем создать массив (корзины), где <strong>индекс</strong> — это частота, а <strong>значение</strong> — список элементов с такой частотой.</p>
+<p>Частота любого числа не может превышать общего размера массива $N$.<br />
+Это позволяет применить <strong>Bucket Sort</strong>: массив корзин размером $N + 1$, где <strong>индекс</strong> — это частота, а <strong>значение</strong> — срез элементов с данной частотой.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2316,23 +2310,21 @@ func topKFrequentHeap(nums []int, k int) []int {
     </button>
   </div>
   <pre class="mermaid">
-graph TD
-A[&quot;Вход: [1, 1, 1, 2, 2, 3]&quot;] --&gt;|&quot;freqMap&quot;| B[&quot;1 -&gt; 3 раз&lt;br&gt;2 -&gt; 2 раза&lt;br&gt;3 -&gt; 1 раз&quot;]
-B --&gt;|&quot;Bucket Sort&quot;| C[&quot;Корзины -Buckets-&quot;]
+flowchart TD
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
 
-C --&gt; D[&quot;Индекс 3 -Частота-&lt;br&gt;Значение: [1]&quot;]
-C --&gt; E[&quot;Индекс 2 -Частота-&lt;br&gt;Значение: [2]&quot;]
-C --&gt; F[&quot;Индекс 1 -Частота-&lt;br&gt;Значение: [3]&quot;]
-C --&gt; G[&quot;Индекс 0 -Пусто-&quot;]
+Input[&quot;Вход: [1, 1, 1, 2, 2, 3]&quot;]:::entry --&gt; Freq[&quot;freqMap:&lt;br&gt;1 -&gt; 3 раза, 2 -&gt; 2 раза, 3 -&gt; 1 раз&quot;]:::process
+Freq --&gt; Buckets[&quot;Массив корзин (индекс = частота)&quot;]:::process
 
-style D fill:#064e3b,stroke:#34d399,color:#f8fafc
-style E fill:#064e3b,stroke:#34d399,color:#f8fafc
-style F fill:#064e3b,stroke:#34d399,color:#f8fafc
+Buckets --&gt; B3[&quot;Корзина [3]: { 1 }&quot;]:::success
+Buckets --&gt; B2[&quot;Корзина [2]: { 2 }&quot;]:::success
+Buckets --&gt; B1[&quot;Корзина [1]: { 3 }&quot;]:::success
+Buckets --&gt; B0[&quot;Корзина [0]: пусто&quot;]:::process
   </pre>
 </div>
 
-
-<h3 id="idiomatichnaya-realizatsiya-bucket-sort">Идиоматичная реализация (Bucket Sort)</h3>
 
 
 <div class="code-block" data-lang="go">
@@ -2343,29 +2335,25 @@ style F fill:#064e3b,stroke:#34d399,color:#f8fafc
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func topKFrequent(nums []int, k int) []int {
-    // 1. Агрегация частот
+  <pre class="language-go"><code class="language-go">package main
+
+// topKFrequent находит K частых элементов за линейное время O(N) через Bucket Sort.
+func topKFrequent(nums []int, k int) []int {
     freqMap := make(map[int]int)
     for _, num := range nums {
         freqMap[num]++
     }
 
-    // 2. Инициализация корзин.
-    // Максимальная частота равна len(nums). Следовательно, нужен массив размером len+1
+    // Создаем корзины размером len(nums) + 1
     buckets := make([][]int, len(nums)+1)
-
-    // 3. Раскидываем элементы по корзинам
     for val, count := range freqMap {
-        // Мы не знаем заранее, сколько элементов будет иметь одинаковую частоту,
-        // поэтому используем append
         buckets[count] = append(buckets[count], val)
     }
 
-    // 4. Собираем топ K с конца (от максимальной частоты к минимальной)
     res := make([]int, 0, k)
+    // Сбор элементов с конца (от максимальной частоты к минимальной)
     for i := len(buckets) - 1; i &gt;= 0 &amp;&amp; len(res) &lt; k; i-- {
         if len(buckets[i]) &gt; 0 {
-            // Распаковываем корзину
             for _, val := range buckets[i] {
                 res = append(res, val)
                 if len(res) == k {
@@ -2380,36 +2368,18 @@ style F fill:#064e3b,stroke:#34d399,color:#f8fafc
 </code></pre>
 </div>
 
-<h3 id="mechanical-sympathy-kakoy-podkhod-vybrat-dlya-production">Mechanical Sympathy: Какой подход выбрать для Production?</h3>
+<hr />
+<h2 id="arkhitekturnoe-sravnenie-podkhodov">Архитектурное сравнение подходов</h2>
 
-<p>Оба алгоритма проходят тесты на LeetCode "на отлично". Но в реальной системе выбор зависит от характера данных:</p>
 <ol>
-<li>
-<p><strong>Bucket Sort ($O(N)$ время, $O(N)$ память)</strong>:<br />
-   - <strong>Плюсы:</strong> Абсолютно линейное время. Нет оверхеда на балансировку дерева и работу с <code>interface{}</code> как в пакете <code>heap</code>.<br />
-   - <strong>Минусы:</strong> Огромный расход памяти, если $N$ очень велико (например, 10 миллионов логов). <code>make([][]int, 10000000)</code> выделит 10 миллионов <code>SliceHeader</code>-ов (по 24 байта = 240 МБ) <em>просто под корзины</em>, большинство из которых останутся пустыми (<code>nil</code>). Это сильно нагрузит GC.</p>
-</li>
-<li>
-<p><strong>Min-Heap ($O(N \log K)$ время, $O(N)$ память для мапы, $O(K)$ для кучи)</strong>:<br />
-   - <strong>Плюсы:</strong> Идеально подходит для обработки потоковых данных (Streaming). Вы можете держать кучу размером $K=10$ в оперативной памяти (буквально в кэше L1) и "скармливать" ей бесконечный поток входящих событий из Kafka, постоянно поддерживая актуальный Топ-10.<br />
-   - <strong>Минусы:</strong> Чуть больше тактов процессора на операции <code>Sift Down</code> при обновлении кучи, плюс overhead пакета <code>container/heap</code>.</p>
-</li>
+<li><strong>Bucket Sort ($O(N)$ время, $O(N)$ память):</strong><br />
+   - Максимальная теоретическая скорость.<br />
+   - <strong>Недостаток в Enterprise:</strong> при $N = 10^7$ создание разреженного массива корзин <code>make([][]int, N+1)</code> выделит миллионы заголовков слайсов (<code>SliceHeader</code> по $24$ байта), порождая колоссальное давление на память и GC.</li>
+<li><strong>Min-Heap ($O(N \log K)$ время, $O(K)$ дополнительная память):</strong><br />
+   - Идеально для потоковой аналитики (Kafka-консьюмеры, streaming aggregators).<br />
+   - Размер кучи строго равен $K$ и полностью помещается в кэш процессора.</li>
 </ol>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p>Рассказ о том, что Bucket Sort создает разреженный массив слайсов (Sparse Array of Slices) и тратит лишние мегабайты памяти ради линейного времени — это прямой путь к офферу уровня Senior. Инженер мыслит не только "Big O", но и байтами памяти.</p>
-  </div>
-</div>
-
-<h2 id="itog">Итог</h2>
-
-<p>Мы разобрались, как ранжировать элементы по их частоте с помощью кучи или корзинной сортировки. <br />
-Но кучи способны не только находить экстремумы. Они умеют <strong>сшивать воедино</strong> упорядоченные потоки данных. <br />
-Как слить миллионы отсортированных строк из десятка разных шардов базы данных в один отсортированный поток, не загружая их все в оперативную память? Эту классическую архитектурную задачу мы решим в следующей статье: <a href="5-merge-k-sorted-lists.html" class="wikilink">5. Merge K Sorted Lists</a>.</p>
+<p>В следующей статье мы применим кучи для слияния распределенных потоков: <a href="5-merge-k-sorted-lists.html" class="wikilink">5. Merge K Sorted Lists</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2437,7 +2407,7 @@ style F fill:#064e3b,stroke:#34d399,color:#f8fafc
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#biznes-tsennost-chastotnosti-ot-abstraktsii-k-analitike">Бизнес-ценность частотности: От абстракции к аналитике</a></li><li class="toc-item toc-h2"><a href="#shag-1-fundament-agregatsiya-chastot">Шаг 1: Фундамент — Агрегация частот</a></li><li class="toc-item toc-h2"><a href="#podkhod-1-min-heap-potokovyy-i-universalnyy">Подход 1: Min-Heap (Потоковый и универсальный)</a></li><li class="toc-item toc-h3"><a href="#otsenka-slozhnosti">Оценка сложности</a></li><li class="toc-item toc-h2"><a href="#podkhod-2-korzinnaya-sortirovka-bucket-sort-uroven-senior">Подход 2: Корзинная сортировка (Bucket Sort) - Уровень Senior</a></li><li class="toc-item toc-h3"><a href="#idiomatichnaya-realizatsiya-bucket-sort">Идиоматичная реализация (Bucket Sort)</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-kakoy-podkhod-vybrat-dlya-production">Mechanical Sympathy: Какой подход выбрать для Production?</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#biznes-tsennost-chastotnosti-ot-abstraktsii-k-analitike">Бизнес-ценность частотности: От абстракции к аналитике</a></li><li class="toc-item toc-h2"><a href="#shag-1-agregatsiya-chastot">Шаг 1: Агрегация частот</a></li><li class="toc-item toc-h2"><a href="#podkhod-1-min-heap-razmera-k">Подход 1: Min-Heap размера K</a></li><li class="toc-item toc-h2"><a href="#podkhod-2-korzinnaya-sortirovka-bucket-sort-za-on">Подход 2: Корзинная сортировка (Bucket Sort) за O(N)</a></li><li class="toc-item toc-h2"><a href="#arkhitekturnoe-sravnenie-podkhodov">Архитектурное сравнение подходов</a></li>
   </ul>
 </aside>
 

@@ -2171,70 +2171,29 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~7 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">6. Interval Scheduling</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Задача Interval Scheduling (планирование интервалов) — это абсолютный фундамент жадных алгоритмов и, пожалуй, самая частая задача на System Design на собеседованиях. Если в <a href="5-gas-station.html" class="wikilink">5. Gas Station</a> мы имели дело с кольцевыми маршрутами, то здесь мы переходим к управлению ресурсами во времени.</p>
-<p>Классическая формулировка (лежащая в основе LeetCode 435 и 452): дан набор интервалов <code>[start, end]</code>. Нужно выбрать максимальное количество непересекающихся интервалов.</p>
-<p>В бэкенде это моделирует всё: от бронирования переговорных комнат и выделения слотов CPU (CPU Scheduling) до шардинга временных рядов (Time-series data) в базах данных вроде InfluxDB и управления TTL ключей в Redis.</p>
-<h2 id="klyuchevoy-insayt-sortirovka-po-kontsu-a-ne-po-nachalu">Ключевой инсайт: Сортировка по концу, а не по началу</h2>
+            <blockquote>
+<p><em>«Чтобы успеть сделать как можно больше дел, беритесь за то, что освободит вас раньше всего».</em><br />
+— Чарльз Энтони Ричард Хоар</p>
+</blockquote>
+<h2 id="planirovanie-intervalov-maksimizatsiya-propusknoy-sposobnosti">Планирование интервалов: Максимизация пропускной способности</h2>
 
-<p>У разработчиков часто возникает искушение отсортировать интервалы по времени начала (<code>start</code>). Логика такая: "Начнем раньше — успеем больше". Это фатальная ошибка.</p>
-<p>Представьте интервалы: <code>[0, 100]</code>, <code>[1, 2]</code>, <code>[3, 4]</code>.<br />
-Если мы отсортируем по <code>start</code> и возьмем <code>[0, 100]</code>, мы заблокируем весь день и сможем провести только 1 встречу. Если же мы возьмем <code>[1, 2]</code> и <code>[3, 4]</code>, то проведем 2 встречи.</p>
-<p><strong>Жадный выбор:</strong> Мы должны всегда выбирать интервал, который <strong>заканчивается раньше всего</strong> (сортировка по <code>end</code>). Освобождая ресурс как можно быстрее, мы максимизируем оставшееся время для остальных интервалов.</p>
-<h2 id="idiomatichnyy-go-slices-sortfunc-i-generics">Идиоматичный Go: `slices.SortFunc` и Generics</h2>
+<p>Задача <strong>Interval Scheduling</strong> (планирование непересекающихся интервалов) — канонический фундамент жадных алгоритмов, лежащий в основе LeetCode №435 и №452.</p>
+<p><strong>Формулировка:</strong> Задан набор интервалов $[start, end]$. Требуется выбрать <strong>максимальное количество взаимно непересекающихся интервалов</strong>.</p>
+<p>В бэкенде эта математическая модель управляет распределением CPU-квантов в планировщиках, шардированием временных рядов (Time-series data) в TSDB (Prometheus, InfluxDB), блокировками коммит-окон в базах данных и алгоритмами очистки устаревших сессий (TTL eviction).</p>
+<hr />
+<h2 id="klyuchevoy-insayt-sortirovka-po-vremeni-okonchaniya">Ключевой инсайт: Сортировка по времени окончания</h2>
 
-<p>До Go 1.21 сортировка структур была громоздкой (через <code>sort.Slice</code> с <code>interface{}</code> и рефлексией). Современный Go предлагает <code>slices.SortFunc</code>, который работает с дженериками и инлайнится компилятором, что радикально улучшает производительность.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">import (
-    &quot;cmp&quot;
-    &quot;slices&quot;
-)
-
-type Interval struct {
-    Start, End int
-}
-
-func maxNonOverlappingIntervals(intervals []Interval) int {
-    if len(intervals) == 0 {
-        return 0
-    }
-
-    // Сортируем по возрастанию времени окончания (End)
-    slices.SortFunc(intervals, func(a, b Interval) int {
-        return cmp.Compare(a.End, b.End)
-    })
-
-    count := 1
-    // Индекс последнего выбранного интервала
-    last := 0 
-
-    for i := 1; i &lt; len(intervals); i++ {
-        // Если текущий интервал начинается после или в момент окончания последнего выбранного
-        if intervals[i].Start &gt;= intervals[last].End {
-            count++
-            last = i
-        }
-    }
-
-    return count
-}
-</code></pre>
-</div>
-
+<p>Частая ошибка начинающих разработчиков — сортировка интервалов по времени начала (<code>Start</code>).<br />
+<em>Контрпример:</em> интервал $[0, 100]$ начинается раньше всех. Если выбрать его, он заблокирует все остальные встречи на целый день. При этом два коротких интервала $[1, 2]$ и $[3, 4]$ позволяют провести вдвое больше встреч.</p>
+<p><strong>Жадный инвариант:</strong><br />
+Мы обязаны сортировать интервалы по <strong>времени окончания (<code>End</code>)</strong>. Освобождая ресурс как можно раньше, мы оставляем максимально возможное окно для всех последующих интервалов (принцип <em>Greedy Stays Ahead</em>).</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2249,91 +2208,95 @@ func maxNonOverlappingIntervals(intervals []Interval) int {
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Сортировка по End&quot;]:::success --&gt; B[&quot;Берем первый интервал&quot;]
-B --&gt; C{&quot;Следующий начинается&lt;br&gt;после конца текущего?&quot;}
-C -- &quot;Да - no overlap&quot; --&gt; D[&quot;Берем его&lt;br&gt;Обновляем текущий конец&quot;]
-C -- &quot;Нет - пересечение&quot; --&gt; E[&quot;Пропускаем&lt;br&gt;Текущий конец не меняется&quot;]
-D --&gt; C
-E --&gt; C
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+A[&quot;Сортировка по End (возрастание)&quot;]:::entry --&gt; B[&quot;Берем первый интервал&lt;br&gt;lastEnd = intervals[0].End&quot;]:::process
+B --&gt; C{&quot;intervals[i].Start &gt;= lastEnd?&quot;}:::warning
+C --&gt;|Да: Нет пересечения| D[&quot;Берем интервал: count++&lt;br&gt;lastEnd = intervals[i].End&quot;]:::success
+C --&gt;|Нет: Конфликт| E[&quot;Пропускаем интервал&lt;br&gt;lastEnd не меняется&quot;]:::error
+D --&gt; Next{&quot;Есть еще интервалы?&quot;}:::warning
+E --&gt; Next
+Next --&gt;|Да| C
+Next --&gt;|Нет| Finish[&quot;Возврат count&quot;]:::success
   </pre>
 </div>
 
 
-<div class="callout callout-warning">
+<hr />
+<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
+
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package main
+
+import (
+    &quot;cmp&quot;
+    &quot;slices&quot;
+)
+
+type Interval struct {
+    Start int
+    End   int
+}
+
+// maxNonOverlappingIntervals возвращает максимальное число непересекающихся интервалов.
+func maxNonOverlappingIntervals(intervals []Interval) int {
+    if len(intervals) &lt;= 1 {
+        return len(intervals)
+    }
+
+    // Сортируем по правому краю (End) через дженерик cmp.Compare
+    slices.SortFunc(intervals, func(a, b Interval) int {
+        return cmp.Compare(a.End, b.End)
+    })
+
+    count := 1
+    lastEnd := intervals[0].End
+
+    for i := 1; i &lt; len(intervals); i++ {
+        if intervals[i].Start &gt;= lastEnd {
+            count++
+            lastEnd = intervals[i].End
+        }
+    }
+
+    return count
+}
+</code></pre>
+</div>
+
+<div class="callout callout-note">
   <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Заметка</span>
   </div>
   <div class="callout-body">
-
+    <p><strong>Mechanical Sympathy: Структуры значений против среза срезов</strong><br />
+Срез структур <code>[]Interval</code> занимает один непрерывный блок памяти. На $1000$ интервалов выделяется всего $16\text{ КБ}$, что целиком помещается в кэш L1d современного процессора ($32\text{–}64\text{ КБ}$).<br />
+Представление через <code>[][]int</code> (слайс слайсов) порождает тысячи разрозненных аллокаций в куче и деградирует производительность в разы из-за промахов кэша.</p>
   </div>
 </div>
 
-<ul>
-<li>На интервью часто дают интервалы в виде <code>[][]int</code> (слайс слайсов). Работать с <code>[][]int</code> в Go — это антипаттерн с точки зрения кэша процессора. Внутренние слайсы разбросаны по куче (Pointer Chasing). Всегда конвертируйте <code>[][]int</code> в плоский массив структур <code>[]Interval</code> перед обработкой. Это займет $O(N)$, но сэкономит процессорное время на стадии сортировки и обхода.</li>
-</ul>
-<h2 id="mechanical-sympathy-ploskie-struktury-i-kesh-linii">Mechanical Sympathy: Плоские структуры и Кэш-линии</h2>
-
-<p>Почему <code>[]Interval</code> (где <code>Interval</code> — структура из двух <code>int</code>) так сильно быстрее <code>[][]int</code>?</p>
-<p>Структура из двух <code>int</code> в Go занимает 16 байт на 64-битной системе. Слайс из 1000 таких структур займет один непрерывный блок в 16 КБ. Это помещается в L1 кэш процессора (обычно 32 КБ). При обходе в цикле процессор будет подгружать данные порциями по 64 байта (кэш-линия), и доступ к <code>intervals[i].Start</code> будет происходить за 0 тактов (Cache Hit).</p>
-<p>В случае <code>[][]int</code> каждый внутренний слайс — это указатель на объект в куче. Процессор вынужден делать Cache Miss при каждом переходе к следующему интервалу, что стоит ~100 наносекунд на чтение из RAM. Для высоконагруженных сервисов агрегации логов (где интервалов миллионы) разница во времени выполнения может составлять секунды.</p>
-<h2 id="under-the-hood-algoritm-sortirovki-v-go">Under the Hood: Алгоритм сортировки в Go</h2>
-
-<p><code>cmp.Compare</code> и <code>slices.SortFunc</code> в Go 1.21+ используют алгоритм <strong>Pattern-defeating quicksort (pdqsort)</strong>. </p>
-<p>Это гибридная сортировка, которая:<br />
-1. Выбирает хороший pivot (опорный элемент), избегая деградации до $O(N^2)$ на уже отсортированных данных (в отличие от классического QuickSort).<br />
-2. Если обнаруживает, что данные почти отсортированы, переключается на Insertion Sort (который работает за $O(N)$ на почти отсортированных массивах).<br />
-3. Если рекурсия уходит слишком глубоко, переключается на Heap Sort (гарантируя $O(N \log N)$ в худшем случае).</p>
-<p>Для бэкенда это означает предсказуемую латентность (p99) при сортировке больших массивов временных интервалов, без неожиданных "провалов" производительности на патологических данных.</p>
-<h2 id="system-design-bronirovanie-resursov-i-bd">System Design: Бронирование ресурсов и БД</h2>
-
-<p>В распределенных системах задача планирования интервалов возникает постоянно:</p>
-<ol>
-<li>
-<p><strong>Оптимистичные блокировки (Optimistic Concurrency Control):</strong> В SQL-базах данных при бронировании ресурса мы часто используем проверку пересечения интервалов:<br />
-<code>sql
-   SELECT * FROM bookings 
-   WHERE room_id = 5 
-   AND start_time &lt; :new_end 
-   AND end_time &gt; :new_start;</code><br />
-   Если таких записей нет — интервал свободен. Алгоритм жадного планирования помогает на уровне приложения (Application Layer) подготовить батч запросов так, чтобы они гарантированно не конфликтовали, снижая количество ретраев при конкурентных вставках.</p>
-</li>
-<li>
-<p><strong>Compaction в LSM-деревьях (Cassandra, RocksDB):</strong> Во время Major Compaction SSTable-ы объединяются. Движок БД планирует компакцию диапазонов ключей (интервалов) так, чтобы параллельные потоки не обрабатывали пересекающиеся диапазоны. Использование жадного выбора по "концу диапазона" позволяет распараллелить процесс максимально эффективно.</p>
-</li>
-<li>
-<p><strong>Rate Limiting (Sliding Window):</strong> При очистке устаревших токенов в алгоритме скользящего окна система отбрасывает интервалы, чье время <code>end</code> меньше текущего, и планирует новые слоты.</p>
-</li>
-</ol>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p>Если вас просят решить задачу с интервалами, всегда начинайте с вопроса: <em>"Как мы можем отсортировать эти данные?"</em>. Озвучьте гипотезу сортировки по <code>Start</code> и сами её опровергните контрпримером. Затем покажите сортировку по <code>End</code>. Если вы объясните, что сортировка по <code>End</code> максимизирует остаточный ресурс (свободное время), интервьюер поймет, что вы понимаете математику процесса, а не просто зазубрили паттерн.</p>
-  </div>
-</div>
-
-<h2 id="itog">Итог</h2>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
 <ol>
-<li><strong>Жадный выбор:</strong> Сортировка по правой границе (<code>end</code>) — единственный правильный путь. Она минимизирует "занятость" ресурса.</li>
-<li><strong>Структуры данных:</strong> Избегайте <code>[][]int</code> для интервалов. Конвертируйте их в плоский массив структур для идеальной локальности кэша (Cache Locality).</li>
-<li><strong>Современный Go:</strong> Используйте <code>slices.SortFunc</code> с <code>cmp.Compare</code>. Это быстрее, безопаснее и чище, чем старый <code>sort.Slice</code>.</li>
-<li><strong>Базы данных:</strong> Пересечение интервалов — классическая проблема конкурентного доступа к ресурсам, решаемая как на уровне SQL-запросов, так и на уровне приложения жадными алгоритмами.</li>
+<li><strong>Критерий жадности:</strong> Сортировка по <code>End</code> — единственно верный критерий максимизации количества непересекающихся интервалов.</li>
+<li><strong>Безопасность типов:</strong> Использование <code>cmp.Compare</code> защищает от целочисленного переполнения при вычитании больших временных меток.</li>
+<li><strong>Локальность данных:</strong> Передавайте интервалы структурами по значению для ускорения сортировки и обхода.</li>
 </ol>
-<p>В следующей статье мы разберем обратную задачу: что делать, если нужно удалить интервалы, чтобы избежать пересечений — <a href="7-non-overlapping-intervals.html" class="wikilink">7. Non-overlapping Intervals</a>.</p>
+<p>В следующей статье мы рассмотрим инверсию этой задачи — минимизацию удаляемых отрезков: <a href="7-non-overlapping-intervals.html" class="wikilink">7. Non-overlapping Intervals</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2361,7 +2324,7 @@ E --&gt; C
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#klyuchevoy-insayt-sortirovka-po-kontsu-a-ne-po-nachalu">Ключевой инсайт: Сортировка по концу, а не по началу</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-slices-sortfunc-i-generics">Идиоматичный Go: slices.SortFunc и Generics</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-ploskie-struktury-i-kesh-linii">Mechanical Sympathy: Плоские структуры и Кэш-линии</a></li><li class="toc-item toc-h2"><a href="#under-the-hood-algoritm-sortirovki-v-go">Under the Hood: Алгоритм сортировки в Go</a></li><li class="toc-item toc-h2"><a href="#system-design-bronirovanie-resursov-i-bd">System Design: Бронирование ресурсов и БД</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#planirovanie-intervalov-maksimizatsiya-propusknoy-sposobnosti">Планирование интервалов: Максимизация пропускной способности</a></li><li class="toc-item toc-h2"><a href="#klyuchevoy-insayt-sortirovka-po-vremeni-okonchaniya">Ключевой инсайт: Сортировка по времени окончания</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 
