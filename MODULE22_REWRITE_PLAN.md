@@ -417,53 +417,53 @@ sources/22. Вопросы и ответы с собеседований по Go
 
 **Новые вопросы:** Q13 (`os.Root` — file system scoping)
 
-- [ ] **Эпиграф** (Ритчи о Unix и ОС)
-- [ ] **Mermaid:** Жизненный цикл syscall в Go (goroutine → runtime.entersyscall → kernel → runtime.exitsyscall)
-- [ ] **Mermaid:** epoll механизм — netpoller интеграция в Go (event loop)
-- [ ] Интегрировать: Q13 (`os.Root` — sandboxing, path traversal protection)
-- [ ] **Callout `[!INTERVIEW]`:** «Чем горутины лучше потоков OS?»
+- [x] **Эпиграф** (Ритчи о Unix и ОС)
+- [x] **Mermaid:** Жизненный цикл syscall в Go (goroutine → runtime.entersyscall → kernel → runtime.exitsyscall)
+- [x] **Mermaid:** epoll механизм — netpoller интеграция в Go (event loop)
+- [x] Интегрировать: Q13 (`os.Root` — sandboxing, path traversal protection)
+- [x] **Callout `[!INTERVIEW]`:** «Чем горутины лучше потоков OS?»
 
 ### Файл 24: Безопасность
 
 **Новые вопросы:** Q14 (Post-Quantum TLS 1.24), Q24 (`crypto/hpke` 1.26), Q31 (`crypto/mldsa` 1.27)
 
-- [ ] **Эпиграф** (о безопасности как слоях защиты)
-- [ ] **Mermaid:** TLS 1.3 handshake — упрощённый (1-RTT, 0-RTT)
-- [ ] **Mermaid:** Post-Quantum Cryptography в Go — хронология (X25519Kyber768 → HPKE → ML-DSA)
-- [ ] **Mermaid:** OWASP Top 10 применительно к Go-сервисам
-- [ ] Интегрировать: Q14, Q24, Q31 — блок «Постквантовая криптография в Go»
-- [ ] **Callout `[!WARNING]`:** common Go security mistakes (hardcoded secrets, weak crypto, SSRF)
+- [x] **Эпиграф** (о безопасности как слоях защиты)
+- [x] **Mermaid:** TLS 1.3 handshake — упрощённый (1-RTT, 0-RTT)
+- [x] **Mermaid:** Post-Quantum Cryptography в Go — хронология (X25519Kyber768 → HPKE → ML-DSA)
+- [x] **Mermaid:** OWASP Top 10 применительно к Go-сервисам
+- [x] Интегрировать: Q14, Q24, Q31 — блок «Постквантовая криптография в Go»
+- [x] **Callout `[!WARNING]`:** common Go security mistakes (hardcoded secrets, weak crypto, SSRF)
 
 ### Файл 25: Практические задачи
 
-- [ ] **Эпиграф** (о практике vs теории)
-- [ ] **Mermaid:** Типология задач на Go-собеседовании (алгоритмы / live coding / system design / review)
-- [ ] **Callout `[!TIP]`:** стратегия решения live coding задачи за 45 минут
+- [x] **Эпиграф** (о практике vs теории)
+- [x] **Mermaid:** Типология задач на Go-собеседовании (алгоритмы / live coding / system design / review)
+- [x] **Callout `[!TIP]`:** стратегия решения live coding задачи за 45 минут
 
 ### Файл 26: Поведенческие и архитектурные вопросы
 
-- [ ] **Эпиграф** (о soft skills в инженерии)
-- [ ] **Mermaid:** STAR-метод ответа на behavioral вопросы (flowchart)
-- [ ] **Callout `[!TIP]`:** как рассказать о failure (Post-mortem структура)
+- [x] **Эпиграф** (о soft skills в инженерии)
+- [x] **Mermaid:** STAR-метод ответа на behavioral вопросы (flowchart)
+- [x] **Callout `[!TIP]`:** как рассказать о failure (Post-mortem структура)
 
 ### Файл 27: Вопросы уровня Senior и Staff
 
-- [ ] **Эпиграф** (о лидерстве и технической глубине)
-- [ ] **Mermaid:** Уровни инженерной зрелости (Junior → Middle → Senior → Staff) и ожидания
-- [ ] **Callout `[!INTERVIEW]`:** топ-10 вопросов Staff-level
+- [x] **Эпиграф** (о лидерстве и технической глубине)
+- [x] **Mermaid:** Уровни инженерной зрелости (Junior → Middle → Senior → Staff) и ожидания
+- [x] **Callout `[!INTERVIEW]`:** топ-10 вопросов Staff-level
 
 ### Файл 28: Финальный чеклист
 
-- [ ] **Эпиграф** (о подготовке и уверенности)
-- [ ] **Mermaid:** Чеклист подготовки к интервью (flowchart: теория → практика → система → поведение)
-- [ ] Обновить чеклист с учётом Go 1.22–1.27 фич
+- [x] **Эпиграф** (о подготовке и уверенности)
+- [x] **Mermaid:** Чеклист подготовки к интервью (flowchart: теория → практика → система → поведение)
+- [x] Обновить чеклист с учётом Go 1.22–1.27 фич
 
 ### Критерии приёмки этапа 6:
-- [ ] `python3 builder/build_all.py --all` → exit 0
-- [ ] `python3 builder/audit_all.py` → 0 errors
-- [ ] Каждый файл: эпиграф + минимум 2 Mermaid с цветами
-- [ ] Q13, Q14, Q24, Q31 интегрированы
-- [ ] Коммит: `refactor(module22): этап 6 — Linux, безопасность, практика, Senior, чеклист (файлы 23–28)`
+- [x] `python3 builder/build_all.py --all` → exit 0
+- [x] `python3 builder/audit_all.py` → 0 errors
+- [x] Каждый файл: эпиграф + минимум 2 Mermaid с цветами
+- [x] Q13, Q14, Q24, Q31 интегрированы
+- [x] Коммит: `refactor(module22): этап 6 — Linux, безопасность, практика, Senior, чеклист (файлы 23–28)`
 
 ---
 
