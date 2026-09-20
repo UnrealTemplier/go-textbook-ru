@@ -2171,18 +2171,23 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~27 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~18 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">16. Оптимизация решения шаг за шагом</h1>
           </header>
 
           <div class="article-markdown">
-            <p>В предыдущей статье <a href="15-naivnoe-reshenie-i-ego-analiz.html" class="wikilink">15. Наивное решение и его анализ</a> мы договорились, что brute-force — не провал, а отправная точка инженерного анализа. Теперь пора двигаться дальше: превращать медленный, но корректный код в быстрое, production-grade решение. И делать это не одним гигантским прыжком, а последовательностью контролируемых, обоснованных шагов. Именно такая методика incremental optimization на собеседовании убеждает интервьюера, что перед ним Senior-разработчик, а не человек, заучивший решение.</p>
-<p>В этой статье мы разберём, как методично, шаг за шагом, искать и устранять узкие места, какие ментальные модели и инструменты использовать на каждом этапе и как Go-специфика диктует направление оптимизации. Мы пройдём через несколько классических задач, показывая цепочку «наивное → промежуточное → оптимальное» и объясняя, <em>почему</em> каждый следующий шаг работает.</p>
-<h3 id="mentalnaya-model-ne-pryzhok-a-podyom-po-stupenyam">Ментальная модель: не прыжок, а подъём по ступеням</h3>
+            <blockquote>
+<p><em>«Преждевременная оптимизация — корень всех зол. Но когда архитектура уже определена, аккуратная пошаговая оптимизация — признак истинного профессионализма».</em><br />
+— Дональд Кнут</p>
+</blockquote>
+<p>В предыдущей статье мы договорились, что наивное решение (brute-force) — это не досадный черновик, а надежная стартовая площадка. Теперь наступает время главного действия: превращения медленного перебора в высокоскоростной, надежный алгоритм. И делать это нужно не отчаянным прыжком в неизвестность, а последовательностью выверенных, логичных шагов.</p>
+<p>Такая техника пошаговой оптимизации (incremental optimization) производит неотразимое впечатление на интервьюера: вы не просто выдаете готовый код из памяти, а наглядно демонстрируете инженерную методологию устранения узких мест. В этой статье мы разберем 4 ступени оптимизации, свяжем их с рантаймом Go и закрепим навык на классических задачах LeetCode.</p>
+<hr />
+<h3 id="model-voskhozhdeniya-po-stupenyam">Модель восхождения по ступеням</h3>
 
-<p>Оптимизация — это не магия и не озарение. Это процесс последовательного устранения bottleneck'ов — самых «дорогих» операций в текущей версии кода. Как только вы убираете один bottleneck, верхушка рейтинга затрат переходит к другой операции, и вы принимаетесь за неё. Так продолжается, пока дальнейшее улучшение не перестанет окупаться (обычно когда достигнута асимптотически минимальная сложность).</p>
+<p>Оптимизация подчиняется закону узкого места (bottleneck): в любой момент времени общая скорость алгоритма лимитируется самой «дорогой» операцией. Устраняя один bottleneck, мы передаем пальму первенства следующему, пока не упремся в фундаментальный теоретический предел задачи.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2207,83 +2212,70 @@ classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
 classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
 classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
 classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-Brute[&quot;Наивное решение&lt;br&gt;O N² или хуже&quot;]:::warning --&gt; FindBL[&quot;Найти узкое место&lt;br&gt;повторяющиеся вычисления&lt;br&gt;или неэффективные структуры&quot;]
-FindBL --&gt; Apply1[&quot;Применить технику:&lt;br&gt;мемоизация, префиксные суммы,&lt;br&gt;бинарный поиск, два указателя&lt;br&gt;или замена структуры&quot;]
-Apply1 --&gt; Check1{&quot;Сложность&lt;br&gt;улучшилась?&quot;}
-Check1 --&gt;|&quot;Да, но можно ещё&quot;| FindBL
-Check1 --&gt;|&quot;Нет, достигнут&lt;br&gt;асимптотический минимум&quot;| Final[&quot;Финальное решение&lt;br&gt;Обсуждение trade-off&quot;]
+
+Start[&quot;Наивный Brute-force O N³ или O N²&quot;]:::entry --&gt; Step1[&quot;Ступень 1: Устранение повторных вычислений&lt;br/&gt;Мемоизация, префиксные суммы, отсечения&quot;]:::process
+Step1 --&gt; Step2[&quot;Ступень 2: Замена неэффективных структур&lt;br/&gt;Слайс -&gt; Хэш-таблица -&gt; Массив на стеке&quot;]:::data
+Step2 --&gt; Step3[&quot;Ступень 3: Смена алгоритмической перспективы&lt;br/&gt;Сортировка + 2 указателя, скользящее окно&quot;]:::accent
+Step3 --&gt; Step4[&quot;Ступень 4: Механическая симпатия Go&lt;br/&gt;make cap, устранение копий, cache locality&quot;]:::success
+Step4 --&gt; Done[&quot;Итоговый production-код:&lt;br/&gt;оптимальная асимптотика и 0 лишних аллокаций&quot;]:::success
   </pre>
 </div>
 
 
-<p>У этой модели есть важное следствие: вы не обязаны сразу видеть финальное решение. Вы можете начать с брутфорса и честно пройти несколько итераций улучшений на глазах у интервьюера. Это покажет вашу способность анализировать и искать компромиссы, что гораздо ценнее, чем мгновенный правильный ответ без объяснения пути.</p>
-<h3 id="shag-1-ubiraem-povtornye-vychisleniya">Шаг 1: Убираем повторные вычисления</h3>
-
-<p>Самая частая причина медлительности наивного решения — повторное перевычисление одного и того же. Например, в задаче Maximum Subarray Sum брутфорс перебирает все подмассивы и суммирует их заново, хотя сумма <code>[left, right]</code> может быть получена из <code>[left, right-1]</code> добавлением одного элемента (наша наивная реализация уже это частично делала, но остаётся перебор всех <code>left</code>). Более яркий пример — вычисление чисел Фибоначчи через рекурсию без мемоизации: <code>F(n)</code> вызывает <code>F(n-1)</code> и <code>F(n-2)</code>, которые перевычисляют одни и те же значения экспоненциальное количество раз.</p>
-<p><strong>Техника обнаружения:</strong> нарисуйте дерево вызовов или просто спросите: «Какие значения я вычисляю заново?» Ответ почти всегда: «Что-то, что уже вычислял на предыдущем шаге».</p>
-<p><strong>Инструмент:</strong> мемоизация (top-down DP) или табуляция (bottom-up DP). В Go мемоизацию через map можно сделать, но bottom-up с предвыделенным слайсом <code>[]int</code> почти всегда эффективнее (нет pointer chasing, предсказуемый доступ, меньше нагрузки на GC).</p>
 <hr />
-<h3 id="shag-2-zamenyaem-neeffektivnye-struktury-dannykh">Шаг 2: Заменяем неэффективные структуры данных</h3>
+<h3 id="stupen-1-ustranyaem-povtornye-vychisleniya">Ступень 1. Устраняем повторные вычисления</h3>
 
-<p>Когда повторные вычисления убрали, верхушку bottleneck'а часто занимает поиск, вставка или доступ к коллекции. Наивное решение могло использовать линейный поиск по слайсу (<code>O(n)</code>) там, где нужна константа, или map там, где достаточно массива фиксированного размера, или рекурсию без мемоизации там, где нужна таблица DP.</p>
-<p><strong>Примеры замен:</strong></p>
-<ul>
-<li>Линейный поиск в слайсе → бинарный поиск (если слайс отсортирован).</li>
-<li>Слайс → <code>map</code> для константного доступа по ключу.</li>
-<li><code>map</code> → массив фиксированного размера (<code>[26]int</code>, <code>[128]int</code>), если ключи — символы ограниченного алфавита.</li>
-<li>Стек/очередь на основе <code>container/list</code> → слайс (<code>[]T</code>), потому что слайс не аллоцирует элементы по отдельности и дружественен кэшу.</li>
-<li>Рекурсивный DFS с переполнением стека → итеративный DFS со стеком на слайсе.</li>
-</ul>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Замена <code>map[byte]int</code> на <code>[128]int</code> в задаче со строками ASCII не просто меняет асимптотику с O(1) на O(1). Она радикально меняет производительность за счёт того, что массив <code>[128]int</code> размером 1024 байта помещается в L1-кэш, доступ по индексу — прямая адресация (одна инструкция LEA/ADD), а map требует хеширования, поиска бакета, пробега по цепи. Подробнее это разобрано в разделе <span class="wikilink-unresolved" title="Заметка в разработке">07. Глубокий Go (Внутреннее устройство)</span>.</p>
-  </div>
-</div>
-
+<p>Самый банальный источник тормозов — пересчет того, что уже было посчитано на предыдущем шаге.<br />
+- <strong>Префиксные агрегаты:</strong> Вместо того чтобы суммировать срез <code>nums[left...right]</code> за $O(K)$, мы предподсчитываем префиксные суммы <code>prefix[i] = prefix[i-1] + nums[i]</code> и получаем сумму любого диапазона за $O(1)$ как <code>prefix[right+1] - prefix[left]</code>.<br />
+- <strong>Динамическое программирование:</strong> Вместо экспоненциальной рекурсии с ветвлением $O(2^N)$ мы сохраняем промежуточные решения подзадач в плоском срезе <code>dp</code>.</p>
 <hr />
-<h3 id="shag-3-menyaem-perspektivu-sortirovka-dva-ukazatelya-invertirovanie-zadachi">Шаг 3: Меняем перспективу — сортировка, два указателя, инвертирование задачи</h3>
+<h3 id="stupen-2-zamenyaem-neeffektivnye-struktury-dannykh">Ступень 2. Заменяем неэффективные структуры данных</h3>
 
-<p>Иногда bottleneck — не конкретная операция, а сама структура перебора. Брутфорс может перебирать всё в лоб, а правильный взгляд на задачу позволяет отбросить огромные куски пространства поиска.</p>
-<p><strong>Типовые техники смены перспективы:</strong></p>
-<ul>
-<li><strong>Сортировка + два указателя:</strong> классика для задач на поиск пар, троек (2Sum, 3Sum), удаление дубликатов, слияние интервалов. Сортировка <code>O(N log N)</code> + линейный проход <code>O(N)</code>.</li>
-<li><strong>Скользящее окно:</strong> для непрерывных подмассивов с монотонным условием — вместо перебора всех <code>left</code>/<code>right</code> поддерживаем два указателя и инкрементально обновляем состояние.</li>
-<li><strong>Бинарный поиск по ответу:</strong> если трудно найти ответ прямо, но легко проверить, подходит ли кандидат X, и проверка монотонна — делаем бинарный поиск по X.</li>
-<li><strong>Инвертирование задачи:</strong> вместо «найти максимум» искать «исключить всё, что не максимум». В Trapping Rain Water мы перешли от перебора ям к предподсчёту максимумов слева/справа.</li>
-</ul>
-<p><strong>Пример вывода:</strong> «Сейчас у меня O(N²) из-за двух вложенных циклов. Но я замечаю, что если я отсортирую массив, то для каждого первого элемента я могу найти пару двумя указателями за O(N). Итого O(N log N), и ограничения N=10⁴ это пропускают.»</p>
+<p>Когда повторные вычисления ликвидированы, узкое место почти всегда перемещается в операции поиска, вставки или удаления в коллекциях:<br />
+- <strong>Линейный поиск в слайсе ($O(N)$):</strong> Заменяется на поиск в <code>map</code> ($O(1)$ в среднем) или бинарный поиск по отсортированному массиву ($O(\log N)$).<br />
+- <strong>Хэш-таблица <code>map</code> $\to$ Массив прямого доступа:</strong> Если ключами являются символы ASCII или небольшие числа, замена <code>map[byte]int</code> на <code>[128]int</code> убирает хэширование, pointer chasing и освобождает сборщик мусора.<br />
+- <strong>Стандартный <code>container/list</code> $\to$ Кастомный список на структурах:</strong> Устраняет упаковку примитивов в <code>any</code> (boxing) и сопутствующие аллокации в куче.</p>
 <hr />
-<h3 id="shag-4-go-spetsifichnye-mikrooptimizatsii-posle-asimptotiki">Шаг 4: Go-специфичные микрооптимизации (после асимптотики)</h3>
+<h3 id="stupen-3-menyaem-perspektivu-algoritmicheskiy-sdvig">Ступень 3. Меняем перспективу (алгоритмический сдвиг)</h3>
 
-<p>Когда асимптотическая сложность доведена до оптимальной, можно обсудить улучшения константы. На собеседовании Senior-уровня это жирный плюс, если подано к месту.</p>
-<ul>
-<li><strong>Предвыделение capacity:</strong> <code>make([]int, 0, expectedSize)</code> вместо <code>var res []int</code> + <code>append</code> внутри цикла. Убирает многократные переаллокации и копирования.</li>
-<li><strong>Массивы на стеке:</strong> <code>var arr [100]int</code> вместо <code>make([]int, 100)</code> для небольших фиксированных размеров — избегает аллокации в куче.</li>
-<li><strong>Работа со строками через <code>[]byte</code> или <code>strings.Builder</code>:</strong> избегает создания промежуточных строк при конкатенации.</li>
-<li><strong>Копирование вместо слайсинга для больших массивов:</strong> чтобы не держать в памяти большой массив из-за маленького подслайса (предотвращение утечки).</li>
-<li><strong><code>for i, v := range</code> vs <code>for i := 0; i &lt; len; i++</code>:</strong> range копирует значение, что может быть дорого для больших структур; используйте индексный доступ или <code>for i := range</code> с прямым доступом.</li>
-</ul>
+<p>Иногда структуру данных оптимизировать некуда — нужно изменить сам порядок обхода пространства поиска:<br />
+- <strong>Предварительная сортировка ($O(N \log N)$):</strong> Создает инвариант порядка, открывающий дорогу для сходящихся двух указателей.<br />
+- <strong>Скользящее окно:</strong> Вместо перебора всех пар индексов $(i, j)$ сдвигает границы монотонно, гарантируя строго линейное время $O(N)$.<br />
+- <strong>Бинарный поиск по ответу:</strong> Превращает задачу нахождения оптимума в серию быстрых проверок гипотезы.</p>
+<hr />
+<h3 id="stupen-4-go-spetsifichnye-mikrooptimizatsii">Ступень 4. Go-специфичные микрооптимизации</h3>
+
+<p>Когда Big O доведен до совершенства, Senior-разработчик демонстрирует уважение к рантайму Go:</p>
+<ol>
+<li><strong>Предварительное выделение емкости (<code>cap</code>):</strong><br />
+   Запись <code>make([]T, 0, expectedSize)</code> предотвращает многократные переаллокации и копирования массива в куче при <code>append</code>.</li>
+<li><strong>Локальные массивы на стеке:</strong><br />
+   Переменная <code>var count [26]int</code> остается на стеке текущей горутины, если на нее нет внешних ссылок (escape analysis).</li>
+<li><strong>Отказ от лишнего копирования в циклах:</strong><br />
+   Конструкция <code>for _, item := range hugeSlice</code> копирует структуру <code>item</code> на каждой итерации. Для структур большого размера используйте доступ по индексу: <code>for i := range hugeSlice</code> и <code>&amp;hugeSlice[i]</code>.</li>
+<li><strong>Использование <code>strings.Builder</code>:</strong><br />
+   Предотвращает квадратичное выделение промежуточных строк при сборке текста.</li>
+</ol>
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Ловушка / Gotcha: Читаемость кода превыше микрооптимизаций</span>
   </div>
   <div class="callout-body">
-    <p>Микрооптимизации не должны ухудшать читаемость без веской причины. Если вы меняете ясный <code>for _, v := range</code> на <code>for i := 0; i &lt; len; i++</code> ради избежания копирования, будьте готовы объяснить: «Здесь <code>v</code> — это копия большой структуры, которая создаётся на каждой итерации. Я перехожу на индекс, чтобы избежать этих аллокаций, хотя обычно range предпочтительнее». Без комментария такой код выглядит как стилистический откат.</p>
+    <p>Не начинайте со Ступени 4! Микрооптимизации без смены плохой асимптотики бесполезны: замена <code>append</code> на предварительно выделенный слайс не спасет квадратичный алгоритм $O(N^2)$ от тайм-аута при $N = 10^5$. Сначала победите Big O, и только потом наводите лоск на уровне байтов.</p>
   </div>
 </div>
 
 <hr />
-<h3 id="skvoznoy-primer-3sum-leetcode-15">Сквозной пример: 3Sum (LeetCode 15)</h3>
+<h3 id="skvoznoy-primer-1-3sum-leetcode-15">Сквозной пример 1: 3Sum (LeetCode 15)</h3>
 
-<p>Проведём задачу через все шаги, начиная с брутфорса, изученного в предыдущей статье.</p>
-<p><strong>Шаг 0. Наивное решение.</strong> Три вложенных цикла, проверка суммы, сортировка для пропуска дубликатов. Сложность O(N³). При N=3000 (типичные ограничения) — слишком медленно.</p>
-<p><strong>Анализ:</strong> узкое место — третий цикл. Для фиксированных <code>i</code> и <code>j</code> мы ищем <code>k</code>, такое что <code>nums[k] = -(nums[i]+nums[j])</code>. Поскольку после сортировки массив упорядочен, мы можем искать <code>k</code> бинарным поиском или, что эффективнее, использовать <strong>два указателя</strong>: <code>j</code> и <code>k</code> сходятся навстречу. Это снижает сложность до O(N²).</p>
-<p><strong>Шаг 1. Сортировка + два указателя.</strong> Сортируем, затем фиксируем <code>i</code>, а для <code>j</code> (начинается с <code>i+1</code>) и <code>k</code> (начинается с конца) ищем пару. Уникальность гарантируется пропуском одинаковых значений. Код:</p>
+<p>Пройдем задачу по всем ступеням эволюции:</p>
+<h4 id="shag-0-naivnyy-perebor-on3">Шаг 0: Наивный перебор $O(N^3)$</h4>
+<p>Три вложенных цикла, перебирающих все возможные комбинации индексов $i &lt; j &lt; k$. При $N = 3000$ это $2.7 \times 10^{10}$ операций $\to$ Time Limit Exceeded.</p>
+<h4 id="shag-1-analiz-uzkogo-mesta">Шаг 1: Анализ узкого места</h4>
+<p>Внутренний цикл по $k$ просто ищет значение <code>-(nums[i] + nums[j])</code>. Можно ли найти его быстрее? Если массив отсортирован, мы можем искать пару $(j, k)$ сходящимися указателями с двух концов массива за один проход $O(N)$!</p>
+<h4 id="shag-2-itogovyy-optimalnyy-kod-on2">Шаг 2: Итоговый оптимальный код $O(N^2)$</h4>
+
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2298,85 +2290,64 @@ Check1 --&gt;|&quot;Нет, достигнут&lt;br&gt;асимптотичес
     if n &lt; 3 {
         return nil
     }
-    sort.Ints(nums) // O(N log N), in-place
-    var res [][]int
+
+    // Сортировка in-place за O(N log N)
+    sort.Ints(nums)
+
+    // Предвыделяем разумную начальную емкость
+    result := make([][]int, 0, 64)
+
     for i := 0; i &lt; n-2; i++ {
+        // Пропускаем дубликаты для первого элемента
         if i &gt; 0 &amp;&amp; nums[i] == nums[i-1] {
             continue
         }
-        j, k := i+1, n-1
+        // Если наименьшее число &gt; 0, сумма трех положительных чисел никогда не будет 0
+        if nums[i] &gt; 0 {
+            break
+        }
+
+        left := i + 1
+        right := n - 1
         target := -nums[i]
-        for j &lt; k {
-            sum := nums[j] + nums[k]
+
+        for left &lt; right {
+            sum := nums[left] + nums[right]
             switch {
             case sum == target:
-                res = append(res, []int{nums[i], nums[j], nums[k]})
-                // пропускаем дубликаты j
-                for j &lt; k &amp;&amp; nums[j] == nums[j+1] {
-                    j++
+                result = append(result, []int{nums[i], nums[left], nums[right]})
+
+                // Пропускаем дубликаты слева и справа
+                for left &lt; right &amp;&amp; nums[left] == nums[left+1] {
+                    left++
                 }
-                // пропускаем дубликаты k
-                for j &lt; k &amp;&amp; nums[k] == nums[k-1] {
-                    k--
+                for left &lt; right &amp;&amp; nums[right] == nums[right-1] {
+                    right--
                 }
-                j++
-                k--
+                left++
+                right--
             case sum &lt; target:
-                j++
+                left++
             default:
-                k--
+                right--
             }
         }
     }
-    return res
+
+    return result
 }
 </code></pre>
 </div>
 
-<p><strong>Обсуждение сложности:</strong> время O(N²), память O(1) (без учёта результата). Сортировка in-place, два указателя используют только локальные переменные.</p>
-<p><strong>Шаг 2. Микрооптимизации Go.</strong><br />
-- Можно предвыделить <code>res</code> с некоторой ёмкостью (<code>make([][]int, 0, 256)</code>), но точное количество троек неизвестно, так что оставим.<br />
-- Используем индексы, а не range, так как работаем с тремя указателями.<br />
-- Внутренние циклы для пропуска дубликатов выполняют сугубо линейные сдвиги, указатели не убегают за границы.<br />
-- Код читаем и идиоматичен.</p>
-<p><strong>Что показали на интервью:</strong> от O(N³) брутфорса через анализ избыточных проверок пришли к сортировке и двум указателям, получили O(N²), что приемлемо при N=3000. Объяснили, почему не O(N log N) — потому что перебор <code>i</code> даёт N итераций, и внутри линейный проход.</p>
 <hr />
-<h3 id="skvoznoy-primer-longest-substring-without-repeating-characters-leetcode-3">Сквозной пример: Longest Substring Without Repeating Characters (LeetCode 3)</h3>
+<h3 id="skvoznoy-primer-2-samaya-dlinnaya-podstroka-bez-povtoryayushchikhsya-simvolov-le">Сквозной пример 2: Самая длинная подстрока без повторяющихся символов (LeetCode 3)</h3>
 
-<p>Покажем другую цепочку: от наивного O(N³) к O(N).</p>
-<p><strong>Шаг 0. Наивное решение.</strong> Для каждого <code>left</code> и каждого <code>right &gt; left</code> проверять, уникальны ли символы в <code>s[left:right+1]</code>. Проверка уникальности — O(длина окна). Итого O(N³) или O(N²), если перебирать окно с поддержанием частотной карты. Код (пусть будет O(N²) вариант):</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func lengthOfLongestSubstringNaive(s string) int {
-    n := len(s)
-    maxLen := 0
-    for left := 0; left &lt; n; left++ {
-        seen := make(map[byte]bool)
-        for right := left; right &lt; n; right++ {
-            if seen[s[right]] {
-                break
-            }
-            seen[s[right]] = true
-            if right-left+1 &gt; maxLen {
-                maxLen = right - left + 1
-            }
-        }
-    }
-    return maxLen
-}
-</code></pre>
-</div>
-
-<p><strong>Сложность:</strong> O(N²) время, O(N) память из-за карты на каждом левом указателе.</p>
-<p><strong>Анализ:</strong> bottleneck — перебор всех <code>left</code>. Если для <code>left</code> мы остановились на <code>right</code>, где встретился повтор, при сдвиге <code>left</code> на 1 нам не нужно начинать <code>right</code> заново — можно продолжать расширять. Это свойство монотонности: окно не сжимается при расширении <code>left</code> (на самом деле окно обычно «сдвигается» как sliding window). Также map пересоздаётся для каждого left — это аллокации.</p>
-<p><strong>Шаг 1. Скользящее окно с map/массивом.</strong> Используем два указателя и одну хеш-таблицу (или массив <code>[128]int</code> для ASCII), чтобы хранить последние позиции символов.</p>
+<h4 id="shag-0-naivnyy-brutfors-on3">Шаг 0: Наивный брутфорс $O(N^3)$</h4>
+<p>Перебираем все возможные подстроки <code>s[left:right]</code> и для каждой из них проверяем уникальность символов. Катастрофически медленно.</p>
+<h4 id="shag-1-optimizatsiya-do-skolzyashchego-okna-s-khesh-tablitsey-on">Шаг 1: Оптимизация до скользящего окна с хэш-таблицей $O(N)$</h4>
+<p>Вместо перезапуска проверки сжимаем окно слева при обнаружении дубликата. Работает за $O(N)$, но использует <code>map[byte]int</code>.</p>
+<h4 id="shag-2-go-mikrooptimizatsiya-do-massiva-na-steke">Шаг 2: Go-микрооптимизация до массива на стеке</h4>
+<p>Поскольку символы принадлежат таблице ASCII, заменяем <code>map</code> на плоский массив <code>[128]int</code>, где храним последний замеченный индекс каждого символа.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2387,44 +2358,50 @@ Check1 --&gt;|&quot;Нет, достигнут&lt;br&gt;асимптотичес
     </button>
   </div>
   <pre class="language-go"><code class="language-go">func lengthOfLongestSubstring(s string) int {
-    var lastPos [128]int // предполагаем ASCII
+    // lastPos[char] хранит последний замеченный индекс символа char
+    var lastPos [128]int
     for i := range lastPos {
-        lastPos[i] = -1
+        lastPos[i] = -1 // -1 означает, что символ еще не встречался
     }
-    left, maxLen := 0, 0
+
+    left := 0
+    maxLen := 0
+
     for right := 0; right &lt; len(s); right++ {
         ch := s[right]
-        if prev := lastPos[ch]; prev &gt;= left {
-            left = prev + 1
+
+        // Если символ уже встречался внутри текущего окна
+        if prevIdx := lastPos[ch]; prevIdx &gt;= left {
+            left = prevIdx + 1 // Мгновенный прыжок левой границы!
         }
+
         lastPos[ch] = right
-        if curLen := right - left + 1; curLen &gt; maxLen {
-            maxLen = curLen
+
+        currentLen := right - left + 1
+        if currentLen &gt; maxLen {
+            maxLen = currentLen
         }
     }
+
     return maxLen
 }
 </code></pre>
 </div>
 
-<p><strong>Сложность:</strong> O(N) время, O(1) память (фиксированный массив 128 int'ов на стеке). Это оптимально.</p>
-<p><strong>Go-специфика:</strong> массив <code>[128]int</code> избегает map и аллокаций, сравнение позиций за O(1). Комментарий на собеседовании: «Я заменил map на массив, потому что алфавит ASCII, и это исключает эвакуации бакетов и pointer chasing».</p>
+<p><strong>Инженерный триумф:</strong><br />
+- Сложность по времени: строго $O(N)$ за ровно 1 проход по строке.<br />
+- Сложность по памяти: $128 \times 8 = 1024$ байта на стеке ($O(1)$).<br />
+- Ноль обращений к аллокатору Go, ноль работы для сборщика мусора.</p>
 <hr />
-<h3 id="kak-prezentovat-poshagovuyu-optimizatsiyu-na-sobesedovanii">Как презентовать пошаговую оптимизацию на собеседовании</h3>
+<h3 id="rezyume-dialoga-na-sobesedovanii">Резюме диалога на собеседовании</h3>
 
-<p>Структура диалога может быть такой:</p>
 <ol>
-<li>«Давайте я начну с простого рабочего решения, чтобы убедиться в правильности понимания задачи.» (Пишете наивный код.)</li>
-<li>«Теперь проанализирую: сложность O(N²), bottleneck — перебор вот этого. Я вижу, что можно переиспользовать вычисления.»</li>
-<li>«Перехожу к оптимизации: применяю два указателя / префиксные суммы / DP. Объясняю, почему это корректно.»</li>
-<li>«Проверяю на edge cases, анализирую новую сложность.»</li>
-<li>«Можно ещё улучшить константу, заменив map на массив, потому что...»</li>
+<li><em>«Я зафиксировал наивное решение со сложностью $O(N^3)$. Главный bottleneck — внутренний цикл перебора».</em></li>
+<li><em>«Я предлагаю устранить этот перебор, отсортировав массив и применив два указателя. Это понизит асимптотику до $O(N^2)$».</em></li>
+<li><em>«Для оптимизации работы памяти я заменяю хэш-карту на локальный стек-массив [128]int, что полностью исключит аллокации в куче».</em></li>
+<li><em>«Финальная сложность: $O(N)$ по времени и $O(1)$ по памяти. Код готов к тестам».</em></li>
 </ol>
-<p>Такой проход занимает 20–25 минут и полностью покрывает ожидания от Senior-раунда.</p>
-<h3 id="zaklyuchenie">Заключение</h3>
-
-<p>Пошаговая оптимизация — это не поиск волшебной таблетки, а системный процесс устранения узких мест через замену структур данных, переиспользование вычислений и смену перспективы. Каждый шаг должен быть обоснован анализом сложности и, где уместно, механической симпатией к Go. На собеседовании этот процесс демонстрирует зрелость, способность к декомпозиции и умение принимать trade-off — ключевые компетенции Senior/Lead-разработчика.</p>
-<p>Следующая статья расскажет, как научиться <em>находить</em> эти узкие места с первого взгляда — техники профилирования мышлением, анализ ограничений и паттерны «красных флагов» в коде. <a href="17-kak-nakhodit-uzkie-mesta.html" class="wikilink">17. Как находить узкие места</a></p>
+<p>В следующей статье мы разберем диагностику кода: как научиться безошибочно находить узкие места с первого взгляда без профайлера и бенчмарков. <a href="17-kak-nakhodit-uzkie-mesta.html" class="wikilink">17. Как находить узкие места</a></p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2452,7 +2429,7 @@ Check1 --&gt;|&quot;Нет, достигнут&lt;br&gt;асимптотичес
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#mentalnaya-model-ne-pryzhok-a-podyom-po-stupenyam">Ментальная модель: не прыжок, а подъём по ступеням</a></li><li class="toc-item toc-h3"><a href="#shag-1-ubiraem-povtornye-vychisleniya">Шаг 1: Убираем повторные вычисления</a></li><li class="toc-item toc-h3"><a href="#shag-2-zamenyaem-neeffektivnye-struktury-dannykh">Шаг 2: Заменяем неэффективные структуры данных</a></li><li class="toc-item toc-h3"><a href="#shag-3-menyaem-perspektivu-sortirovka-dva-ukazatelya-invertirovanie-zadachi">Шаг 3: Меняем перспективу — сортировка, два указателя, инвертирование задачи</a></li><li class="toc-item toc-h3"><a href="#shag-4-go-spetsifichnye-mikrooptimizatsii-posle-asimptotiki">Шаг 4: Go-специфичные микрооптимизации (после асимптотики)</a></li><li class="toc-item toc-h3"><a href="#skvoznoy-primer-3sum-leetcode-15">Сквозной пример: 3Sum (LeetCode 15)</a></li><li class="toc-item toc-h3"><a href="#skvoznoy-primer-longest-substring-without-repeating-characters-leetcode-3">Сквозной пример: Longest Substring Without Repeating Characters (LeetCode 3)</a></li><li class="toc-item toc-h3"><a href="#kak-prezentovat-poshagovuyu-optimizatsiyu-na-sobesedovanii">Как презентовать пошаговую оптимизацию на собеседовании</a></li><li class="toc-item toc-h3"><a href="#zaklyuchenie">Заключение</a></li>
+    <li class="toc-item toc-h3"><a href="#model-voskhozhdeniya-po-stupenyam">Модель восхождения по ступеням</a></li><li class="toc-item toc-h3"><a href="#stupen-1-ustranyaem-povtornye-vychisleniya">Ступень 1. Устраняем повторные вычисления</a></li><li class="toc-item toc-h3"><a href="#stupen-2-zamenyaem-neeffektivnye-struktury-dannykh">Ступень 2. Заменяем неэффективные структуры данных</a></li><li class="toc-item toc-h3"><a href="#stupen-3-menyaem-perspektivu-algoritmicheskiy-sdvig">Ступень 3. Меняем перспективу (алгоритмический сдвиг)</a></li><li class="toc-item toc-h3"><a href="#stupen-4-go-spetsifichnye-mikrooptimizatsii">Ступень 4. Go-специфичные микрооптимизации</a></li><li class="toc-item toc-h3"><a href="#skvoznoy-primer-1-3sum-leetcode-15">Сквозной пример 1: 3Sum (LeetCode 15)</a></li><li class="toc-item toc-h4"><a href="#shag-0-naivnyy-perebor-on3">Шаг 0: Наивный перебор $O(N^3)$</a></li><li class="toc-item toc-h4"><a href="#shag-1-analiz-uzkogo-mesta">Шаг 1: Анализ узкого места</a></li><li class="toc-item toc-h4"><a href="#shag-2-itogovyy-optimalnyy-kod-on2">Шаг 2: Итоговый оптимальный код $O(N^2)$</a></li><li class="toc-item toc-h3"><a href="#skvoznoy-primer-2-samaya-dlinnaya-podstroka-bez-povtoryayushchikhsya-simvolov-le">Сквозной пример 2: Самая длинная подстрока без повторяющихся символов (LeetCode 3)</a></li><li class="toc-item toc-h4"><a href="#shag-0-naivnyy-brutfors-on3">Шаг 0: Наивный брутфорс $O(N^3)$</a></li><li class="toc-item toc-h4"><a href="#shag-1-optimizatsiya-do-skolzyashchego-okna-s-khesh-tablitsey-on">Шаг 1: Оптимизация до скользящего окна с хэш-таблицей $O(N)$</a></li><li class="toc-item toc-h4"><a href="#shag-2-go-mikrooptimizatsiya-do-massiva-na-steke">Шаг 2: Go-микрооптимизация до массива на стеке</a></li><li class="toc-item toc-h3"><a href="#rezyume-dialoga-na-sobesedovanii">Резюме диалога на собеседовании</a></li>
   </ul>
 </aside>
 

@@ -2171,18 +2171,30 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~24 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~17 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">20. Debugging алгоритмов</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Вы написали код. Он компилируется. Вы прошли ручную трассировку на одном-двух примерах — ответы совпадают. Но где-то глубоко внутри, в извилинах циклов и рекурсий, затаилась ошибка, которая проявится только на специфическом edge case или при N = 10⁵. На собеседовании нет кнопки «Submit», нет консоли с <code>fmt.Println</code>, нет времени на запуск бенчмарков. Ваш главный отладчик — <strong>собственное мышление</strong>.</p>
-<p>Умение отлаживать алгоритмы в уме, без IDE и логов, — это навык, который отличает Senior-инженера от человека, способного лишь воспроизводить заученный код. В этой статье мы разберём системный подход к debugging'у на собеседовании: как локализовать баг по симптомам, как использовать инварианты для сужения поиска, какие Go-специфичные ловушки чаще всего маскируются под «алгоритмическую ошибку», и как демонстрировать процесс отладки интервьюеру так, чтобы это шло в плюс.</p>
-<h3 id="mentalnaya-model-otladki-binarnyy-poisk-po-kodu">Ментальная модель отладки: бинарный поиск по коду</h3>
+            <blockquote>
+<p><em>«Самый эффективный инструмент отладки — это по-прежнему ясное, неторопливое мышление, подкрепленное строгой проверкой логических утверждений».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>Вы написали алгоритмический код. Он компилируется. Вы с уверенностью запускаете его на тестовом примере, но результат не совпадает с ожидаемым. Или еще драматичнее: программа паникует с ошибкой времени выполнения.</p>
+<p>На реальном собеседовании у вас нет под рукой графического отладчика с точками останова (breakpoints), нет возможности бесконечно расставлять <code>fmt.Println</code> и нет времени на хаотичный перебор вариантов. Ваш единственный инструмент диагностики — <strong>собственное структурированное мышление</strong>.</p>
+<p>Умение хладнокровно, методично и прозрачно для интервьюера локализовать и устранить дефект в коде прямо в уме — это один из самых ценных навыков Senior-инженера. В этой статье мы разберем универсальный алгоритм отладки без IDE, научимся превращать ментальные сбои в точки профессионального роста и изучим типовые ловушки рантайма Go.</p>
+<hr />
+<h3 id="mentalnaya-model-binarnyy-poisk-po-prostranstvu-koda">Ментальная модель: бинарный поиск по пространству кода</h3>
 
-<p>Когда вы подозреваете ошибку, не пытайтесь перечитывать весь код «в надежде увидеть». Это неэффективно. Вместо этого примените <strong>метод бинарного поиска</strong>: разделите выполнение на этапы и проверьте, на каком этапе состояние программы расходится с ожидаемым.</p>
+<p>Когда алгоритм выдает ошибку, неопытный кандидат начинает хаотично перечитывать весь код строчка за строчкой в надежде «случайно заметить опечатку». Это крайне неэффективно.</p>
+<p>Профессиональный подход к отладке опирается на <strong>метод бинарного поиска по состояниям</strong>:<br />
+1. Разделите выполнение функции на несколько контрольных этапов (фаз).<br />
+2. Сформулируйте ожидаемое состояние данных в середине алгоритма.<br />
+3. Мысленно сопоставьте ожидаемое состояние с реальным:<br />
+   - Если состояние корректно — ошибка находится <strong>во второй половине</strong> кода.<br />
+   - Если состояние уже повреждено — ошибка произошла <strong>до контрольной точки</strong>.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2207,145 +2219,108 @@ classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
 classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
 classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
 classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-Bug[&quot;Симптом: неверный ответ&lt;br&gt;или паника&quot;]:::error --&gt; Step1[&quot;1\. Определите, на каком&lt;br&gt;примере проявляется&quot;]
-Step1 --&gt; Step2[&quot;2\. Найдите минимальный&lt;br&gt;воспроизводимый пример&quot;]
-Step2 --&gt; Step3[&quot;3\. Выберите точку в коде,&lt;br&gt;где состояние можно&lt;br&gt;проверить мысленно&quot;]
-Step3 --&gt; Step4[&quot;4\. Сравните ожидаемое&lt;br&gt;и реальное состояние&quot;]
-Step4 --&gt; Match{&quot;Совпадает?&quot;}
-Match --&gt;|&quot;Да&quot;| Step5[&quot;Ошибка дальше&lt;br&gt;по коду — сужайте поиск&quot;]
-Match --&gt;|&quot;Нет&quot;| Step6[&quot;Ошибка до этой точки —&lt;br&gt;откатывайтесь назад&quot;]
-Step5 --&gt; Step3
-Step6 --&gt; Step3
-Step5 --&gt; Found[&quot;Ошибка локализована&lt;br&gt;между двумя проверками&quot;]
+
+Bug[&quot;Симптом: неверный результат&lt;br/&gt;или runtime panic&quot;]:::error --&gt; Step1[&quot;1. Сформулируйте минимальный&lt;br/&gt;воспроизводящий пример&quot;]:::warning
+Step1 --&gt; Step2[&quot;2. Выберите среднюю контрольную точку&lt;br/&gt;в теле цикла или алгоритма&quot;]:::process
+Step2 --&gt; Step3[&quot;3. Сравните ожидаемый инвариант&lt;br/&gt;с фактическим значением&quot;]:::accent
+
+Step3 --&gt; Match{&quot;Инвариант&lt;br/&gt;выполняется?&quot;}:::process
+Match --&gt;|&quot;Да&quot;| Next[&quot;Ошибка во второй половине:&lt;br/&gt;сужаем поиск вперед&quot;]:::aux
+Match --&gt;|&quot;Нет&quot;| Prev[&quot;Ошибка в первой половине:&lt;br/&gt;откатываемся назад&quot;]:::aux
+Next --&gt; Step2
+Prev --&gt; Step2
+Step3 --&gt; Found[&quot;Баг локализован и устранен!&quot;]:::success
   </pre>
 </div>
 
 
-<p>На собеседовании это выглядит как размышление вслух: «Давайте возьмём пример, на котором ответ неверный. После первой итерации цикла я ожидаю, что <code>left=1</code>, <code>sum=5</code>. Мысленно подставляю: действительно, <code>left=1</code>, <code>sum=5</code> — ок. После второй итерации <code>left</code> должен стать 2, но у меня он остаётся 1 — значит, ошибка в условии сдвига левого указателя.»</p>
-<h3 id="shag-1-naydite-minimalnyy-vosproizvodimyy-primer">Шаг 1: Найдите минимальный воспроизводимый пример</h3>
+<hr />
+<h3 id="shag-1-sozhmite-problemu-minimalnyy-vosproizvodyashchiy-primer-mre">Шаг 1. Сожмите проблему: минимальный воспроизводящий пример (MRE)</h3>
 
-<p>Получив неверный ответ на большом входе, немедленно упростите его до минимального примера, на котором ошибка сохраняется. Это главный навык debugging'а.</p>
-<p><strong>Правила минимизации:</strong><br />
-- Убирайте элементы с конца, пока ошибка не исчезнет. Верните последний убранный — он был важен.<br />
-- Убирайте дубликаты, упрощайте числа (делайте их 1, 2, 3).<br />
-- Если задача про строки, пробуйте строки из 2–3 символов.</p>
-<p><strong>Пример:</strong> Задача «найти минимальную подстроку, содержащую все символы <code>t</code>». Код падает с паникой на большом тесте. После минимизации выясняется: <code>s = "a"</code>, <code>t = "aa"</code>. На таком примере легко увидеть, что счётчик <code>matched</code> никогда не достигает <code>needCount</code>, окно не становится валидным, и код возвращает пустую строку без паники — паника была в другом месте. Продолжаем поиск.</p>
-<h3 id="shag-2-ispolzuyte-invarianty-kak-tochki-ostanova">Шаг 2: Используйте инварианты как «точки останова»</h3>
+<p>Если алгоритм падает на тесте из 50 элементов, не пытайтесь отлаживать его на всех 50! Главное правило инженера — <strong>минимизировать входные данные</strong>:<br />
+- Сократите массив до 2–3 элементов (например, <code>[2, 1]</code>).<br />
+- Для строк возьмите слово из двух одинаковых или двух разных букв (<code>"ab"</code>, <code>"aa"</code>).<br />
+- Для графов оставьте 2 вершины и 1 ребро.</p>
+<p>Если ошибка воспроизводится на 2 элементах, вы найдете ее за 30 секунд ручной трассировки, сохранив ясность ума и контроль над ситуацией.</p>
+<hr />
+<h3 id="shag-2-invarianty-kak-mentalnye-tochki-ostanova-breakpoints">Шаг 2. Инварианты как ментальные точки останова (Breakpoints)</h3>
 
-<p>Инвариант — это утверждение о состоянии программы, которое истинно до и после каждой итерации. В момент отладки вы мысленно проверяете инвариант в конкретной точке. Если инвариант нарушен — ошибка рядом.</p>
-<p><strong>Как сформулировать инвариант для отладки:</strong><br />
-- Для скользящего окна: «Окно <code>[left, right)</code> всегда содержит элементы, удовлетворяющие условию X, и <code>left &lt;= right</code>.»<br />
-- Для двух указателей: «Элементы левее <code>left</code> уже обработаны и не могут быть частью ответа; элементы правее <code>right</code> тоже.»<br />
-- Для DFS/BFS: «Все вершины в множестве <code>visited</code> действительно посещены, и ни одна не посещена дважды.»<br />
-- Для DP: «<code>dp[i]</code> содержит правильное значение для всех индексов ≤ i.»</p>
-<p>Вставляйте в код мысленные <code>assert</code> и проверяйте их на мини-примере:</p>
+<p>Инвариант — это непреложное логическое утверждение о состоянии переменных, которое обязано оставаться истинным перед началом и после завершения каждой итерации цикла.</p>
+<p>Примеры строгих инвариантов:<br />
+- <strong>Бинарный поиск:</strong> <em>«Искомый элемент, если он существует, строго лежит в диапазоне [left, right]»</em>.<br />
+- <strong>Скользящее окно:</strong> <em>«Подстрока s[left:right] содержит ровно matched уникальных символов с требуемой кратностью»</em>.<br />
+- <strong>Два указателя в 3Sum:</strong> <em>«Все пары левее left и правее right уже проверены и не могут дать нулевую сумму с nums[i]»</em>.</p>
+<p>В момент отладки озвучьте инвариант:<br />
+<em>«Проверим инвариант: после сдвига правого указателя переменная have[ch] обязана увеличиться на 1. Проверяю... да, увеличилась. А вот счетчик matched не увеличился, потому что я забыл проверить условие have[ch] == need[ch]. Баг найден!»</em>.</p>
+<hr />
+<h3 id="shag-3-ruchnaya-tablitsa-trassirovki-variable-tracing">Шаг 3. Ручная таблица трассировки (Variable Tracing)</h3>
 
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">for right &lt; len(s) {
-    // assert: left &lt;= right
-    // assert: window содержит символы s[left:right]
-    ...
-}
-</code></pre>
-</div>
-
-<p>На собеседовании произнесите: «Я проверю инвариант: на этом шаге окно должно быть <code>[0,2)</code>, символы 'A','D' — верно, <code>matched=1</code> — верно. Инвариант выполняется, идём дальше.»</p>
-<h3 id="shag-3-tekhnika-otslezhivaniya-peremennoy-variable-tracing">Шаг 3: Техника «отслеживания переменной» (Variable Tracing)</h3>
-
-<p>Для маленького примера выпишите (мысленно или шёпотом) строки таблицы значений ключевых переменных на каждой итерации. Это самый надёжный способ найти ошибку в логике цикла.</p>
-<p><strong>Пример для скользящего окна:</strong></p>
+<p>Нарисуйте в комментариях редактора или на доске компактную таблицу значений для 2–3 итераций:</p>
 <div class="table-container"><table>
 <thead>
 <tr>
 <th>Итерация</th>
-<th>right</th>
-<th>left</th>
-<th>windowSum</th>
-<th>maxLen</th>
+<th><code>left</code></th>
+<th><code>right</code></th>
+<th><code>nums[right]</code></th>
+<th><code>currentSum</code></th>
+<th><code>maxSum</code></th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>init</td>
+<td>Старт</td>
 <td>0</td>
-<td>0</td>
-<td>0</td>
-<td>0</td>
-</tr>
-<tr>
-<td>1</td>
-<td>1</td>
 <td>0</td>
 <td>2</td>
-<td>1</td>
-</tr>
-<tr>
 <td>2</td>
-<td>2</td>
-<td>0</td>
-<td>5</td>
 <td>2</td>
 </tr>
 <tr>
-<td>3 (sum&gt;target)</td>
-<td>2</td>
+<td>Итерация 1</td>
+<td>0</td>
 <td>1</td>
-<td>3</td>
+<td>-3</td>
+<td>-1</td>
 <td>2</td>
 </tr>
 <tr>
-<td>...</td>
-<td>...</td>
-<td>...</td>
-<td>...</td>
-<td>...</td>
+<td>Итерация 2</td>
+<td>2 (сброс!)</td>
+<td>2</td>
+<td>4</td>
+<td>4</td>
+<td>4</td>
 </tr>
 </tbody>
 </table></div>
-<p>Заполняя таблицу, вы часто видите: «Стоп, на итерации 3 я ожидал <code>left=1</code> и <code>sum=3</code>, а в коде <code>left</code> не инкрементируется — нашёл баг.»</p>
-<h3 id="tipovye-klassy-oshibok-i-ikh-simptomy">Типовые классы ошибок и их симптомы</h3>
+<p>Заполняя эту таблицу шаг за шагом, вы мгновенно увидите точное место, где реальность разошлась с математической моделью.</p>
+<hr />
+<h3 id="klassifikator-defektov-fotorobot-tipichnykh-bagov">Классификатор дефектов: «фоторобот» типичных багов</h3>
 
-<p>Зная «фоторобот» распространённых багов, вы быстрее сужаете круг подозреваемых.</p>
-<h4 id="1-off-by-one-oshibka-na-edinitsu">1. Off-by-one (ошибка на единицу)</h4>
+<h4 id="1-oshibka-na-edinitsu-off-by-one">1. Ошибка на единицу (Off-by-one)</h4>
+<p>Самый распространенный класс алгоритмических дефектов.<br />
+- <strong>Симптомы:</strong> длина ответа отличается ровно на $\pm 1$; <code>panic: index out of range</code> на последнем элементе.<br />
+- <strong>Зона проверки:</strong><br />
+  - Границы циклов: <code>for i &lt; n</code> против <code>for i &lt;= n</code>.<br />
+  - Длина диапазона: <code>right - left + 1</code> против <code>right - left</code>.<br />
+  - Срезы Go: в срезе <code>s[a:b]</code> правая граница <code>b</code> <strong>не включается</strong>!<br />
+  - Бинарный поиск: сдвиги <code>left = mid + 1</code> и <code>right = mid - 1</code> против <code>right = mid</code>.</p>
+<h4 id="2-zabytoe-obnovlenie-svyazannykh-peremennykh">2. Забытое обновление связанных переменных</h4>
+<ul>
+<li><strong>Симптомы:</strong> алгоритм работает на простых тестах, но зацикливается или возвращает мусор на сложных.</li>
+<li><strong>Зона проверки:</strong> при сдвиге указателя <code>left++</code> вы забыли вычесть <code>nums[left]</code> из бегущей суммы или уменьшить частотный счетчик в хэш-таблице.</li>
+</ul>
+<h4 id="3-nepravilnyy-sbros-sostoyaniya-v-bektrekinge">3. Неправильный сброс состояния в бэктрекинге</h4>
+<ul>
+<li><strong>Симптомы:</strong> последующие ветви рекурсии получают данные от предыдущих веток.</li>
+<li><strong>Зона проверки:</strong> забыли выполнить откат: <code>path = path[:len(path)-1]</code> или <code>visited[node] = false</code> после возврата из рекурсивного вызова.</li>
+</ul>
+<hr />
+<h3 id="tonkie-maski-go-kogda-vinovat-yazyk-a-ne-algoritm">Тонкие «маски» Go: когда виноват язык, а не алгоритм</h3>
 
-<p>Самый частый баг. Симптомы: ответ отличается от правильного на 1, либо выход за границы слайса (<code>index out of range</code>).</p>
-<p><strong>Где искать:</strong><br />
-- Условия циклов: <code>for i &lt; n</code> vs <code>for i &lt;= n</code>.<br />
-- Возврат длины/индекса: <code>return right - left</code> vs <code>return right - left + 1</code>.<br />
-- Срезы: <code>s[start:end]</code> — правая граница исключительная.<br />
-- В бинарном поиске: <code>mid := left + (right-left)/2</code> и условия <code>left = mid</code> или <code>left = mid+1</code>.</p>
-<p><strong>Способ проверки:</strong> подставьте минимальный вход (длину 0, 1, 2) и посмотрите, сколько раз выполняется тело цикла.</p>
-<h4 id="2-narushenie-invarianta">2. Нарушение инварианта</h4>
-
-<p>Симптом: код работает на одних примерах, но даёт неверный ответ на других, особенно с дубликатами или крайними значениями.</p>
-<p><strong>Где искать:</strong> операции, которые изменяют состояние (сдвиг указателя, изменение суммы, добавление в map), но не обновляют связанные переменные. Классика: сдвинули <code>left</code>, но забыли вычесть <code>nums[left]</code> из <code>windowSum</code>.</p>
-<h4 id="3-oshibka-v-logike-obnovleniya-otveta">3. Ошибка в логике обновления ответа</h4>
-
-<p>Симптом: ответ правильный по длине/сумме, но неверный по содержанию (например, подстрока не та).</p>
-<p><strong>Где искать:</strong> условие, при котором обновляется <code>result</code>. Часто обновление ответа ставят до завершения внутреннего цикла, или наоборот — после, когда окно уже испорчено.</p>
-<h4 id="4-nevernaya-obrabotka-dublikatov">4. Неверная обработка дубликатов</h4>
-
-<p>Симптом: ответ содержит лишние элементы или не содержит нужных.</p>
-<p><strong>Где искать:</strong> отсутствие пропуска одинаковых значений при сдвиге указателей (особенно в 3Sum, 4Sum), неправильное сравнение (<code>==</code> вместо <code>&gt;=</code> или наоборот).</p>
-<h4 id="5-vykhod-za-granitsy-panic-index-out-of-range">5. Выход за границы (panic: index out of range)</h4>
-
-<p><strong>Где искать:</strong> операции среза, доступ по индексу без проверки длины, обращение к <code>deque[0]</code> при пустом слайсе, <code>str[i]</code> для пустой строки.</p>
-<p><strong>Go-совет:</strong> всегда добавляйте guard clause в начале функции: <code>if len(arr) == 0 { return ... }</code>. Это предотвращает 90% паник.</p>
-<h4 id="6-beskonechnyy-tsikl">6. Бесконечный цикл</h4>
-
-<p>Симптом: «зависание» (мысленное) — указатели не сходятся, цикл не завершается.</p>
-<p><strong>Где искать:</strong> условие сдвига указателя не изменяет его (например, <code>left++</code> отсутствует), или условие <code>left &lt; right</code> всегда истинно.</p>
-<h3 id="go-spetsifichnye-maski-kogda-bag-ne-v-algoritme-a-v-yazyke">Go-специфичные «маски»: когда баг не в алгоритме, а в языке</h3>
-
-<p>Иногда код алгоритмически верен, но поведение Go создаёт иллюзию ошибки.</p>
-<h4 id="1-nil-map-panika">1. nil-map паника</h4>
+<p>Иногда алгоритмическая логика кандидата безупречна, но код падает из-за непонимания внутренних механизмов Go:</p>
+<h4 id="lovushka-1-panika-na-nil-karte">Ловушка 1: Паника на `nil`-карте</h4>
 
 
 <div class="code-block" data-lang="go">
@@ -2356,13 +2331,14 @@ Step5 --&gt; Found[&quot;Ошибка локализована&lt;br&gt;межд
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">var m map[int]int
-m[0]++ // panic
+  <pre class="language-go"><code class="language-go">var memo map[int]int
+// ...
+memo[key] = val // panic: assignment to entry in nil map!
 </code></pre>
 </div>
 
-<p>Симптом: внезапная паника на тесте, где map используется без инициализации. Всегда <code>make(map[...])</code>.</p>
-<h4 id="2-pereispolzovanie-slaysa-i-neozhidannye-izmeneniya">2. Переиспользование слайса и неожиданные изменения</h4>
+<p><em>Лечение:</em> Всегда инициализируйте карту: <code>memo = make(map[int]int)</code>.</p>
+<h4 id="lovushka-2-modifikatsiya-kopii-vmesto-originala-v-range">Ловушка 2: Модификация копии вместо оригинала в `range`</h4>
 
 
 <div class="code-block" data-lang="go">
@@ -2373,65 +2349,52 @@ m[0]++ // panic
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">a := []int{1,2,3}
-b := a[:2]
-b = append(b, 4)
-// a теперь [1,2,4]
+  <pre class="language-go"><code class="language-go">for _, node := range nodes {
+    node.Visited = true // Бесполезно! Изменяется локальная копия структуры!
+}
 </code></pre>
 </div>
 
-<p>Симптом: исходный слайс «портится». Решение: явное копирование, если нужна независимость.</p>
-<h4 id="3-stroki-i-bayty">3. Строки и байты</h4>
+<p><em>Лечение:</em> Используйте индекс: <code>nodes[i].Visited = true</code>.</p>
+<h4 id="lovushka-3-sluchaynaya-perezapis-sreza-cherez-append">Ловушка 3: Случайная перезапись среза через `append`</h4>
 
-<p>Обращение <code>s[i]</code> к строке с мультибайтовым символом даёт байт, не руну. Симптом: странное поведение на не-ASCII символах.</p>
-<h4 id="4-range-i-kopirovanie">4. `range` и копирование</h4>
 
-<p><code>for _, node := range nodes</code> создаёт копию. Если вы изменяете <code>node.Value</code>, это не влияет на слайс. Нужно <code>for i := range nodes</code> и <code>nodes[i].Value = ...</code>.</p>
-<h4 id="5-append-i-yomkost">5. `append` и ёмкость</h4>
-
-<p>Если не предвыделить capacity, <code>append</code> создаёт новый массив, и указатели на старые элементы становятся невалидными. Симптом: «пропадают» элементы из map после <code>append</code>.</p>
-<h3 id="kak-demonstrirovat-otladku-na-sobesedovanii">Как демонстрировать отладку на собеседовании</h3>
-
-<p>Обнаружив ошибку, не молчите и не стирайте код в панике. Превратите отладку в шоу:</p>
-<ol>
-<li><strong>Объявите, что нашли проблему.</strong> «Так, на этом примере ответ не сходится. Давайте я отлажу».</li>
-<li><strong>Локализуйте симптом.</strong> «Ожидал 5, получил 4. Похоже на off-by-one в возвращаемом значении».</li>
-<li><strong>Пройдите по коду с мини-примером.</strong> «Возьму массив из двух элементов. Правая граница... ок, левая... ок. А, вот здесь я возвращаю <code>right-left</code>, а должен <code>right-left+1</code>, потому что <code>right</code> указывает на следующий за окном элемент».</li>
-<li><strong>Исправьте и перезапустите мысленный тест.</strong> «Теперь ответ 5, корректно».</li>
-<li><strong>Сделайте вывод.</strong> «Хорошо, что проверили — это классический off-by-one для скользящего окна».</li>
-</ol>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p>Если вы не можете найти ошибку за 2–3 минуты, скажите: «Я подозреваю, что проблема в логике обновления состояния при сдвиге левого указателя. Давайте я заново проговорю инвариант этого цикла». Это показывает, что вы не топчетесь на месте, а применяете методику. Интервьюер может дать подсказку, и это не будет минусом.</p>
-  </div>
+  <pre class="language-go"><code class="language-go">a := []int{1, 2, 3}
+b := a[:1] // [1], cap = 3
+b = append(b, 99) // Перезаписало a[1]! Теперь a = [1, 99, 3]
+</code></pre>
 </div>
 
-<h3 id="profilaktika-kak-pisat-kod-kotoryy-legche-otlazhivat">Профилактика: как писать код, который легче отлаживать</h3>
+<p><em>Лечение:</em> При необходимости изолированного среза используйте трех-индексный срез с ограничением емкости: <code>b := a[:1:1]</code>. Тогда <code>append</code> гарантированно выделит независимый массив.</p>
+<hr />
+<h3 id="kak-vesti-sebya-pri-obnaruzhenii-baga-na-intervyu">Как вести себя при обнаружении бага на интервью</h3>
 
 <ol>
-<li><strong>Комментируйте инварианты прямо в коде (или мысленно).</strong> Одна строка <code>// окно [left, right) содержит ...</code> сэкономит 10 минут отладки.</li>
-<li><strong>Используйте guard clauses.</strong> Проверка на пустой вход в начале функции изолирует пустой случай от основной логики.</li>
-<li><strong>Пишите маленькие вспомогательные функции.</strong> <code>isValid(window map[byte]int, need map[byte]int) bool</code> легче проверить в уме, чем сложное условие внутри цикла.</li>
-<li><strong>Предпочитайте иммутабельность там, где это не вредит производительности.</strong> Возврат нового слайса вместо модификации «in-place» уменьшает сайд-эффекты. Но в Go старайтесь избегать лишних аллокаций, указывая capacity.</li>
-<li><strong>Держите под рукой мысленный чек-лист Go-ловушек:</strong> nil-map, range-копии, срезы с общей памятью, конвертация строк.</li>
+<li><strong>Не паникуйте и не извиняйтесь:</strong> Ошибки при написании кода — абсолютно естественная часть инженерной работы. Интервьюер оценивает вашу реакцию.</li>
+<li><strong>Озвучьте симптом:</strong> <em>«Так, на тесте с дубликатами функция вернула 3 вместо 2. Похоже, мы дважды учли один и тот же элемент»</em>.</li>
+<li><strong>Возьмите управление:</strong> <em>«Давайте я не буду гадать, а быстро протрассирую логику на минимальном примере из трех элементов»</em>.</li>
+<li><strong>Найдите и объясните причину:</strong> <em>«Ага! При сдвиге указателя я забыл пропустить повторяющиеся значения. Исправляю условием for»</em>.</li>
+<li><strong>Проверьте повторно:</strong> Убедитесь, что исправление не сломало другие тесты.</li>
 </ol>
-<h3 id="chto-delat-esli-oshibka-ne-nakhoditsya">Что делать, если ошибка не находится</h3>
+<p>Демонстрация такого спокойного, аналитического подхода производит куда более сильное впечатление, чем случайное «угадывание» решения без единой помарки.</p>
+<hr />
+<h3 id="zaklyuchenie-teoreticheskogo-bloka">Заключение теоретического блока</h3>
 
-<p>На собеседовании время ограничено. Если вы застряли:</p>
-<ol>
-<li><strong>Перечитайте условие задачи.</strong> Может, вы неверно поняли, что требуется (например, индексы 0-базированные или 1-базированные).</li>
-<li><strong>Проверьте, что функция действительно возвращает то, что вы думаете.</strong> Может, вы забыли <code>return</code> и возвращается zero-value.</li>
-<li><strong>Попробуйте другой алгоритм.</strong> Скажите интервьюеру: «Я вижу, что текущий подход упирается в крайний случай, который я пока не могу обойти. Возможно, здесь надёжнее применить другой паттерн — например, вместо скользящего окна использовать префиксные суммы с map.» Это демонстрирует гибкость.</li>
-<li><strong>Попросите минуту подумать молча.</strong> Лучше взять паузу, чем паниковать вслух.</li>
-</ol>
-<h3 id="zaklyuchenie">Заключение</h3>
-
-<p>Отладка без инструментов — это дисциплина мышления: бинарный поиск по коду, проверка инвариантов, трассировка на минимальном примере. В Go к этому добавляется слой знания внутреннего устройства языка, который превращает загадочные паники и неверные ответы в понятные симптомы. Освоив этот подход, вы перестанете бояться ошибок на собеседовании и начнёте воспринимать их как возможность показать инженерную зрелость.</p>
-<p>В следующей статье мы перейдём к не менее критичному аспекту — управлению временем на интервью: как уложиться в отведённые минуты, не жертвуя качеством кода и обсуждением. <a href="21-tayming-resheniya-zadach.html" class="wikilink">21. Тайминг решения задач</a></p>
+<p>Мы завершили фундаментальный теоретический цикл подготовки к алгоритмическим секциям. Мы освоили ментальные модели Кернигана:<br />
+- Перевод условий задач в эффективные структуры данных.<br />
+- Строгий выбор между жадностью и динамическим программированием.<br />
+- Гармоничную композицию алгоритмических паттернов.<br />
+- Преодоление неочевидности через наивное решение и пошаговую оптимизацию.<br />
+- Механическую симпатию к кэш-линиям, сборщику мусора и рантайму Go.</p>
+<p>В следующем модуле мы перейдем к психологическим и тактическим аспектам интервью: таймингу, лайвкодингу на белой доске и антипаттернам поведения. <a href="21-tayming-resheniya-zadach.html" class="wikilink">21. Тайминг решения задач</a></p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2459,7 +2422,7 @@ b = append(b, 4)
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#mentalnaya-model-otladki-binarnyy-poisk-po-kodu">Ментальная модель отладки: бинарный поиск по коду</a></li><li class="toc-item toc-h3"><a href="#shag-1-naydite-minimalnyy-vosproizvodimyy-primer">Шаг 1: Найдите минимальный воспроизводимый пример</a></li><li class="toc-item toc-h3"><a href="#shag-2-ispolzuyte-invarianty-kak-tochki-ostanova">Шаг 2: Используйте инварианты как «точки останова»</a></li><li class="toc-item toc-h3"><a href="#shag-3-tekhnika-otslezhivaniya-peremennoy-variable-tracing">Шаг 3: Техника «отслеживания переменной» (Variable Tracing)</a></li><li class="toc-item toc-h3"><a href="#tipovye-klassy-oshibok-i-ikh-simptomy">Типовые классы ошибок и их симптомы</a></li><li class="toc-item toc-h4"><a href="#1-off-by-one-oshibka-na-edinitsu">1. Off-by-one (ошибка на единицу)</a></li><li class="toc-item toc-h4"><a href="#2-narushenie-invarianta">2. Нарушение инварианта</a></li><li class="toc-item toc-h4"><a href="#3-oshibka-v-logike-obnovleniya-otveta">3. Ошибка в логике обновления ответа</a></li><li class="toc-item toc-h4"><a href="#4-nevernaya-obrabotka-dublikatov">4. Неверная обработка дубликатов</a></li><li class="toc-item toc-h4"><a href="#5-vykhod-za-granitsy-panic-index-out-of-range">5. Выход за границы (panic: index out of range)</a></li><li class="toc-item toc-h4"><a href="#6-beskonechnyy-tsikl">6. Бесконечный цикл</a></li><li class="toc-item toc-h3"><a href="#go-spetsifichnye-maski-kogda-bag-ne-v-algoritme-a-v-yazyke">Go-специфичные «маски»: когда баг не в алгоритме, а в языке</a></li><li class="toc-item toc-h4"><a href="#1-nil-map-panika">1. nil-map паника</a></li><li class="toc-item toc-h4"><a href="#2-pereispolzovanie-slaysa-i-neozhidannye-izmeneniya">2. Переиспользование слайса и неожиданные изменения</a></li><li class="toc-item toc-h4"><a href="#3-stroki-i-bayty">3. Строки и байты</a></li><li class="toc-item toc-h4"><a href="#4-range-i-kopirovanie">4. range и копирование</a></li><li class="toc-item toc-h4"><a href="#5-append-i-yomkost">5. append и ёмкость</a></li><li class="toc-item toc-h3"><a href="#kak-demonstrirovat-otladku-na-sobesedovanii">Как демонстрировать отладку на собеседовании</a></li><li class="toc-item toc-h3"><a href="#profilaktika-kak-pisat-kod-kotoryy-legche-otlazhivat">Профилактика: как писать код, который легче отлаживать</a></li><li class="toc-item toc-h3"><a href="#chto-delat-esli-oshibka-ne-nakhoditsya">Что делать, если ошибка не находится</a></li><li class="toc-item toc-h3"><a href="#zaklyuchenie">Заключение</a></li>
+    <li class="toc-item toc-h3"><a href="#mentalnaya-model-binarnyy-poisk-po-prostranstvu-koda">Ментальная модель: бинарный поиск по пространству кода</a></li><li class="toc-item toc-h3"><a href="#shag-1-sozhmite-problemu-minimalnyy-vosproizvodyashchiy-primer-mre">Шаг 1. Сожмите проблему: минимальный воспроизводящий пример (MRE)</a></li><li class="toc-item toc-h3"><a href="#shag-2-invarianty-kak-mentalnye-tochki-ostanova-breakpoints">Шаг 2. Инварианты как ментальные точки останова (Breakpoints)</a></li><li class="toc-item toc-h3"><a href="#shag-3-ruchnaya-tablitsa-trassirovki-variable-tracing">Шаг 3. Ручная таблица трассировки (Variable Tracing)</a></li><li class="toc-item toc-h3"><a href="#klassifikator-defektov-fotorobot-tipichnykh-bagov">Классификатор дефектов: «фоторобот» типичных багов</a></li><li class="toc-item toc-h4"><a href="#1-oshibka-na-edinitsu-off-by-one">1. Ошибка на единицу (Off-by-one)</a></li><li class="toc-item toc-h4"><a href="#2-zabytoe-obnovlenie-svyazannykh-peremennykh">2. Забытое обновление связанных переменных</a></li><li class="toc-item toc-h4"><a href="#3-nepravilnyy-sbros-sostoyaniya-v-bektrekinge">3. Неправильный сброс состояния в бэктрекинге</a></li><li class="toc-item toc-h3"><a href="#tonkie-maski-go-kogda-vinovat-yazyk-a-ne-algoritm">Тонкие «маски» Go: когда виноват язык, а не алгоритм</a></li><li class="toc-item toc-h4"><a href="#lovushka-1-panika-na-nil-karte">Ловушка 1: Паника на nil-карте</a></li><li class="toc-item toc-h4"><a href="#lovushka-2-modifikatsiya-kopii-vmesto-originala-v-range">Ловушка 2: Модификация копии вместо оригинала в range</a></li><li class="toc-item toc-h4"><a href="#lovushka-3-sluchaynaya-perezapis-sreza-cherez-append">Ловушка 3: Случайная перезапись среза через append</a></li><li class="toc-item toc-h3"><a href="#kak-vesti-sebya-pri-obnaruzhenii-baga-na-intervyu">Как вести себя при обнаружении бага на интервью</a></li><li class="toc-item toc-h3"><a href="#zaklyuchenie-teoreticheskogo-bloka">Заключение теоретического блока</a></li>
   </ul>
 </aside>
 

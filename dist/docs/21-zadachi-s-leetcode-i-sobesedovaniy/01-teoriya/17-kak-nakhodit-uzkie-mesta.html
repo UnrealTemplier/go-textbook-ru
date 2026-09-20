@@ -2171,31 +2171,31 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~25 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~17 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">17. Как находить узкие места</h1>
           </header>
 
           <div class="article-markdown">
-            <p>В предыдущей статье <a href="16-optimizatsiya-resheniya-shag-za-shagom.html" class="wikilink">16. Оптимизация решения шаг за шагом</a> мы превращали наивный код в оптимальный, последовательно устраняя самые дорогие операции. Но как узнать, <em>какая</em> именно операция самая дорогая? Как отличить настоящее узкое место от безобидной детали? И как делать это быстро, без профайлера и бенчмарков, прямо в уме — на собеседовании или при code review?</p>
-<p>Умение мгновенно идентифицировать bottleneck — один из главных признаков Senior-разработчика. Новичок гадает и оптимизирует наугад; Senior видит структуру кода, как рентген, и указывает пальцем: «Вот здесь мы теряем время и память». Эта статья — о том, как развить такое зрение, какие законы физики и свойства рантайма Go за этим стоят, и как применять этот навык на алгоритмических собеседованиях.</p>
-<h3 id="chto-takoe-uzkoe-mesto-ne-tolko-asimptotika">Что такое узкое место: не только асимптотика</h3>
+            <blockquote>
+<p><em>«Ошибочно полагать, будто программа распределяет свое время равномерно по всем строкам. Девяносто процентов времени процессор проводит в десяти процентах кода. Найдите эти десять процентов».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>В предыдущей статье мы научились последовательно подниматься по ступеням оптимизации. Но как безошибочно определить, на какую именно ступень нужно ступить прямо сейчас? Какая строка кода сжигает драгоценные миллисекунды, а какая — работает практически со скоростью кремния? И главное: как делать это прямо на собеседовании, глядя на пустой экран редактора, где нет ни <code>pprof</code>, ни бенчмарков <code>go test -bench</code>?</p>
+<p>Умение моментально диагностировать узкое место (bottleneck) в уме — это высший пилотаж алгоритмической культуры. Новичок бросается наугад менять типы переменных или переставлять <code>if</code>-ы. Senior-инженер смотрит на код сквозь призму рантайма Go и законов физики процессора, безошибочно указывая пальцем на скрытый источник проблем.</p>
+<hr />
+<h3 id="tri-izmereniya-uzkogo-mesta">Три измерения узкого места</h3>
 
-<p><strong>Узкое место (bottleneck)</strong> — это компонент системы, который ограничивает её общую производительность. В контексте одной функции это операция или набор операций, на которые приходится непропорционально большая доля времени выполнения или аллокаций.</p>
-<p>Распространённое заблуждение: «Bottleneck — это всегда то, что даёт самую высокую степень в O-нотации». Это правда лишь отчасти. Асимптотика показывает, как растёт время с ростом N. Но при конкретных ограничениях N=10⁵ O(N) с огромной константой может работать медленнее, чем O(N²) с микроскопической. И в Go константа часто определяется не алгоритмом, а взаимодействием с памятью: аллокациями в куче, pointer chasing в map, ростом слайсов, остановками GC.</p>
-<p><strong>Пример:</strong> У вас есть O(N) алгоритм, но внутри цикла вы делаете <code>m[key]++</code> для map с миллионом ключей. Каждая операция — это хеширование, поиск бакета, возможная эвакуация. Второй алгоритм — O(N log N) с сортировкой слайса и бинарным поиском, но зато все данные лежат непрерывно, кэш-промахов нет, GC не напрягается. На практике второй может обогнать первый на порядок для определённых N.</p>
-<p>Вывод: <strong>bottleneck может быть асимптотическим (Big O), аллокационным (куча/GC), кэш-промаховым (cache miss) или их комбинацией.</strong> Senior видит все три слоя.</p>
-<h3 id="mentalnaya-model-kuda-ukhodit-vremya">Ментальная модель: «куда уходит время»</h3>
-
-<p>На собеседовании у вас нет pprof и трассировщика. Но у вас есть мысленная модель исполнения Go-кода, построенная на знании <span class="wikilink-unresolved" title="Заметка в разработке">07. Глубокий Go (Внутреннее устройство)</span> и <span class="wikilink-unresolved" title="Заметка в разработке">01. Архитектура компьютера</span>. Вы смотрите на код и на каждой строке мысленно «считаете такты».</p>
-<p><strong>Базовые цифры для ориентира (современный x86-64, грубо):</strong><br />
-- Обращение к локальной переменной (регистр или L1-кэш): 1–4 такта.<br />
-- Доступ к элементу слайса по индексу (L1-L2): 4–12 тактов.<br />
-- Доступ к элементу map (хеш + поиск в бакете + pointer chasing): 50–200 тактов (и это при хорошем раскладе).<br />
-- Аллокация в куче (вызов <code>runtime.mallocgc</code>): сотни-тысячи тактов, не считая работы GC.<br />
-- Системный вызов (например, запись в файл): десятки тысяч тактов — но в DSA-задачах не встречается.</p>
-<p>С такой таблицей в голове вы мгновенно видите: «здесь map в цикле — дорого», «здесь append без capacity — скрытые аллокации», «здесь рекурсия без мемоизации — экспоненциальный взрыв».</p>
+<p>Узкое место — это не просто абстрактная степень в формуле Big O. В высоконагруженных системах и алгоритмах на Go узкие места раскладываются на три физических слоя:</p>
+<ol>
+<li><strong>Асимптотический слой (Алгоритм):</strong><br />
+   Вложенные циклы, разрастание пространства состояний ($O(N^2)$, $O(N^3)$, $O(2^N)$). При $N = 10^5$ никакой кэш процессора не спасет квадратичный алгоритм от краха.</li>
+<li><strong>Аллокационный слой (Рантайм Go и GC):</strong><br />
+   Даже если ваш алгоритм строго линейный ($O(N)$), но внутри цикла на миллион итераций вы создаете тысячи мелких объектов в куче или заставляете слайс неконтролируемо расти, вызовы <code>runtime.mallocgc</code> и сборщик мусора заставят программу захлебнуться.</li>
+<li><strong>Кэш-промаховый слой (Архитектура процессора):</strong><br />
+   Случайный доступ по указателям (pointer chasing) в хэш-таблицах или связных списках заставляет ядра CPU непрерывно простаивать в ожидании данных из оперативной памяти (RAM latency $\sim 50-100$ нс), в то время как последовательный обход непрерывного слайса утилизирует кэш-линии L1 со скоростью $\sim 1$ нс.</li>
+</ol>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2220,86 +2220,77 @@ classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
 classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
 classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
 classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-Code[&quot;Читаем код&quot;]:::warning --&gt; Map{&quot;Есть map&lt;br&gt;в горячем цикле?&quot;}
-Map --&gt;|&quot;Да&quot;| M1[&quot;Проверить, можно ли&lt;br&gt;заменить массивом&lt;br&gt;или избежать&quot;]
-Map --&gt;|&quot;Нет&quot;| Slice{&quot;Есть append&lt;br&gt;без make cap?&quot;}
-Slice --&gt;|&quot;Да&quot;| S1[&quot;Добавить предвыделение&quot;]
-Slice --&gt;|&quot;Нет&quot;| Recurse{&quot;Рекурсия&lt;br&gt;без мемоизации?&quot;}
-Recurse --&gt;|&quot;Да&quot;| R1[&quot;Переписать на bottom-up DP&lt;br&gt;или добавить кэш&quot;]
-Recurse --&gt;|&quot;Нет&quot;| Loop{&quot;Вложенные циклы&lt;br&gt;O N² или хуже?&quot;}
-Loop --&gt;|&quot;Да&quot;| L1[&quot;Искать монотонность,&lt;br&gt;сортировку, два указателя,&lt;br&gt;префиксные суммы&quot;]
-Loop --&gt;|&quot;Нет&quot;| Done[&quot;Вероятно, асимптотика&lt;br&gt;оптимальна&lt;br&gt;Проверить константы&quot;]
+
+Code[&quot;Анализ кода функции&quot;]:::entry --&gt; CheckLoop{&quot;Вложенные циклы&lt;br/&gt;O N² или хуже?&quot;}:::process
+CheckLoop --&gt;|&quot;Да&quot;| FixLoop[&quot;Алгоритмический bottleneck:&lt;br/&gt;применить 2 указателя, окно, префиксы&quot;]:::error
+CheckLoop --&gt;|&quot;Нет&quot;| CheckMap{&quot;Хэш-таблица map&lt;br/&gt;в горячем цикле?&quot;}:::warning
+
+CheckMap --&gt;|&quot;Да&quot;| FixMap[&quot;Кэш-промахи и бакеты:&lt;br/&gt;заменить массивом [N]int на стеке&quot;]:::accent
+CheckMap --&gt;|&quot;Нет&quot;| CheckAppend{&quot;append в цикле&lt;br/&gt;без make cap?&quot;}:::warning
+
+CheckAppend --&gt;|&quot;Да&quot;| FixAppend[&quot;Скрытые реаллокации кучи:&lt;br/&gt;добавить предвыделение make cap&quot;]:::data
+CheckAppend --&gt;|&quot;Нет&quot;| CheckString{&quot;Конкатенация строк&lt;br/&gt;s += str в цикле?&quot;}:::warning
+
+CheckString --&gt;|&quot;Да&quot;| FixString[&quot;Копирование буферов O N²:&lt;br/&gt;заменить на strings.Builder&quot;]:::error
+CheckString --&gt;|&quot;Нет&quot;| Optimal[&quot;Код близок к оптимуму:&lt;br/&gt;O N по времени, 0 аллокаций&quot;]:::success
   </pre>
 </div>
 
 
-<h3 id="sistematicheskiy-podkhod-chek-list-krasnykh-flagov">Систематический подход: чек-лист «красных флагов»</h3>
+<hr />
+<h3 id="mentalnyy-schetchik-taktov-orientiry-dlya-x86-64-i-arm64">Ментальный счетчик тактов: ориентиры для x86-64 и ARM64</h3>
 
-<p>Вот 7 маркеров, которые я мысленно проверяю в любом неоптимальном коде на Go. Пройдитесь по ним, и bottleneck проявится.</p>
-<h4 id="1-vlozhennye-tsikly-s-pereborom-vsekh-par">1. Вложенные циклы с перебором всех пар</h4>
+<p>Чтобы находить узкие места в уме, достаточно помнить примерный порядок стоимости базовых операций процессора:</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Операция</th>
+<th>Стоимость (такты CPU)</th>
+<th>Физический смысл</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Чтение регистра CPU</td>
+<td>0–1 такт</td>
+<td>Данные уже внутри вычислительного ядра</td>
+</tr>
+<tr>
+<td>Чтение из кэша L1</td>
+<td>3–4 такта</td>
+<td>Локальные переменные на стеке, массив на стеке</td>
+</tr>
+<tr>
+<td>Чтение из кэша L2</td>
+<td>10–14 тактов</td>
+<td>Непрерывный слайс среднего размера</td>
+</tr>
+<tr>
+<td>Чтение из оперативной памяти (RAM)</td>
+<td>150–300 тактов</td>
+<td><strong>Cache Miss!</strong> Случайный прыжок по указателю</td>
+</tr>
+<tr>
+<td>Доступ к элементу <code>map</code></td>
+<td>50–200 тактов</td>
+<td>Вычисление хэша + выборка бакета + разыменование</td>
+</tr>
+<tr>
+<td>Аллокация в куче (<code>runtime.mallocgc</code>)</td>
+<td>500–2000 тактов</td>
+<td>Поиск свободного span в mcache + метаданные GC</td>
+</tr>
+</tbody>
+</table></div>
+<p>Когда вы видите <code>m[key]++</code> внутри цикла на $10^5$ итераций, вы должны понимать: программа потратит на это десятки миллионов тактов просто на обслуживание бакетов <code>hmap</code>! Замена на <code>count[key]++</code> по прямому индексу слайса сократит это время на 90%.</p>
+<hr />
+<h3 id="7-krasnykh-flagov-v-kode-na-go">7 «красных флагов» в коде на Go</h3>
 
-<p>Самый очевидный красный флаг: двойной <code>for</code> по массиву длиной N. Почти всегда означает O(N²). Спросите: «Можно ли внешний цикл заменить на скользящее окно, два указателя или бинарный поиск?»</p>
-<p><strong>Исключение:</strong> если N мало (≤ 100) и O(N²) приемлемо — это не bottleneck.</p>
-<h4 id="2-povtornoe-vychislenie-odnogo-i-togo-zhe">2. Повторное вычисление одного и того же</h4>
-
-<p>Если в коде для разных <code>left</code> заново считается сумма <code>[left, right]</code> с нуля, или рекурсивная функция вызывается с одинаковыми аргументами — это повторные вычисления. Лечится префиксными суммами, мемоизацией, DP.</p>
-<h4 id="3-lineynyy-poisk-v-slayse-vnutri-tsikla">3. Линейный поиск в слайсе внутри цикла</h4>
-
-<p>Если внутри <code>for</code> по N элементам вы делаете <code>for _, v := range slice</code> для поиска, итоговая сложность O(N²). Решение: map для O(1) поиска, бинарный поиск для O(log N) (если массив отсортирован), или сортировка + два указателя.</p>
-<h4 id="4-map-v-goryachem-tsikle-bez-predvydeleniya-i-s-netselochislennymi-klyuchami">4. Map в горячем цикле без предвыделения и с нецелочисленными ключами</h4>
-
-<p>Map — мощный, но дорогой инструмент. В цикле на 10⁶ итераций каждая вставка/обновление вызывает хеширование и поиск бакета. Если ключи — небольшой диапазон целых или ASCII-символов, замена на <code>[N]int</code>/<code>[128]int</code> даёт 5–10x ускорение и убирает нагрузку на GC.</p>
-<h4 id="5-rost-slaysa-cherez-append-bez-predvydelennoy-capacity">5. Рост слайса через append без предвыделенной capacity</h4>
-
-<p>Когда вы <code>append</code>-ите в слайс, и capacity заканчивается, Go выделяет новый массив (обычно x2) и копирует данные. Для N=10⁵ это может случиться ~17 раз и скопировать суммарно ~200 тыс. элементов. Это скрытая O(N) операция, умноженная на константу копирования. Лечится <code>make([]T, 0, expectedSize)</code>.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Если <code>expectedSize</code> неизвестен точно, оценка сверху (например, <code>make([]int, 0, len(s))</code>) лучше, чем ничего. Лишняя память на несколько килобайт — ничто по сравнению с 17 аллокациями и копированиями.</p>
-  </div>
-</div>
-
-<h4 id="6-strokovye-operatsii-v-tsikle">6. Строковые операции в цикле</h4>
-
-<p>Строки в Go иммутабельны. Каждая конкатенация <code>s += "x"</code> создаёт новую строку и копирует все байты. В цикле это O(N²) по памяти и времени. Решение: <code>strings.Builder</code> (внутри использует <code>[]byte</code> и растёт без лишних копирований) или работа с <code>[]byte</code> напрямую.</p>
-<h4 id="7-rekursiya-bez-garantii-glubiny">7. Рекурсия без гарантии глубины</h4>
-
-<p>Go имеет расширяемый стек горутины, но частые расширения (stack copying) не бесплатны. Глубокая рекурсия (10⁵ вызовов) может замедлить выполнение. Если глубина не ограничена, замените рекурсию на итерацию с явным стеком (слайсом) или bottom-up DP.</p>
-<h3 id="go-spetsifichnye-uzkie-mesta-kuda-smotrit-senior-no-ne-smotrit-middle">Go-специфичные узкие места: куда смотрит Senior, но не смотрит Middle</h3>
-
-<p>Этот раздел — о тонких местах, которые не видны в асимптотике, но проявляются под нагрузкой.</p>
-<h4 id="escape-analysis-i-neprednamerennye-allokatsii-v-kuche">Escape analysis и непреднамеренные аллокации в куче</h4>
-
-<p>Компилятор Go решает, где выделить память: на стеке или в куче. Если переменная «убегает» (возвращается из функции, сохраняется в глобальную переменную, передаётся в <code>interface{}</code>), она идёт в кучу. Каждая аллокация в куче — это будущая работа для GC.</p>
-<p>В DSA-задачах на собеседовании вы не будете смотреть вывод <code>go build -gcflags="-m"</code>, но Senior-разработчик мысленно отслеживает:<br />
-- Возврат <code>*Node</code> из функции — сам <code>Node</code> в куче.<br />
-- Срез рун <code>[]rune(s)</code> — аллокация.<br />
-- Передача значения в <code>interface{}</code> (редко в DSA) — boxing и аллокация.<br />
-- Использование замыканий с захватом переменных — иногда аллокация.</p>
-<p>Знание этого позволяет выбрать: «Я возвращаю слайс индексов, а не указателей на узлы, потому что слайс индексов — это один непрерывный кусок памяти, а узлы — по отдельности».</p>
-<h4 id="skrytye-kopirovaniya-v-range">Скрытые копирования в range</h4>
-
-<p><code>for _, v := range largeStructSlice</code> копирует <code>v</code> на каждой итерации. Если структура большая (например, 128 байт), это создаёт O(N) лишних копирований. В DSA-задачах структуры обычно малы, но если вы оперируете срезами структур, используйте <code>for i := range largeStructSlice</code> и обращайтесь <code>largeStructSlice[i]</code>.</p>
-<h4 id="sravnenie-map-vs-massiv-i-cache-locality">Сравнение map vs массив и cache locality</h4>
-
-<p>Когда вы ищете частоту символов в строке, map даёт десятки тактов на доступ и pointer chasing. Массив <code>[128]int</code> даёт доступ за единицы тактов, и prefetcher легко предсказывает паттерн. Для N=10⁵ это разница между 3 мс и 0.3 мс. На собеседовании Senior может сказать: «Я выбираю массив, чтобы избежать pointer chasing и использовать cache locality CPU», и это будет правильно понято.</p>
-<h3 id="kak-iskat-uzkie-mesta-vo-vremya-intervyu-poshagovaya-metodika">Как искать узкие места во время интервью: пошаговая методика</h3>
-
-<ol>
-<li><strong>Напишите или проговорите наивное решение.</strong> Не пропускайте этот шаг.</li>
-<li><strong>Найдите самый глубокий уровень вложенности.</strong> Обычно это двойной/тройной цикл или рекурсия. Это главный подозреваемый.</li>
-<li><strong>Оцените сложность:</strong> сколько итераций для крайних значений N? Не в Big O, а прямо в числах.</li>
-<li><strong>Посмотрите, что находится внутри самого глубокого цикла.</strong> Именно это умножается на максимальное количество итераций.</li>
-<li><strong>Проверьте каждую операцию внутри по чек-листу «красных флагов»:</strong> map без предвыделения, append без capacity, линейный поиск, строковые конкатенации, рекурсия.</li>
-<li><strong>Задайте вопрос:</strong> «Можно ли то же самое посчитать за O(1) или O(log N) вместо O(N)?» Если да — это точка оптимизации.</li>
-<li><strong>Проверьте память:</strong> есть ли структуры, которые можно заменить на более лёгкие или перенести на стек?</li>
-</ol>
-<h3 id="primer-analiza-maximum-subarray-kadane">Пример анализа: Maximum Subarray (Kadane)</h3>
-
-<p>Предположим, вы видите такой код (наивное решение):</p>
+<p>Пройдитесь по этому чек-листу, когда ищете узкое место в наивном коде:</p>
+<h4 id="1-vlozhennye-tsikly-po-odnomu-i-tomu-zhe-naboru-dannykh">1. Вложенные циклы по одному и тому же набору данных</h4>
+<p>Классический признак квадратичной сложности $O(N^2)$. Если $N &gt; 2000$, это гарантированный провал. Задайте вопрос: <em>«Можно ли отсортировать массив, применить скользящее окно или запомнить посещенные элементы в хэш-таблице?»</em></p>
+<h4 id="2-lineynyy-poisk-vnutri-tsikla">2. Линейный поиск внутри цикла</h4>
+<p>Конструкция вида:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2309,39 +2300,133 @@ Loop --&gt;|&quot;Нет&quot;| Done[&quot;Вероятно, асимптоти�
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func maxSubArray(nums []int) int {
-    maxSum := math.MinInt
-    for left := 0; left &lt; len(nums); left++ {
-        for right := left; right &lt; len(nums); right++ {
-            sum := 0
-            for k := left; k &lt;= right; k++ {
-                sum += nums[k]
-            }
-            if sum &gt; maxSum {
-                maxSum = sum
-            }
-        }
+  <pre class="language-go"><code class="language-go">for _, item := range listA {
+    for _, target := range listB { // O(N * M) скрытый вложенный цикл!
+        if item == target { ... }
     }
-    return maxSum
 }
 </code></pre>
 </div>
 
-<p><strong>Шаг 1.</strong> Тройной вложенный цикл. Внешний — N, средний — N/2 в среднем, внутренний — N/2. Итого O(N³).</p>
-<p><strong>Шаг 2.</strong> Самый внутренний цикл перевычисляет сумму <code>[left, right]</code> с нуля. Узкое место №1.</p>
-<p><strong>Шаг 3.</strong> Убираем внутренний цикл, инкрементально добавляя <code>nums[right]</code> к текущей сумме. Сложность падает до O(N²). Код из <a href="15-naivnoe-reshenie-i-ego-analiz.html" class="wikilink">15. Наивное решение и его анализ</a>.</p>
-<p><strong>Шаг 4.</strong> Теперь узкое место — перебор всех <code>left</code>. Можно ли не перебирать все <code>left</code>? Если текущая сумма стала отрицательной, она никогда не улучшит будущие суммы. Поэтому можно сбрасывать её на 0 и двигать <code>left</code> неявно. Это алгоритм Kadane — O(N).</p>
-<p>На каждом шагу мы идентифицировали конкретную операцию, которая съедает время, и адресовали её.</p>
-<h3 id="primer-s-pamyatyu-group-anagrams">Пример с памятью: Group Anagrams</h3>
+<p>Лечится предварительной индексацией <code>listB</code> в <code>map[T]struct{}</code> или бинарным поиском.</p>
+<h4 id="3-map-s-prostymi-klyuchami-vnutri-goryachego-tsikla">3. `map` с простыми ключами внутри горячего цикла</h4>
+<p>Если ключами являются символы латиницы, байты или целые числа из компактного диапазона (например, $0..1000$), использование <code>map</code> — неоправданный оверхед. Замените на срез или массив фиксированного размера.</p>
+<h4 id="4-nekontroliruemyy-append-bez-emkosti">4. Неконтролируемый `append` без емкости</h4>
 
-<p>Задача: сгруппировать слова по анаграммам. Наивное — для каждого слова сортировать буквы и сравнивать с ключами map.</p>
-<p><strong>Узкое место:</strong> сортировка каждого слова. Если слов N, а длина слова K, общая сложность O(N * K log K). Можно ли избежать сортировки? Да, заменить на подсчёт частот (массив <code>[26]int</code>) и использовать его как ключ map (переведя в строку). Это O(N * K), и ключ генерируется без полной сортировки.</p>
-<p><strong>Go-специфика:</strong> Ключом map не может быть массив <code>[26]int</code> (массивы сравнимы, но map не принимает в качестве ключа всё, что содержит <code>==</code>? На самом деле массивы с сравнимыми элементами — допустимые ключи map! <code>map[[26]int][]string</code> работает, если элементы массива comparable. Это идиоматичный и очень быстрый подход, потому что ключ — фиксированный массив. Или можно использовать строку, полученную из массива через <code>strings.Builder</code>.)</p>
-<p>Это пример того, как анализ bottleneck'а (сортировка) ведёт к замене структуры и использованию неочевидной фичи Go.</p>
-<h3 id="zaklyuchenie">Заключение</h3>
 
-<p>Умение находить узкие места — это не талант, а тренируемый навык систематического анализа кода, основанный на понимании алгоритмической сложности и модели исполнения Go. Senior-разработчик просматривает код по чек-листу: вложенность, повторные вычисления, выбор структуры данных, аллокации, cache locality — и за секунды определяет, где код теряет производительность. На собеседовании этот навык позволяет уверенно превращать брутфорс в оптимальное решение с обоснованием каждого шага.</p>
-<p>В следующей статье мы поговорим о том, как время и память оцениваются на практике: что означают ограничения по времени на LeetCode, как переводить Big O в реальные миллисекунды и мегабайты, и как не попасть в TLE на собеседовании. <a href="18-vremya-i-pamyat-na-praktike.html" class="wikilink">18. Время и память на практике</a></p>
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">var res []int // cap = 0
+for i := 0; i &lt; n; i++ {
+    res = append(res, i) // До 17 реаллокаций и копирований памяти при n = 100 000!
+}
+</code></pre>
+</div>
+
+<p>Лечится одной строкой: <code>res := make([]int, 0, n)</code>.</p>
+<h4 id="5-konkatenatsiya-strok-operatorom-v-tsikle">5. Конкатенация строк оператором `+` в цикле</h4>
+<p>Строки в Go неизменяемы. Выражение <code>s += chunk</code> выделяет новый буфер в куче и копирует в него все ранее накопленные байты. Для $N$ итераций это превращается в скрытое $O(N^2)$ по памяти и времени. Всегда используйте <code>strings.Builder</code>.</p>
+<h4 id="6-kopirovanie-tyazhelykh-struktur-v-range">6. Копирование тяжелых структур в `range`</h4>
+
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">for _, item := range hugeStructSlice { // На каждой итерации копируется весь struct!
+    process(item.ID)
+}
+</code></pre>
+</div>
+
+<p>Используйте индекс: <code>for i := range hugeStructSlice</code> и обращайтесь по ссылке или индексу.</p>
+<h4 id="7-neogranichennaya-rekursiya">7. Неограниченная рекурсия</h4>
+<p>В Go размер стека горутины динамический (начинается с 2 КБ и удваивается по мере необходимости). Однако при глубине рекурсии в $10^4-10^5$ рантайм вынужден многократно вызывать процедуру <code>runtime.newstack</code>, копируя весь стековый фрейм в новый сегмент памяти. Итеративный цикл с явным слайсом-стеком всегда быстрее.</p>
+<hr />
+<h3 id="razbor-keysa-group-anagrams-leetcode-49">Разбор кейса: Group Anagrams (LeetCode 49)</h3>
+
+<p>Задача: сгруппировать слова по признаку анаграммы.</p>
+<h4 id="naivnyy-podkhod-sortirovka-kazhdogo-slova">Наивный подход: Сортировка каждого слова</h4>
+<p>Для каждого из $N$ слов длины $K$ мы сортируем буквы:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">// Сортировка строки: O(K log K)
+sBytes := []byte(str)
+sort.Slice(sBytes, func(i, j int) bool { return sBytes[i] &lt; sBytes[j] })
+key := string(sBytes)
+groups[key] = append(groups[key], str)
+</code></pre>
+</div>
+
+<ul>
+<li>Общая сложность: $O(N \cdot K \log K)$.</li>
+<li>Узкое место: сортировка строк и множественные конвертации <code>string</code> $\leftrightarrow$ <code>[]byte</code>.</li>
+</ul>
+<h4 id="optimizatsiya-senior-urovnya-massiv-chastot-kak-klyuch-map">Оптимизация Senior-уровня: Массив частот как ключ map</h4>
+<p>Можно ли сгруппировать анаграммы без сортировки? Да! Частотный профиль слова из строчных латинских букв исчерпывающе описывается массивом <code>[26]byte</code>.<br />
+А в Go <strong>массивы фиксированного размера являются сравнимыми (<code>comparable</code>) и могут выступать в роли ключа <code>map</code></strong>!</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">func groupAnagrams(strs []string) [][]string {
+    // В качестве ключа map используем массив [26]byte!
+    groups := make(map[[26]byte][]string)
+
+    for _, s := range strs {
+        var count [26]byte
+        for i := 0; i &lt; len(s); i++ {
+            count[s[i]-'a']++
+        }
+        groups[count] = append(groups[count], s)
+    }
+
+    result := make([][]string, 0, len(groups))
+    for _, group := range groups {
+        result = append(result, group)
+    }
+    return result
+}
+</code></pre>
+</div>
+
+<p><strong>Результат:</strong><br />
+- Сложность снизилась с $O(N \cdot K \log K)$ до строго линейной $O(N \cdot K)$!<br />
+- Полностью исключены сортировки.<br />
+- Профиль частот вычисляется на стеке за $K$ тактов.</p>
+<hr />
+<h3 id="rezyume-diagnostiki">Резюме диагностики</h3>
+
+<ol>
+<li><strong>Смотрите на максимальный уровень вложенности:</strong> Именно там скрывается главный пожиратель времени.</li>
+<li><strong>Проверяйте операции по чек-листу «красных флагов»:</strong> Ищите <code>map</code> в горячих циклах, скрытые реаллокации слайсов и конкатенацию строк.</li>
+<li><strong>Оценивайте влияние памяти:</strong> Помните о разнице между L1-кэшем (1 нс) и аллокациями в куче (сотни наносекунд + GC).</li>
+<li><strong>Озвучивайте выводы:</strong><br />
+<em>«Здесь главный bottleneck — это сортировка каждого слова за O(K log K). Мы можем устранить его, воспользовавшись тем, что в Go массив [26]byte является comparable, и применить подсчет частот за O(K)»</em>.</li>
+</ol>
+<p>В следующей статье мы подробно поговорим о том, как переводить абстрактные формулы Big O в реальные миллисекунды и мегабайты памяти на практике. <a href="18-vremya-i-pamyat-na-praktike.html" class="wikilink">18. Время и память на практике</a></p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2369,7 +2454,7 @@ Loop --&gt;|&quot;Нет&quot;| Done[&quot;Вероятно, асимптоти�
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#chto-takoe-uzkoe-mesto-ne-tolko-asimptotika">Что такое узкое место: не только асимптотика</a></li><li class="toc-item toc-h3"><a href="#mentalnaya-model-kuda-ukhodit-vremya">Ментальная модель: «куда уходит время»</a></li><li class="toc-item toc-h3"><a href="#sistematicheskiy-podkhod-chek-list-krasnykh-flagov">Систематический подход: чек-лист «красных флагов»</a></li><li class="toc-item toc-h4"><a href="#1-vlozhennye-tsikly-s-pereborom-vsekh-par">1. Вложенные циклы с перебором всех пар</a></li><li class="toc-item toc-h4"><a href="#2-povtornoe-vychislenie-odnogo-i-togo-zhe">2. Повторное вычисление одного и того же</a></li><li class="toc-item toc-h4"><a href="#3-lineynyy-poisk-v-slayse-vnutri-tsikla">3. Линейный поиск в слайсе внутри цикла</a></li><li class="toc-item toc-h4"><a href="#4-map-v-goryachem-tsikle-bez-predvydeleniya-i-s-netselochislennymi-klyuchami">4. Map в горячем цикле без предвыделения и с нецелочисленными ключами</a></li><li class="toc-item toc-h4"><a href="#5-rost-slaysa-cherez-append-bez-predvydelennoy-capacity">5. Рост слайса через append без предвыделенной capacity</a></li><li class="toc-item toc-h4"><a href="#6-strokovye-operatsii-v-tsikle">6. Строковые операции в цикле</a></li><li class="toc-item toc-h4"><a href="#7-rekursiya-bez-garantii-glubiny">7. Рекурсия без гарантии глубины</a></li><li class="toc-item toc-h3"><a href="#go-spetsifichnye-uzkie-mesta-kuda-smotrit-senior-no-ne-smotrit-middle">Go-специфичные узкие места: куда смотрит Senior, но не смотрит Middle</a></li><li class="toc-item toc-h4"><a href="#escape-analysis-i-neprednamerennye-allokatsii-v-kuche">Escape analysis и непреднамеренные аллокации в куче</a></li><li class="toc-item toc-h4"><a href="#skrytye-kopirovaniya-v-range">Скрытые копирования в range</a></li><li class="toc-item toc-h4"><a href="#sravnenie-map-vs-massiv-i-cache-locality">Сравнение map vs массив и cache locality</a></li><li class="toc-item toc-h3"><a href="#kak-iskat-uzkie-mesta-vo-vremya-intervyu-poshagovaya-metodika">Как искать узкие места во время интервью: пошаговая методика</a></li><li class="toc-item toc-h3"><a href="#primer-analiza-maximum-subarray-kadane">Пример анализа: Maximum Subarray (Kadane)</a></li><li class="toc-item toc-h3"><a href="#primer-s-pamyatyu-group-anagrams">Пример с памятью: Group Anagrams</a></li><li class="toc-item toc-h3"><a href="#zaklyuchenie">Заключение</a></li>
+    <li class="toc-item toc-h3"><a href="#tri-izmereniya-uzkogo-mesta">Три измерения узкого места</a></li><li class="toc-item toc-h3"><a href="#mentalnyy-schetchik-taktov-orientiry-dlya-x86-64-i-arm64">Ментальный счетчик тактов: ориентиры для x86-64 и ARM64</a></li><li class="toc-item toc-h3"><a href="#7-krasnykh-flagov-v-kode-na-go">7 «красных флагов» в коде на Go</a></li><li class="toc-item toc-h4"><a href="#1-vlozhennye-tsikly-po-odnomu-i-tomu-zhe-naboru-dannykh">1. Вложенные циклы по одному и тому же набору данных</a></li><li class="toc-item toc-h4"><a href="#2-lineynyy-poisk-vnutri-tsikla">2. Линейный поиск внутри цикла</a></li><li class="toc-item toc-h4"><a href="#3-map-s-prostymi-klyuchami-vnutri-goryachego-tsikla">3. map с простыми ключами внутри горячего цикла</a></li><li class="toc-item toc-h4"><a href="#4-nekontroliruemyy-append-bez-emkosti">4. Неконтролируемый append без емкости</a></li><li class="toc-item toc-h4"><a href="#5-konkatenatsiya-strok-operatorom-v-tsikle">5. Конкатенация строк оператором + в цикле</a></li><li class="toc-item toc-h4"><a href="#6-kopirovanie-tyazhelykh-struktur-v-range">6. Копирование тяжелых структур в range</a></li><li class="toc-item toc-h4"><a href="#7-neogranichennaya-rekursiya">7. Неограниченная рекурсия</a></li><li class="toc-item toc-h3"><a href="#razbor-keysa-group-anagrams-leetcode-49">Разбор кейса: Group Anagrams (LeetCode 49)</a></li><li class="toc-item toc-h4"><a href="#naivnyy-podkhod-sortirovka-kazhdogo-slova">Наивный подход: Сортировка каждого слова</a></li><li class="toc-item toc-h4"><a href="#optimizatsiya-senior-urovnya-massiv-chastot-kak-klyuch-map">Оптимизация Senior-уровня: Массив частот как ключ map</a></li><li class="toc-item toc-h3"><a href="#rezyume-diagnostiki">Резюме диагностики</a></li>
   </ul>
 </aside>
 

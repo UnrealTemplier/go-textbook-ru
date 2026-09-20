@@ -2171,189 +2171,53 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~26 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~19 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">14. Разбор задачи от условия до кода</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Теоретические статьи о паттернах, распознавании и композиции дали вам мощный инструментарий. Но знание принципов — это одно, а их синхронное применение в реальном времени, под взглядом интервьюера — совсем другое. Чтобы превратить теорию в навык, нужен сквозной пример, проведённый через все этапы: от первого чтения условия до финального обсуждения trade-off.</p>
-<p>В этой статье мы возьмём классическую задачу <strong>Minimum Window Substring</strong> (LeetCode 76) и пройдём её по полному алгоритму собеседования: уточним требования, распознаем паттерны, напишем идиоматичный Go-код, протестируем на edge cases, проанализируем сложность и обсудим альтернативы. Вы увидите, как решения, которые вы изучали ранее, собираются в единый рабочий процесс.</p>
+            <blockquote>
+<p><em>«Отладка кода вдвое сложнее, чем его написание. Поэтому, если вы пишете код настолько умно, насколько способны, вы по определению недостаточно сообразительны, чтобы его отладить».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>Теоретические концепции паттернов, инвариантов и композиции дают прочный фундамент. Но знание абстрактных правил само по себе не гарантирует успеха на реальном интервью, когда перед вами белый лист редактора, таймер неумолимо отсчитывает минуты, а интервьюер внимательно следит за каждым вашим словом и движением мысли.</p>
+<p>Чтобы превратить разрозненные знания в рефлекторный навык, мы разберем задачу от начала и до конца. Мы возьмем классическую задачу уровня Hard — <strong>Minimum Window Substring (LeetCode 76)</strong> — и пройдем по всей цепочке шагов, демонстрируя эталонное поведение Senior Go-разработчика: от первого уточняющего вопроса до анализа кэш-линий и аллокаций памяти.</p>
+<hr />
 <h3 id="postanovka-zadachi">Постановка задачи</h3>
 
 <blockquote>
-<p>Даны две строки <code>s</code> и <code>t</code>. Нужно найти минимальную по длине подстроку <code>s</code>, которая содержит все символы из <code>t</code> (включая дубликаты). Если такой подстроки нет, вернуть пустую строку. Гарантируется, что ответ уникален.</p>
+<p>Даны две строки <code>s</code> и <code>t</code>. Необходимо найти минимальную по длине непрерывную подстроку строки <code>s</code>, которая содержит все символы строки <code>t</code> (включая повторяющиеся символы). Если такой подстроки не существует, вернуть пустую строку <code>""</code>. Гарантируется, что подходящее минимальное окно единственно.</p>
 </blockquote>
-<p>Пример: <code>s = "ADOBECODEBANC"</code>, <code>t = "ABC"</code> → <code>"BANC"</code>.</p>
-<p>Сложность задачи — Hard, и она отлично подходит для демонстрации композиции паттернов и механической симпатии.</p>
-<h3 id="shag-1-utochnenie-trebovaniy-zadayom-pravilnye-voprosy">Шаг 1: Уточнение требований — задаём правильные вопросы</h3>
+<p><strong>Пример:</strong> <code>s = "ADOBECODEBANC"</code>, <code>t = "ABC"</code> $\to$ Результат: <code>"BANC"</code>.</p>
+<hr />
+<h3 id="shag-1-utochnenie-trebovaniy-ne-pishite-kod-molcha">Шаг 1. Уточнение требований (Не пишите код молча!)</h3>
 
-<p>На собеседовании никогда нельзя принимать условие молча. Первые 2–3 минуты мы тратим на снятие неоднозначностей.</p>
-<p><strong>Вопросы кандидата:</strong><br />
-- <em>Из каких символов состоят строки? Только английские буквы, цифры, или весь Unicode?</em> — Это критично для выбора структуры данных. Если только ASCII, можно использовать массив фиксированной длины <code>[128]int</code>. Если Unicode — <code>map[rune]int</code>.<br />
-- <em>Дубликаты в <code>t</code> имеют значение?</em> — «Да, каждый символ в <code>t</code> должен быть покрыт как минимум столько же раз.»<br />
-- <em>Может ли <code>t</code> быть длиннее <code>s</code>?</em> — Если да, ответ сразу пустая строка.<br />
-- <em>Что возвращать, если ответ не найден?</em> — Пустую строку <code>""</code>.<br />
-- <em>Регистрозависимость?</em> — Да, <code>'A' != 'a'</code>.</p>
-<p>Интервьюер подтверждает: строки содержат английские буквы, цифры и знаки (ASCII), дубликаты важны, <code>t</code> может быть любой длины, ответ — <code>""</code> при отсутствии.</p>
-<p>На основе ответов мы уже понимаем: можно обойтись массивом <code>[128]int</code> для частотного анализа, что даст выигрыш в производительности и отсутствие аллокаций map.</p>
-<h3 id="shag-2-breynshtorm-kakie-patterny-zdes-vidny">Шаг 2: Брейншторм — какие паттерны здесь видны</h3>
+<p>Никогда не начинайте писать код сразу после прочтения текста задачи. Первые 2–3 минуты интервью посвящены снятию неопределенностей:</p>
+<ol>
+<li><strong>Алфавит и кодировка:</strong><br />
+<em>«Из каких символов состоят строки? Это только латиница ASCII или возможен произвольный UTF-8 (эмодзи, кириллица)?»</em><br />
+<em>Ответ интервьюера:</em> Только стандартный набор ASCII (буквы верхнего/нижнего регистра, цифры).<br />
+<em>Вывод для нас:</em> Мы можем использовать массив фиксированного размера <code>[128]int</code> на стеке вместо медленной хэш-таблицы <code>map[rune]int</code>!</li>
+<li><strong>Дубликаты в <code>t</code>:</strong><br />
+<em>«Если t = "AAB", обязано ли окно содержать как минимум две буквы A?»</em><br />
+<em>Ответ интервьюера:</em> Да, кратность символов строго учитывается.</li>
+<li><strong>Размеры входа:</strong><br />
+<em>«Какова максимальная длина строк s и t?»</em><br />
+<em>Ответ интервьюера:</em> До $10^5$ символов.<br />
+<em>Вывод для нас:</em> Алгоритм с квадратичной сложностью $O(N^2)$ гарантированно упадет по тайм-ауту (TLE). Требуется строго линейное решение $O(N)$.</li>
+<li><strong>Отношение длин:</strong><br />
+<em>«Может ли t быть длиннее s?»</em><br />
+<em>Ответ интервьюера:</em> Да, в этом случае подходящего окна быть не может, возвращаем <code>""</code>.</li>
+</ol>
+<hr />
+<h3 id="shag-2-raspoznavanie-patterna-i-proektirovanie-invarianta">Шаг 2. Распознавание паттерна и проектирование инварианта</h3>
 
-<p>Включаем механизм распознавания из статьи <a href="4-kak-raspoznavat-pattern-v-zadache.html" class="wikilink">4. Как распознавать паттерн в задаче</a>.</p>
-<ul>
-<li><strong>Ключевые слова:</strong> «подстрока» (непрерывная), «минимальная длина», «содержит все символы».</li>
-<li><strong>Ограничения:</strong> <code>s</code> и <code>t</code> до 10⁵ символов. O(N²) недопустимо, нужно O(N) или O(N log N).</li>
-<li><strong>Свойства:</strong> условие «содержит все символы» монотонно: если подстрока <code>[left, right]</code> содержит все символы <code>t</code>, то любое расширение вправо тоже содержит. Это классический признак скользящего окна.</li>
-<li><strong>Требуемый результат:</strong> конкретная минимальная подстрока, а не просто длина → необходимо хранить границы лучшего окна.</li>
-</ul>
-<p>Вывод: <strong>Скользящее окно + Частотный анализ</strong> (вложенная композиция). Окно будет управлять границами, а вспомогательная структура — быстро проверять валидность текущего окна.</p>
-<h3 id="shag-3-ozvuchivanie-gipotezy-intervyueru">Шаг 3: Озвучивание гипотезы интервьюеру</h3>
-
-<p>«Я вижу задачу на скользящее окно. Мы поддерживаем два указателя — <code>left</code> и <code>right</code>. Правый расширяет окно, добавляя символы в текущую частотную карту. Как только окно становится валидным (содержит все символы <code>t</code> с нужной частотой), мы пытаемся сжать его слева, пока оно остаётся валидным, обновляя ответ минимальной длиной.</p>
-<p>Для проверки валидности на каждом шаге я буду использовать массив фиксированного размера <code>[128]int</code> для целевых частот и отдельный массив для текущего окна. Сравнивать их поэлементно слишком дорого, поэтому я введу счётчик <code>matched</code>, который показывает, сколько уникальных символов уже набрали нужное количество. Это позволит проверять валидность за O(1).</p>
-<p>Сложность: O(N) по времени, O(1) по памяти, если алфавит фиксирован. Код будет идиоматичным Go, с ранними проверками и использованием слайсов для окон.»</p>
-<p>Интервьюер одобряет, мы переходим к коду.</p>
-<h3 id="shag-4-napisanie-idiomatichnogo-go-koda">Шаг 4: Написание идиоматичного Go-кода</h3>
-
-<p>Пишем, сопровождая короткими комментариями для ключевых блоков (как рекомендовано в <a href="6-kak-obyasnyat-reshenie-vslukh.html" class="wikilink">6. Как объяснять решение вслух</a>).</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func minWindow(s string, t string) string {
-    // Ранняя проверка: если t длиннее s, ответ невозможен
-    if len(s) &lt; len(t) {
-        return &quot;&quot;
-    }
-
-    // Целевые частоты символов t
-    // Используем [128]int для ASCII, чтобы избежать map и аллокаций
-    var need [128]int
-    needCount := 0 // количество уникальных символов в t
-    for i := 0; i &lt; len(t); i++ {
-        if need[t[i]] == 0 {
-            needCount++
-        }
-        need[t[i]]++
-    }
-
-    var have [128]int
-    matched := 0 // сколько уникальных символов уже покрыто нужным количеством
-    left := 0
-    // start, end для фиксации лучшего окна; используем int для длины
-    start, minLen := 0, math.MaxInt
-
-    // Основной цикл: right расширяет окно
-    for right := 0; right &lt; len(s); right++ {
-        ch := s[right]
-        have[ch]++
-
-        // Если частота символа совпала с требуемой — увеличиваем matched
-        if have[ch] == need[ch] {
-            matched++
-        }
-
-        // Когда окно валидно, пытаемся сжать его слева
-        for matched == needCount {
-            // Обновляем ответ, если нашли более короткое окно
-            if right-left+1 &lt; minLen {
-                start = left
-                minLen = right - left + 1
-            }
-
-            // Сдвигаем левую границу, удаляя символ
-            leftCh := s[left]
-            have[leftCh]--
-            // Если частота стала меньше требуемой, окно перестало быть валидным
-            if have[leftCh] &lt; need[leftCh] {
-                matched--
-            }
-            left++
-        }
-    }
-
-    if minLen == math.MaxInt {
-        return &quot;&quot;
-    }
-    return s[start : start+minLen]
-}
-</code></pre>
-</div>
-
-<p><strong>Комментарий к архитектуре кода:</strong><br />
-- Использование <code>[128]int</code> вместо <code>map[byte]int</code> — осознанный выбор. Массив находится на стеке (если не сбежит — а он не сбегает), не требует pointer chasing, не нагружает GC. Сравнение частот заменено на счётчик <code>matched</code>, обновляемый инкрементально.<br />
-- <code>needCount</code> — число уникальных символов в <code>t</code>. Благодаря ему мы не сравниваем массивы целиком, а проверяем <code>matched == needCount</code>.<br />
-- Имена <code>need</code>, <code>have</code>, <code>matched</code> говорят сами за себя.<br />
-- Возврат подстроки через <code>s[start:start+minLen]</code> создаёт новую строку (иммутабельность), но это неизбежно: ответ должен быть строкой.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Операция <code>have[ch]++</code> — это прямая адресация в памяти: процессор вычисляет <code>&amp;have + ch</code>, что занимает единицы тактов. Если бы мы использовали <code>map[byte]int</code>, каждый <code>have[ch]++</code> транслировался бы в вызов <code>runtime.mapassign_fast64</code>, включающий хеширование, поиск бакета и проверку на эвакуацию. При длине строки 10⁵ разница в производительности достигает 3–5x.</p>
-  </div>
-</div>
-
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Переменная <code>matched</code> обновляется только когда <code>have[ch] == need[ch]</code> после инкремента. Если символ нужен в <code>t</code>, но его целевая частота <code>need[ch] = 0</code>, он не учитывается в <code>needCount</code> и не влияет на валидность — это правильно.</p>
-  </div>
-</div>
-
-<h3 id="shag-5-ruchnoe-testirovanie-na-primerakh-i-edge-cases">Шаг 5: Ручное тестирование на примерах и edge cases</h3>
-
-<p>Следуем алгоритму из <a href="5-algoritm-resheniya-zadachi-na-intervyu.html" class="wikilink">5. Алгоритм решения задачи на интервью</a>: сначала тестируем на примере из условия, затем на граничных случаях.</p>
-<p><strong>Тест 1. Стандартный пример:</strong><br />
-<code>s = "ADOBECODEBANC"</code>, <code>t = "ABC"</code>.<br />
-Пройдём мысленно:<br />
-- <code>need['A']=1, need['B']=1, need['C']=1</code>, <code>needCount=3</code>.<br />
-- <code>right</code> движется, накапливая <code>have</code>. На позиции <code>right=5</code> (символ 'C') <code>matched</code> становится 3 — окно <code>"ADOBEC"</code> валидно.<br />
-- Сжатие слева: убираем 'A' (<code>left=0</code>), <code>have['A']</code> становится 0, <code>matched</code> становится 2 — окно невалидно. Лучшее окно: <code>start=0, minLen=6</code>.<br />
-- Продолжаем расширение. На <code>right=9</code> ('C') снова <code>matched=3</code> для окна <code>"ADOBECODEBA"</code>. Сжатие: убираем 'A', 'D', 'O', 'B' — остаётся <code>"ECODEBA"</code>. Далее убираем 'E' — <code>matched</code> уменьшается. Лучшее окно обновляется. В конце концов при <code>right=12</code> ('C') получаем окно <code>"BANC"</code>, которое и становится ответом.<br />
-Код возвращает <code>"BANC"</code>.</p>
-<p><strong>Тест 2. <code>s</code> короче <code>t</code>:</strong><br />
-<code>s="A", t="AA"</code> → ранний возврат <code>""</code>. ОК.</p>
-<p><strong>Тест 3. <code>t</code> пустая строка?</strong> В условии не оговорено, но обычно нет. Если бы была, ответ <code>""</code> — наш код вернёт <code>""</code> (minLen останется MaxInt). Обсудим с интервьюером.</p>
-<p><strong>Тест 4. Дубликаты в <code>t</code>:</strong><br />
-<code>s = "a", t = "aa"</code>. <code>needCount=1</code>, <code>need['a']=2</code>. При <code>right=0</code>: <code>have['a']=1</code>, <code>have['a'] != need['a']</code> → <code>matched=0</code>, окно невалидно, ответ <code>""</code>.</p>
-<p><strong>Тест 5. Все символы <code>s</code> совпадают с одним символом <code>t</code>:</strong><br />
-<code>s="AAAA", t="A"</code> → ответ <code>"A"</code>. На первой же итерации окно станет валидным и обновится до минимальной длины 1.</p>
-<p><strong>Тест 6. Строки с разным регистром:</strong><br />
-<code>s="a", t="A"</code>. Регистрозависимость: <code>need['A']=1</code>, <code>need['a']=0</code>, ответ <code>""</code>.</p>
-<p>Код проходит все основные случаи.</p>
-<h3 id="shag-6-analiz-slozhnosti-ne-prosto-on">Шаг 6: Анализ сложности — не просто O(N)</h3>
-
-<p><strong>Временная сложность:</strong><br />
-- Построение <code>need</code>: O(|t|).<br />
-- Основной цикл: <code>right</code> проходит N позиций, <code>left</code> суммарно сдвигается не более N раз. Каждая операция внутри циклов — O(1) (инкремент, сравнение, присваивание). Итого O(N + |t|), что асимптотически O(N), так как |t| ≤ N (иначе ранний выход).<br />
-- Константа очень низкая: внутри только арифметика и обращения по индексу к массиву.</p>
-<p><strong>Пространственная сложность:</strong><br />
-- <code>need</code> и <code>have</code> — массивы <code>[128]int</code> фиксированного размера. В Go они размещаются на стеке, не аллоцируются в куче. O(1) дополнительной памяти (не считая входящих строк, которые мы не копируем).<br />
-- Возвращаемая подстрока создаёт копию данных (из-за иммутабельности строк), но это выходные данные, не учитываем в дополнительной памяти.</p>
-<p><strong>Механическая симпатия:</strong><br />
-- Массивы <code>[128]int</code> — это 1024 байта (128 * 8) на каждую переменную, что легко помещается в L1-кэш процессора. Доступ последовательный или по индексу — практически без кэш-промахов.<br />
-- Внутри цикла нет аллокаций. GC не активируется во время работы алгоритма, что гарантирует предсказуемую задержку.<br />
-- Если бы мы использовали <code>map[byte]int</code>, каждая вставка/обновление приводила бы к вызову <code>runtime.mapassign_fast64</code>, что вносит накладные расходы на хеширование байта, поиск бакета и потенциальную эвакуацию. Для N=10⁵ разница может составлять от 0.5 ms до 5 ms, что на собеседовании Senior-уровня обязательно нужно упомянуть.</p>
-<h3 id="shag-7-obsuzhdenie-alternativ-i-trade-off">Шаг 7: Обсуждение альтернатив и trade-off</h3>
-
-<p>Даже после успешного написания стоит проявить зрелость и обсудить другие пути.</p>
-<p><strong>Альтернатива 1: map вместо массива.</strong><br />
-Если бы входные строки поддерживали Unicode, мы не могли бы использовать <code>[128]int</code>. Пришлось бы применить <code>map[rune]int</code>. Код остался бы почти тем же, но с предвыделением <code>make(map[rune]int, len([]rune(t)))</code> для снижения числа эвакуаций. Память стала бы O(K), где K — количество уникальных символов в <code>t</code>. Производительность немного упала бы, но асимптотика сохранилась бы.</p>
-<p><strong>Альтернатива 2: полное сравнение массивов вместо <code>matched</code>.</strong><br />
-Мы могли бы после каждого шага сравнивать <code>need</code> и <code>have</code> поэлементно за O(128) — константа большая, но для N=10⁵ это 12.8 млн операций, всё ещё быстро. Однако инкрементальный <code>matched</code> элегантнее и эффективнее, но сложнее в понимании. Я выбрал <code>matched</code>, потому что он идиоматичен и снижает ненужную работу.</p>
-<p><strong>Альтернатива 3: использование <code>strings.Builder</code> или <code>[]byte</code> для построения ответа.</strong><br />
-В данной реализации мы просто возвращаем срез строки, что создаёт новую строку (копию). Если бы нам нужно было собрать ответ по кусочкам, мы бы использовали <code>strings.Builder</code> (реализует построение строки без лишних копирований). Но здесь это не требуется.</p>
+<p>Включаем систему распознавания (<a href="4-kak-raspoznavat-pattern-v-zadache.html" class="wikilink">4. Как распознавать паттерн в задаче</a>):<br />
+- <strong>Маркеры:</strong> непрерывная подстрока, поиск экстремума (минимальная длина), проверка покрытия множества символов.<br />
+- <strong>Свойство монотонности:</strong> если подстрока <code>s[left:right]</code> уже содержит все символы <code>t</code>, то любое дальнейшее расширение окна вправо гарантированно сохранит валидность. Это канонический признак <strong>скользящего окна (Sliding Window)</strong>.<br />
+- <strong>Узкое место проверки:</strong> если на каждом сдвиге указателя проверять совпадение частот за $O(128)$, это добавит лишние накладные расходы. Чтобы проверка валидности окна работала за строгое $O(1)$, введем инкрементальный счетчик <code>matched</code> — число уникальных символов из <code>t</code>, которые уже представлены в окне в достаточном количестве.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2378,21 +2242,151 @@ classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
 classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
 classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
 classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-Start[&quot;Задача:&lt;br&gt;минимальная подстрока,&lt;br&gt;содержащая все символы t&quot;]:::warning --&gt; Choose[&quot;Выбор паттернов:&lt;br&gt;Скользящее окно&lt;br&gt;+ Частотный анализ&quot;]
-Choose --&gt; Struct{&quot;Выбор структуры&lt;br&gt;для частот&quot;}
-Struct --&gt;|&quot;ASCII&quot;| Array[&quot;[128]int&lt;br&gt;Стековая аллокация&lt;br&gt;быстрый доступ&quot;]
-Struct --&gt;|&quot;Unicode&quot;| Map[&quot;map[rune]int&lt;br&gt;Гибкость, но&lt;br&gt;накладные расходы&quot;]
-Choose --&gt; Logic[&quot;Инкрементальная&lt;br&gt;проверка валидности&lt;br&gt;через matched&quot;]
-Logic --&gt; Code[&quot;Идиоматичный Go-код&lt;br&gt;с предвыделениями&lt;br&gt;и ранними проверками&quot;]
-Code --&gt; Comp[&quot;Анализ сложности:&lt;br&gt;O N времени&lt;br&gt;O 1 памяти&quot;]
+
+Start[&quot;Задача Minimum Window Substring&quot;]:::entry --&gt; Pattern[&quot;Паттерн: Скользящее окно&lt;br/&gt;+ Частотный массив&quot;]:::process
+Pattern --&gt; DS{&quot;Структура данных&lt;br/&gt;для частот&quot;}:::warning
+DS --&gt;|&quot;ASCII подтвержден&quot;| Array[&quot;[128]int на стеке&lt;br/&gt;0 аллокаций, L1 кэш&quot;]:::success
+DS --&gt;|&quot;Произвольный Unicode&quot;| Map[&quot;map[rune]int в куче&lt;br/&gt;GC pressure, pointer chasing&quot;]:::aux
+Pattern --&gt; Valid[&quot;Оптимизация проверки:&lt;br/&gt;счетчик matched == uniqueCount&quot;]:::accent
+Valid --&gt; Code[&quot;Идиоматичный Go-код:&lt;br/&gt;guard clauses, слайсинг без аллокаций&quot;]:::data
+Code --&gt; Comp[&quot;Анализ: O|s| + |t| времени,&lt;br/&gt;O 1 дополнительной памяти&quot;]:::success
   </pre>
 </div>
 
 
-<h3 id="zaklyuchenie">Заключение</h3>
+<hr />
+<h3 id="shag-3-ozvuchivanie-plana-intervyueru">Шаг 3. Озвучивание плана интервьюеру</h3>
 
-<p>Разбор задачи от условия до кода — это не магия, а чёткая последовательность шагов: анализ → распознавание → озвучивание → написание → проверка → анализ сложности → обсуждение альтернатив. В этом разборе мы применили скользящее окно с частотным массивом, продемонстрировали инкрементальную валидацию через счётчик <code>matched</code>, использовали фиксированный массив для избегания аллокаций map и показали понимание механической симпатии.</p>
-<p>Следующая статья продолжит тему подготовки и расскажет, как правильно подходить к наивному решению и его анализу, чтобы заложить фундамент для последующей оптимизации. <a href="15-naivnoe-reshenie-i-ego-analiz.html" class="wikilink">15. Наивное решение и его анализ</a></p>
+<p>Прежде чем прикоснуться к клавиатуре, проговорите алгоритм за 40 секунд:</p>
+<blockquote>
+<p><em>«Я предлагаю решить задачу методом скользящего окна с двумя указателями left и right. Правый указатель расширяет окно, накапливая символы в частотном массиве. Как только окно становится валидным (все уникальные символы строки t покрыты с нужной кратностью), мы начинаем сжимать его слева указателем left, обновляя глобальный минимум длины. Для представления частот я использую массив [128]int, что избавит нас от аллокаций в куче. Сложность по времени составит O(|s| + |t|), по памяти — O(1)».</em></p>
+</blockquote>
+<p>Интервьюер кивает — приступаем к кодированию.</p>
+<hr />
+<h3 id="shag-4-napisanie-idiomatichnogo-go-koda">Шаг 4. Написание идиоматичного Go-кода</h3>
+
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">func minWindow(s string, t string) string {
+    // Ранняя проверка: если искомый шаблон длиннее исходной строки
+    if len(s) &lt; len(t) {
+        return &quot;&quot;
+    }
+
+    // Частотный массив для целевой строки t
+    var need [128]int
+    needCount := 0 // Число уникальных символов, которые необходимо покрыть
+    for i := 0; i &lt; len(t); i++ {
+        if need[t[i]] == 0 {
+            needCount++
+        }
+        need[t[i]]++
+    }
+
+    // Частотный массив текущего окна
+    var have [128]int
+    matched := 0 // Сколько уникальных символов покрыто в текущем окне
+
+    left := 0
+    startIdx := 0
+    minLen := math.MaxInt
+
+    // Расширяем окно правым указателем
+    for right := 0; right &lt; len(s); right++ {
+        rChar := s[right]
+        have[rChar]++
+
+        // Если символ нужен и его количество достигло целевого
+        if need[rChar] &gt; 0 &amp;&amp; have[rChar] == need[rChar] {
+            matched++
+        }
+
+        // Окно валидно — пытаемся максимально сжать его слева
+        for matched == needCount {
+            currentLen := right - left + 1
+            if currentLen &lt; minLen {
+                minLen = currentLen
+                startIdx = left
+            }
+
+            lChar := s[left]
+            have[lChar]--
+            // Если после удаления символа его стало меньше необходимого
+            if need[lChar] &gt; 0 &amp;&amp; have[lChar] &lt; need[lChar] {
+                matched--
+            }
+            left++
+        }
+    }
+
+    if minLen == math.MaxInt {
+        return &quot;&quot;
+    }
+
+    return s[startIdx : startIdx+minLen]
+}
+</code></pre>
+</div>
+
+<hr />
+<h3 id="shag-5-ruchnoy-sukhoy-progon-dry-run-i-validatsiya-edge-cases">Шаг 5. Ручной сухой прогон (Dry Run) и валидация Edge Cases</h3>
+
+<p>Не объявляйте задачу решенной, пока сами не проверите код на краевых тестах:</p>
+<ol>
+<li><strong>Базовый пример:</strong> <code>s = "ADOBECODEBANC"</code>, <code>t = "ABC"</code>.<br />
+   - Символы <code>A, B, C</code> имеют <code>needCount = 3</code>.<br />
+   - При <code>right = 5</code> (<code>s[5] == 'C'</code>) находим первое валидное окно <code>"ADOBEC"</code> длины 6.<br />
+   - Сжимаем <code>left</code>: удаляем <code>A</code>, окно становится невалидным, <code>minLen = 6</code>.<br />
+   - Далее находим <code>"CODEBA"</code>, затем <code>"BANC"</code> (длина 4). Итоговый ответ: <code>"BANC"</code>. Логика безупречна.</li>
+<li><strong>Длина <code>t</code> больше длины <code>s</code>:</strong><br />
+<code>s = "A"</code>, <code>t = "AA"</code>. Срабатывает guard clause <code>len(s) &lt; len(t)</code> в начале функции $\to$ мгновенный возврат <code>""</code>.</li>
+<li><strong>Строка <code>t</code> из одного символа:</strong><br />
+<code>s = "A"</code>, <code>t = "A"</code>. На первой же итерации <code>matched</code> станет равен 1, зафиксируется длина 1, вернется <code>"A"</code>.</li>
+<li><strong>Символы не найдены вовсе:</strong><br />
+<code>s = "DEF"</code>, <code>t = "A"</code>. <code>matched</code> останется 0, <code>minLen</code> останется <code>math.MaxInt</code>, вернется <code>""</code>.</li>
+<li><strong>Дубликаты в <code>t</code>:</strong><br />
+   Условие <code>have[rChar] == need[rChar]</code> срабатывает строго один раз при достижении нужного порога, что исключает ложные инкременты <code>matched</code>.</li>
+</ol>
+<hr />
+<h3 id="shag-6-analiz-slozhnosti-i-mekhanicheskaya-simpatiya">Шаг 6. Анализ сложности и механическая симпатия</h3>
+
+<h4 id="vremennaya-slozhnost-time-complexity">Временная сложность (Time Complexity)</h4>
+<ul>
+<li>Подсчет символов строки <code>t</code>: $O(|t|)$.</li>
+<li>Скользящее окно: указатель <code>right</code> пробегает строку $s$ ровно 1 раз ($|s|$ шагов). Указатель <code>left</code> также смещается строго вправо и суммарно совершает не более $|s|$ шагов.</li>
+<li>Каждая операция внутри цикла (индексация массива, арифметика, сравнение скаляров) занимает $O(1)$.</li>
+<li>Итоговая асимптотика: <strong>$O(|s| + |t|)$</strong> — строго линейное время.</li>
+</ul>
+<h4 id="prostranstvennaya-slozhnost-space-complexity">Пространственная сложность (Space Complexity)</h4>
+<ul>
+<li>Массивы <code>need</code> и <code>have</code> имеют фиксированный размер $128 \times 8 = 1024$ байта каждый.</li>
+<li>Они целиком размещаются в стековом фрейме горутины, не сбегают в кучу (escape analysis чист) и мгновенно прогревают L1-кэш процессора.</li>
+<li>Итоговая дополнительная память: <strong>$O(1)$</strong>.</li>
+</ul>
+<div class="callout callout-tip">
+  <div class="callout-header">
+    <span class="callout-icon">💡</span>
+    <span class="callout-title">Замечание об иммутабельности строк в Go</span>
+  </div>
+  <div class="callout-body">
+    <p>Строка <code>s[startIdx : startIdx+minLen]</code> создает новый заголовок строки, указывающий на срез существующего байтового массива без его копирования (до тех пор, пока на исходную строку есть ссылки). Однако, если строка <code>s</code> была многомегабайтным документом, удержание подстроки может препятствовать освобождению памяти исходного буфера. В продакшене Senior упомянет: «Если исходная строка огромна, для предотвращения утечки памяти имеет смысл явно скопировать байты через <code>strings.Clone</code> (в Go 1.20+)».</p>
+  </div>
+</div>
+
+<hr />
+<h3 id="shag-7-obsuzhdenie-alternativ-i-rasshireniy">Шаг 7. Обсуждение альтернатив и расширений</h3>
+
+<p>Завершите выступление зрелым инженерным комментарием:<br />
+- <strong>А что, если Unicode?</strong> Если вход содержит произвольные руны UTF-8, мы заменим <code>[128]int</code> на <code>map[rune]int</code>, предварительно выделив емкость <code>make(map[rune]int, len([]rune(t)))</code>. Асимптотика сохранится ($O(N)$), но появится константа на хэширование.<br />
+- <strong>Сравнение массивов целиком:</strong> Вместо переменной <code>matched</code> мы могли бы сравнивать массивы за $O(128)$, но инкрементальный счетчик снижает число инструкций процессора на порядки.</p>
+<p>В следующей статье мы разберем фундамент любой оптимизации: как правильно строить наивное решение (brute-force) и выжимать из его анализа максимум пользы. <a href="15-naivnoe-reshenie-i-ego-analiz.html" class="wikilink">15. Наивное решение и его анализ</a></p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2420,7 +2414,7 @@ Code --&gt; Comp[&quot;Анализ сложности:&lt;br&gt;O N време�
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#postanovka-zadachi">Постановка задачи</a></li><li class="toc-item toc-h3"><a href="#shag-1-utochnenie-trebovaniy-zadayom-pravilnye-voprosy">Шаг 1: Уточнение требований — задаём правильные вопросы</a></li><li class="toc-item toc-h3"><a href="#shag-2-breynshtorm-kakie-patterny-zdes-vidny">Шаг 2: Брейншторм — какие паттерны здесь видны</a></li><li class="toc-item toc-h3"><a href="#shag-3-ozvuchivanie-gipotezy-intervyueru">Шаг 3: Озвучивание гипотезы интервьюеру</a></li><li class="toc-item toc-h3"><a href="#shag-4-napisanie-idiomatichnogo-go-koda">Шаг 4: Написание идиоматичного Go-кода</a></li><li class="toc-item toc-h3"><a href="#shag-5-ruchnoe-testirovanie-na-primerakh-i-edge-cases">Шаг 5: Ручное тестирование на примерах и edge cases</a></li><li class="toc-item toc-h3"><a href="#shag-6-analiz-slozhnosti-ne-prosto-on">Шаг 6: Анализ сложности — не просто O(N)</a></li><li class="toc-item toc-h3"><a href="#shag-7-obsuzhdenie-alternativ-i-trade-off">Шаг 7: Обсуждение альтернатив и trade-off</a></li><li class="toc-item toc-h3"><a href="#zaklyuchenie">Заключение</a></li>
+    <li class="toc-item toc-h3"><a href="#postanovka-zadachi">Постановка задачи</a></li><li class="toc-item toc-h3"><a href="#shag-1-utochnenie-trebovaniy-ne-pishite-kod-molcha">Шаг 1. Уточнение требований (Не пишите код молча!)</a></li><li class="toc-item toc-h3"><a href="#shag-2-raspoznavanie-patterna-i-proektirovanie-invarianta">Шаг 2. Распознавание паттерна и проектирование инварианта</a></li><li class="toc-item toc-h3"><a href="#shag-3-ozvuchivanie-plana-intervyueru">Шаг 3. Озвучивание плана интервьюеру</a></li><li class="toc-item toc-h3"><a href="#shag-4-napisanie-idiomatichnogo-go-koda">Шаг 4. Написание идиоматичного Go-кода</a></li><li class="toc-item toc-h3"><a href="#shag-5-ruchnoy-sukhoy-progon-dry-run-i-validatsiya-edge-cases">Шаг 5. Ручной сухой прогон (Dry Run) и валидация Edge Cases</a></li><li class="toc-item toc-h3"><a href="#shag-6-analiz-slozhnosti-i-mekhanicheskaya-simpatiya">Шаг 6. Анализ сложности и механическая симпатия</a></li><li class="toc-item toc-h4"><a href="#vremennaya-slozhnost-time-complexity">Временная сложность (Time Complexity)</a></li><li class="toc-item toc-h4"><a href="#prostranstvennaya-slozhnost-space-complexity">Пространственная сложность (Space Complexity)</a></li><li class="toc-item toc-h3"><a href="#shag-7-obsuzhdenie-alternativ-i-rasshireniy">Шаг 7. Обсуждение альтернатив и расширений</a></li>
   </ul>
 </aside>
 
