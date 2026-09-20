@@ -2178,23 +2178,22 @@
           </header>
 
           <div class="article-markdown">
-            <p>В предыдущей статье мы научились мгновенно отвечать на запросы о сумме на отрезке за $O(1)$ с помощью префиксных сумм. Но что, если данные не статичны, и нам нужно эффективно <strong>модифицировать</strong> целые диапазоны массива? </p>
-<p>Если ваш бэкенд получает команду "увеличить цену всех товаров с 10-го по 100-й на 5%", наивное обновление в цикле потребует $O(N)$ времени. При тысячах таких обновлений приложение "ляжет". Разностные массивы (Difference Arrays) решают эту задачу за $O(1)$ на каждое обновление.</p>
-<h2 id="matematika-differentsirovanie-massiva">Математика: Дифференцирование массива</h2>
+            <h1>2. Разностные массивы</h1>
+<blockquote>
+<p><em>«Дифференцирование находит границы изменений, интегрирование собирает их воедино. В программировании эта классическая математическая симметрия превращает квадратичную сложность в мгновенную линейную».</em><br />
+— Леонард Эйлер</p>
+<p>💡 <strong>Связанные темы:</strong><br />
+- <a href="1-teoriya-prefiksnye-summy.html" class="wikilink">1. Теория. Префиксные суммы</a> — базовая операция интегрирования<br />
+- <a href="3-range-sum-query-immutable.html" class="wikilink">3. Range Sum Query Immutable</a> — статические запросы сумм на отрезках<br />
+- <span class="wikilink-unresolved" title="Заметка в разработке">23. Интервалы</span> — объединение и пересечение диапазонов<br />
+- <span class="wikilink-unresolved" title="Заметка в разработке">02. Асимптотический анализ</span> — амортизация операций</p>
+</blockquote>
+<hr />
+<h2 id="vvedenie-simmetriya-integrirovaniya-i-differentsirovaniya">Введение: Симметрия интегрирования и дифференцирования</h2>
 
-<p>Если префиксная сумма — это интегрирование (накопление значений), то разностный массив — это дифференцирование (вычисление скорости изменения).</p>
-<p>Для исходного массива <code>arr</code> разностный массив <code>diff</code> определяется так:<br />
-- <code>diff[0] = arr[0]</code><br />
-- <code>diff[i] = arr[i] - arr[i-1]</code> (для <code>i &gt; 0</code>)</p>
-<p>Главная магия кроется в свойстве: <strong>исходный массив восстанавливается из разностного массива обычной префиксной суммой</strong>. <code>arr[i]</code> — это сумма элементов <code>diff</code> от <code>0</code> до <code>i</code>.</p>
-<h3 id="obnovlenie-diapazona-za-o1">Обновление диапазона за O(1)</h3>
-
-<p>Чтобы прибавить значение <code>val</code> ко всем элементам исходного массива на отрезке <code>[l, r]</code>, нам не нужно трогать каждый элемент. Достаточно изменить всего две точки в <code>diff</code>:</p>
-<ol>
-<li><code>diff[l] += val</code>  — <em>начинаем прибавлять <code>val</code> с индекса <code>l</code></em></li>
-<li><code>diff[r+1] -= val</code> — <em>перестаем прибавлять <code>val</code> после индекса <code>r</code></em></li>
-</ol>
-<p>Когда мы затем вычислим префиксную сумму от <code>diff</code>, значение <code>val</code> будет автоматически каскадно распространяться от <code>l</code> до <code>r</code>, а на индексе <code>r+1</code> оно будет "компенсировано" вычитанием, так что дальнейшие элементы останутся неизменными.</p>
+<p>В <a href="1-teoriya-prefiksnye-summy.html" class="wikilink">1. Теория. Префиксные суммы</a> мы узнали, как за $O(1)$ получать сумму на любом отрезке неизменяемого массива. Но что делать, если задача зеркальная?<br />
+Представьте себе поезд метро с $N$ станциями. На станции $L$ в вагон заходит толпа из 50 человек, а на станции $R$ они выходят. Сколько людей едет между станциями?</p>
+<p>Наивный подход — бегать по всем станциям от $L$ до $R$ и прибавлять 50 к счетчику каждой станции:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2204,52 +2203,40 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">type DifferenceArray struct {
-    diff []int64
-}
-
-// Инициализация из существующего массива за O(N)
-func NewDifferenceArray(arr []int) *DifferenceArray {
-    n := len(arr)
-    da := &amp;DifferenceArray{
-        diff: make([]int64, n), // Обратите внимание: длина N, а не N+1
-    }
-
-    da.diff[0] = int64(arr[0])
-    for i := 1; i &lt; n; i++ {
-        da.diff[i] = int64(arr[i]) - int64(arr[i-1])
-    }
-    return da
-}
-
-// Обновление диапазона [l, r] включительно за O(1)
-func (da *DifferenceArray) RangeAdd(l, r int, val int64) {
-    if l &lt; 0 || r &gt;= len(da.diff) || l &gt; r {
-        return // Защита от некорректных индексов
-    }
-
-    da.diff[l] += val
-
-    // Если r не последний элемент, компенсируем сдвиг
-    if r+1 &lt; len(da.diff) {
-        da.diff[r+1] -= val
-    }
-}
-
-// Восстановление итогового массива за O(N)
-func (da *DifferenceArray) Build() []int64 {
-    n := len(da.diff)
-    result := make([]int64, n)
-
-    result[0] = da.diff[0]
-    for i := 1; i &lt; n; i++ {
-        result[i] = result[i-1] + da.diff[i]
-    }
-    return result
-}
+  <pre class="language-go"><code class="language-go">for i := l; i &lt;= r; i++ { passengers[i] += 50 }
 </code></pre>
 </div>
 
+<p>Если пассажиров миллион, а станций тысячи, вы потратите миллиарды операций.</p>
+<p>Но в реальности проводнику не нужно пересчитывать людей на каждой станции пути! Ему достаточно зафиксировать всего <strong>два события</strong>:<br />
+1. На станции $L$: вошло $+50$ человек;<br />
+2. На станции $R+1$: вышло $-50$ человек (разница относительно предыдущей станции).</p>
+<p>В конце смены проводник проходит по станциям один раз от $0$ до $N-1$, накапливая текущее число пассажиров префиксной суммой. Это и есть <strong>разностный массив (Difference Array)</strong>.</p>
+<hr />
+<h2 id="voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</h2>
+
+<ol>
+<li><strong>Характер запросов (Offline vs Online):</strong><br />
+<em>«Все ли операции добавления приходят пачкой до запроса итогового состояния (Offline/Batch), или запросы изменений и чтения перемежаются (Online)?»</em><br />
+<em>(Если перемежаются — разностный массив не подходит, требуется дерево отрезков).</em></li>
+<li><strong>Индексация и границы:</strong><br />
+<em>«Включена ли правая граница $r$ в интервал обновления (inclusive), и выходит ли $r+1$ за пределы массива?»</em></li>
+<li><strong>Размер массива и начальные значения:</strong><br />
+<em>«Массив изначально заполнен нулями или уже содержит произвольные стартовые значения?»</em></li>
+</ol>
+<hr />
+<h2 id="matematicheskaya-model">Математическая модель</h2>
+
+<p>Для массива $A$ длины $N$ разностный массив $D$ определяется как:<br />
+$$D[0] = A[0]$$<br />
+$$D[i] = A[i] - A[i-1] \quad (\text{для } i &gt; 0)$$</p>
+<p><strong>Фундаментальное свойство:</strong><br />
+Исходный массив $A$ восстанавливается из $D$ обычной операцией взятия префиксной суммы:<br />
+$$A[k] = \sum_{i=0}^{k} D[i]$$</p>
+<h3 id="massovoe-obnovlenie-otrezka-l-r-na-velichinu-val-za-o1">Массовое обновление отрезка $[L, R]$ на величину $val$ за $O(1)$</h3>
+<p>Чтобы прибавить $val$ ко всем элементам от $L$ до $R$, достаточно изменить ровно две ячейки:<br />
+1. $D[L] \mathrel{+}= val$ — с индекса $L$ значения увеличиваются на $val$;<br />
+2. $D[R+1] \mathrel{-}= val$ (если $R+1 &lt; N$) — после индекса $R$ эффект добавления нейтрализуется.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2264,71 +2251,150 @@ func (da *DifferenceArray) Build() []int64 {
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Исходный arr - 0, 0, 0, 0, 0&quot;]:::process --&gt; B[&quot;diff - 0, 0, 0, 0, 0&quot;]
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
 
-C{&quot;RangeAdd l=1, r=3, val=5&quot;}:::process --&gt; D[&quot;diff 1 += 5&quot;]
-D --&gt; E[&quot;diff 4 -= 5&quot;]
-
-F[&quot;diff после обновления&lt;br&gt;0, 5, 0, 0, -5&quot;]:::process --&gt; G[&quot;Вычисление префиксной суммы&quot;]
-
-G --&gt; H[&quot;Итоговый arr&lt;br&gt;0, 5, 5, 5, 0&quot;]
+A[&quot;Исходный массив: [0, 0, 0, 0, 0]&quot;]:::entry --&gt; B[&quot;Разностный массив D: [0, 0, 0, 0, 0]&quot;]:::process
+B --&gt; C{&quot;Запрос: RangeAdd(L=1, R=3, val=+5)&quot;}:::accent
+C --&gt; D[&quot;D[1] += 5&lt;br/&gt;D[4] -= 5 (компенсация)&quot;]:::process
+D --&gt; E[&quot;Состояние D: [0, +5, 0, 0, -5]&quot;]:::warning
+E --&gt; F[&quot;Восстановление префиксной суммой (Build)&quot;]:::process
+F --&gt; G[&quot;Итоговый массив: [0, 5, 5, 5, 0]&quot;]:::success
   </pre>
 </div>
 
 
-<div class="callout callout-info">
+<hr />
+<h2 id="idiomatichnaya-realizatsiya-na-go">🛠️ Идиоматичная реализация на Go</h2>
+
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package diffarray
+
+// DifferenceArray реализует эффективное массовое обновление диапазонов за O(1).
+type DifferenceArray struct {
+    diff []int64
+}
+
+// NewDifferenceArray создает разностную структуру на основе среза nums.
+func NewDifferenceArray(nums []int) *DifferenceArray {
+    n := len(nums)
+    if n == 0 {
+        return &amp;DifferenceArray{diff: nil}
+    }
+
+    d := make([]int64, n)
+    d[0] = int64(nums[0])
+    for i := 1; i &lt; n; i++ {
+        d[i] = int64(nums[i]) - int64(nums[i-1])
+    }
+    return &amp;DifferenceArray{diff: d}
+}
+
+// RangeAdd добавляет val ко всем элементам в диапазоне [l, r] включительно за O(1).
+func (da *DifferenceArray) RangeAdd(l, r int, val int64) {
+    n := len(da.diff)
+    if l &lt; 0 || l &gt;= n || r &lt; l {
+        return
+    }
+
+    da.diff[l] += val
+    if r+1 &lt; n {
+        da.diff[r+1] -= val
+    }
+}
+
+// Build восстанавливает финальный массив за один линейный проход O(N).
+// Zero-alloc вариант: можно мутировать внутренний срез либо аллоцировать новый.
+func (da *DifferenceArray) Build() []int64 {
+    n := len(da.diff)
+    if n == 0 {
+        return nil
+    }
+
+    res := make([]int64, n)
+    res[0] = da.diff[0]
+    for i := 1; i &lt; n; i++ {
+        res[i] = res[i-1] + da.diff[i]
+    }
+    return res
+}
+</code></pre>
+</div>
+
+<hr />
+<h2 id="mechanical-sympathy-pochemu-k-times-o1-on-pobezhdaet-na-zheleze">⚙️ Mechanical Sympathy: Почему $K \times O(1) + O(N)$ побеждает на железе</h2>
+
+<p>Представьте, что к массиву на $100\,000$ элементов поступает $50\,000$ обновлений случайных диапазонов:</p>
+<ol>
+<li><strong>Наивный подход ($O(K \cdot N)$):</strong><br />
+   Каждое обновление бежит по срезу. Память читается и пишется случайными кусками. Кэш L1/L2 постоянно вымывается, конвейер процессора захлебывается в циклах и промахах (Cache Misses). Итого: $\approx 2.5 \times 10^9$ операций.</li>
+<li><strong>Разностный массив:</strong><br />
+   $50\,000$ вызовов <code>RangeAdd</code> затрагивают ровно $100\,000$ операций записи в память (по 2 на вызов).<br />
+   Финальный вызов <code>Build()</code> сканирует массив строго последовательно. Аппаратный префетчер загружает данные блоками по 64 байта. Процессор выполняет сложения на полной пропускной способности оперативной памяти без задержек.</li>
+</ol>
+<hr />
+<h2 id="primenenie-v-production-system-design">🏭 Применение в Production & System Design</h2>
+
+<ol>
+<li><strong>LeetCode 1094: Car Pooling / Бронирование отелей:</strong><br />
+   Автомобиль вместимостью <code>capacity</code> забирает пассажиров на километре $L$ и высаживает на $R$. Чтобы проверить, не превышена ли вместимость, создаем разностный массив километров, делаем <code>RangeAdd(L, R, passengers)</code>, восстанавливаем префикс и проверяем, что нигде <code>current &gt; capacity</code>.</li>
+<li><strong>Генераторы нагрузки (k6, Vegeta, Locust):</strong><br />
+   Планирование сценариев нагрузочного тестирования: ступени «ramp-up», «plateau», «ramp-down» задаются интервалами изменения RPS через разностную модель.</li>
+<li><strong>Аренда мощностей в Cloud (AWS EC2 Spot Instances):</strong><br />
+   Анализ перегрузки серверных стоек по временным слотам бронирования виртуальных машин.</li>
+</ol>
+<hr />
+<h2 id="podvodnye-kamni-i-chastye-oshibki">🚨 Подводные камни и частые ошибки</h2>
+
+<div class="callout callout-warning">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Ошибка правой границы: off-by-one</span>
   </div>
   <div class="callout-body">
-    <p>Обратите внимание на разницу в аллокациях между префиксными суммами и разностными массивами. В префиксных суммах мы аллоцировали <code>N+1</code> элементов, чтобы уйти от проверки границ при запросе. В разностных массивах мы аллоцируем <code>N</code> элементов, так как <code>diff</code> имеет ту же размерность, что и исходный массив. Нам приходится писать <code>if r+1 &lt; len(da.diff)</code>, чтобы не выйти за пределы при обновлении правой границы. Компилятор Go легко инлайнит такие простые ветвления, поэтому влияние на производительность минимально.</p>
+    <p>Если интервал полуоткрытый $[L, R)$ (как принято в слайсах Go), то вычитать нужно из $D[R]$, а не $D[R+1]$.<br />
+Если интервал закрытый $[L, R]$ (как в большинстве LeetCode задач), вычитаем из $D[R+1]$. Всегда уточняйте семантику правой границы!</p>
   </div>
 </div>
 
-<h2 id="mechanical-sympathy-pattern-dostupa-k-pamyati">Mechanical Sympathy: Паттерн доступа к памяти</h2>
-
-<p>Хотя обновление диапазона занимает $O(1)$ и не использует циклы, восстановление массива через <code>Build()</code> требует $O(N)$. </p>
-<p>На первый взгляд, это слабое место. Но с точки зрения архитектуры процессора, <code>Build()</code> — это <strong>идеальный последовательный доступ к памяти</strong>. Процессор загрузит первую кэш-линию (64 байта = 8 значений <code>int64</code>), и пока он будет складывать их, аппаратный префетчер (Hardware Prefetcher) уже подгрузит следующие 8 значений в L1 кэш. Процессор будет работать на максимальной пропускной способности без единого Cache Miss.</p>
-<p>Таким образом, 10 000 обновлений диапазонов + 1 вызов <code>Build()</code> выполнатся на железе значительно быстрее, чем 10 000 наивных проходов по массиву с рандомным доступом к слайсам.</p>
-<h2 id="system-design-bronirovaniya-i-nagruzochnoe-testirovanie">System Design: Бронирования и нагрузочное тестирование</h2>
-
-<p>Разностные массивы — это стандарт де-факто в задачах распределения ресурсов во времени.</p>
-<ol>
-<li><strong>Car Pooling / Бронирование отелей:</strong> Представьте массив дней года. Каждый запрос на бронирование номера с <code>l</code>-го по <code>r</code>-й день — это <code>RangeAdd(l, r, 1)</code>. Чтобы проверить, не переполнен ли отель в любой день, мы делаем <code>Build()</code> и смотрим максимум. Это задача LeetCode 1094 (Car Pooling), которая является реальной архитектурной задачей для систем бронирования (Uber, Booking).</li>
-<li><strong>Нагрузочное тестирование (Load Testing):</strong> При генерации профиля нагрузки (ramp-up / steady / ramp-down) в инструментах вроде k6 или Vegeta, профиль трафика часто описывается диапазонами: "увеличь RPS на 100 с 10-й по 30-ю секунду". Разностный массив позволяет спланировать весь профиль нагрузки за $O(K)$ (где $K$ — количество инструкций) перед началом теста.</li>
-<li><strong>Финансовые транши:</strong> Начисление бонусов пользователям, попадающим в определенные диапазоны ID.</li>
-</ol>
-<div class="callout callout-interview">
+<div class="callout callout-warning">
   <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Ограничение разностного массива: Offline only</span>
   </div>
   <div class="callout-body">
-    <p>Если вам попадается задача, где есть массив и серия операций "добавь X ко всем элементам от L до R", а в конце нужно вывести массив или найти максимум/минимум, <strong>всегда</strong> используйте разностный массив. <br />
-Интервьюер может спросить: <em>"А что если нам нужно делать запросы суммы на отрезке и обновления отрезка вперемешку?"</em> В этом случае разностный массив не поможет (каждый запрос суммы потребует $O(N)$ на <code>Build()</code>). Правильный ответ для смешанных запросов — <strong>Дерево отрезков (Segment Tree)</strong> или <strong>Дерево Фенвика (Binary Indexed Tree)</strong>. Знание этого факта моментально катапультирует вас на уровень Senior.</p>
+    <p>Если вам нужно сделать <code>RangeAdd</code>, затем спросить сумму на отрезке, затем снова <code>RangeAdd</code>, затем сумму — разностный массив деградирует до $O(N)$ на каждый запрос суммы. В таком случае ответом на собеседовании должно быть <strong>Segment Tree (Дерево отрезков)</strong> с отложенными операциями (Lazy Propagation) или <strong>Binary Indexed Tree (Дерево Фенвика)</strong>.</p>
   </div>
 </div>
 
-<h2 id="itog">Итог</h2>
+<hr />
+<h2 id="navigatsiya">🗺️ Навигация</h2>
 
-<ol>
-<li><strong>Обратная операция:</strong> Разностный массив — это производная от исходного массива. Исходный массив восстанавливается префиксной суммой (интегрированием).</li>
-<li><strong>O(1) обновление:</strong> <code>diff[l] += val</code> и <code>diff[r+1] -= val</code> позволяют обновлять диапазоны за константное время.</li>
-<li><strong>Кэш процессора:</strong> Итоговый проход $O(N)$ для восстановления массива очень быстр, так как строго последователен и идеально ложится в кэш-линии.</li>
-<li><strong>Сфера применения:</strong> Идеально подходит для задач "сначала все изменения, потом финальный расчет" (booking, ресурсное планирование).</li>
-</ol>
-<p>В следующей статье мы применим префиксные суммы на практике и разберем классическую задачу, где они дают максимальный выигрыш: <a href="3-range-sum-query-immutable.html" class="wikilink">3. Range Sum Query Immutable</a>.</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th style="text-align: left;">Назад</th>
+<th style="text-align: left;">Вперед</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">← <a href="1-teoriya-prefiksnye-summy.html" class="wikilink">1. Теория. Префиксные суммы</a></td>
+<td style="text-align: left;"><a href="3-range-sum-query-immutable.html" class="wikilink">3. Range Sum Query Immutable</a> →</td>
+</tr>
+</tbody>
+</table></div>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2356,7 +2422,7 @@ G --&gt; H[&quot;Итоговый arr&lt;br&gt;0, 5, 5, 5, 0&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#matematika-differentsirovanie-massiva">Математика: Дифференцирование массива</a></li><li class="toc-item toc-h3"><a href="#obnovlenie-diapazona-za-o1">Обновление диапазона за O(1)</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-pattern-dostupa-k-pamyati">Mechanical Sympathy: Паттерн доступа к памяти</a></li><li class="toc-item toc-h2"><a href="#system-design-bronirovaniya-i-nagruzochnoe-testirovanie">System Design: Бронирования и нагрузочное тестирование</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#vvedenie-simmetriya-integrirovaniya-i-differentsirovaniya">Введение: Симметрия интегрирования и дифференцирования</a></li><li class="toc-item toc-h2"><a href="#voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</a></li><li class="toc-item toc-h2"><a href="#matematicheskaya-model">Математическая модель</a></li><li class="toc-item toc-h3"><a href="#massovoe-obnovlenie-otrezka-l-r-na-velichinu-val-za-o1">Массовое обновление отрезка $[L, R]$ на величину $val$ за $O(1)$</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">🛠️ Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-pochemu-k-times-o1-on-pobezhdaet-na-zheleze">⚙️ Mechanical Sympathy: Почему $K \times O(1) + O(N)$ побеждает на железе</a></li><li class="toc-item toc-h2"><a href="#primenenie-v-production-system-design">🏭 Применение в Production &amp; System Design</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-chastye-oshibki">🚨 Подводные камни и частые ошибки</a></li><li class="toc-item toc-h2"><a href="#navigatsiya">🗺️ Навигация</a></li>
   </ul>
 </aside>
 

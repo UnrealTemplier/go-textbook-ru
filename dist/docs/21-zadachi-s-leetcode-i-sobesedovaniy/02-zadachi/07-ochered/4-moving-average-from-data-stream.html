@@ -2171,28 +2171,58 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~17 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">4. Moving Average from Data Stream</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="potokovaya-obrabotka-dannykh-i-agregatsiya">Потоковая обработка данных и агрегация</h2>
+            <blockquote>
+<p><em>«Не пытайся объять необъятное: бесконечный поток требует конечного окна и постоянного времени».</em><br />
+— Кен Томпсон</p>
+</blockquote>
+<h2 id="potokovaya-obrabotka-dannykh-i-agregatsiya-v-realnom-vremeni">Потоковая обработка данных и агрегация в реальном времени</h2>
 
-<p>До этого момента мы работали с задачами, где все данные (массивы, строки) были известны нам заранее. Но в реальном бэкенде — при сборе метрик (Prometheus), обработке котировок с биржи или анализе логов — данные поступают непрерывным потоком (Data Stream). Мы не можем сохранить весь поток в оперативную память (привет, OOM), но мы должны вычислять аналитику "на лету".</p>
-<p>Задача <strong>Moving Average from Data Stream</strong> (LeetCode 346) — это базовый пример построения агрегирующего окна над бесконечным потоком. </p>
-<p><strong>Суть задачи:</strong> Дана система, в которую по одному поступают числа. Нужно реализовать структуру, которая получает новое число и моментально возвращает среднее арифметическое (Average) последних <code>k</code> добавленных чисел.</p>
+<p>В классических алгоритмах мы обычно оперируем статическими массивами или строками, целиком загруженными в оперативную память. Однако в реальном бэкенде — при сборе телеметрии и метрик (Prometheus, OpenTelemetry), анализе биржевых котировок или мониторинге задержек API (latency) — данные приходят непрерывным, бесконечным потоком (<em>Data Stream</em>).</p>
+<p>Попытка сохранить всю историю потока в памяти приведет к неминуемому аварийному завершению процесса по Out of Memory (OOM). Архитектура сервиса обязана агрегировать показатели «на лету», используя <strong>строго ограниченный объем памяти и гарантированное константное время $O(1)$</strong> на каждое входящее событие.</p>
+<p>Задача <strong>Moving Average from Data Stream</strong> (LeetCode 346) — это эталонный пример построения скользящего аналитического окна над бесконечным потоком.</p>
+<div class="callout callout-note">
+  <div class="callout-header">
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Условие задачи</span>
+  </div>
+  <div class="callout-body">
+    <p>Спроектируйте структуру данных, которая принимает на вход поток целых чисел и после каждого нового числа возвращает скользящее среднее арифметическое (<em>Simple Moving Average — SMA</em>) последних $K$ поступивших значений.</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">ma := Constructor(3)
+ma.Next(1) // возвращает 1.0 = 1 / 1
+ma.Next(10) // возвращает 5.5 = (1 + 10) / 2
+ma.Next(3) // возвращает 4.66667 = (1 + 10 + 3) / 3
+ma.Next(5) // вытесняет 1; возвращает 6.0 = (10 + 3 + 5) / 3
+</code></pre>
+</div>
+
+  </div>
+</div>
+
 <hr />
-<h2 id="arkhitektura-resheniya-o1-time-i-koltsevoy-bufer">Архитектура решения: O(1) Time и Кольцевой буфер</h2>
+<h2 id="arkhitektura-resheniya-invariant-begushchey-summy-i-koltsevoy-bufer">Архитектура решения: Инвариант бегущей суммы и кольцевой буфер</h2>
 
-<p>Наивный подход Джуниора: сложить все поступающие числа в слайс, а при запросе среднего значения брать срез последних <code>k</code> элементов и в цикле считать их сумму.<br />
-Проблема: Вычисление суммы в цикле на каждый входящий элемент дает сложность $O(K)$. Если окно содержит 100 000 элементов, сервер "ляжет" под нагрузкой от пустой работы.</p>
-<p><strong>Подход Senior-инженера:</strong> Мы должны возвращать ответ за $O(1)$. Для этого мы будем поддерживать <strong>бегущую сумму (Running Sum)</strong>.<br />
-Математика проста: <br />
-<code>Новая_Сумма = Старая_Сумма - Самый_Старый_Элемент + Новый_Элемент</code>.</p>
-<p>Чтобы знать, какой элемент является "самым старым", нам нужна структура FIFO — Очередь. <br />
-А чтобы не аллоцировать память на каждый "Push/Pop", мы применим <strong>Кольцевой буфер (Ring Buffer)</strong> фиксированного размера, который мы обсуждали в <a href="1-teoriya-ochered.html" class="wikilink">1. Теория. Очередь</a>.</p>
+<p>Наивный подход начинающего разработчика — складывать все входящие числа в слайс, а при вызове <code>Next</code> брать срез последних $K$ элементов и в цикле вычислять их сумму.<br />
+<em>В чем изъян?</em> Вычисление суммы в цикле требует $O(K)$ операций. Если размер окна составляет 500 000 элементов (например, мониторинг запросов за последние 10 минут), каждый вызов метода превратится в тяжелую бессмысленную нагрузку на CPU.</p>
+<h3 id="invariant-begushchey-summy-running-sum">Инвариант бегущей суммы (Running Sum)</h3>
+<p>Зрелый инженер использует математический инвариант скользящего окна. Зачем суммировать все элементы заново, если изменились всего два значения?<br />
+$$\text{Сумма}<em>{\text{новая}} = \text{Сумма}</em>{\text{старая}} - \text{Элемент}<em>{\text{старейший}} + \text{Элемент}</em>{\text{новый}}$$</p>
+<p>Чтобы мгновенно получать самый старый элемент, нам требуется очередь FIFO вместимостью $K$. А чтобы исключить аллокации памяти в цикле, мы применим <strong>Кольцевой буфер (Ring Buffer)</strong> фиксированного размера $K$.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2207,36 +2237,41 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-subgraph Алгоритм для окна размера 3
-New[&quot;Новый элемент&quot;]:::warning --&gt; Check{&quot;Очередь заполнена?&quot;}
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
 
-Check --&gt;|&quot;Да&quot;| Pop[&quot;Вычитаем старейший из Суммы&lt;br&gt;Заменяем его в буфере&quot;]
-Pop --&gt; Calc
+Val[&quot;Новое значение потока: val&quot;]:::entry --&gt; CheckFull{&quot;Окно заполнено?&lt;br&gt;(count == size)&quot;}:::warning
 
-Check --&gt;|&quot;Нет&quot;| Push[&quot;Увеличиваем счетчик элементов&lt;br&gt;Добавляем в буфер&quot;]
-Push --&gt; Add[&quot;Прибавляем к Сумме&quot;]
+CheckFull --&gt;|&quot;Да: вытесняем старейший&quot;| SubOld[&quot;sum -= window[ptr]&lt;br&gt;(вычитаем старое значение)&quot;]:::process
+SubOld --&gt; Overwrite[&quot;window[ptr] = val&lt;br&gt;(перезаписываем ячейку)&quot;]:::accent
 
-Add --&gt; Calc[&quot;Возврат: Сумма / Счетчик&quot;]
-end
+CheckFull --&gt;|&quot;Нет: окно еще растет&quot;| IncCount[&quot;count++&lt;br&gt;window[ptr] = val&quot;]:::process
+IncCount --&gt; AddNew[&quot;sum += val&quot;]:::accent
+
+Overwrite --&gt; AddNew
+AddNew --&gt; IncPtr[&quot;ptr = (ptr + 1) % size&lt;br&gt;(сдвигаем единый указатель)&quot;]:::process
+IncPtr --&gt; Return[&quot;Возврат: float64(sum) / float64(count)&quot;]:::success
   </pre>
 </div>
 
 
 <hr />
-<h2 id="idiomatichnyy-go-kod-tryuk-s-odnim-ukazatelem">Идиоматичный Go-код: Трюк с одним указателем</h2>
+<h2 id="izyashchnyy-tryuk-edinyy-ukazatel-koltsevogo-bufera">Изящный трюк: Единый указатель кольцевого буфера</h2>
 
-<p>В классическом кольцевом буфере используются два указателя: <code>head</code> (для чтения) и <code>tail</code> (для записи). Но поскольку в этой задаче окно фиксированного размера и мы вытесняем старые элементы только тогда, когда окно заполняется, мы можем <strong>объединить их в один указатель</strong>.</p>
-<p>Инсайт: Место, куда мы должны записать новый элемент (хвост), всегда совпадает с местом, где лежит самый старый элемент (голова), который пора вытеснить!</p>
+<p>В классическом кольцевом буфере используются два раздельных указателя: <code>head</code> (для чтения) и <code>tail</code> (для записи). </p>
+<p>Однако в задаче скользящего окна с фиксированной вместимостью $K$ вытеснение старого элемента происходит <strong>в ту же самую позицию</strong>, куда должен быть записан новый элемент! <br />
+- Ячейка <code>ptr</code>, на которую указывает наш текущий индекс, содержит старейший элемент окна.<br />
+- Мы вычитаем его значение из бегущей суммы.<br />
+- Записываем в эту же позицию новое число: <code>window[ptr] = val</code>.<br />
+- Прибавляем новое число к сумме.<br />
+- Сдвигаем <code>ptr = (ptr + 1) % size</code>.</p>
+<p>Один-единственный целочисленный индекс полностью заменяет сложную структуру с двумя указателями.</p>
+<hr />
+<h2 id="idiomatichnyy-go-kod">Идиоматичный Go-код</h2>
+
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2246,44 +2281,43 @@ end
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">package main
+  <pre class="language-go"><code class="language-go">package movingaverage
 
-// MovingAverage вычисляет скользящее среднее потока.
+// MovingAverage вычисляет скользящее среднее арифметическое над потоком чисел.
 type MovingAverage struct {
-    window []int // Кольцевой буфер
-    size   int   // Максимальный размер окна
-    sum    int   // Текущая бегущая сумма
-    ptr    int   // Единый указатель (индекс) для вытеснения и записи
-    count  int   // Реальное количество элементов (пока не заполнили окно)
+    window []int // Кольцевой буфер фиксированного размера
+    size   int   // Максимальная вместимость окна
+    sum    int   // Текущая бегущая сумма элементов окна
+    ptr    int   // Единый циклический указатель вытеснения и записи
+    count  int   // Реальное количество элементов в окне (пока count &lt; size)
 }
 
-// Constructor инициализирует структуру.
+// Constructor инициализирует буфер заданного размера.
 func Constructor(size int) MovingAverage {
     return MovingAverage{
-        window: make([]int, size), // Выделяем память один раз!
+        window: make([]int, size), // Выделяем память ровно один раз!
         size:   size,
     }
 }
 
-// Next обрабатывает новое число из потока и возвращает среднее.
+// Next принимает очередное значение потока и возвращает актуальное среднее за O(1).
 func (m *MovingAverage) Next(val int) float64 {
-    // Если окно уже заполнено, вычитаем вытесняемый (самый старый) элемент из суммы.
-    // Самый старый элемент лежит прямо по нашему указателю ptr.
     if m.count == m.size {
+        // Окно заполнено: вычитаем старейший элемент, на который указывает ptr
         m.sum -= m.window[m.ptr]
     } else {
-        // Окно еще набирается
+        // Окно еще только набирает элементы
         m.count++
     }
 
-    // Записываем новое значение поверх старого и добавляем к сумме
+    // Перезаписываем слот старого элемента новым значением
     m.window[m.ptr] = val
     m.sum += val
 
-    // Сдвигаем указатель по кругу с помощью остатка от деления
+    // Циклически сдвигаем указатель вперед
     m.ptr = (m.ptr + 1) % m.size
 
-    // Возвращаем среднее, конвертируя в float64 только на этапе деления
+    // Возвращаем среднее значение
     return float64(m.sum) / float64(m.count)
 }
 </code></pre>
@@ -2292,37 +2326,52 @@ func (m *MovingAverage) Next(val int) float64 {
 <hr />
 <h2 id="vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</h2>
 
-<p>Данный код — это эталон эффективности для CPU:<br />
-1. <strong>Zero Allocations (Обещание GC):</strong> Память <code>make([]int, size)</code> выделяется ровно один раз при вызове <code>Constructor</code>. Метод <code>Next</code> работает в бесконечном цикле, <strong>вообще не запрашивая память у кучи</strong>. GC (Garbage Collector) не будет тратить процессорное время на очистку устаревших узлов (как это было бы с <code>list.List</code>).<br />
-2. <strong>Амортизация математики:</strong> Мы заменили цикл из $K$ сложений на ровно 2 операции: одно вычитание и одно сложение. Сложность упала с $O(K)$ до строгого $O(1)$.<br />
-3. <strong>Локальность данных (Data Locality):</strong> Все $K$ элементов окна лежат в непрерывном массиве. Массив помещается в кэш-линию процессора (L1/L2 Cache), что делает операцию чтения вытесняемого элемента <code>m.window[m.ptr]</code> практически бесплатной по тактам CPU.</p>
+<p>Этот короткий фрагмент кода демонстрирует высочайшую культуру низкоуровневой оптимизации под рантайм Go и архитектуру современных CPU:</p>
+<ol>
+<li><strong>Zero Heap Allocations (Нулевая нагрузка на сборщик мусора):</strong><br />
+   Буфер <code>window</code> аллоцируется единственный раз при вызове <code>Constructor</code>. Метод <code>Next</code> оперирует исключительно плоскими примитивами (<code>int</code>, <code>float64</code>) по фиксированным смещениям. За миллионы вызовов <code>Next</code> не происходит <strong>ни единого обращения к аллокатору кучи</strong>, а сборщик мусора (GC) не тратит ни микросекунды на сканирование структуры.</li>
+<li><strong>Кэш-линии CPU и аппаратный Prefetcher:</strong><br />
+   Срез <code>window</code> представляет собой непрерывный блок памяти. Для окна $K=1024$ чисел типа <code>int</code> (8 байт на 64-битных системах) весь буфер занимает ровно 8 КБ. Это значение с огромным запасом помещается в кэш данных первого уровня ядра процессора (L1d Cache, обычно 32–48 КБ на ядро). Процессор никогда не обращается к медленной системной памяти (DRAM) — время доступа к ячейке составляет рекордные 1–3 такта CPU.</li>
+<li><strong>Оптимизация деления по модулю:</strong><br />
+   Если размер окна зафиксирован степенью двойки (например, 1024 или 4096), вместо тяжелой процессорной инструкции деления <code>DIV</code> достаточно применить побитовую операцию:<br />
+<code>go
+   m.ptr = (m.ptr + 1) &amp; (m.size - 1)</code></li>
+</ol>
+<hr />
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Целочисленное переполнение</span>
+    <span class="callout-title">Ловушка / Gotcha: Целочисленное переполнение (Integer Overflow)</span>
   </div>
   <div class="callout-body">
-    <p>В реальных системах (например, в высокочастотном трейдинге или мониторинге) сумма <code>sum</code> может легко выйти за пределы типа <code>int</code> (в Go на 64-битных системах это <code>int64</code>, что очень много, но не бесконечно, а на 32-битных — всего около 2 миллиардов).<br />
-Если поток генерирует миллионы больших чисел, <code>sum</code> может переполниться (Integer Overflow).<br />
-<strong>Решение для Production:</strong> В таких случаях <code>sum</code> нужно сразу хранить как <code>float64</code> или использовать алгоритмы бегущего среднего (Welford's Online Algorithm), которые вычисляют среднее без необходимости хранить общую сумму, обновляя среднее значение через дельту: <code>mean += (val - mean) / count</code>. Но для задачи на LeetCode типа <code>int</code> достаточно.</p>
+    <p>В Go тип <code>int</code> на 64-битных платформах имеет диапазон от $-2^{63}$ до $2^{63}-1$. Это огромное число, однако в распределенных брокерах данных при сложении гигантских чисел или при денормализованных данных сумма <code>sum</code> может переполниться, превратившись в отрицательное число.</p>
+<p><strong>Решение для Production:</strong><br />
+Если есть риск переполнения или требуется вычислять среднее над вещественными числами с защитой от накопления погрешности округления, применяют <strong>Алгоритм Уэлфорда (Welford's Online Algorithm)</strong>, который обновляет среднее инкрементально:<br />
+$$\bar{x}<em>{new} = \bar{x}</em>{old} + \frac{x_{new} - x_{old}}{K}$$<br />
+При этом отпадает необходимость хранить гигантскую общую сумму.</p>
   </div>
 </div>
 
+<hr />
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопросы для собеседований</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос интервьюера:</strong> Операция остатка от деления <code>%</code> работает медленнее, чем простое сложение или побитовые операции. Можно ли ускорить кольцевой буфер?<br />
-<strong>Ответ:</strong> Да. Если мы можем заставить размер окна <code>size</code> быть всегда <strong>степенью двойки</strong> (например, 1024 вместо 1000), то тяжелую операцию <code>m.ptr = (m.ptr + 1) % m.size</code> можно заменить на сверхбыструю побитовую операцию И (Bitwise AND): <code>m.ptr = (m.ptr + 1) &amp; (m.size - 1)</code>. Именно такой трюк использует ядро Linux и рантайм самого Go под капотом во внутренних кольцевых буферах!</p>
+    <ol>
+<li><strong>Как сделать данную структуру потокобезопасной в многопоточном сервисе?</strong><br />
+<em>Ответ:</em> Наиболее производительный путь — защитить методы структурой <code>sync.Mutex</code>. Так как критическая секция метода <code>Next</code> состоит всего из 5 быстрых операций в памяти (без I/O и системных вызовов), мьютекс удерживается доли наносекунды и практически не создает contention (соперничества потоков).</li>
+<li><strong>Какова пространственная и временная сложность решения?</strong><br />
+<em>Ответ:</em> Временная сложность — строго $O(1)$ на каждый вызов <code>Next</code>. Пространственная сложность — строго $O(K)$, где $K$ — размер окна.</li>
+</ol>
   </div>
 </div>
 
 <h2 id="itog">Итог</h2>
 
-<p>Задача <strong>Moving Average from Data Stream</strong> учит нас работать с потоками, фиксируя память через кольцевые буферы и поддерживая константное время $O(1)$ через математические инварианты (бегущую сумму).</p>
-<p>Однако, что если наше "окно" зависит не от <em>количества</em> элементов, а от <em>времени</em>? В следующей задаче мы рассмотрим, как очередь помогает отсеивать устаревшие данные на основе временных меток (timestamps), что является фундаментом для Rate Limiters в веб-серверах: <a href="5-number-of-recent-calls.html" class="wikilink">5. Number of Recent Calls</a>.</p>
+<p>Задача <strong>Moving Average from Data Stream</strong> учит нас правильному мышлению при проектировании долгоживущих демонов и систем потоковой аналитики: фиксированная память, круговая перезапись и непрерывные инварианты агрегации.</p>
+<p>Но что делать, если окно событий ограничивается не фиксированным <em>количеством</em> записей, а <strong>временным интервалом</strong> (например, последние 3 секунды)? В следующей статье мы исследуем структуру, лежащую в основе сетевых фильтров и Rate Limiters: <a href="5-number-of-recent-calls.html" class="wikilink">5. Number of Recent Calls</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2350,7 +2399,7 @@ func (m *MovingAverage) Next(val int) float64 {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#potokovaya-obrabotka-dannykh-i-agregatsiya">Потоковая обработка данных и агрегация</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-resheniya-o1-time-i-koltsevoy-bufer">Архитектура решения: O(1) Time и Кольцевой буфер</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-kod-tryuk-s-odnim-ukazatelem">Идиоматичный Go-код: Трюк с одним указателем</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#potokovaya-obrabotka-dannykh-i-agregatsiya-v-realnom-vremeni">Потоковая обработка данных и агрегация в реальном времени</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-resheniya-invariant-begushchey-summy-i-koltsevoy-bufer">Архитектура решения: Инвариант бегущей суммы и кольцевой буфер</a></li><li class="toc-item toc-h3"><a href="#invariant-begushchey-summy-running-sum">Инвариант бегущей суммы (Running Sum)</a></li><li class="toc-item toc-h2"><a href="#izyashchnyy-tryuk-edinyy-ukazatel-koltsevogo-bufera">Изящный трюк: Единый указатель кольцевого буфера</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-kod">Идиоматичный Go-код</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

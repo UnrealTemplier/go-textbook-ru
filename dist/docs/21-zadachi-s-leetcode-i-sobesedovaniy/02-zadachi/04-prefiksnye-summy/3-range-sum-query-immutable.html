@@ -2171,23 +2171,45 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~11 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">3. Range Sum Query Immutable</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Задача Range Sum Query - Immutable (LeetCode 303) — это квинтэссенция паттерна префиксных сумм. Она моделирует классическую ситуацию бэкенда: у вас есть большой объем данных, который никогда не меняется (immutable), и вам нужно отвечать на множество запросов на агрегацию (сумму) по подмножествам этих данных.</p>
-<p><strong>Условие:</strong> Дан целочисленный массив <code>nums</code>. Необходимо реализовать структуру данных, которая эффективно обрабатывает запросы суммы элементов на отрезке между индексами <code>left</code> и <code>right</code> включительно. Массив не модифицируется.</p>
-<h2 id="naivnyy-podkhod-on-na-zapros">Наивный подход: O(N) на запрос</h2>
+            <h1>3. Range Sum Query Immutable</h1>
+<blockquote>
+<p><em>«Проектирование структуры данных — это искусство выбирать, какую работу проделать заранее, чтобы все последующие ответы были мгновенными».</em><br />
+— Никлаус Вирт</p>
+<p>💡 <strong>Связанные темы:</strong><br />
+- <a href="1-teoriya-prefiksnye-summy.html" class="wikilink">1. Теория. Префиксные суммы</a> — фундаментальные принципы и сдвиг на 1<br />
+- <a href="2-raznostnye-massivy.html" class="wikilink">2. Разностные массивы</a> — обратная задача (эффективные обновления)<br />
+- <a href="4-subarray-sum-equals-k.html" class="wikilink">4. Subarray Sum Equals K</a> — комбинация префиксных сумм с хеш-таблицей<br />
+- <span class="wikilink-unresolved" title="Заметка в разработке">02. Асимптотический анализ</span> — асимптотика запросов в высоконагруженных системах</p>
+</blockquote>
+<hr />
+<h2 id="vvedenie-immutabelnost-v-vysokonagruzhennykh-servisakh">Введение: Иммутабельность в высоконагруженных сервисах</h2>
 
-<p>Если мы будем на каждый запрос просто итерироваться по слайсу от <code>left</code> до <code>right</code>, время обработки одного запроса составит $O(N)$. Если придет $Q$ запросов, общая сложность будет $O(N \cdot Q)$.</p>
-<p>Для микросервиса, обслуживающего дашборды аналитики, где $N$ — это десятки тысяч записей, а $Q$ — тысячи RPS, такой бэкенд ляжет, забив CPU простым сложением.</p>
-<h2 id="optimizatsiya-predraschet-za-on-zapros-za-o1">Оптимизация: Предрасчет за O(N), запрос за O(1)</h2>
+<p>Задача <strong>Range Sum Query - Immutable</strong> (LeetCode 303) моделирует фундамент любой аналитической системы (OLAP): у вас есть огромный объем неизменяемых исторических данных (логи платежей, метрики задержек, клики пользователей). Поступают миллионы аналитических запросов: <em>«Какова сумма на отрезке между индексами <code>left</code> и <code>right</code> включительно?»</em>.</p>
+<p>Если на каждый запрос перебирать срез циклом, бэкенд мгновенно упрется в 100% утилизацию CPU. Префиксные суммы решают задачу раз и навсегда: один проход при инициализации — и любой последующий запрос выполняется за константное время $O(1)$.</p>
+<hr />
+<h2 id="voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</h2>
 
-<p>Как мы обсуждали в <a href="1-teoriya-prefiksnye-summy.html" class="wikilink">1. Теория. Префиксные суммы</a>, мы можем потратить $O(N)$ времени один раз на этапе инициализации, чтобы затем отвечать на любой запрос за $O(1)$.</p>
-<p>Здесь мы применяем трюк со сдвигом на 1 (1-indexing), чтобы избавиться от проверки <code>if left == 0</code>, которая ломает конвейер процессора (branch misprediction).</p>
+<ol>
+<li><strong>Диапазон значений и переполнение:</strong><br />
+<em>«Могут ли элементы массива быть отрицательными? Какова максимальная длина массива и максимальное значение элемента?»</em><br />
+<em>(В LeetCode 303 $N \le 10^4, -10^5 \le nums[i] \le 10^5$, что укладывается в обычный <code>int</code>, но в продакшене используем <code>int64</code>).</em></li>
+<li><strong>Частота вызовов <code>SumRange</code>:</strong><br />
+<em>«Сколько раз будет вызываться <code>SumRange</code> после создания структуры? Если один раз — предрасчет избыточен. Если тысячи или миллионы раз — префиксные суммы обязательны».</em></li>
+<li><strong>Корректность диапазонов:</strong><br />
+<em>«Гарантируется ли, что $0 \le left \le right &lt; len(nums)$?»</em></li>
+</ol>
+<hr />
+<h2 id="naivnyy-podkhod-vs-optimalnyy">Наивный подход vs Оптимальный</h2>
+
+<h3 id="naivnyy-podkhod-on-na-kazhdyy-zapros">Наивный подход: $O(N)$ на каждый запрос</h3>
+
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2197,30 +2219,21 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">type NumArray struct {
-    prefix []int64
-}
-
-func Constructor(nums []int) NumArray {
-    na := NumArray{
-        prefix: make([]int64, len(nums)+1),
+  <pre class="language-go"><code class="language-go">// SumRangeNaive: O(right - left + 1) времени, O(1) памяти.
+// При Q запросах общая сложность O(Q * N).
+func (na *NumArrayNaive) SumRange(left, right int) int {
+    sum := 0
+    for i := left; i &lt;= right; i++ {
+        sum += na.nums[i]
     }
-
-    // Предрасчет: prefix[i+1] хранит сумму элементов nums[0...i]
-    for i := 0; i &lt; len(nums); i++ {
-        na.prefix[i+1] = na.prefix[i] + int64(nums[i])
-    }
-
-    return na
-}
-
-func (na *NumArray) SumRange(left int, right int) int {
-    // Формула: сумма на [left, right] = префикс до right+1 минус префикс до left
-    return int(na.prefix[right+1] - na.prefix[left])
+    return sum
 }
 </code></pre>
 </div>
 
+<h3 id="optimalnyy-podkhod-on-initsializatsiya-o1-na-zapros">Оптимальный подход: $O(N)$ инициализация, $O(1)$ на запрос</h3>
+<p>Выделяем срез префиксов длиной $N+1$, где <code>prefix[0] = 0</code>.<br />
+Тогда $\text{Sum}(left, right) = prefix[right+1] - prefix[left]$.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2235,83 +2248,121 @@ func (na *NumArray) SumRange(left int, right int) int {
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;nums - -2, 0, 3, -5, 2&quot;]:::process --&gt; B[&quot;Constructor&quot;]
-B --&gt; C[&quot;prefix - 0, -2, -2, 1, -4, -2&quot;]
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
 
-D{&quot;SumRange 0, 2&quot;}:::process --&gt; E[&quot;prefix 3 - prefix 0&quot;]
-E --&gt; F[&quot;1 - 0 = 1&quot;]
-
-G{&quot;SumRange 2, 4&quot;}:::process --&gt; H[&quot;prefix 5 - prefix 2&quot;]
-H --&gt; I[&quot;-2 - -2 = 0&quot;]
+A[&quot;nums = [-2, 0, 3, -5, 2, -1]&quot;]:::entry --&gt; B[&quot;Конструктор: предрасчет префиксов (N+1)&lt;br/&gt;prefix = [0, -2, -2, 1, -4, -2, -3]&quot;]:::process
+B --&gt; C{&quot;Запрос: SumRange(left=2, right=5)&lt;br/&gt;элементы: [3, -5, 2, -1]&quot;}:::accent
+C --&gt; D[&quot;Формула: prefix[right+1] - prefix[left]&lt;br/&gt;prefix[6] - prefix[2]&quot;]:::process
+D --&gt; E[&quot;(-3) - (-2) = -1&quot;]:::success
+E -.-&gt; F[&quot;Проверка: 3 + (-5) + 2 + (-1) = -1&quot;]:::warning
   </pre>
 </div>
 
 
-<h2 id="mechanical-sympathy-idealnyy-data-locality">Mechanical Sympathy: Идеальный Data Locality</h2>
+<hr />
+<h2 id="realizatsiya-na-go">🛠️ Реализация на Go</h2>
 
-<p>Давайте разберем, почему этот код молниеносно быстр на реальном железе.</p>
-<ol>
-<li><strong>Нулевые аллокации при запросах:</strong> Метод <code>SumRange</code> не создает новых объектов в куче. Он только читает данные из слайса и вычитает их. Для Garbage Collector Go этот метод абсолютно невидим. Никаких Stop-The-World пауз.</li>
-<li><strong>Предсказуемый доступ к памяти:</strong> Слайс <code>[]int64</code> в Go — это непрерывный блок памяти (contiguous memory block). Когда конструктор заполняет его, процессор видит строгий последовательный паттерн доступа. Аппаратный префетчер (Hardware Prefetcher) в CPU начинает загружать следующие кэш-линии (по 64 байта) в L1 кэш задолго до того, как они понадобятся циклу.</li>
-<li><strong>Branchless code:</strong> Благодаря сдвигу массива на 1 элемент, в методе <code>SumRange</code> нет ни одного оператора <code>if</code>. Процессор выполняет ровно 2 чтения из памяти, 1 вычитание и 1 возврат. Конвейер инструкций (instruction pipeline) никогда не сбрасывается из-за ошибки предсказания ветвлений (branch misprediction).</li>
-</ol>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p>Внутри структуры <code>NumArray</code> мы храним <code>prefix []int64</code>, а не <code>[]int</code>. Почему? На 64-битных системах <code>int</code> — это алиас для <code>int64</code>, но использование явного <code>int64</code> гарантирует, что мы не потеряем данные на 32-битных платформах (например, при кросс-компиляции под ARM IoT-устройства). Кроме того, при суммировании тысяч элементов <code>int32</code> мгновенно переполнится. Явный <code>int64</code> — это безопасность данных в продакшене.</p>
-  </div>
+  <pre class="language-go"><code class="language-go">package rangesum
+
+// NumArray инкапсулирует предрассчитанные префиксные суммы.
+type NumArray struct {
+    prefix []int64
+}
+
+// Constructor выполняет предрасчет за O(N) времени и O(N) памяти.
+func Constructor(nums []int) NumArray {
+    n := len(nums)
+    p := make([]int64, n+1)
+    for i := 0; i &lt; n; i++ {
+        p[i+1] = p[i] + int64(nums[i])
+    }
+    return NumArray{prefix: p}
+}
+
+// SumRange возвращает сумму nums[left..right] включительно за O(1).
+// Zero-alloc: не производит ни одной аллокации в куче!
+func (na *NumArray) SumRange(left int, right int) int {
+    if left &lt; 0 || right &gt;= len(na.prefix)-1 || left &gt; right {
+        return 0
+    }
+    return int(na.prefix[right+1] - na.prefix[left])
+}
+</code></pre>
 </div>
 
-<h2 id="system-design-immutable-data-v-raspredelennykh-sistemakh">System Design: Immutable Data в распределенных системах</h2>
+<hr />
+<h2 id="mechanical-sympathy-pochemu-eto-rabotaet-s-predelnoy-skorostyu">⚙️ Mechanical Sympathy: Почему это работает с предельной скоростью</h2>
 
-<p>Концепция <code>Range Sum Query - Immutable</code> — это основа построения высокопроизводительных аналитических систем (OLAP).</p>
 <ol>
-<li><strong>Time-Series Databases (Prometheus, ClickHouse):</strong> Метрики собираются раз в минуту и никогда не меняются (immutable logs). Чтобы показать график CPU usage за последний час, движок БД использует именно префиксные суммы (или их аналоги) по времени. Запрос <code>rate(cpu_usage[1h])</code> под капотом делает вычитание двух префиксов.</li>
-<li><strong>Event Sourcing:</strong> Вместо того чтобы обновлять текущее состояние (мутабельный счетчик), мы сохраняем поток иммутабельных событий (пополнения/списания). Баланс на любой момент времени — это сумма всех событий от начала до нужного таймстемпа. Префиксные суммы позволяют делать это за $O(1)$.</li>
-<li><strong>Конкурентность:</strong> Поскольку данные иммутабельны после инициализации, множество горутин могут вызывать <code>SumRange</code> одновременно без всяких мьютексов (<code>sync.RWMutex</code>). Это обеспечивает идеальную масштабируемость чтения.</li>
+<li><strong>Zero-Alloc запросы:</strong> Метод <code>SumRange</code> не создает никаких объектов в куче (<code>0 B/op, 0 allocs/op</code>). Сборщик мусора Go (GC) не отвлекается на очистку памяти при миллионах запросов в секунду.</li>
+<li><strong>Branchless CPU Pipeline:</strong> Благодаря виртуальному элементу <code>prefix[0] = 0</code> внутри метода нет условий <code>if left == 0</code>. Процессор выполняет прямое чтение двух адресов памяти и операцию <code>SUB</code>. Никаких остановок конвейера (Pipeline Stalls).</li>
+<li><strong>Hardware Prefetching:</strong> При последовательных запросах непрерывный блок памяти <code>[]int64</code> идеально укладывается в кэш-линии процессора (64 байта = 8 элементов).</li>
+<li><strong>Конкурентная безопасность из коробки (Lock-Free Read):</strong> Так как массив после конструктора иммутабелен (read-only), тысячи горутин могут вызывать <code>SumRange</code> параллельно без блокировок, мьютексов (<code>sync.RWMutex</code>) и атомиков.</li>
 </ol>
+<hr />
+<h2 id="primenenie-v-production-time-series-event-sourcing">🏭 Применение в Production: Time-Series & Event Sourcing</h2>
+
+<ol>
+<li><strong>Prometheus / VictoriaMetrics:</strong><br />
+   Запросы вида <code>rate(http_requests_total[5m])</code> вычисляются через разность накопленных счетчиков на границах временного интервала:<br />
+   $$\Delta = \text{Counter}(t_2) - \text{Counter}(t_1)$$</li>
+<li><strong>Event Sourcing &amp; Банковский баланс:</strong><br />
+   Вместо мутации общего баланса счета в БД хранят иммутабельный журнал проводок (append-only ledger). Баланс пользователя на любую дату рассчитывается как разность префиксных сумм транзакций.</li>
+</ol>
+<hr />
+<h2 id="podvodnye-kamni">🚨 Подводные камни</h2>
+
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Опасность выхода за пределы (Slice Bounds Out of Range)</span>
   </div>
   <div class="callout-body">
-    <p>Если вы работаете с действительно огромными массивами (сотни миллионов элементов), слайс префиксных сумм может не поместиться в оперативную память. В Go слайс не может превысить объем адресного пространства, а сверхбольшие слайсы могут фрагментироваться. В таких случаях данные сжимают (например, используют Roaring Bitmaps) или хранят префиксные суммы на диске в виде SSTable (как в LevelDB/Cassandra), делая запросы через memory-mapped файлы (<code>mmap</code>).</p>
+    <p>Если входные аргументы <code>left</code> и <code>right</code> приходят из внешнего ненадежного API, обязательна валидация <code>0 &lt;= left &lt;= right &lt; len(nums)</code>. Иначе рантайм выбросит панику индексации.</p>
   </div>
 </div>
 
-<div class="callout callout-interview">
+<div class="callout callout-tip">
   <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-icon">💡</span>
+    <span class="callout-title">Что отвечать, если данные мутабельны?</span>
   </div>
   <div class="callout-body">
-    <p>Если интервьюер спрашивает: <em>"А что если массив начнет меняться (добавляться/удаляться элементы)?"</em>, ваш ответ должен быть: <em>"Тогда префиксные суммы в чистом виде не подходят, так как обновление требует O(N) на пересчет. Для этого используются Дерево отрезков (Segment Tree) или Дерево Фенвика (Binary Indexed Tree), которые позволяют делать и запросы, и обновления за O(log N)."</em> Это покажет глубокое понимание динамики структур данных.</p>
+    <p>Если на собеседовании интервьюер внезапно добавляет метод <code>Update(index, val)</code>, скажите:<br />
+<em>«При частых обновлениях префиксный массив теряет смысл, так как <code>Update</code> потребует $O(N)$ времени на пересчет всех последующих элементов. В этом случае мы переходим к Дереву Фенвика (Fenwick Tree / Binary Indexed Tree) или Дереву отрезков (Segment Tree), где и <code>SumRange</code>, и <code>Update</code> выполняются за $O(\log N)$»</em>.</p>
   </div>
 </div>
 
-<h2 id="itog">Итог</h2>
+<hr />
+<h2 id="navigatsiya">🗺️ Навигация</h2>
 
-<ol>
-<li><strong>Предрасчет — ключ к масштабированию:</strong> Перенос вычислительной нагрузки на этап записи (инициализации) позволяет отвечать на запросы чтения за $O(1)$.</li>
-<li><strong>Сдвиг массива:</strong> Техника выделения массива длины <code>N+1</code> с <code>prefix[0] = 0</code> убирает условные ветвления и делает код branchless.</li>
-<li><strong>Железо:</strong> Непрерывные слайсы и отсутствие аллокаций в методе запроса обеспечивают максимальную утилизацию L1-кэша и процессорного конвейера.</li>
-<li><strong>Архитектура:</strong> Подход лежит в основе Time-Series DB и Event Sourcing, где данные пишутся один раз и много раз читаются.</li>
-</ol>
-<p>В следующей статье мы выйдем на новый уровень сложности и рассмотрим, как префиксные суммы помогают находить подмассивы с заданной суммой, даже если в массиве есть отрицательные числа: <a href="4-subarray-sum-equals-k.html" class="wikilink">4. Subarray Sum Equals K</a>.</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th style="text-align: left;">Назад</th>
+<th style="text-align: left;">Вперед</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">← <a href="2-raznostnye-massivy.html" class="wikilink">2. Разностные массивы</a></td>
+<td style="text-align: left;"><a href="4-subarray-sum-equals-k.html" class="wikilink">4. Subarray Sum Equals K</a> →</td>
+</tr>
+</tbody>
+</table></div>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2339,7 +2390,7 @@ H --&gt; I[&quot;-2 - -2 = 0&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#naivnyy-podkhod-on-na-zapros">Наивный подход: O(N) на запрос</a></li><li class="toc-item toc-h2"><a href="#optimizatsiya-predraschet-za-on-zapros-za-o1">Оптимизация: Предрасчет за O(N), запрос за O(1)</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-idealnyy-data-locality">Mechanical Sympathy: Идеальный Data Locality</a></li><li class="toc-item toc-h2"><a href="#system-design-immutable-data-v-raspredelennykh-sistemakh">System Design: Immutable Data в распределенных системах</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#vvedenie-immutabelnost-v-vysokonagruzhennykh-servisakh">Введение: Иммутабельность в высоконагруженных сервисах</a></li><li class="toc-item toc-h2"><a href="#voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</a></li><li class="toc-item toc-h2"><a href="#naivnyy-podkhod-vs-optimalnyy">Наивный подход vs Оптимальный</a></li><li class="toc-item toc-h3"><a href="#naivnyy-podkhod-on-na-kazhdyy-zapros">Наивный подход: $O(N)$ на каждый запрос</a></li><li class="toc-item toc-h3"><a href="#optimalnyy-podkhod-on-initsializatsiya-o1-na-zapros">Оптимальный подход: $O(N)$ инициализация, $O(1)$ на запрос</a></li><li class="toc-item toc-h2"><a href="#realizatsiya-na-go">🛠️ Реализация на Go</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-pochemu-eto-rabotaet-s-predelnoy-skorostyu">⚙️ Mechanical Sympathy: Почему это работает с предельной скоростью</a></li><li class="toc-item toc-h2"><a href="#primenenie-v-production-time-series-event-sourcing">🏭 Применение в Production: Time-Series &amp; Event Sourcing</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni">🚨 Подводные камни</a></li><li class="toc-item toc-h2"><a href="#navigatsiya">🗺️ Навигация</a></li>
   </ul>
 </aside>
 

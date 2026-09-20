@@ -2171,27 +2171,48 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~18 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">5. Number of Recent Calls</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="vremennoe-okno-i-osnovy-rate-limiting">Временное окно и основы Rate Limiting</h2>
+            <blockquote>
+<p><em>«Время непрерывно движется вперед, и хорошая система должна вовремя отпускать то, что уже ушло».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="vremennye-okna-i-osnovy-setevogo-rate-limiting">Временные окна и основы сетевого Rate Limiting</h2>
 
-<p>До сих пор мы работали с очередями, размер которых зависел от <em>количества</em> элементов (например, окно из $K$ последних элементов). Но в распределенных системах и веб-разработке мы гораздо чаще сталкиваемся с ограничениями по <em>времени</em>.</p>
-<p>Задача <strong>Number of Recent Calls</strong> (LeetCode 933) — это прототип важнейшего паттерна системного дизайна: <strong>Rate Limiter</strong> (Ограничитель частоты запросов). </p>
-<p><strong>Суть задачи:</strong> Необходимо реализовать класс <code>RecentCounter</code>, который принимает поток запросов. Метод <code>Ping(t int)</code> получает время текущего запроса <code>t</code> (в миллисекундах) и должен вернуть количество запросов, которые произошли за последние 3000 миллисекунд (включая текущий). Гарантируется, что каждый новый вызов <code>Ping</code> имеет строго большее значение <code>t</code>, чем предыдущий.</p>
+<p>В предыдущей задаче размер скользящего окна определялся фиксированным <em>количеством</em> элементов ($K$). Однако в распределенных веб-сервисах, API-шлюзах и системах защиты от DDoS-атак ограничения почти всегда привязаны к <strong>физическому времени</strong>:<br />
+- <em>«Не более 100 запросов в минуту от одного IP-адреса»</em><br />
+- <em>«Не более 10 неудачных попыток входа за последние 15 минут»</em><br />
+- <em>«Не более 1000 транзакций в секунду на платежный шлюз»</em></p>
+<p>Задача <strong>Number of Recent Calls</strong> (LeetCode 933) — это классический прототип ключевого компонента сетевой инфраструктуры: <strong>Ограничителя частоты запросов (Rate Limiter)</strong> по алгоритму <strong>Sliding Window Log (Журнал скользящего окна)</strong>.</p>
+<div class="callout callout-note">
+  <div class="callout-header">
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Условие задачи</span>
+  </div>
+  <div class="callout-body">
+    <p>Реализуйте класс <code>RecentCounter</code>, который подсчитывает количество недавних запросов в пределах скользящего временного окна:<br />
+- Метод <code>Ping(t int) int</code> регистрирует новый запрос, поступивший в момент времени <code>t</code> (в миллисекундах).<br />
+- Метод возвращает суммарное количество запросов, произошедших в строгом интервале времени <code>[t - 3000, t]</code> (включая текущий запрос).<br />
+- <strong>Гарантия:</strong> Каждый последующий вызов <code>Ping</code> приходит со строго большим значением <code>t</code> ($t_{i} &gt; t_{i-1}$).</p>
+  </div>
+</div>
+
 <hr />
-<h2 id="arkhitektura-ochered-vremennykh-metok">Архитектура: Очередь временных меток</h2>
+<h2 id="arkhitektura-sliding-window-log-na-ocheredi">Архитектура: Sliding Window Log на очереди</h2>
 
-<p>Поскольку время <code>t</code> монотонно возрастает (события приходят в хронологическом порядке), структура данных идеальна для FIFO очереди. </p>
-<p>Алгоритм (Sliding Window Log):<br />
-1. Сохраняем текущую метку времени <code>t</code> в хвост очереди.<br />
-2. Проверяем голову очереди. Если временная метка на голове старее, чем <code>t - 3000</code>, она "протухла". Удаляем её.<br />
-3. Повторяем шаг 2, пока на голове не окажется валидная метка (попавшая в 3-секундное окно).<br />
-4. Текущий размер очереди (от головы до хвоста) — это и есть ответ.</p>
+<p>Поскольку поступающие временные метки строго монотонно возрастают ($t_1 &lt; t_2 &lt; t_3 &lt; \dots$), поток событий естественным образом упорядочен во времени. Это идеальный сценарий для очереди FIFO.</p>
+<h3 id="logika-raboty-algoritma">Логика работы алгоритма:</h3>
+<ol>
+<li>Добавляем текущую временную метку <code>t</code> в хвост очереди.</li>
+<li>Проверяем голову очереди. Если самое старое зарегистрированное событие произошло раньше нижней границы окна (<code>queue.Front() &lt; t - 3000</code>), оно официально признается «устаревшим» и удаляется.</li>
+<li>Повторяем удаление до тех пор, пока на голове очереди не окажется метка, попадающая в интервал <code>[t - 3000, t]</code>.</li>
+<li>Количество элементов, оставшихся в очереди, — это точное количество запросов за последние 3 секунды.</li>
+</ol>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2206,31 +2227,31 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-Ping[&quot;Новый запрос - Ping t&quot;]:::entry --&gt; Push[&quot;Добавляем t в хвост очереди&quot;]
-Push --&gt; CheckHead{&quot;Голова меньше t минус 3000?&quot;}
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
 
-CheckHead --&gt;|&quot;Да - Устарело&quot;| Pop[&quot;Сдвигаем указатель головы - Pop&quot;]
-Pop --&gt; CheckHead
+Ping[&quot;Новый вызов: Ping(t)&quot;]:::entry --&gt; Append[&quot;Добавляем t в хвост очереди&quot;]:::process
+Append --&gt; CheckHead{&quot;Голова &lt; t - 3000?&quot;}:::warning
 
-CheckHead --&gt;|&quot;Нет - Валидно&quot;| Return[&quot;Ответ - Длина очереди&quot;]
+CheckHead --&gt;|&quot;Да: событие протухло&quot;| Evict[&quot;Сдвигаем head++ (Pop)&quot;]:::error
+Evict --&gt; CheckHead
+
+CheckHead --&gt;|&quot;Нет: события актуальны&quot;| Compaction{&quot;head &gt; Порога (2048)?&quot;}:::warning
+
+Compaction --&gt;|&quot;Да: сжимаем буфер&quot;| CompactMem[&quot;copy(requests, requests[head:])&lt;br&gt;Сброс head = 0&quot;]:::process
+Compaction --&gt;|&quot;Нет&quot;| Return[&quot;Возврат: len(requests) - head&quot;]:::success
+CompactMem --&gt; Return
   </pre>
 </div>
 
 
 <hr />
-<h2 id="uroven-junior-vs-uroven-senior">Уровень Junior vs Уровень Senior</h2>
+<h2 id="uroven-junior-vs-senior-lovushka-beskonechnogo-slaysinga">Уровень Junior vs Senior: Ловушка бесконечного слайсинга</h2>
 
-<p>Большинство кандидатов на LeetCode решают эту задачу "в лоб" через слайсинг:</p>
+<p>Многие кандидаты пишут решение за три строки, используя наивный срез слайса:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2240,24 +2261,31 @@ CheckHead --&gt;|&quot;Нет - Валидно&quot;| Return[&quot;Ответ - 
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// НАИВНОЕ РЕШЕНИЕ (Не для production!)
-func (c *RecentCounter) Ping(t int) int {
+  <pre class="language-go"><code class="language-go">// АНТИПАТТЕРН: Непригодно для production!
+type NaiveCounter struct {
+    reqs []int
+}
+
+func (c *NaiveCounter) Ping(t int) int {
     c.reqs = append(c.reqs, t)
-    for c.reqs[0] &lt; t-3000 {
-        c.reqs = c.reqs[1:] // Срезаем голову
+    for len(c.reqs) &gt; 0 &amp;&amp; c.reqs[0] &lt; t-3000 {
+        c.reqs = c.reqs[1:] // Срезаем начало
     }
     return len(c.reqs)
 }
 </code></pre>
 </div>
 
-<p>Почему это решение провалит секцию хардовой инженерии?<br />
-Из-за механики работы рантайма Go. Операция <code>c.reqs = c.reqs[1:]</code> не удаляет данные из памяти, она просто сдвигает внутренний указатель <code>unsafe.Pointer</code> базового массива (underlying array) на один элемент вправо. <br />
-По мере поступления тысяч запросов, ваш "активный" срез всегда будет небольшим (например, 100 элементов), но сам базовый массив будет <strong>бесконечно ползти вправо</strong>, постоянно упираясь в capacity и вызывая функцию <code>runtime.growslice</code>. <br />
-Это приведет к бесконечным аллокациям все больших кусков памяти и копированию данных. В долгоживущем демоне (long-running daemon) это <strong>классическая утечка памяти (OOM)</strong>.</p>
-<h3 id="idiomatichnoe-reshenie-memory-compaction">Идиоматичное решение (Memory Compaction)</h3>
+<h3 id="pochemu-eto-reshenie-provalit-sistemnuyu-sektsiyu">Почему это решение провалит системную секцию?</h3>
+<p>Операция <code>c.reqs = c.reqs[1:]</code> не высвобождает память. Она лишь сдвигает указатель данных <code>Data</code> в заголовке слайса на 8 байт вперед.<br />
+Представьте реальный сервис, обрабатывающий 10 000 RPS. В окне за 3 секунды находится всего 30 000 чисел. Однако за сутки работы через метод <code>Ping</code> пройдет почти миллиард запросов! <br />
+Слайс будет бесконечно ползти вправо по адресному пространству, регулярно исчерпывать <code>cap</code> и провоцировать постоянные тяжелые вызовы <code>runtime.growslice</code>. Память сервиса начнет бесконтрольно расти, что приведет к падению контейнера по OOM Killer.</p>
+<hr />
+<h2 id="idiomatichnoe-reshenie-virtualnaya-golova-i-uplotnenie-pamyati-compaction">Идиоматичное решение: Виртуальная голова и Уплотнение памяти (Compaction)</h2>
 
-<p>Опытный бэкендер использует указатель головы <code>head</code>, а для предотвращения бесконечного роста базового массива — реализует периодическую "Сборку мусора" (сжатие памяти).</p>
+<p>Почему мы не можем просто применить кольцевой буфер с фиксированной емкостью, как в прошлой статье?<br />
+Потому что в этой задаче количество элементов в окне <strong>динамическое и непредсказуемое</strong>! В штиль может поступить 5 запросов, а при сетевой вспышке — 50 000. Динамическое расширение кольцевого буфера требует сложной логики «разворачивания» кольца.</p>
+<p>Более надежный, элегантный и высокопроизводительный инженерный подход — использовать <strong>виртуальный указатель <code>head</code></strong> в связке с <strong>периодическим уплотнением памяти (Memory Compaction)</strong>:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2267,88 +2295,122 @@ func (c *RecentCounter) Ping(t int) int {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">package main
+  <pre class="language-go"><code class="language-go">package recentcounter
 
-// RecentCounter отслеживает запросы за последние 3 секунды.
+const compactionThreshold = 2048 // Порог накопившегося &quot;мертвого&quot; префикса
+
+// RecentCounter реализует sliding window log с защитой от утечек памяти.
 type RecentCounter struct {
     requests []int
-    head     int
+    head     int // Виртуальный индекс начала активных данных
 }
 
-// Constructor инициализирует счетчик.
+// Constructor инициализирует счетчик запросов.
 func Constructor() RecentCounter {
     return RecentCounter{
-        // Предвыделяем память (capacity) для типичного числа запросов.
-        // Это позволяет избежать аллокаций на старте.
+        // Выделяем начальную емкость для типичного профиля нагрузки
         requests: make([]int, 0, 4096),
         head:     0,
     }
 }
 
-// Ping регистрирует запрос и возвращает их количество за последние 3000 мс.
+// Ping регистрирует новый запрос и возвращает число вызовов за последние 3000 мс.
 func (c *RecentCounter) Ping(t int) int {
-    // 1. Добавляем новый запрос
+    // 1. Добавляем актуальный timestamp в хвост
     c.requests = append(c.requests, t)
 
-    // 2. Инвалидируем старые запросы, просто сдвигая виртуальный указатель
-    for c.head &lt; len(c.requests) &amp;&amp; c.requests[c.head] &lt; t-3000 {
+    // 2. Сдвигаем виртуальную голову, отсекая все timestamps старше t - 3000
+    limit := t - 3000
+    for c.head &lt; len(c.requests) &amp;&amp; c.requests[c.head] &lt; limit {
         c.head++
     }
 
-    // 3. Mechanical Sympathy: Ручное сжатие памяти (Memory Compaction)
-    // Если &quot;мертвая&quot; зона в начале массива стала слишком большой (например, &gt; 2000 элементов),
-    // мы сдвигаем &quot;живые&quot; данные в начало базового массива.
-    if c.head &gt; 2048 {
-        // Встроенная функция copy оптимизирована на уровне ассемблера (memmove)
-        // и абсолютно безопасна при работе с перекрывающимися областями памяти.
+    // 3. Mechanical Sympathy: периодическое уплотнение памяти (Compaction)
+    // Когда в начале базового массива скопилось более 2048 мертвых ячеек,
+    // сдвигаем живые данные в начало буфера.
+    if c.head &gt; compactionThreshold {
+        // Встроенная функция copy написана на ассемблере (memmove с SIMD-инструкциями)
+        // и работает на порядки быстрее ручных циклов, безопасно обрабатывая перекрытия.
         copy(c.requests, c.requests[c.head:])
 
-        // Отрезаем хвост и обнуляем голову
+        // Отрезаем освобожденный хвост и сбрасываем указатель головы
         c.requests = c.requests[:len(c.requests)-c.head]
         c.head = 0
     }
 
-    // 4. Возвращаем размер &quot;активного&quot; окна
+    // 4. Длина активного окна
     return len(c.requests) - c.head
 }
 </code></pre>
 </div>
 
 <hr />
-<h2 id="vzglyad-pod-kapot-pochemu-copy-luchshe-ring-buffer">Взгляд под капот: Почему `copy` лучше Ring Buffer?</h2>
+<h2 id="vzglyad-pod-kapot-vektorizatsiya-copy-i-amortizirovannyy-analiz">Взгляд под капот: Векторизация `copy` и амортизированный анализ</h2>
 
-<p>Вы могли задаться вопросом: <em>"Почему мы просто не использовали кольцевой буфер из статьи про теорию очередей?"</em></p>
-<p>Кольцевой буфер (Ring Buffer) идеален, когда мы <strong>точно знаем максимальный размер окна</strong>. Но в этой задаче размер окна по количеству элементов непредсказуем! За 3 секунды может прийти 5 запросов, а может 50 000 (DDoS атака). Динамически расширять кольцевой буфер — сложная и чреватая багами задача (нужно аккуратно "разворачивать" кольцо при переносе в новую память).</p>
-<p>Встроенная функция <code>copy(dst, src)</code> в Go написана на ассемблере и использует векторные инструкции процессора (SIMD, если доступны). Скопировать пару тысяч <code>int</code> (скалярных значений) в кэше L1 занимает буквально наносекунды. <br />
-Делая <code>copy</code> только когда "мертвых" элементов накапливается достаточно много (амортизация), мы получаем:<br />
-1. Идеальную локальность кэша (Cache Locality).<br />
-2. Защиту от фрагментации памяти.<br />
-3. Полное отсутствие системных аллокаций (Zero allocations) в устоявшемся режиме работы.</p>
+<p>Операция уплотнения памяти выглядит потенциально дорогой. Но давайте оценим ее стоимость с инженерной точностью:</p>
+<ol>
+<li><strong>Векторизация через SIMD:</strong><br />
+   В рантайме Go функция <code>copy(dst, src)</code> транслируется напрямую в высокооптимизированную системную инструкцию <code>memmove</code>. На современных процессорах x86-64 и ARM64 она использует векторные регистры AVX-2 / AVX-512 / NEON, перемещая по 32 или 64 байта за один такт процессора. Перемещение блока из 10 000 целых чисел занимает доли микросекунды и полностью происходит внутри быстрого L1/L2 кэша CPU.</li>
+<li><strong>Амортизированная сложность $O(1)$:</strong><br />
+   Уплотнение запускается не на каждый запрос, а лишь один раз на каждые 2048 устаревших элементов. Размазанная стоимость вызова <code>copy</code> на каждый отдельный <code>Ping</code> составляет доли процессорного такта.</li>
+<li><strong>Стабилизация <code>capacity</code>:</strong><br />
+   После выхода на стабильный профиль нагрузки слайс перестает расширяться: его емкость колеблется около максимального размера пикового окна, а аллокации в куче полностью прекращаются.</li>
+</ol>
+<hr />
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Утечка указателей</span>
+    <span class="callout-title">Ловушка / Gotcha: Утечка указателей при хранении объектов</span>
   </div>
   <div class="callout-body">
-    <p>В данной задаче слайс <code>requests</code> хранит скалярный тип <code>int</code>. Если бы мы хранили указатели на сложные структуры <code>*Request</code>, перед тем как делать сдвиг (compaction) или обрезать <code>requests</code>, мы были бы <strong>обязаны</strong> занулить старые элементы: <code>for i := 0; i &lt; c.head; i++ { c.requests[i] = nil }</code>. Иначе Garbage Collector не смог бы собрать старые запросы, так как базовый массив продолжал бы держать на них ссылки.</p>
+    <p>В этой задаче слайс хранит примитивы <code>int</code> (чистые скаляры). Если бы мы создавали промышленный Rate Limiter, хранящий структуры с контекстом запроса (<code>[]*UserRequest</code>), операция сдвига через <code>copy</code> потребовала бы <strong>явного зануления освободившегося хвоста</strong>:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">n := len(c.requests) - c.head
+copy(c.requests, c.requests[c.head:])
+// КРИТИЧНО для GC: зануляем старые указатели в конце массива!
+for i := n; i &lt; len(c.requests); i++ {
+    c.requests[i] = nil
+}
+c.requests = c.requests[:n]
+</code></pre>
+</div>
+
+<p>Без зануления старые ссылки на структуры <code>*UserRequest</code> останутся в «невидимой» части <code>capacity</code> базового массива, блокируя их освобождение сборщиком мусора.</p>
   </div>
 </div>
 
+<hr />
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование: System Design (Rate Limiter)</span>
+    <span class="callout-title">Вопросы по System Design: Алгоритмы Rate Limiting</span>
   </div>
   <div class="callout-body">
-    <p>На System Design секции интервьюер может спросить: <em>"Этот код работает в памяти одного инстанса. Как масштабировать этот Rate Limiter на кластер из 10 микросервисов?"</em></p>
-<p><strong>Ответ:</strong> Реализация <code>Sliding Window Log</code> (которую мы написали) в распределенной среде (например, через Redis <code>ZSET</code>) потребляет слишком много памяти, так как хранит каждый timestamp. Для кластера лучше использовать алгоритмы <strong>Sliding Window Counter</strong> (агрегация по секундам) или классический <strong>Token Bucket</strong> (корзина токенов). Они хранят всего пару чисел на пользователя (например, в Memcached/Redis) и работают за $O(1)$ по времени и памяти.</p>
+    <p>На архитектурном интервью по системному дизайну вас обязательно спросят:<br />
+<em>«Как работает Sliding Window Log в реальных распределенных сервисах и почему его редко используют в чистом виде под высокой нагрузкой?»</em></p>
+<p><strong>Сравнение подходов:</strong><br />
+1. <strong>Sliding Window Log (наш алгоритм):</strong><br />
+   - <em>Плюсы:</em> Абсолютная математическая точность до миллисекунды; отсутствие краевых эффектов на границах минут.<br />
+   - <em>Минусы:</em> Высокое потребление памяти ($O(N)$, где $N$ — число запросов). В Redis обычно реализуется через Sorted Set (<code>ZSET</code>, где score = timestamp). При 100 000 RPS память Redis будет мгновенно забита.<br />
+2. <strong>Token Bucket / Leaky Bucket (Корзина токенов):</strong><br />
+   - <em>Плюсы:</em> Потребляет строго $O(1)$ памяти (всего 2 поля: баланс токенов и timestamp последнего пополнения). Идеально масштабируется на миллионы пользователей в Redis/Memcached.<br />
+3. <strong>Sliding Window Counter (Гибридный счетчик):</strong><br />
+   - Взвешивает количество запросов за предыдущее и текущее минутные окна. Требует $O(1)$ памяти и дает погрешность менее 0.05%.</p>
   </div>
 </div>
 
 <h2 id="itog">Итог</h2>
 
-<p>Задача <strong>Number of Recent Calls</strong> демонстрирует переход от абстрактных алгоритмов к реальным инженерным проблемам. Мы увидели, как безобидный срез слайса <code>q = q[1:]</code> может обрушить сервер, и как стратегия Memory Compaction спасает ситуацию, сохраняя производительность.</p>
-<p>Синтезировав знания о монотонных структурах (для поиска экстремумов) и скользящих окнах (для потоков), мы готовы сразиться с одной из самых сложных и популярных задач на границе стека и очереди. Переходим к хардкору: <a href="../29-slozhnye-zadachi/6-sliding-window-maximum.html" class="wikilink">6. Sliding Window Maximum</a>.</p>
+<p>Задача <strong>Number of Recent Calls</strong> наглядно показывает, как глубокое понимание устройства слайсов в Go позволяет построить промышленное решение без утечек памяти и скрытых реаллокаций. </p>
+<p>Объединив концепцию скользящего окна, алгоритмы монотонности и строгий контроль над памятью, мы подошли к вершине темы очередей — знаменитой задаче уровня Hard: <a href="../29-slozhnye-zadachi/6-sliding-window-maximum.html" class="wikilink">6. Sliding Window Maximum</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2376,7 +2438,7 @@ func (c *RecentCounter) Ping(t int) int {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#vremennoe-okno-i-osnovy-rate-limiting">Временное окно и основы Rate Limiting</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-ochered-vremennykh-metok">Архитектура: Очередь временных меток</a></li><li class="toc-item toc-h2"><a href="#uroven-junior-vs-uroven-senior">Уровень Junior vs Уровень Senior</a></li><li class="toc-item toc-h3"><a href="#idiomatichnoe-reshenie-memory-compaction">Идиоматичное решение (Memory Compaction)</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-pochemu-copy-luchshe-ring-buffer">Взгляд под капот: Почему copy лучше Ring Buffer?</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#vremennye-okna-i-osnovy-setevogo-rate-limiting">Временные окна и основы сетевого Rate Limiting</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-sliding-window-log-na-ocheredi">Архитектура: Sliding Window Log на очереди</a></li><li class="toc-item toc-h3"><a href="#logika-raboty-algoritma">Логика работы алгоритма:</a></li><li class="toc-item toc-h2"><a href="#uroven-junior-vs-senior-lovushka-beskonechnogo-slaysinga">Уровень Junior vs Senior: Ловушка бесконечного слайсинга</a></li><li class="toc-item toc-h3"><a href="#pochemu-eto-reshenie-provalit-sistemnuyu-sektsiyu">Почему это решение провалит системную секцию?</a></li><li class="toc-item toc-h2"><a href="#idiomatichnoe-reshenie-virtualnaya-golova-i-uplotnenie-pamyati-compaction">Идиоматичное решение: Виртуальная голова и Уплотнение памяти (Compaction)</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-vektorizatsiya-copy-i-amortizirovannyy-analiz">Взгляд под капот: Векторизация copy и амортизированный анализ</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

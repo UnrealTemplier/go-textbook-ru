@@ -2171,23 +2171,75 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~17 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">1. Теория. Стек</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Введение в алгоритмы часто начинается со структур данных, и стек — это фундамент, без которого невозможно понять ни обход деревьев, ни парсинг выражений, ни работу самого рантайма Go. </p>
-<p>В этой статье мы разберем стек не просто как абстрактную концепцию LIFO, а с точки зрения инженерии на Go: как его правильно реализовать, как избежать утечек памяти, почему слайс всегда лучше связного списка, и как сам Go использует стеки под капотом.</p>
-<h2 id="chto-takoe-stek-abstraktsiya">Что такое Стек (Абстракция)</h2>
+            <h1>1. Теория. Стек</h1>
+<blockquote>
+<p><em>«Стек — это строгая дисциплина памяти: то, что пришло последним, уходит первым. Без этой простой очередности не было бы ни вызовов функций, ни синтаксических анализаторов, ни современных операционных систем».</em><br />
+— Никлаус Вирт</p>
+<p>💡 <strong>Связанные темы:</strong><br />
+- <a href="2-monotonnyy-stek.html" class="wikilink">2. Монотонный стек</a> — поддержание порядка элементов для поиска ближайших меньших/больших<br />
+- <a href="3-valid-parentheses.html" class="wikilink">3. Valid Parentheses</a> — каноническая проверка баланса скобок<br />
+- <a href="4-min-stack.html" class="wikilink">4. Min Stack</a> — вспомогательный стек для $O(1)$ поиска минимума<br />
+- <a href="8-decode-string.html" class="wikilink">8. Decode String</a> — парсинг вложенных контекстов<br />
+- <span class="wikilink-unresolved" title="Заметка в разработке">11. DFS: 2. Рекурсия и стек</span> — неявный стек вызовов vs явный стек</p>
+</blockquote>
+<hr />
+<h2 id="vvedenie-arkhitekturnyy-fundament-computer-science">Введение: Архитектурный фундамент Computer Science</h2>
 
-<p><strong>Стек (Stack)</strong> — это структура данных, работающая по принципу <strong>LIFO</strong> (Last In, First Out — Последним пришел, первым ушел). </p>
-<p>Представьте стопку тарелок: вы можете положить новую тарелку только наверх, и взять тарелку можете тоже только сверху. Вы не можете вытащить тарелку из середины, не сняв предварительно верхние.</p>
-<p>Базовые операции стека:<br />
-- <strong>Push</strong> — добавить элемент на вершину.<br />
-- <strong>Pop</strong> — извлечь (и удалить) элемент с вершины.<br />
-- <strong>Peek (Top)</strong> — посмотреть элемент на вершине без его удаления.</p>
+<p>Стек (Stack, LIFO — <em>Last In, First Out</em>) — одна из фундаментальных структур данных в компьютерных науках.<br />
+Каждый вызов функции в любой программе, каждая операция «Отмена» (Undo, <code>Ctrl+Z</code>), кнопка «Назад» в веб-браузере, синтаксический разбор JSON, SQL или XML — все они основаны на дисциплине стека.</p>
+<p>В языке Go понимание стека критично не только для решения алгоритмических задач, но и для понимания архитектуры самого рантайма: устройства стеков вызовов горутин (Continuous Stacks) и планировщика задач GMP (Work-stealing Deque).</p>
+<hr />
+<h2 id="voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</h2>
+
+<ol>
+<li><strong>Тип данных и хранение:</strong><br />
+<em>«Хранит ли стек примитивные типы (<code>int</code>, <code>byte</code>) или ссылочные структуры/указатели (<code>*Node</code>, <code>any</code>)?»</em><br />
+<em>(Если стек хранит указатели, операция <code>Pop()</code> обязана занулять ячейку среза во избежание скрытых утечек памяти).</em></li>
+<li><strong>Максимальная глубина:</strong><br />
+<em>«Известен ли максимальный размер стека заранее?»</em><br />
+<em>(Если известен, инициализируем срез с емкостью <code>make([]T, 0, capacity)</code>, полностью исключая реаллокации памяти).</em></li>
+<li><strong>Обработка пустого стека:</strong><br />
+<em>«Что должен возвращать <code>Pop()</code> при пустом стеке: ошибку, панику или <code>(zero, false)</code>?»</em></li>
+</ol>
+<hr />
+<h2 id="stek-v-go-slays-protiv-svyaznogo-spiska">🛠️ Стек в Go: Слайс против Связного списка</h2>
+
+<p>В стандартной библиотеке Go нет отдельного типа <code>Stack</code>. И это осознанное решение проектировщиков языка. В 99% случаев стек в Go реализуется поверх обычного <strong>слайса (slice)</strong>.</p>
+<p>Почему слайс, а не связный список (<code>container/list</code>)?<br />
+Ответ дает <strong>Mechanical Sympathy</strong> (аппаратное сочувствие к железу):</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Критерий</th>
+<th>Слайс (<code>[]T</code>)</th>
+<th>Связный список (<code>*Element</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Локальность кэша</strong></td>
+<td><strong>Идеальная.</strong> Элементы лежат в непрерывном блоке памяти, L1/L2 кэш загружает их пачками (64 байта)</td>
+<td><strong>Ужасная.</strong> Каждый узел — отдельный объект в куче, порождающий Cache Misses при переходе по указателям</td>
+</tr>
+<tr>
+<td><strong>Нагрузка на GC</strong></td>
+<td><strong>Минимальная.</strong> Память выделяется крупными чанками, амортизированное $O(1)$</td>
+<td><strong>Колоссальная.</strong> Каждый <code>Push</code> аллоцирует новый узел, нагружая сборщик мусора</td>
+</tr>
+<tr>
+<td><strong>Оверхед по памяти</strong></td>
+<td>Только заголовок среза (24 байта)</td>
+<td>Указатели <code>next</code>/<code>prev</code> (16 байт) на каждый элемент</td>
+</tr>
+</tbody>
+</table></div>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2202,39 +2254,23 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-subgraph Память стека
-Top[&quot;Вершина&lt;br&gt;Последний добавленный&quot;] --- Mid[&quot;...&quot;] --- Bottom[&quot;Дно стека&lt;br&gt;Первый добавленный&quot;]
-end
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
 
-Code[&quot;Клиентский код&quot;] --&gt;|Push - запись| Top
-Top --&gt;|Pop - чтение| Code
+A[&quot;Стек на базе среза: []T&quot;]:::entry --&gt; B[&quot;Push(x): items = append(items, x)&quot;]:::process
+B --&gt; C[&quot;Top: items[len-1]&quot;]:::accent
+C --&gt; D[&quot;Pop(): items = items[:len-1]&quot;]:::process
+D --&gt; E[&quot;LIFO дисциплина: O(1) время, горячий L1 Data Cache&quot;]:::success
   </pre>
 </div>
 
 
 <hr />
-<h2 id="stek-v-go-realizatsiya-i-mechanical-sympathy">Стек в Go: Реализация и Mechanical Sympathy</h2>
+<h2 id="idiomatichnaya-obobshchennaya-realizatsiya-go-1-18-generics">🛠️ Идиоматичная обобщенная реализация (Go 1.18+ Generics)</h2>
 
-<p>В стандартной библиотеке Go нет встроенной коллекции <code>Stack</code>. Исторически в языках вроде Java есть класс <code>Stack</code>, но в Go философия другая: мы используем базовые примитивы. В 99% случаев стек в Go реализуется через обычный <strong>слайс (slice)</strong>.</p>
-<p>Почему слайс, а не связный список (Linked List)?<br />
-Ответ кроется в <strong>Mechanical Sympathy</strong> и архитектуре современных процессоров.</p>
-<ol>
-<li><strong>CPU Cache Locality:</strong> Слайс — это непрерывный кусок памяти (underlying array). Когда процессор обращается к вершине стека, блок памяти загружается в L1/L2 кэш (обычно линиями по 64 байта). Следующие операции Push/Pop с огромной вероятностью попадут в горячий кэш. Связный список (где каждый узел аллоцируется отдельно) разбросан по куче (Heap), что приводит к постоянным <strong>Cache Misses</strong> (промахам мимо кэша) и чтению из медленной RAM.</li>
-<li><strong>GC Pressure:</strong> Каждый Push в связный список — это новая аллокация в куче (если объект убегает, escape analysis). Слайс аллоцирует память чанками (при расширении). Амортизированная сложность добавления в слайс — $O(1)$, и работы для Garbage Collector-а в разы меньше.</li>
-</ol>
-<h3 id="idiomatichnaya-realizatsiya-go-1-18-generics">Идиоматичная реализация (Go 1.18+ Generics)</h3>
-
-<p>На собеседованиях часто просят набросать базовый стек. С появлением дженериков это делается элегантно и типобезопасно.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2244,131 +2280,129 @@ Top --&gt;|Pop - чтение| Code
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">package main
+  <pre class="language-go"><code class="language-go">package stack
 
-import (
-    &quot;errors&quot;
-    &quot;fmt&quot;
-)
+import &quot;errors&quot;
 
-var ErrStackEmpty = errors.New(&quot;stack is empty&quot;)
+var ErrEmptyStack = errors.New(&quot;stack is empty&quot;)
 
-// Stack реализует базовый LIFO стек на основе слайса.
+// Stack реализует типобезопасный LIFO-стек на базе слайса.
 type Stack[T any] struct {
     items []T
 }
 
-// NewStack создает стек с предвыделенной емкостью для избежания лишних аллокаций.
+// NewStack создает стек с предварительно выделенной емкостью.
 func NewStack[T any](capacity int) *Stack[T] {
     return &amp;Stack[T]{
-        // Инициализируем len=0, cap=capacity
         items: make([]T, 0, capacity),
     }
 }
 
-// Push добавляет элемент на вершину.
-func (s *Stack[T]) Push(item T) {
-    s.items = append(s.items, item)
+// Push добавляет элемент на вершину стека за амортизированное O(1).
+func (s *Stack[T]) Push(val T) {
+    s.items = append(s.items, val)
 }
 
-// Pop извлекает элемент с вершины.
+// Pop удаляет и возвращает верхний элемент стека.
 func (s *Stack[T]) Pop() (T, error) {
-    var zero T // Нулевое значение для типа T
-    if len(s.items) == 0 {
-        return zero, ErrStackEmpty
+    var zero T
+    n := len(s.items)
+    if n == 0 {
+        return zero, ErrEmptyStack
     }
 
-    // Индекс последнего элемента
-    lastIdx := len(s.items) - 1
-    item := s.items[lastIdx]
+    lastIdx := n - 1
+    val := s.items[lastIdx]
 
-    // ВАЖНО: обнуляем ссылку для GC (см. врезку ниже)
-    s.items[lastIdx] = zero 
-
-    // Отрезаем последний элемент
+    // КРИТИЧЕСКИ ВАЖНО ДЛЯ GC:
+    // Зануляем ячейку, чтобы сборщик мусора мог освободить память,
+    // если T является указателем или содержит ссылки!
+    s.items[lastIdx] = zero
     s.items = s.items[:lastIdx]
 
-    return item, nil
+    return val, nil
 }
 
-// Peek возвращает вершину без удаления.
+// Peek возвращает верхний элемент без удаления.
 func (s *Stack[T]) Peek() (T, error) {
-    if len(s.items) == 0 {
-        var zero T
-        return zero, ErrStackEmpty
+    var zero T
+    n := len(s.items)
+    if n == 0 {
+        return zero, ErrEmptyStack
     }
-    return s.items[len(s.items)-1], nil
+    return s.items[n-1], nil
 }
 
-// IsEmpty проверяет, пуст ли стек.
+// IsEmpty сообщает, пуст ли стек.
 func (s *Stack[T]) IsEmpty() bool {
     return len(s.items) == 0
+}
+
+// Len возвращает количество элементов.
+func (s *Stack[T]) Len() int {
+    return len(s.items)
 }
 </code></pre>
 </div>
 
+<hr />
+<h2 id="glavnaya-lovushka-sobesedovaniya-utechka-pamyati-pri-pop">🛑 Главная ловушка собеседования: Утечка памяти при `Pop()`</h2>
+
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Утечка памяти при Pop</span>
+    <span class="callout-title">Опасность скрытой ссылки в underlying array</span>
   </div>
   <div class="callout-body">
-    <p>Обратите внимание на строку <code>s.items[lastIdx] = zero</code>. <br />
-Если стек хранит указатели (например, <code>*Node</code> из дерева), то простой срез <code>s.items = s.items[:lastIdx]</code> <strong>не удалит</strong> указатель из базового массива (underlying array) слайса. Базовый массив всё ещё будет держать ссылку на этот объект где-то "под капотом", за пределами нового <code>len</code>, но в пределах <code>cap</code>. Garbage Collector не сможет очистить эту память!</p>
-<p><strong>Всегда зануляйте извлеченные элементы в слайсе, если это указатели или структуры с указателями.</strong> На хардкорном интервью по Go на сеньорскую позицию этот вопрос всплывает регулярно.</p>
+    <p>Если стек хранит указатели (например, <code>*TreeNode</code>), простая операция среза <code>s.items = s.items[:len-1]</code> уменьшает длину (<code>len</code>), <strong>но оставляет указатель в базовом массиве</strong> (<code>capacity</code> не изменилась!).<br />
+Сборщик мусора Go считает этот объект живым, пока жив весь слайс стека. В долговременных сервисах это приводит к колоссальным утечкам памяти!<br />
+<strong>Правило:</strong> Всегда обнуляйте слот перед усечением: <code>s.items[lastIdx] = nil</code>.</p>
   </div>
 </div>
 
 <hr />
-<h2 id="stek-pod-kapotom-rantayma-go">Стек под капотом рантайма Go</h2>
+<h2 id="stek-pod-kapotom-rantayma-go">⚙️ Стек под капотом рантайма Go</h2>
 
-<p>Для бэкенд-инженера важно не только уметь применять стек в алгоритмах, но и понимать, как рантайм языка использует этот концепт.</p>
-<h3 id="1-stek-vyzovov-gorutin-call-stack">1. Стек вызовов горутин (Call Stack)</h3>
-<p>Каждая горутина (структура <code>g</code> в исходниках) при рождении получает свой собственный небольшой кусок памяти — стек вызовов. Исторически он был равен 8 КБ, сейчас (с Go 1.4) начальный размер составляет всего <strong>2 КБ</strong>.<br />
-Именно здесь хранятся локальные переменные функций, аргументы и адреса возврата. Это работает как классический LIFO стек: вызвали функцию — сделали Push фрейма, вышли из функции — сделали Pop.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом: Continuous Stacks</span>
-  </div>
-  <div class="callout-body">
-    <p>До Go 1.3 стеки были сегментированными (состояли из кусков памяти, связанных указателями). Это вызывало проблему "hot split" — когда функция в цикле постоянно переходила границу чанка стека, вызывая постоянные аллокации.<br />
-Современный Go использует <strong>Continuous Stacks</strong> (непрерывные стеки). Если горутине не хватает 2 КБ, рантайм аллоцирует новый, в два раза больший непрерывный блок памяти, и <strong>копирует</strong> весь старый стек в новый, попутно обновляя все указатели на переменные в стеке. Именно поэтому в Go запрещена адресная арифметика в стиле C — адреса переменных в стеке могут прозрачно измениться во время работы сборщика мусора!</p>
-  </div>
-</div>
-
-<h3 id="2-stek-i-ochered-v-planirovshchike-work-stealing-deque">2. Стек и Очередь в планировщике (Work-stealing Deque)</h3>
-<p>Интересный пример инженерного компромисса: в планировщике Go локальная очередь задач (run queue) для каждого логического процессора (структура <code>p</code>) реализована как гибрид стека и очереди — Work-stealing Deque (дек). <br />
-Владелец очереди (текущий тред) берет задачи и кладет новые задачи <strong>с хвоста (Tail)</strong> по принципу стека (LIFO). Это максимизирует локальность кэша (только что созданная горутина горячая в кэше CPU). А вот другие треды, если у них нет работы, "воруют" задачи у соседа <strong>с головы (Head)</strong> по принципу очереди (FIFO), чтобы не мешать владельцу и минимизировать блокировки.</p>
+<h3 id="1-steki-gorutin-continuous-stacks">1. Стеки горутин (Continuous Stacks)</h3>
+<p>Каждая горутина при создании получает свой собственный крошечный стек — всего <strong>2 КБ</strong> (в отличие от потоков ОС, требующих по 1–8 МБ).<br />
+Если горутине перестает хватать места (глубокая рекурсия):<br />
+- Рантайм Go выделяет новый непрерывный блок памяти в 2 раза больше;<br />
+- Полностью копирует туда старый стек;<br />
+- Корректирует все указатели на переменные в стеке!</p>
+<h3 id="2-work-stealing-deque-v-planirovshchike-gmp">2. Work-Stealing Deque в планировщике GMP</h3>
+<p>Локальная очередь горутин у каждого логического процессора <code>P</code> организована как гибрид стека и очереди (Work-stealing Deque):<br />
+- Владелец (<code>P</code>) кладет и забирает задачи <strong>с хвоста (Tail) по принципу стека (LIFO)</strong>. Это максимизирует локальность кэша: только что созданная горутина горяча в L1/L2 кэше CPU!<br />
+- Другие процессоры, оставшиеся без работы, «крадут» задачи <strong>с головы (Head) по принципу очереди (FIFO)</strong>, избегая конкуренции за одну кэш-линию.</p>
 <hr />
-<h2 id="patterny-ispolzovaniya-na-leetcode">Паттерны использования на LeetCode</h2>
+<h2 id="tipovye-patterny-zadach-na-stek">💡 Типовые паттерны задач на стек</h2>
 
-<p>Когда на собеседовании применять стек? Стек — идеальный инструмент, когда задача требует <strong>возврата к предыдущему состоянию</strong> или обработки вложенных структур.</p>
-<h3 id="glavnye-markery-stekovykh-zadach">Главные маркеры "стековых" задач:</h3>
 <ol>
-<li><strong>Проверка вложенности (Matching):</strong> Классика — правильная скобочная последовательность. Открывающая скобка идет в стек, закрывающая — извлекает из стека и проверяет на соответствие.</li>
-<li><strong>Обратный порядок обработки:</strong> Нужно развернуть строку, путь (например, <code>/a/./b/../../c/</code>) или элементы.</li>
-<li><strong>Отслеживание истории:</strong> Задачи типа "реализуйте кнопки Назад/Вперед в браузере".</li>
-<li><strong>Парсинг выражений:</strong> Обратная польская запись (Reverse Polish Notation), парсинг математических выражений (где умножение выполняется раньше сложения), раскодирование строк (например, <code>3[a2[c]]</code>).</li>
+<li><strong>Проверка вложенных скобок (Parentheses Matching):</strong><br />
+   Открывающие скобки складываются в стек, закрывающие сверяются с вершиной (<code>&lt;a href="3-valid-parentheses.html" class="wikilink"&gt;3. Valid Parentheses&lt;/a&gt;</code>).</li>
+<li><strong>Стек с поддержкой минимума за $O(1)$:</strong><br />
+   Синхронный параллельный стек минимумов (<code>&lt;a href="4-min-stack.html" class="wikilink"&gt;4. Min Stack&lt;/a&gt;</code>).</li>
+<li><strong>Парсинг выражений и стековые машины:</strong><br />
+   Обратная польская нотация (RPN) и вычисление вложенных выражений (<code>&lt;a href="8-decode-string.html" class="wikilink"&gt;8. Decode String&lt;/a&gt;</code>).</li>
+<li><strong>Монотонный стек:</strong><br />
+   Поиск ближайшего большего или меньшего элемента за $O(N)$ (<code>&lt;a href="2-monotonnyy-stek.html" class="wikilink"&gt;2. Монотонный стек&lt;/a&gt;</code>, <code>&lt;a href="5-daily-temperatures.html" class="wikilink"&gt;5. Daily Temperatures&lt;/a&gt;</code>).</li>
 </ol>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование: Нативная рекурсия vs Явный стек</span>
-  </div>
-  <div class="callout-body">
-    <p>Любой рекурсивный алгоритм (например, обход дерева в глубину — DFS) можно переписать итеративно, используя явную структуру данных <code>Stack</code>. <br />
-На собеседовании могут попросить: "Решите DFS без рекурсии". Ваш ответ — использование кастомного стека. Плюс такого подхода: стек вызовов горутины ограничен (обычно 1 ГБ, но может упереться раньше при глубокой рекурсии), а явный стек в куче ограничен только оперативной памятью сервера (OOM).</p>
-  </div>
-</div>
+<hr />
+<h2 id="navigatsiya">🗺️ Навигация</h2>
 
-<h2 id="itog">Итог</h2>
-
-<p>Стек — это не просто абстракция для алгоритмических задачек. В Go это:<br />
-1. Базовый примитив для обхода в глубину (DFS) и парсинга грамматик.<br />
-2. Слайс под капотом, где нужно управлять <code>capacity</code> и следить за занулением указателей при <code>Pop</code>, чтобы не "порадовать" сборщик мусора утечкой.<br />
-3. Фундаментальный механизм работы самих горутин (Continuous Stacks).</p>
-<p>Освоив базовый LIFO, мы сталкиваемся с классом задач, где стек нужно поддерживать в отсортированном состоянии на лету. Об этом мощнейшем паттерне мы поговорим в следующей статье: <a href="2-monotonnyy-stek.html" class="wikilink">2. Монотонный стек</a>.</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th style="text-align: left;">Назад</th>
+<th style="text-align: left;">Вперед</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">← <span class="wikilink-unresolved" title="Заметка в разработке">05. Хеш таблицы: 9. Insert Delete GetRandom</span></td>
+<td style="text-align: left;"><a href="2-monotonnyy-stek.html" class="wikilink">2. Монотонный стек</a> →</td>
+</tr>
+</tbody>
+</table></div>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2396,7 +2430,7 @@ func (s *Stack[T]) IsEmpty() bool {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#chto-takoe-stek-abstraktsiya">Что такое Стек (Абстракция)</a></li><li class="toc-item toc-h2"><a href="#stek-v-go-realizatsiya-i-mechanical-sympathy">Стек в Go: Реализация и Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#idiomatichnaya-realizatsiya-go-1-18-generics">Идиоматичная реализация (Go 1.18+ Generics)</a></li><li class="toc-item toc-h2"><a href="#stek-pod-kapotom-rantayma-go">Стек под капотом рантайма Go</a></li><li class="toc-item toc-h3"><a href="#1-stek-vyzovov-gorutin-call-stack">1. Стек вызовов горутин (Call Stack)</a></li><li class="toc-item toc-h3"><a href="#2-stek-i-ochered-v-planirovshchike-work-stealing-deque">2. Стек и Очередь в планировщике (Work-stealing Deque)</a></li><li class="toc-item toc-h2"><a href="#patterny-ispolzovaniya-na-leetcode">Паттерны использования на LeetCode</a></li><li class="toc-item toc-h3"><a href="#glavnye-markery-stekovykh-zadach">Главные маркеры &quot;стековых&quot; задач:</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#vvedenie-arkhitekturnyy-fundament-computer-science">Введение: Архитектурный фундамент Computer Science</a></li><li class="toc-item toc-h2"><a href="#voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</a></li><li class="toc-item toc-h2"><a href="#stek-v-go-slays-protiv-svyaznogo-spiska">🛠️ Стек в Go: Слайс против Связного списка</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-obobshchennaya-realizatsiya-go-1-18-generics">🛠️ Идиоматичная обобщенная реализация (Go 1.18+ Generics)</a></li><li class="toc-item toc-h2"><a href="#glavnaya-lovushka-sobesedovaniya-utechka-pamyati-pri-pop">🛑 Главная ловушка собеседования: Утечка памяти при Pop()</a></li><li class="toc-item toc-h2"><a href="#stek-pod-kapotom-rantayma-go">⚙️ Стек под капотом рантайма Go</a></li><li class="toc-item toc-h3"><a href="#1-steki-gorutin-continuous-stacks">1. Стеки горутин (Continuous Stacks)</a></li><li class="toc-item toc-h3"><a href="#2-work-stealing-deque-v-planirovshchike-gmp">2. Work-Stealing Deque в планировщике GMP</a></li><li class="toc-item toc-h2"><a href="#tipovye-patterny-zadach-na-stek">💡 Типовые паттерны задач на стек</a></li><li class="toc-item toc-h2"><a href="#navigatsiya">🗺️ Навигация</a></li>
   </ul>
 </aside>
 

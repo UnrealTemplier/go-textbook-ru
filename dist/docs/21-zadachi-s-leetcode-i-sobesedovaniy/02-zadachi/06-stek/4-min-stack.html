@@ -2171,30 +2171,72 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~16 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~12 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">4. Min Stack</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="min-stack-podderzhanie-invarianta-za-o1">Min Stack: Поддержание инварианта за O(1)</h2>
-
-<p>В предыдущих статьях мы рассматривали стек исключительно как хранилище данных: положил значение, забрал значение. Но в реальной инженерии структуры данных часто должны отвечать на мета-вопросы о своем состоянии. </p>
-<p>Задача <strong>Min Stack</strong> (LeetCode 155) требует спроектировать стек, который поддерживает стандартные операции <code>Push</code>, <code>Pop</code> и <code>Top</code>, но дополнительно имеет метод <code>GetMin()</code>, возвращающий минимальный элемент в стеке. <strong>Все операции должны выполняться за время $O(1)$.</strong></p>
-<p>Это классическая задача, которая проверяет умение кандидата жертвовать памятью ради скорости и понимать, как состояние структуры меняется во времени.</p>
+            <h1>4. Min Stack</h1>
+<blockquote>
+<p><em>«Пространство и время всегда находятся в равновесии: сохраняя крупицу истории на этапе записи, мы покупаем мгновенные ответы при чтении».</em><br />
+— Брайан Керниган</p>
+<p>💡 <strong>Связанные темы:</strong><br />
+- <a href="1-teoriya-stek.html" class="wikilink">1. Теория. Стек</a> — базовая дисциплина LIFO и реализация на срезах<br />
+- <a href="2-monotonnyy-stek.html" class="wikilink">2. Монотонный стек</a> — динамическое поддержание порядка<br />
+- <a href="5-daily-temperatures.html" class="wikilink">5. Daily Temperatures</a> — практическое использование истории состояний<br />
+- <span class="wikilink-unresolved" title="Заметка в разработке">02. Асимптотический анализ</span> — компромиссы памяти и времени</p>
+</blockquote>
 <hr />
-<h2 id="arkhitektura-kak-dobitsya-o1">Архитектура: Как добиться O(1)</h2>
+<h2 id="vvedenie-khranenie-istorii-sostoyaniy">Введение: Хранение истории состояний</h2>
 
-<p>Наивный подход — при каждом вызове <code>GetMin()</code> проходить по всему слайсу и искать минимум. Это $O(N)$ по времени, что неприемлемо.</p>
-<p>Чтобы получать минимум за $O(1)$, мы должны <strong>кешировать</strong> его. Но стек динамичен: если мы просто сохраним минимальное значение в переменную <code>min</code>, то при извлечении (<code>Pop</code>) этого минимума из стека, мы не будем знать, какое значение стало "новым" минимумом (предыдущим по счету).</p>
-<p><strong>Решение:</strong> Стек должен хранить историю минимумов. Каждое состояние стека имеет свой собственный минимум.</p>
-<h3 id="podkhod-1-dva-steka-data-stack-i-min-stack">Подход 1: Два стека (Data Stack и Min Stack)</h3>
-<p>Мы используем два слайса: один для реальных значений, другой — для отслеживания минимальных.<br />
-- При <code>Push(x)</code>: кладем <code>x</code> в стек данных. Смотрим на вершину стека минимумов. Если <code>x</code> меньше <strong>или равен</strong> текущему минимуму, кладем <code>x</code> и в стек минимумов.<br />
-- При <code>Pop()</code>: извлекаем элемент из стека данных. Если извлеченный элемент равен вершине стека минимумов, то извлекаем и его тоже.</p>
-<h3 id="podkhod-2-massiv-struktur-array-of-structs-nash-vybor">Подход 2: Массив структур (Array of Structs) — Наш выбор</h3>
-<p>Вместо синхронизации двух слайсов, мы объединяем значение и текущий минимум на момент добавления в единую структуру. Каждый элемент стека знает: <em>"Какое было минимальное значение во всем стеке, когда меня в него положили?"</em>.</p>
+<p>Классический стек — это пассивное хранилище: мы кладем значение на вершину и забираем его. Но в реальных распределенных сервисах структуры данных часто обязаны мгновенно отвечать на мета-вопросы о своем текущем состоянии.</p>
+<p>Задача <strong>Min Stack</strong> (LeetCode 155):</p>
+<blockquote>
+<p><em>Спроектировать стек, поддерживающий стандартные операции <code>Push</code>, <code>Pop</code>, <code>Top</code>, а также метод <code>GetMin</code>, возвращающий минимальный элемент во всем стеке.<br />
+</em><em>Все операции обязаны выполняться за строго константное время $O(1)$.</em>**</p>
+</blockquote>
+<p>Наивный поиск минимума линейным проходом по срезу занимает $O(N)$ времени — это нарушение условия.<br />
+Хранить одну глобальную переменную <code>currentMin</code> тоже нельзя: когда мы снимем (<code>Pop</code>) минимальный элемент с вершины, мы потеряем информацию о том, какое число было минимумом <em>до</em> него.</p>
+<p><strong>Решение:</strong> Каждый элемент стека должен помнить локальный минимум на момент своего добавления!</p>
+<hr />
+<h2 id="voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</h2>
+
+<ol>
+<li><strong>Поведение при пустом стеке:</strong><br />
+<em>«Что должен возвращать <code>GetMin()</code> и <code>Top()</code>, если стек пуст: ошибку, панику или дефолтное значение?»</em><br />
+<em>(В условиях LeetCode вызовы на пустом стеке не происходят, но в production-коде возвращаем <code>error</code> или <code>(int, bool)</code>).</em></li>
+<li><strong>Диапазон чисел:</strong><br />
+<em>«Могут ли числа быть отрицательными?»</em><br />
+<em>(Да, поддерживается весь диапазон 32- и 64-битных знаковых целых чисел).</em></li>
+<li><strong>Требования к памяти:</strong><br />
+<em>«Допустимо ли использование $O(N)$ дополнительной памяти для кэширования минимумов?»</em></li>
+</ol>
+<hr />
+<h2 id="arkhitekturnye-podkhody-aos-protiv-soa">Архитектурные подходы: AoS против SoA</h2>
+
+<h3 id="podkhod-1-dva-parallelnykh-sreza-struct-of-arrays-soa">Подход 1: Два параллельных среза (Struct of Arrays — SoA)</h3>
+<p>Один срез для данных <code>vals []int</code>, второй для минимумов <code>mins []int</code>.<br />
+Минус: данные одного логического шага разнесены по разным областям кучи, что повышает риск промаха кэша процессора.</p>
+<h3 id="podkhod-2-srez-struktur-array-of-structs-aos-vybor-inzhenera">Подход 2: Срез структур (Array of Structs — AoS) — Выбор инженера</h3>
+<p>Объединяем значение и локальный минимум в компактную 16-байтную структуру:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">type node struct {
+    val int
+    min int
+}
+</code></pre>
+</div>
+
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2209,29 +2251,27 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-subgraph &quot;Состояние стека при добавлении - 5, 2, 4, 1&quot;
-Top[&quot;Вершина&lt;br&gt;Значение: 1&lt;br&gt;Минимум: 1&quot;] --- Mid2[&quot;Элемент 3&lt;br&gt;Значение: 4&lt;br&gt;Минимум: 2&quot;]
-Mid2 --- Mid1[&quot;Элемент 2&lt;br&gt;Значение: 2&lt;br&gt;Минимум: 2&quot;]
-Mid1 --- Bottom[&quot;Дно&lt;br&gt;Значение: 5&lt;br&gt;Минимум: 5&quot;]
-end
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+
+A[&quot;Push(5)&quot;]:::entry --&gt; B[&quot;node{val: 5, min: 5}&quot;]:::process
+B --&gt; C[&quot;Push(2)&quot;]:::entry
+C --&gt; D[&quot;node{val: 2, min: min(2, 5)=2}&quot;]:::accent
+D --&gt; E[&quot;Push(4)&quot;]:::entry
+E --&gt; F[&quot;node{val: 4, min: min(4, 2)=2}&quot;]:::process
+F --&gt; G[&quot;Push(1)&quot;]:::entry
+G --&gt; H[&quot;node{val: 1, min: min(1, 2)=1}&quot;]:::accent
+H --&gt; I[&quot;GetMin() -&gt; читает вершину: min = 1 за O(1)&quot;]:::success
   </pre>
 </div>
 
 
 <hr />
-<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
+<h2 id="optimalnaya-realizatsiya-na-go">🛠️ Оптимальная реализация на Go</h2>
 
-<p>В контексте LeetCode сигнатуры методов обычно не подразумевают возврат ошибок, но для production-ready базы знаний мы напишем безопасный код, который не уронит сервер паникой при <code>Pop</code> из пустого стека.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2241,122 +2281,122 @@ end
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">package main
+  <pre class="language-go"><code class="language-go">package minstack
 
-import (
-    &quot;errors&quot;
-    &quot;fmt&quot;
-)
+import &quot;errors&quot;
 
-var ErrEmptyStack = errors.New(&quot;операция с пустым стеком&quot;)
+var ErrEmptyStack = errors.New(&quot;stack is empty&quot;)
 
-// element представляет узел стека, хранящий само значение и минимум на текущий момент.
-type element struct {
+type entry struct {
     val int
     min int
 }
 
-// MinStack реализует стек с поддержкой получения минимума за O(1).
+// MinStack поддерживает операции Push, Pop, Top и GetMin за константное время O(1).
 type MinStack struct {
-    items []element
+    elements []entry
 }
 
-// Constructor инициализирует стек. 
-// В реальном проекте лучше передавать capacity для аллокации.
+// Constructor инициализирует стек.
 func Constructor() MinStack {
     return MinStack{
-        items: make([]element, 0),
+        elements: make([]entry, 0),
     }
 }
 
-// Push добавляет элемент в стек.
+// Push добавляет элемент на вершину за O(1).
 func (s *MinStack) Push(val int) {
-    min := val
-    // Если стек не пуст, сравниваем новое значение с текущим минимумом
-    if len(s.items) &gt; 0 {
-        currentMin := s.items[len(s.items)-1].min
-        if currentMin &lt; val {
-            min = currentMin
+    currentMin := val
+    n := len(s.elements)
+    if n &gt; 0 {
+        topMin := s.elements[n-1].min
+        if topMin &lt; currentMin {
+            currentMin = topMin
         }
     }
-    s.items = append(s.items, element{val: val, min: min})
+
+    s.elements = append(s.elements, entry{
+        val: val,
+        min: currentMin,
+    })
 }
 
-// Pop извлекает элемент с вершины стека.
-func (s *MinStack) Pop() error {
-    if len(s.items) == 0 {
-        return ErrEmptyStack
+// Pop удаляет верхний элемент за O(1).
+func (s *MinStack) Pop() {
+    n := len(s.elements)
+    if n == 0 {
+        return
     }
-    // Отрезаем последний элемент. Так как слайс хранит не указатели, 
-    // а сами структуры, зануление (как в пуле указателей) здесь не критично,
-    // сборщик мусора не будет сканировать скалярные int.
-    s.items = s.items[:len(s.items)-1]
-    return nil
+    // Так как entry хранит примитивные int, зануление для GC не требуется
+    s.elements = s.elements[:n-1]
 }
 
-// Top возвращает значение на вершине стека.
-func (s *MinStack) Top() (int, error) {
-    if len(s.items) == 0 {
-        return 0, ErrEmptyStack
+// Top возвращает значение на вершине за O(1).
+func (s *MinStack) Top() int {
+    n := len(s.elements)
+    if n == 0 {
+        return 0
     }
-    return s.items[len(s.items)-1].val, nil
+    return s.elements[n-1].val
 }
 
-// GetMin возвращает минимальный элемент в стеке за O(1).
-func (s *MinStack) GetMin() (int, error) {
-    if len(s.items) == 0 {
-        return 0, ErrEmptyStack
+// GetMin возвращает минимальный элемент за O(1).
+func (s *MinStack) GetMin() int {
+    n := len(s.elements)
+    if n == 0 {
+        return 0
     }
-    return s.items[len(s.items)-1].min, nil
+    return s.elements[n-1].min
 }
 </code></pre>
 </div>
 
 <hr />
-<h2 id="mechanical-sympathy-lokalnost-kesha-aos-vs-soa">Mechanical Sympathy: Локальность кэша (AoS vs SoA)</h2>
+<h2 id="mechanical-sympathy-aos-i-64-baytnye-kesh-linii-protsessora">⚙️ Mechanical Sympathy: AoS и 64-байтные кэш-линии процессора</h2>
 
-<p>На собеседовании (особенно если вы претендуете на Senior/Lead) вас могут спросить: <em>"Почему вы выбрали срез структур (Array of Structs, AoS), а не два параллельных среза (Struct of Arrays, SoA)?"</em></p>
-<p>Это вопрос на понимание <strong>иерархии памяти и кэш-линий процессора</strong>.</p>
-<p>В Go структура <code>element</code> состоит из двух <code>int</code> (по 8 байт на 64-битной архитектуре). Итого 16 байт.<br />
-Когда процессор запрашивает данные из RAM, он читает их не побайтово, а целыми <strong>кэш-линиями (Cache Lines)</strong>, обычно по 64 байта.</p>
-<ul>
-<li><strong>AoS (наш подход <code>[]element</code>):</strong> <code>val</code> и <code>min</code> лежат в памяти впритык друг к другу. Загружая кэш-линию, CPU получает сразу 4 полных элемента стека (64 / 16 = 4). Операции <code>Push</code> и <code>Pop</code> требуют одновременного чтения/записи и значения, и минимума. Оба поля гарантированно оказываются в горячем кэше (L1 Cache).</li>
-<li><strong>SoA (два <code>[]int</code>):</strong> Значения лежат в одном месте кучи, а минимумы — в другом. При выполнении операции процессору придется загружать две разные кэш-линии из разных областей памяти. Это повышает риск <strong>Cache Miss</strong> и замедляет работу.</li>
-</ul>
-<div class="callout callout-info">
+<p>Почему срез структур <code>[]entry</code> работает быстрее двух отдельных срезов <code>[]int</code>?<br />
+1. <strong>Размер структуры:</strong> <code>struct { val, min int }</code> на 64-битной платформе занимает ровно $8 + 8 = 16$ байт.<br />
+2. <strong>Упаковка в кэш-линию:</strong> Стандартная кэш-линия L1 Data Cache процессора имеет размер <strong>64 байта</strong>. В одну такую линию помещается ровно 4 полных элемента <code>entry</code>:<br />
+   $$\frac{64\text{ байта}}{16\text{ байт}} = 4\text{ элемента}$$<br />
+3. При вызове <code>Push</code> мы одновременно читаем <code>min</code> предыдущего элемента и пишем <code>val</code> и <code>newMin</code>. Оба поля находятся в пределах одного адреса памяти — это стопроцентное попадание в L1 Data Cache (Zero Cache Misses).</p>
+<hr />
+<h2 id="uroven-senior-tryuk-s-raznostyami-o1-dopolnitelnoy-pamyati">🎓 Уровень Senior: Трюк с разностями ($O(1)$ дополнительной памяти)</h2>
+
+<p>На собеседованиях в бигтех любят задавать каверзный вопрос:<br />
+<em>«А как реализовать MinStack за $O(1)$ дополнительной памяти, используя только один срез <code>[]int</code> и одну переменную <code>min</code>?»</em></p>
+<p>Ответ — <strong>математическое кодирование разности</strong>:<br />
+- Вместо самого значения мы сохраняем в стек дельту:<br />
+  $$\text{diff} = x - \text{min}$$<br />
+- Если $x &lt; \text{min}$, то $\text{diff} &lt; 0$. Мы обновляем $\text{min} = x$, а в стек кладем отрицательную дельту.<br />
+- При <code>Pop()</code>: если извлеченный $\text{diff} &lt; 0$, значит, уходящий элемент был минимумом, а предыдущий восстанавливается как $\text{prevMin} = \text{min} - \text{diff}$.</p>
+<div class="callout callout-warning">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом: Когда два слайса лучше?</span>
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Опасность целочисленного переполнения в проде</span>
   </div>
   <div class="callout-body">
-    <p>Если бы у нас была аналитическая система, где 99% времени вызывался бы только метод <code>GetMin()</code> в цикле по всему стеку, а <code>Pop</code>/<code>Push</code> происходили редко, тогда SoA (два слайса) был бы быстрее! Процессор смог бы упаковать 8 интов (минимумов) в одну кэш-линию и аппаратно предвосхищать (Prefetching) чтение. Но для стека, где <code>Push</code>/<code>Pop</code> совершаются постоянно вместе с обновлением минимума, группировка данных в структуру идеальна.</p>
+    <p>Хотя этот трюк математически безупречен, в продакшене он опасен: операция <code>x - min</code> для крайних значений <code>math.MaxInt64</code> и <code>math.MinInt64</code> вызовет тихое <strong>целочисленное переполнение (Integer Overflow)</strong> в Go.<br />
+Поэтому сеньор-инженер выбирает Array of Structs: он на 100% безопасен, не подвержен переполнению и максимально дружелюбен к L1-кэшу CPU.</p>
   </div>
 </div>
 
 <hr />
-<h2 id="uroven-senior-reshenie-s-o1-dopolnitelnoy-pamyati">Уровень Senior: Решение с O(1) дополнительной памяти</h2>
+<h2 id="navigatsiya">🗺️ Навигация</h2>
 
-<p>Вышеописанное решение требует $O(N)$ памяти на хранение инварианта (мы дублируем <code>min</code> для каждого узла).<br />
-Самый каверзный вопрос на хардкорных секциях: <em>"Можете ли вы написать Min Stack, используя только один слайс чисел <code>[]int</code> и одну переменную, то есть за $O(1)$ дополнительной памяти?"</em></p>
-<p>Это делается через <strong>математический трюк с дельтами (разностями)</strong>.<br />
-Вместо того чтобы хранить сами значения, в стек кладется <strong>разница</strong> между новым значением и текущим минимумом.</p>
-<p><strong>Суть алгоритма (кратко):</strong><br />
-- У нас есть переменная <code>currentMin</code>.<br />
-- При <code>Push(x)</code>: Если стек пуст, кладем <code>0</code> и <code>currentMin = x</code>. Если не пуст, вычисляем дельту: <code>diff = x - currentMin</code>. Кладем <code>diff</code> в стек. Если <code>diff &lt; 0</code> (значит <code>x</code> меньше текущего минимума), обновляем <code>currentMin = x</code>.<br />
-- При <code>Pop()</code>: Достаем <code>diff</code>. Если <code>diff &lt; 0</code>, это означает, что извлекаемый элемент был минимумом! Мы можем восстановить предыдущий минимум математически: <code>previousMin = currentMin - diff</code>.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>У математического трюка есть серьезный недостаток в реальных системах — <strong>целочисленное переполнение (Integer Overflow)</strong>. Если <code>x</code> очень большое положительное число, а <code>currentMin</code> очень большое отрицательное (или наоборот), операция <code>x - currentMin</code> может выйти за пределы типа <code>int64</code> и переполниться, вызвав катастрофические баги. В Go придется писать проверки на переполнение или использовать пакет <code>math/big</code>, что убьет всю производительность. Поэтому в production почти всегда используют вариант с массивом структур ($O(N)$ памяти).</p>
-  </div>
-</div>
-
-<h2 id="itog">Итог</h2>
-
-<p>Задача Min Stack учит нас важному принципу: <strong>для получения ответов за $O(1)$ данные должны быть подготовлены заранее (pre-computed) на этапе записи.</strong> Понимание того, как привязывать вычисленное состояние (в данном случае минимум) к конкретному узлу структуры данных, критически важно. В следующей задаче мы увидим, как стек помогает заглядывать "в будущее", когда локального состояния недостаточно: <a href="5-daily-temperatures.html" class="wikilink">5. Daily Temperatures</a>.</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th style="text-align: left;">Назад</th>
+<th style="text-align: left;">Вперед</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">← <a href="3-valid-parentheses.html" class="wikilink">3. Valid Parentheses</a></td>
+<td style="text-align: left;"><a href="5-daily-temperatures.html" class="wikilink">5. Daily Temperatures</a> →</td>
+</tr>
+</tbody>
+</table></div>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2384,7 +2424,7 @@ func (s *MinStack) GetMin() (int, error) {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#min-stack-podderzhanie-invarianta-za-o1">Min Stack: Поддержание инварианта за O(1)</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-kak-dobitsya-o1">Архитектура: Как добиться O(1)</a></li><li class="toc-item toc-h3"><a href="#podkhod-1-dva-steka-data-stack-i-min-stack">Подход 1: Два стека (Data Stack и Min Stack)</a></li><li class="toc-item toc-h3"><a href="#podkhod-2-massiv-struktur-array-of-structs-nash-vybor">Подход 2: Массив структур (Array of Structs) — Наш выбор</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-lokalnost-kesha-aos-vs-soa">Mechanical Sympathy: Локальность кэша (AoS vs SoA)</a></li><li class="toc-item toc-h2"><a href="#uroven-senior-reshenie-s-o1-dopolnitelnoy-pamyati">Уровень Senior: Решение с O(1) дополнительной памяти</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#vvedenie-khranenie-istorii-sostoyaniy">Введение: Хранение истории состояний</a></li><li class="toc-item toc-h2"><a href="#voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</a></li><li class="toc-item toc-h2"><a href="#arkhitekturnye-podkhody-aos-protiv-soa">Архитектурные подходы: AoS против SoA</a></li><li class="toc-item toc-h3"><a href="#podkhod-1-dva-parallelnykh-sreza-struct-of-arrays-soa">Подход 1: Два параллельных среза (Struct of Arrays — SoA)</a></li><li class="toc-item toc-h3"><a href="#podkhod-2-srez-struktur-array-of-structs-aos-vybor-inzhenera">Подход 2: Срез структур (Array of Structs — AoS) — Выбор инженера</a></li><li class="toc-item toc-h2"><a href="#optimalnaya-realizatsiya-na-go">🛠️ Оптимальная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-aos-i-64-baytnye-kesh-linii-protsessora">⚙️ Mechanical Sympathy: AoS и 64-байтные кэш-линии процессора</a></li><li class="toc-item toc-h2"><a href="#uroven-senior-tryuk-s-raznostyami-o1-dopolnitelnoy-pamyati">🎓 Уровень Senior: Трюк с разностями ($O(1)$ дополнительной памяти)</a></li><li class="toc-item toc-h2"><a href="#navigatsiya">🗺️ Навигация</a></li>
   </ul>
 </aside>
 

@@ -2171,64 +2171,47 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~22 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~18 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">1. Теория. Хеш таблицы</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Хеш-таблицы — это, пожалуй, самая важная структура данных для бэкенд-разработчика. Именно они обеспечивают амортизированное время доступа $O(1)$, на котором строится львиная доля высоконагруженных сервисов: кэши, индексы в БД, сессии, дедупликация и маршрутизация. </p>
-<p>Но за магию $O(1)$ приходится платить сложностью внутренней реализации, проблемами с кэш-линиями процессора и давлением на Garbage Collector. В Go хеш-таблица встроена в язык как тип <code>map</code>, и её внутреннее устройство глубоко оптимизировано под специфику рантайма.</p>
-<h2 id="kak-rabotaet-kheshirovanie-ot-idei-k-kolliziyam">Как работает хеширование: от идеи к коллизиям</h2>
+            <h1>1. Теория. Хеш таблицы</h1>
+<blockquote>
+<p><em>«Таблицы с вычислением ключей — это то место в компьютерных науках, где абстрактная математическая вероятность превращается в осязаемую физическую скорость процессора».</em><br />
+— Дональд Кнут</p>
+<p>💡 <strong>Связанные темы:</strong><br />
+- <a href="2-chastotnye-patterny.html" class="wikilink">2. Частотные паттерны</a> — базовые приемы агрегации данных<br />
+- <a href="3-group-anagrams.html" class="wikilink">3. Group Anagrams</a> — канонизация ключей для группировки<br />
+- <a href="7-contains-duplicate.html" class="wikilink">7. Contains Duplicate</a> — множество <code>map[T]struct{}</code> с нулевой аллокацией значений<br />
+- <a href="9-insert-delete-getrandom-o1.html" class="wikilink">9. Insert Delete GetRandom O1</a> — гибридизация хеш-таблицы и слайса<br />
+- <span class="wikilink-unresolved" title="Заметка в разработке">02. Асимптотический анализ</span> — амортизированная сложность $O(1)$ vs худший случай $O(N)$</p>
+</blockquote>
+<hr />
+<h2 id="vvedenie-serdtse-bekend-arkhitektury">Введение: Сердце бэкенд-архитектуры</h2>
 
-<p>Любая хеш-таблица — это массив бакетов (корзин). Идея проста:<br />
-1. Берем ключ и пропускаем его через <strong>хеш-функцию</strong>, получая число (хеш).<br />
-2. Берем остаток от деления хеша на количество бакетов: <code>hash(key) % N</code>.<br />
-3. Получаем индекс бакета, куда положим значение.</p>
-<p>Проблема возникает там, где два разных ключа дают один и тот же индекс. Это называется <strong>коллизией</strong>. В классических языках (C++, Java) есть два основных подхода к разрешению коллизий:<br />
-- <strong>Метод цепочек (Chaining)</strong>: каждый бакет — это связный список. При коллизии новый элемент просто добавляется в конец списка. Плохо для кэша CPU: элементы списка разбросаны по куче, что ведет к Cache Miss.<br />
-- <strong>Открытая адресация (Open Addressing)</strong>: если бакет занят, ищем следующий свободный (линейно, квадратично или через двойное хеширование). Отлично для кэша (данные лежат плотно), но дорого при удалении и сильной загрузке таблицы.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>В Go используется гибридный подход. Бакеты хранят до 8 элементов прямо внутри себя (как в открытой адресации — для локальности кэша), а если бакет переполняется, создается <strong>overflow bucket</strong> (как в методе цепочек), который ссылается на следующий массив. </p>
-  </div>
-</div>
+<p>Хеш-таблица — безусловно, самая часто используемая структура данных в бэкенде. Кэши в оперативной памяти (Redis, Memcached, in-memory cache), маршрутизация HTTP-запросов по URL, индексация в базах данных, сессии пользователей, дедупликация событий в шинах сообщений (Kafka, RabbitMQ) — все они полагаются на фундаментальное обещание: <strong>доступ к данным за константное время $O(1)$</strong>.</p>
+<p>Но за видимой простотой синтаксиса <code>val, ok := m[key]</code> в Go скрывается один из самых изощренных механизмов стандартной библиотеки и рантайма, непрерывно эволюционирующий от классической архитектуры <code>hmap/bmap</code> к швейцарским таблицам (Swiss Tables в Go 1.24+).</p>
+<hr />
+<h2 id="voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</h2>
 
-<h2 id="anatomiya-go-map-struktury-rantayma">Анатомия Go map: структуры рантайма</h2>
+<p>Когда на собеседовании речь заходит о хеш-таблицах в Go, проверьте себя по этим фундаментальным вопросам:<br />
+1. <strong>Потокобезопасность:</strong> <em>«Является ли стандартная <code>map</code> в Go потокобезопасной?»</em><br />
+<em>(Категорически нет! Одновременная запись и чтение без синхронизации вызывают немедленный краш всего процесса: <code>fatal error: concurrent map read and map write</code>, который невозможно перехватить через <code>recover()</code>).</em><br />
+2. <strong>Адресуемость элементов:</strong> <em>«Можно ли взять указатель на элемент мапы: <code>ptr := &amp;m[key]</code>?»</em><br />
+<em>(Нет, это запрещено компилятором, поскольку при эвакуации бакетов адреса элементов в памяти физически меняются).</em><br />
+3. <strong>Порядок итерации:</strong> <em>«Почему обход <code>for k, v := range m</code> выдает элементы в разном порядке?»</em><br />
+<em>(Рантайм Go намеренно рандомизирует начальный бакет и оффсет при каждом вызове <code>mapiterinit</code>, чтобы разработчики не полагались на случайный порядок).</em><br />
+4. <strong>Zero-value и <code>nil map</code>:</strong> <em>«Что произойдет при чтении из <code>nil</code> мапы и при записи в нее?»</em><br />
+<em>(Чтение безопасно возвращает нулевое значение типа, а запись немедленно паникует: <code>panic: assignment to entry in nil map</code>).</em></p>
+<hr />
+<h2 id="kak-ustroena-map-v-go-arkhitektura-rantayma">Как устроена `map` в Go: Архитектура рантайма</h2>
 
-<p>Рассмотрим внутреннее устройство <code>map</code> в Go (исходники: <code>runtime/map.go</code>). Когда вы пишете <code>m := make(map[string]int)</code>, компилятор генерирует вызов <code>runtime.makemap</code>, который создает структуру <code>hmap</code>.</p>
+<h3 id="1-klassicheskaya-model-hmap-i-bmap-do-go-1-23">1. Классическая модель: `hmap` и `bmap` (до Go 1.23)</h3>
 
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Упрощенная структура из runtime
-type hmap struct {
-    count     int            // Количество элементов в карте
-    flags     uint8          // Флаги состояния (например, идет ли запись)
-    B         uint8          // Логарифм количества бакетов (len(buckets) == 2^B)
-    noverflow uint16         // Приблизительное количество overflow-бакетов
-    hash0     uint32         // Соль (seed) для хеш-функции (рандомизируется при создании)
-    buckets   unsafe.Pointer // Указатель на массив обычных бакетов
-    oldbuckets unsafe.Pointer // Указатель на массив старых бакетов (при эвакуации)
-    nevacuate  uintptr       // Счетчик прогресса эвакуации
-    extra     *mapextra      // Данные для overflow-бакетов
-}
-</code></pre>
-</div>
-
-<h3 id="struktura-baketa-bmap">Структура бакета (`bmap`)</h3>
-
-<p>В исходниках Go структура бакета выглядит минималистично:</p>
+<p>В рантайме Go (<code>src/runtime/map.go</code>) карта представлена структурой <code>hmap</code>:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2238,28 +2221,16 @@ type hmap struct {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">type bmap struct {
-    tophash [8]uint8 // Массив старших байт хешей
-}
-</code></pre>
-</div>
-
-<p>Но это обманка для компилятора. На этапе компиляции Go <strong>расширяет</strong> эту структуру, добавляя поля для ключей, значений и указателя на overflow-бакет, исходя из типов ключа и значения. В реальности (для <code>map[string]int</code>) структура выглядит так:</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Концептуальный вид после компиляции
-type bmap struct {
-    tophash  [8]uint8
-    keys     [8]string
-    values   [8]int
-    overflow *bmap
+  <pre class="language-go"><code class="language-go">type hmap struct {
+    count      int            // Общее число элементов
+    flags      uint8          // Флаги состояния (например, hashWriting)
+    B          uint8          // log2 от числа бакетов (len(buckets) == 2^B)
+    noverflow  uint16         // Приблизительное число overflow-бакетов
+    hash0      uint32         // Случайная соль хеш-функции (защита от HashDoS атак)
+    buckets    unsafe.Pointer // Указатель на массив бакетов bmap
+    oldbuckets unsafe.Pointer // Указатель на старые бакеты во время эвакуации
+    nevacuate  uintptr        // Счетчик прогресса эвакуации
+    extra      *mapextra      // Ссылки на overflow-бакеты для сборщика мусора
 }
 </code></pre>
 </div>
@@ -2278,55 +2249,32 @@ type bmap struct {
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;hmap&quot;]:::process --&gt; B[&quot;buckets - массив бакетов&quot;]
-B --&gt; C[&quot;bmap 0&quot;]
-B --&gt; D[&quot;bmap 1&quot;]
-B --&gt; E[&quot;bmap 2&quot;]
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
 
-C --&gt; F[&quot;tophash - 8 байт&quot;]
-C --&gt; G[&quot;keys - 8 ключей&quot;]
-C --&gt; H[&quot;values - 8 значений&quot;]
-C --&gt; I[&quot;overflow pointer&quot;]
-
-I --&gt;|&quot;при коллизиях&quot;| J[&quot;bmap overflow&quot;]
-J --&gt; K[&quot;tophash, keys, values...&quot;]
+A[&quot;hmap: заголовок (B=3, count=14)&quot;]:::entry --&gt; B[&quot;Массив бакетов: buckets = 2^B = 8 бакетов&quot;]:::process
+B --&gt; C[&quot;bmap (бакет №3)&quot;]:::accent
+C --&gt; D[&quot;tophash: [8]uint8 (старшие байты хешей)&quot;]:::process
+C --&gt; E[&quot;keys: [8]KeyType (плотно упакованы)&quot;]:::process
+C --&gt; F[&quot;values: [8]ValueType (плотно упакованы)&quot;]:::process
+C --&gt; G[&quot;overflow: указатель на следующий bmap&quot;]:::warning
+G --&gt; H[&quot;overflow bmap (при коллизиях)&quot;]:::warning
   </pre>
 </div>
 
 
-<h3 id="algoritm-poiska-pochemu-tophash-tak-vazhen">Алгоритм поиска: почему `tophash` так важен?</h3>
+<hr />
+<h2 id="mechanical-sympathy-sekrety-proizvoditelnosti-baketa">⚙️ Mechanical Sympathy: Секреты производительности бакета</h2>
 
-<p>Когда вы делаете <code>val, ok := m[key]</code>, рантайм Go выполняет следующие шаги:<br />
-1. Вычисляет хеш ключа, используя <code>hash0</code> (соль) из <code>hmap</code>.<br />
-2. По младшим <code>B</code> битам хеша определяет индекс бакета.<br />
-3. Берет <strong>старший байт (8 бит)</strong> хеша — это и есть <code>tophash</code>.<br />
-4. Проходится по массиву <code>tophash</code> внутри бакета. Сравнение 8 байт происходит за несколько тактов процессора. Если <code>tophash</code> не совпадает, ключ пропускается. Если совпадает, только тогда происходит дорогое побайтовое сравнение самого ключа.<br />
-5. Если ключ найден, возвращается значение из слота с тем же индексом.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Хранение старших байт хеша (<code>tophash</code>) — это чистой воды <strong>Mechanical Sympathy</strong>. Вместо того чтобы сравнивать длинные ключи (например, строки в 100 символов), процессор сначала сравнивает 1 байт. Это позволяет отбрасывать нерелевантные слоты практически мгновенно, не ломая конвейер инструкций CPU и минимизируя промахи кэша.</p>
-  </div>
-</div>
-
-<h3 id="optimizatsiya-pamyati-key-i-value-otdelno">Оптимизация памяти: Key и Value отдельно</h3>
-
-<p>Заметьте, в структуре <code>bmap</code> ключи и значения хранятся отдельными массивами, а не парами <code>struct { Key, Value }</code>. Зачем это нужно?</p>
-<p>Ответ кроется в <strong>выравнивании памяти (memory alignment)</strong>.<br />
-Представьте <code>map[int8]int64</code>. Если бы мы хранили их парами:</p>
+<p>Каждый бакет <code>bmap</code> спроектирован с исключительным пониманием архитектуры CPU:</p>
+<h3 id="1-vektor-tophash-dlya-mgnovennogo-otsecheniya-promakhov">1. Вектор `tophash` для мгновенного отсечения промахов</h3>
+<p>Вместо того чтобы сравнивать громоздкие ключи (например, строки по 100 символов), процессор сначала сканирует массив <code>tophash [8]uint8</code> — старшие 8 бит хеша ключа.<br />
+Сравнение 8 байт происходит за считанные такты CPU. Только при совпадении байта <code>tophash</code> рантайм переходит к побайтовому сравнению самого ключа. Это спасает процессор от штрафов сброса конвейера.</p>
+<h3 id="2-razdelnoe-khranenie-keys-i-values-memory-alignment">2. Раздельное хранение Keys и Values (Memory Alignment)</h3>
+<p>Вместо пар <code>struct { key K; val V }</code> рантайм хранит сначала 8 ключей подряд, затем 8 значений подряд:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2336,77 +2284,173 @@ J --&gt; K[&quot;tophash, keys, values...&quot;]
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">struct { key int8; val int64 }
+  <pre class="language-go"><code class="language-go">// Концептуальный вид бакета
+type bmap struct {
+    tophash  [8]uint8
+    keys     [8]KeyType
+    values   [8]ValueType
+    overflow *bmap
+}
 </code></pre>
 </div>
 
-<p>Компилятор добавил бы 7 байт паддинга (padding) после <code>key</code>, чтобы <code>val</code> был выровнен по 8 байтам. На каждую пару ушло бы 16 байт вместо 9.</p>
-<p>При раздельном хранении мы собираем 8 ключей подряд: <code>8 * 1 байт = 8 байт</code>. Затем 8 значений: <code>8 * 8 байт = 64 байта</code>. Итог: 72 байта вместо 128. Экономия памяти колоссальная, а плотность данных выше, что снова радует кэш-линии процессора.</p>
-<h2 id="evakuatsiya-resize-kak-go-rastit-tablitsu">Эвакуация (Resize): как Go растит таблицу</h2>
+<p><strong>Зачем это сделано?</strong><br />
+Представьте <code>map[int8]int64</code>. Если бы они лежали парами, компилятор добавлял бы по 7 байт паддинга (padding) к каждому <code>int8</code> ради 8-байтового выравнивания <code>int64</code>.<br />
+Раздельная компоновка устраняет паддинг, сокращая размер бакета почти вдвое и позволяя уместить больше полезных данных в одну 64-байтную кэш-линию процессора!</p>
+<hr />
+<h2 id="evolyutsiya-swiss-tables-v-go-1-24">🚀 Эволюция: Swiss Tables в Go 1.24+</h2>
 
-<p>Хеш-таблица не может быть быстрой, если она переполнена. В Go коэффициент загрузки (Load Factor) жестко задан в рантайме: <strong>6.5</strong>. Это значит, что если среднее количество элементов в бакете превышает 6.5 (или появляется слишком много overflow-бакетов), запускается процесс эвакуации (увеличения размера таблицы).</p>
-<p>Количество бакетов всегда равно степени двойки ($2^B$). При эвакуации <code>B</code> увеличивается на 1, выделяется новый массив бакетов размером $2^{B+1}$.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>В отличие от C++ (<code>std::unordered_map</code>) или Java (<code>HashMap</code>), где рехешинг происходит синхронно при вставке и может вызвать единовременную задержку (latency spike), Go реализует <strong>инкрементальную эвакуацию</strong>.<br />
-Перенос данных из <code>oldbuckets</code> в новые <code>buckets</code> происходит частями, распределяясь по операциям записи и удаления. Это сглаживает задержки, но означает, что во время эвакуации таблица потребляет в 2 раза больше памяти (старые и новые бакеты одновременно), а операции чтения/записи становятся чуть медленнее, так как рантайму нужно искать данные в двух местах.</p>
-  </div>
-</div>
+<p>Начиная с Go 1.24, рантайм внедряет новую реализацию <code>map</code> на базе <strong>Swiss Tables</strong> (разработка Google, изначально созданная для C++ <code>absl::flat_hash_map</code>).</p>
+<h3 id="chto-izmenilos">Что изменилось?</h3>
+<ol>
+<li><strong>Открытая адресация группами (Group Probing):</strong> Вместо цепочек overflow-бакетов данные хранятся в непрерывных массивах слотов, разбитых на группы по 8–16 элементов.</li>
+<li><strong>SIMD-поиск по метаданным:</strong> Каждая группа снабжена 16-байтным контрольным массивом (Control Bytes). Процессор с помощью SIMD-инструкций (SSE2/AVX2/NEON) за <strong>одну машинную инструкцию</strong> сверяет хеш сразу со всеми 16 слотами группы!</li>
+<li><strong>Сокращение расхода памяти:</strong> Память утилизируется значительно эффективнее, а число Cache Misses при коллизиях снизилось на 30–50%.</li>
+</ol>
+<hr />
+<h2 id="inkrementalnaya-evakuatsiya-resize">Инкрементальная эвакуация (Resize)</h2>
 
-<p>Как элементы распределяются по новым бакетам? Поскольку количество бакетов удваивается, к хешу добавляется один старший бит. Все элементы из одного старого бакета распадаются ровно на два новых: один с тем же индексом, другой с индексом + старая длина. Это делает эвакуацию очень быстрой.</p>
-<h2 id="garbage-collector-i-map">Garbage Collector и `map`</h2>
-
-<p>В Go Garbage Collector (GC) работает по алгоритму Tri-color mark-and-sweep. Когда GC сканирует память, он ищет указатели.</p>
-<p>Внутри <code>bmap</code> ключи и значения, являющиеся указателями (строки, слайсы, интерфейсы, мапы), перемежаются скалярными типами (int, bool). Если бы GC сканировал <code>bmap</code> побайтово, он бы тратил уйму времени на анализ каждого слота, пытаясь отличить указатель от числа.</p>
-<p>Для оптимизации рантайм использует <strong>bitmap</strong> (битовую карту), которая заранее говорит GC, в каких именно слотах <code>bmap</code> лежат указатели, а в каких — примитивы. GC читает только нужные смещения. Тем не менее, огромная <code>map</code> с миллионами указателей (например, <code>map[string]string</code>) создает серьезное давление на GC при каждом цикле сборки мусора.</p>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как оптимизировать <code>map[string]string</code>, если ключей миллионы, а GC вызывает паузы?<br />
-<strong>Ответ:</strong> Использовать <code>map[int]string</code>, где <code>int</code> — это числовой идентификатор (например, хеш строки). Сами строки-ключи можно хранить в отдельном слайсе или использовать неуправляемую память (через <code>unsafe.Pointer</code> и <code>mmap</code>/<code>sync.Pool</code>), чтобы сократить количество указателей, за которыми должен следить GC. Или вовсе уходить на оф-хип хранилища (например, megaregion или сторонние С-библиотеки).</p>
-  </div>
-</div>
-
-<h2 id="konkurentnost-i-sync-map">Конкурентность и `sync.Map`</h2>
-
-<p>Стандартная <code>map</code> в Go <strong>не потокобезопасна</strong>. Одновременная запись и чтение вызовут фатальную ошибку (<code>fatal error: concurrent map read and map write</code>), а не просто race condition. Рантайм специально отслеживает флаг <code>hashWriting</code> в <code>hmap</code>, чтобы разрушить программу при обнаружении конкурентной записи — это лучше, чем молча corrupted memory.</p>
-<p>Для синхронизации обычно используют <code>sync.RWMutex</code> поверх мапы. Но в стандартной библиотеке есть <code>sync.Map</code>. Когда её использовать?</p>
+<p>В Go порог загрузки (Load Factor) классической мапы равен <strong>6.5</strong> (в среднем 6.5 элементов на бакет).<br />
+Когда этот порог превышается:<br />
+1. Выделяется новый массив бакетов удвоенного размера ($2^{B+1}$).<br />
+2. Перенос данных происходит <strong>не одномоментно</strong>, а <strong>инкрементально</strong> (по 2 бакета за каждую последующую операцию записи или удаления).<br />
+3. Это полностью предотвращает длительные задержки (Latency Spikes), столь характерные для Java <code>HashMap</code> или C++ <code>std::unordered_map</code>.</p>
 <div class="callout callout-info">
   <div class="callout-header">
     <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-title">Преаллокация спасает продакшн</span>
   </div>
   <div class="callout-body">
-    <p><code>sync.Map</code> использует два внутренних хранилища: <code>read</code> (map) и <code>dirty</code> (map).<br />
-Чтение всегда идет из <code>read</code> без блокировок (lock-free). Если ключа в <code>read</code> нет, он ищется в <code>dirty</code> под мьютексом.<br />
-Когда количество промахов мимо <code>read</code> достигает определенного порога, <code>dirty</code> "повышается" до <code>read</code>, а новый <code>dirty</code> становится пустым.</p>
-<p><strong>Используйте <code>sync.Map</code> только в двух случаях:</strong><br />
-1. Ключи пишутся один раз, а читаются много раз (кэш).<br />
-2. Дискретные множества горутин работают с дискретными множествами ключей (нет конкуренции за одни и те же ключи).<br />
-Во всех остальных случаях (много записей, общие ключи) обычная <code>map + sync.RWMutex</code> будет быстрее и потребляет меньше памяти, так как <code>sync.Map</code> хранит указатели на интерфейсы (<code>interface{}</code>), что создает двойную аллокацию и давление на GC.</p>
+    <p>Если вам заранее известно примерное число элементов $N$, всегда пишите:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">m := make(map[string]User, n)
+</code></pre>
+</div>
+
+<p>Это избавит рантайм от серий эвакуаций, перехеширования и фрагментации страниц памяти.</p>
   </div>
 </div>
 
-<h2 id="tipichnye-oshibki-i-antipatterny">Типичные ошибки и антипаттерны</h2>
-
-<ol>
-<li><strong>Нулевое значение мапы</strong>: Пустая <code>map</code> — это <code>nil</code>. Чтение из <code>nil</code> мапы вернет zero-value (например, 0), но <strong>запись вызовет панику</strong>. Всегда инициализируйте мапу через <code>make</code> или литерал перед записью.<br />
-<code>go
-   var m map[string]int
-   m["a"] = 1 // panic: assignment to entry in nil map</code></li>
-<li><strong>Взятие адреса значения</strong>: Нельзя взять адрес элемента мапы <code>&amp;m["key"]</code>. Эвакуация может переместить значение в другой бакет, сделав указатель недействительным (dangling pointer). Из-за этого нельзя модифицировать поля структуры напрямую: <code>m["key"].field = 5</code> не скомпилируется. Нужно присвоить значение в переменную, изменить и положить обратно.</li>
-<li><strong>Порядок итерации не детерминирован</strong>: Go намеренно рандомизирует стартовый бакет при каждой итерации через <code>range</code>. Это сделано для того, чтобы код не зависел от порядка элементов, так как рехешинг меняет его непредсказуемо.</li>
-</ol>
 <hr />
-<p>Хеш-таблицы в Go — это шедевр инженерного компромисса: плотная упаковка данных ради кэша, инкрементальный ресайз ради плавного latency и агрессивные проверки конкурентности ради безопасности памяти. Главное правило бэкендера: понимая, как <code>map</code> работает с GC и процессорным кэшем, можно избежать узких мест в самых критичных путях приложения.</p>
-<p>В следующей статье мы перейдем к практике и разберем, как хеш-таблицы используются для решения самого частого класса алгоритмических задач — <a href="2-chastotnye-patterny.html" class="wikilink">2. Частотные паттерны</a>.</p>
+<h2 id="garbage-collector-i-map-bez-ukazateley">🧹 Garbage Collector и `map` без указателей</h2>
+
+<p>Сборщик мусора Go (Tri-color Mark-and-Sweep) обязан сканировать всю память, содержащую указатели.<br />
+Если у вас в памяти висит <code>map[int]int</code> на $10\,000\,000$ записей:<br />
+- Типы <code>int</code> не содержат указателей.<br />
+- Рантайм Go помечает внутренний массив бакетов специальным флагом <code>haspointers = false</code>.<br />
+- <strong>Сборщик мусора пропускает весь этот гигантский массив целиком!</strong> Паузы GC составляют микросекунды.</p>
+<p>Но если вы используете <code>map[string]*User</code> или <code>map[int][]byte</code>:<br />
+- GC вынужден обойти миллионы указателей при каждом цикле сборки. Паузы Stop-The-World возрастают до сотен миллисекунд.</p>
+<div class="callout callout-tip">
+  <div class="callout-header">
+    <span class="callout-icon">💡</span>
+    <span class="callout-title">Сеньорский трюк для Highload</span>
+  </div>
+  <div class="callout-body">
+    <p>При проектировании больших in-memory кэшей заменяйте ключи-строки на целочисленные хеши <code>uint64</code>, а сложные структуры храните в плоских предвыделенных слайсах, ссылаясь на них по целочисленному индексу <code>map[uint64]uint32</code>. Это полностью освободит GC от сканирования вашей таблицы.</p>
+  </div>
+</div>
+
+<hr />
+<h2 id="konkurentnost-map-vs-sync-rwmutex-vs-sync-map">🔒 Конкурентность: `map` vs `sync.RWMutex` vs `sync.Map`</h2>
+
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Сценарий</th>
+<th>Рекомендуемый инструмент</th>
+<th>Почему?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Однопоточный код</td>
+<td><code>map[K]V</code></td>
+<td>Максимальная скорость, zero overhead</td>
+</tr>
+<tr>
+<td>Конкурентный доступ (смешанный)</td>
+<td><code>map[K]V</code> + <code>sync.RWMutex</code></td>
+<td>Предсказуемая производительность, типизация</td>
+</tr>
+<tr>
+<td>Read-heavy (редкая запись, частое чтение)</td>
+<td><code>sync.Map</code></td>
+<td>Lock-free чтение через атомарную замену <code>read</code> map</td>
+</tr>
+<tr>
+<td>Раздельные множества ключей для горутин</td>
+<td><code>sync.Map</code></td>
+<td>Минимальная конкуренция за кэш-линии CPU</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="podvodnye-kamni-i-chastye-oshibki">🚨 Подводные камни и частые ошибки</h2>
+
+<div class="callout callout-warning">
+  <div class="callout-header">
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Ошибка 1: Модификация поля структуры в мапе</span>
+  </div>
+  <div class="callout-body">
+    
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">type Counter struct { Count int }
+m := map[string]Counter{&quot;app&quot;: {Count: 1}}
+m[&quot;app&quot;].Count++ // Ошибка компиляции: cannot assign to struct field m[&quot;app&quot;].Count in map
+</code></pre>
+</div>
+
+<p><strong>Причина:</strong> Значения в мапе не адресуемы (<code>not addressable</code>).<br />
+<strong>Решение:</strong> Хранить указатели <code>map[string]*Counter</code> либо извлекать структуру во временную переменную, менять и записывать обратно.</p>
+  </div>
+</div>
+
+<div class="callout callout-warning">
+  <div class="callout-header">
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Ошибка 2: «Утечка» памяти при удалении ключей (`delete`)</span>
+  </div>
+  <div class="callout-body">
+    <p>Операция <code>delete(m, key)</code> удаляет элемент и помечает слот пустым, но <strong>не уменьшает размер выделенной под бакеты памяти</strong>! Память возвращается операционной системе только тогда, когда удаляется вся <code>map</code> целиком.<br />
+Если в процессе работы в мапу залили $10^7$ записей, а затем удалили все, кроме 10, она продолжит занимать сотни мегабайт.<br />
+<strong>Решение:</strong> Периодически пересоздавать мапу и копировать в нее оставшиеся элементы.</p>
+  </div>
+</div>
+
+<hr />
+<h2 id="navigatsiya">🗺️ Навигация</h2>
+
+<div class="table-container"><table>
+<thead>
+<tr>
+<th style="text-align: left;">Назад</th>
+<th style="text-align: left;">Вперед</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">← <span class="wikilink-unresolved" title="Заметка в разработке">04. Префиксные суммы: 6. Maximum Size Subarray</span></td>
+<td style="text-align: left;"><a href="2-chastotnye-patterny.html" class="wikilink">2. Частотные паттерны</a> →</td>
+</tr>
+</tbody>
+</table></div>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2434,7 +2478,7 @@ J --&gt; K[&quot;tophash, keys, values...&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#kak-rabotaet-kheshirovanie-ot-idei-k-kolliziyam">Как работает хеширование: от идеи к коллизиям</a></li><li class="toc-item toc-h2"><a href="#anatomiya-go-map-struktury-rantayma">Анатомия Go map: структуры рантайма</a></li><li class="toc-item toc-h3"><a href="#struktura-baketa-bmap">Структура бакета (bmap)</a></li><li class="toc-item toc-h3"><a href="#algoritm-poiska-pochemu-tophash-tak-vazhen">Алгоритм поиска: почему tophash так важен?</a></li><li class="toc-item toc-h3"><a href="#optimizatsiya-pamyati-key-i-value-otdelno">Оптимизация памяти: Key и Value отдельно</a></li><li class="toc-item toc-h2"><a href="#evakuatsiya-resize-kak-go-rastit-tablitsu">Эвакуация (Resize): как Go растит таблицу</a></li><li class="toc-item toc-h2"><a href="#garbage-collector-i-map">Garbage Collector и map</a></li><li class="toc-item toc-h2"><a href="#konkurentnost-i-sync-map">Конкурентность и sync.Map</a></li><li class="toc-item toc-h2"><a href="#tipichnye-oshibki-i-antipatterny">Типичные ошибки и антипаттерны</a></li>
+    <li class="toc-item toc-h2"><a href="#vvedenie-serdtse-bekend-arkhitektury">Введение: Сердце бэкенд-архитектуры</a></li><li class="toc-item toc-h2"><a href="#voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</a></li><li class="toc-item toc-h2"><a href="#kak-ustroena-map-v-go-arkhitektura-rantayma">Как устроена map в Go: Архитектура рантайма</a></li><li class="toc-item toc-h3"><a href="#1-klassicheskaya-model-hmap-i-bmap-do-go-1-23">1. Классическая модель: hmap и bmap (до Go 1.23)</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-sekrety-proizvoditelnosti-baketa">⚙️ Mechanical Sympathy: Секреты производительности бакета</a></li><li class="toc-item toc-h3"><a href="#1-vektor-tophash-dlya-mgnovennogo-otsecheniya-promakhov">1. Вектор tophash для мгновенного отсечения промахов</a></li><li class="toc-item toc-h3"><a href="#2-razdelnoe-khranenie-keys-i-values-memory-alignment">2. Раздельное хранение Keys и Values (Memory Alignment)</a></li><li class="toc-item toc-h2"><a href="#evolyutsiya-swiss-tables-v-go-1-24">🚀 Эволюция: Swiss Tables в Go 1.24+</a></li><li class="toc-item toc-h3"><a href="#chto-izmenilos">Что изменилось?</a></li><li class="toc-item toc-h2"><a href="#inkrementalnaya-evakuatsiya-resize">Инкрементальная эвакуация (Resize)</a></li><li class="toc-item toc-h2"><a href="#garbage-collector-i-map-bez-ukazateley">🧹 Garbage Collector и map без указателей</a></li><li class="toc-item toc-h2"><a href="#konkurentnost-map-vs-sync-rwmutex-vs-sync-map">🔒 Конкурентность: map vs sync.RWMutex vs sync.Map</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-chastye-oshibki">🚨 Подводные камни и частые ошибки</a></li><li class="toc-item toc-h2"><a href="#navigatsiya">🗺️ Навигация</a></li>
   </ul>
 </aside>
 

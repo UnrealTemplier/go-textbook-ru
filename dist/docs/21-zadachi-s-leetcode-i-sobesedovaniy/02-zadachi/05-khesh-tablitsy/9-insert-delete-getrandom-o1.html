@@ -2171,25 +2171,62 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">9. Insert Delete GetRandom O1</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Задача проектирования структуры данных с операциями Insert, Delete и GetRandom за $O(1)$ (LeetCode 380) — это один из лучших вопросов на System Design на уровне алгоритмов. Она проверяет, понимает ли кандидат, как преодолеть ограничения отдельных структур данных путем их композиции, и знает ли он тонкости работы с памятью в Go.</p>
-<p><strong>Условие:</strong> Реализовать структуру данных, поддерживающую вставку, удаление и получение случайного элемента, причем все операции должны работать в среднем за время $O(1)$.</p>
-<h2 id="dilemma-struktur-dannykh">Дилемма структур данных</h2>
+            <h1>9. Insert Delete GetRandom O(1)</h1>
+<blockquote>
+<p><em>«Ни одна отдельная структура данных не совершенна сама по себе. Но соединив достоинства двух структур, мы получаем инструмент исключительной мощи».</em><br />
+— Чарльз Хоар</p>
+<p>💡 <strong>Связанные темы:</strong><br />
+- <a href="1-teoriya-khesh-tablitsy.html" class="wikilink">1. Теория. Хеш таблицы</a> — устройство <code>map</code> и асимптотика поиска<br />
+- <a href="8-longest-consecutive-sequence.html" class="wikilink">8. Longest Consecutive Sequence</a> — хеш-множества и быстрый доступ<br />
+- <span class="wikilink-unresolved" title="Заметка в разработке">27. Рандомизированные алгоритмы: 1. Теория</span> — вероятностные подходы<br />
+- <span class="wikilink-unresolved" title="Заметка в разработке">02. Асимптотический анализ</span> — амортизированное константное время</p>
+</blockquote>
+<hr />
+<h2 id="vvedenie-dilemma-bazovykh-struktur-dannykh">Введение: Дилемма базовых структур данных</h2>
 
-<p>Давайте вспомним, что дают нам базовые структуры:<br />
-- <strong>Хеш-таблица (<code>map</code>)</strong>: Вставка $O(1)$, удаление $O(1)$. Но получение случайного элемента невозможно — ключи в мапе не проиндексированы. Чтобы получить случайный элемент, придется итерироваться по мапе, что занимает $O(N)$.<br />
-- <strong>Массив/Слайс</strong>: Вставка в конец $O(1)$, получение по индексу (а значит и случайного элемента) $O(1)$. Но удаление произвольного элемента — это $O(N)$, так как нужно сдвигать все последующие элементы для сохранения непрерывности.</p>
-<p><strong>Инсайт:</strong> Ни одна структура в одиночку не решает задачу. Нам нужна гибридная структура: <strong>Слайс для индексации + Хеш-таблица для маппинга</strong>.</p>
-<h2 id="algoritm-swap-and-pop">Алгоритм: Swap and Pop</h2>
+<p>Задача <strong>Insert Delete GetRandom O(1)</strong> (LeetCode 380) — эталонный вопрос алгоритмического System Design:</p>
+<blockquote>
+<p><em>Спроектировать структуру данных, поддерживающую три операции со средней сложностью $O(1)$:</em><br />
+1. <code>Insert(val)</code> — вставить элемент, если его еще нет;<br />
+2. <code>Remove(val)</code> — удалить элемент, если он присутствует;<br />
+3. <code>GetRandom()</code> — вернуть равновероятно случайный элемент из текущего набора.</p>
+</blockquote>
+<p>Ни одна стандартная структура в одиночку не справляется:<br />
+- <strong>Хеш-таблица (<code>map</code>):</strong> вставка $O(1)$, удаление $O(1)$, но получение случайного элемента требует обхода итератором за $O(N)$ (ключи не проиндексированы плотным числовым рядом $0 \dots M-1$);<br />
+- <strong>Непрерывный массив / срез (<code>slice</code>):</strong> вставка в конец $O(1)$, выбор случайного элемента по индексу $O(1)$ (<code>vals[rand.IntN(len)]</code>), но удаление из середины требует сдвига всех последующих элементов за $O(N)$.</p>
+<p><strong>Инженерный инсайт:</strong><br />
+Создать гибрид: <strong>Срез для непрерывной индексации + Хеш-таблица для мгновенного поиска индекса</strong>.</p>
+<hr />
+<h2 id="voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</h2>
 
-<p>Как удалить элемент из слайса за $O(1)$? Если нам не важен порядок элементов, мы можем поменять удаляемый элемент с последним, а затем просто "обрезать" хвост слайса (<code>slice[:len-1]</code>). Обрезка конца слайса происходит мгновенно, так как не требует сдвига памяти.</p>
-<p>Чтобы это заработало, нашей хеш-таблице нужно хранить не просто флаг наличия элемента, а <strong>индекс этого элемента в слайсе</strong>. Когда мы меняем местами удаляемый и последний элементы, мы должны обновить индекс элемента, который переместили с конца на место удаленного.</p>
+<ol>
+<li><strong>Равномерность распределения:</strong><br />
+<em>«Обязан ли <code>GetRandom()</code> возвращать каждый из текущих элементов со строго одинаковой вероятностью $\frac{1}{N}$?»</em><br />
+<em>(Да! Именно поэтому нельзя просто взять случайный бакет мапы, так как коллизии бакетов дают неравномерное распределение).</em></li>
+<li><strong>Дубликаты элементов:</strong><br />
+<em>«Может ли коллекция содержать повторяющиеся значения?»</em><br />
+<em>(В классической постановке элементы уникальны. Если дубликаты разрешены — это задача LeetCode 381, где в мапе хранится множество индексов <code>map[int]map[int]struct{}</code>).</em></li>
+<li><strong>Генератор случайных чисел:</strong><br />
+<em>«Какой генератор случайных чисел использовать?»</em><br />
+<em>(В современном Go 1.22+ стандарт де-факто — быстрый пакет <code>math/rand/v2</code>).</em></li>
+</ol>
+<hr />
+<h2 id="pattern-swap-and-pop-smena-mestami-s-khvostom">Паттерн «Swap and Pop» (Смена местами с хвостом)</h2>
+
+<p>Как удалить произвольный элемент из середины среза за $O(1)$?<br />
+Если порядок элементов в коллекции <strong>не имеет значения</strong>, мы:<br />
+1. Находим индекс удаляемого элемента <code>idx</code> в мапе;<br />
+2. Копируем <strong>последний элемент среза</strong> на позицию <code>idx</code>;<br />
+3. Обновляем в мапе индекс перемещенного элемента: <code>valToIdx[lastVal] = idx</code>;<br />
+4. «Откусываем» хвост среза за $O(1)$: <code>vals = vals[:len-1]</code>;<br />
+5. Удаляем сам элемент из мапы: <code>delete(valToIdx, val)</code>.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2204,27 +2241,25 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Слайс: 10, 20, 30, 40&lt;br&gt;Мапа: 10-0, 20-1, 30-2, 40-3&quot;]:::process --&gt; B{&quot;Удаляем 20&quot;}
-B --&gt; C[&quot;Меняем 20 и 40 местами&quot;]
-C --&gt; D[&quot;Слайс: 10, 40, 30, 40&lt;br&gt;Обновляем мапу: 40 -&gt; 1&quot;]
-D --&gt; E[&quot;Обрезаем слайс&lt;br&gt;Слайс: 10, 40, 30&lt;br&gt;Удаляем 20 из мапы&quot;]
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+
+A[&quot;Срез: [10, 20, 30, 40]&lt;br/&gt;Мапа: {10:0, 20:1, 30:2, 40:3}&quot;]:::entry --&gt; B{&quot;Команда: Remove(20)&quot;}:::accent
+B --&gt; C[&quot;1. Берем последний элемент: lastVal = 40&quot;]:::process
+C --&gt; D[&quot;2. Записываем 40 на место 20:&lt;br/&gt;vals[1] = 40&quot;]:::process
+D --&gt; E[&quot;3. Обновляем мапу:&lt;br/&gt;valToIdx[40] = 1&quot;]:::warning
+E --&gt; F[&quot;4. Обрезаем хвост среза: vals[:3]&lt;br/&gt;5. Удаляем 20 из мапы&quot;]:::process
+F --&gt; G[&quot;Итоговый срез: [10, 40, 30]&lt;br/&gt;Итоговая мапа: {10:0, 40:1, 30:2}&quot;]:::success
   </pre>
 </div>
 
 
-<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
+<hr />
+<h2 id="realizatsiya-na-go-s-ispolzovaniem-mathrandv2">🛠️ Реализация на Go (с использованием `math/rand/v2`)</h2>
 
-<p>При реализации этой структуры в Go есть несколько серьезных ловушек, связанных с управлением памятью.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2234,15 +2269,19 @@ D --&gt; E[&quot;Обрезаем слайс&lt;br&gt;Слайс: 10, 40, 30&lt;
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">import (
-    &quot;math/rand/v2&quot; // Используем новый пакет из Go 1.22+
+  <pre class="language-go"><code class="language-go">package randomizedset
+
+import (
+    &quot;math/rand/v2&quot; // Быстрый и потокобезопасный генератор Go 1.22+
 )
 
+// RandomizedSet поддерживает Insert, Remove и GetRandom за амортизированное O(1).
 type RandomizedSet struct {
-    valToIdx map[int]int // Маппинг: значение -&gt; индекс в слайсе
-    vals     []int       // Слайс значений
+    valToIdx map[int]int // значение -&gt; индекс в срезе
+    vals     []int       // плотный непрерывный срез значений
 }
 
+// Constructor инициализирует пустую структуру.
 func Constructor() RandomizedSet {
     return RandomizedSet{
         valToIdx: make(map[int]int),
@@ -2250,109 +2289,127 @@ func Constructor() RandomizedSet {
     }
 }
 
+// Insert добавляет значение, если его еще нет. Возвращает true, если вставка состоялась.
 func (rs *RandomizedSet) Insert(val int) bool {
     if _, exists := rs.valToIdx[val]; exists {
-        return false // Элемент уже есть
+        return false
     }
 
-    // Добавляем в конец слайса
+    // Добавляем в конец среза
     rs.vals = append(rs.vals, val)
-    // Запоминаем индекс
     rs.valToIdx[val] = len(rs.vals) - 1
     return true
 }
 
+// Remove удаляет значение из структуры. Возвращает true, если элемент присутствовал.
 func (rs *RandomizedSet) Remove(val int) bool {
     idx, exists := rs.valToIdx[val]
     if !exists {
-        return false // Элемента нет
+        return false
     }
 
     lastIdx := len(rs.vals) - 1
     lastVal := rs.vals[lastIdx]
 
-    // Если удаляем не последний элемент, свапаем с последним
+    // Если удаляемый элемент не является последним, перемещаем последний на его место
     if idx != lastIdx {
-        rs.vals[idx] = lastVal       // Перемещаем последний на место удаляемого
-        rs.valToIdx[lastVal] = idx   // Обновляем индекс перемещенного элемента в мапе
+        rs.vals[idx] = lastVal
+        rs.valToIdx[lastVal] = idx
     }
 
-    // Удаляем из мапы
-    delete(rs.valToIdx, val)
-
-    // Обрезаем слайс
+    // Обрезаем последний элемент
     rs.vals = rs.vals[:lastIdx]
+    delete(rs.valToIdx, val)
 
     return true
 }
 
+// GetRandom возвращает случайный элемент с равномерной вероятностью.
 func (rs *RandomizedSet) GetRandom() int {
-    // rand.IntN работает за O(1)
-    return rs.vals[rand.IntN(len(rs.vals))]
+    // rand.IntN работает за константное время O(1)
+    randomIndex := rand.IntN(len(rs.vals))
+    return rs.vals[randomIndex]
 }
 </code></pre>
 </div>
 
+<hr />
+<h2 id="lovushka-utechki-pamyati-pri-khranenii-ukazateley">🛑 Ловушка утечки памяти при хранении указателей</h2>
+
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Опасность скрытой утечки (Memory Leak) в Go</span>
   </div>
   <div class="callout-body">
-    <p>В методе <code>Remove</code> мы делаем <code>rs.vals = rs.vals[:lastIdx]</code>. Если бы наш слайс хранил не примитивы (<code>int</code>), а указатели, интерфейсы или слайсы/мапы (например, <code>[]*User</code>), такая обрезка привела бы к <strong>утечке памяти (Memory Leak)</strong>.</p>
-<p>Последний элемент слайса (<code>rs.vals[lastIdx]</code>) после обрезки становится "невидимым" для приложения (длина слайса уменьшилась), но底层 массив (underlying array) всё ещё хранит указатель на объект в куче. Garbage Collector Go не очистит этот объект, так как слайс всё еще ссылается на этот участок памяти.</p>
-<p><strong>Решение:</strong> Для ссылочных типов необходимо занулять элемент перед обрезкой: <code>rs.vals[lastIdx] = nil</code>.</p>
+    <p>Если бы наш срез хранил указатели или интерфейсы (например, <code>[]*User</code>), то операция обрезки:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">rs.vals = rs.vals[:lastIdx]
+</code></pre>
+</div>
+
+<p>скрывала бы элемент от индексации среза, <strong>но базовый массив (underlying array) продолжал бы удерживать указатель на объект в куче</strong>!<br />
+Сборщик мусора Go не сможет освободить объект, пока жив весь срез.<br />
+<strong>Идиоматичное решение для указателей:</strong> всегда обнулять ссылку перед усечением:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">rs.vals[lastIdx] = nil // Даем GC очистить память!
+rs.vals = rs.vals[:lastIdx]
+</code></pre>
+</div>
+
   </div>
 </div>
 
-<h2 id="mechanical-sympathy-pochemu-eto-rabotaet-bystro">Mechanical Sympathy: Почему это работает быстро</h2>
-
-<p>Почему гибрид "Слайс + Мапа" быстрее, чем просто одна большая мапа, даже если абстрагироваться от математики $O(1)$?</p>
-<ol>
-<li><strong>GetRandom и кэш процессора:</strong> Массив (слайс) в Go — это непрерывный блок памяти. Когда вы генерируете случайный индекс и обращаетесь к <code>rs.vals[idx]</code>, процессор гарантированно найдет эти данные в L1/L2 кэше. Доступ к случайному бакету в <code>hmap</code> (если бы мы пытались выбрать случайный элемент из мапы) вызвал бы Cache Miss и дорогостоящее обращение к RAM.</li>
-<li><strong>Отсутствие сканирования:</strong> <code>rand.IntN</code> + доступ по индексу занимает несколько наносекунд. Это делает структуру идеальной для тяжелых нагрузок, таких как случайное распределение трафика на бэкендах.</li>
-</ol>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Начиная с Go 1.22, рекомендуется использовать <code>math/rand/v2</code>. Старый <code>math/rand</code> имел глобальный мьютекс (в ранних версиях) или зависел от состояния генератора, что приводило к предсказуемым последовательностям, если не вызвать <code>rand.Seed()</code>. <code>math/rand/v2</code> использует более быстрые алгоритмы (ChaCha8 на основе криптографии для глобального генератора) и не требует ручного сеединия, что делает <code>rand.IntN</code> не только быстрым, но и безопасным для конкурентного использования из множества горутин без блокировок.</p>
-  </div>
-</div>
-
-<h2 id="system-design-randomizatsiya-v-bekende">System Design: Рандомизация в бэкенде</h2>
-
-<p>На практике эта структура данных лежит в основе многих распределенных систем:</p>
-<ol>
-<li><strong>Load Balancing (Random Choice):</strong> В некоторых алгоритмах балансировки нагрузки (например, Power of Two Choices) балансировщику нужно выбрать случайный сервер из пула. Если сервер падает (Delete), его нужно убрать из пула за $O(1)$, чтобы не блокировать обработку запросов.</li>
-<li><strong>Reservoir Sampling (Выборка из потока):</strong> Если вам нужно выбирать случайное событие из потока данных, который не помещается в память, используется алгоритм резервуарной выборки. Но если вам нужно поддерживать динамическое окно событий с быстрым удалением устаревших, <code>RandomizedSet</code> — ваш выбор.</li>
-<li><strong>A/B Тестирование:</strong> Быстрая проверка принадлежности пользователя к группе (Insert/Check) и случайное распределение новых пользователей (GetRandom).</li>
-</ol>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p>Если вас просят реализовать эту структуру, обязательно озвучьте:<br />
-1. Идею "Swap and Pop" до написания кода.<br />
-2. Обновление индекса в мапе для элемента, который перенесли с конца.<br />
-3. Проблему утечки памяти при удалении указателей из слайса (покажет Senior-уровень понимания GC).<br />
-4. Потокобезопасность: <em>"В текущем виде структура не потокобезопасна. Если мы добавим <code>sync.RWMutex</code>, Insert и Remove будут блокировать чтение. Для систем с преобладанием чтения (Load Balancer) это нормально, но для write-heavy нагрузок придется использовать шардирование (Sharded RandomizedSet)"</em>.</p>
-  </div>
-</div>
-
-<h2 id="itog">Итог</h2>
+<hr />
+<h2 id="mechanical-sympathy-lokalnost-kesha-i-mathrandv2">⚙️ Mechanical Sympathy: Локальность кэша и `math/rand/v2`</h2>
 
 <ol>
-<li><strong>Композиция структур:</strong> Хеш-таблица дает $O(1)$ поиск, а слайс — $O(1)$ случайный доступ.</li>
-<li><strong>Swap and Pop:</strong> Свап с последним элементом позволяет удалять из слайса за $O(1)$ без аллокаций и сдвигов памяти.</li>
-<li><strong>Утечки памяти:</strong> Всегда зануляйте слайсы ссылочных типов при удалении (<code>arr[i] = nil</code>), чтобы GC мог очистить память.</li>
-<li><strong>Go 1.22+:</strong> Используйте <code>math/rand/v2</code> для безопасной и быстрой генерации случайных чисел без мьютексов.</li>
+<li><strong>Кэш при GetRandom:</strong> Генерация индекса и взятие <code>rs.vals[randomIndex]</code> читает непрерывную память. Процессор выбирает элемент за считанные наносекунды.</li>
+<li><strong>Преимущества <code>math/rand/v2</code> (Go 1.22+):</strong><br />
+   Классический <code>math/rand</code> содержал глобальный мьютекс под капотом, вызывавший жестокие просадки при конкурентных обращениях из десятков горутин. <code>math/rand/v2</code> использует алгоритмы ChaCha8/PCG с thread-local генератором без блокировок, гарантируя нулевую межъядерную конкуренцию за шину памяти (False Sharing).</li>
 </ol>
-<p>На этом мы завершаем раздел хеш-таблиц. В следующей статье мы перейдем к новой фундаментальной структуре данных, без которой невозможно представить обход графов и парсинг выражений: <a href="../06-stek/1-teoriya-stek.html" class="wikilink">1. Теория. Стек</a>.</p>
+<hr />
+<h2 id="primenenie-v-system-design-balansirovka-i-vyborka">🏭 Применение в System Design: Балансировка и выборка</h2>
+
+<ol>
+<li><strong>Алгоритмы балансировки трафика (Power of Two Choices):</strong><br />
+   Балансировщик выбирает два случайных рабочих сервера из пула и отправляет запрос на наименее загруженный. Когда узел выходит из строя (Health Check Fail), он удаляется из пула за $O(1)$ без остановки трафика.</li>
+<li><strong>Рандомизированное тестирование (Chaos Engineering / A/B testing):</strong><br />
+   Мгновенное добавление и удаление целевых групп пользователей и выбор случайной выборки для канареечных релизов.</li>
+</ol>
+<hr />
+<h2 id="navigatsiya">🗺️ Навигация</h2>
+
+<div class="table-container"><table>
+<thead>
+<tr>
+<th style="text-align: left;">Назад</th>
+<th style="text-align: left;">Вперед</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">← <a href="8-longest-consecutive-sequence.html" class="wikilink">8. Longest Consecutive Sequence</a></td>
+<td style="text-align: left;"><span class="wikilink-unresolved" title="Заметка в разработке">06. Стек: 1. Теория</span> →</td>
+</tr>
+</tbody>
+</table></div>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2380,7 +2437,7 @@ func (rs *RandomizedSet) GetRandom() int {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#dilemma-struktur-dannykh">Дилемма структур данных</a></li><li class="toc-item toc-h2"><a href="#algoritm-swap-and-pop">Алгоритм: Swap and Pop</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-pochemu-eto-rabotaet-bystro">Mechanical Sympathy: Почему это работает быстро</a></li><li class="toc-item toc-h2"><a href="#system-design-randomizatsiya-v-bekende">System Design: Рандомизация в бэкенде</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#vvedenie-dilemma-bazovykh-struktur-dannykh">Введение: Дилемма базовых структур данных</a></li><li class="toc-item toc-h2"><a href="#voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</a></li><li class="toc-item toc-h2"><a href="#pattern-swap-and-pop-smena-mestami-s-khvostom">Паттерн «Swap and Pop» (Смена местами с хвостом)</a></li><li class="toc-item toc-h2"><a href="#realizatsiya-na-go-s-ispolzovaniem-mathrandv2">🛠️ Реализация на Go (с использованием math/rand/v2)</a></li><li class="toc-item toc-h2"><a href="#lovushka-utechki-pamyati-pri-khranenii-ukazateley">🛑 Ловушка утечки памяти при хранении указателей</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-lokalnost-kesha-i-mathrandv2">⚙️ Mechanical Sympathy: Локальность кэша и math/rand/v2</a></li><li class="toc-item toc-h2"><a href="#primenenie-v-system-design-balansirovka-i-vyborka">🏭 Применение в System Design: Балансировка и выборка</a></li><li class="toc-item toc-h2"><a href="#navigatsiya">🗺️ Навигация</a></li>
   </ul>
 </aside>
 

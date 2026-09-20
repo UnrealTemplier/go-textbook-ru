@@ -2171,18 +2171,53 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">3. Group Anagrams</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Задача группировки анаграмм (LeetCode 49: Group Anagrams) — это классика, которая на первый взгляд кажется тривиальной, но именно на ней интервьюеры проверяют, насколько кандидат понимает внутреннее устройство хеш-таблиц и особенности работы со строками в Go.</p>
-<p><strong>Условие:</strong> Дан массив строк <code>strs</code>. Необходимо сгруппировать анаграммы вместе. Анаграмма — это слово, образованное перестановкой букв другого слова (например, "eat", "tea", "ate").</p>
-<h2 id="naivnyy-podkhod-sortirovka-kak-klyuch">Наивный подход: Сортировка как ключ</h2>
+            <h1>3. Group Anagrams</h1>
+<blockquote>
+<p><em>«Всякая перестановка сохраняет состав. Если научиться описывать инвариант формы, внешне разные сущности мгновенно объединяются в одну семью».</em><br />
+— Брайан Керниган</p>
+<p>💡 <strong>Связанные темы:</strong><br />
+- <a href="1-teoriya-khesh-tablitsy.html" class="wikilink">1. Теория. Хеш таблицы</a> — устройство <code>map</code> и требования к ключам<br />
+- <a href="2-chastotnye-patterny.html" class="wikilink">2. Частотные паттерны</a> — подсчет символов и массивы на стеке<br />
+- <a href="../16-kuchi-i-top-k/4-top-k-frequent-elements.html" class="wikilink">4. Top K Frequent Elements</a> — отбор K самых частых элементов<br />
+- <span class="wikilink-unresolved" title="Заметка в разработке">01. Массивы и строки: 12. Valid Anagram</span> — проверка единичной пары</p>
+</blockquote>
+<hr />
+<h2 id="vvedenie-invariant-anagrammy">Введение: Инвариант анаграммы</h2>
 
-<p>Первая мысль, которая приходит в голову разработчику на Python или C++ — отсортировать каждую строку. Все анаграммы после сортировки дадут одинаковую строку ("tea" -&gt; "aet", "eat" -&gt; "aet"). Эту отсортированную строку можно использовать как ключ в хеш-таблице.</p>
+<p>Задача <strong>Group Anagrams</strong> (LeetCode 49) — один из самых элегантных тестов на знание языка Go и тонкостей работы с памятью.<br />
+Формулировка лаконична:</p>
+<blockquote>
+<p><em>Дан массив строк <code>strs</code>. Сгруппировать анаграммы вместе. Анаграмма — это слово, полученное перестановкой букв другого слова (например, <code>"eat"</code>, <code>"tea"</code>, <code>"ate"</code>).</em></p>
+</blockquote>
+<p>Ключевой математический вопрос: <strong>что является инвариантом анаграмм?</strong><br />
+Два слова являются анаграммами тогда и только тогда, когда:<br />
+1. Либо их буквы, отсортированные по алфавиту, образуют идентичную строку (<code>"eat" -&gt; "aet"</code>, <code>"tea" -&gt; "aet"</code>);<br />
+2. Либо их векторы частот символов строго равны.</p>
+<hr />
+<h2 id="voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</h2>
+
+<ol>
+<li><strong>Алфавит и кодировка:</strong><br />
+<em>«Состоят ли строки только из строчных английских букв <code>a-z</code>, или в тексте могут встретиться пробелы, цифры и Unicode-символы?»</em><br />
+<em>(В классическом условии — только <code>a-z</code>, что открывает дорогу к супер-оптимизации через массив <code>[26]int</code>).</em></li>
+<li><strong>Пустые строки:</strong><br />
+<em>«Могут ли строки быть пустыми <code>""</code>?»</em><br />
+<em>(Да, пустые строки группируются вместе в отдельную группу).</em></li>
+<li><strong>Порядок групп и элементов:</strong><br />
+<em>«Важен ли порядок групп в итоговом ответе?»</em><br />
+<em>(Нет, порядок может быть любым).</em></li>
+</ol>
+<hr />
+<h2 id="podkhod-1-sortirovka-kak-kanonicheskiy-klyuch-on-cdot-k-log-k">Подход 1: Сортировка как канонический ключ ($O(N \cdot K \log K)$)</h2>
+
+<p>Прямолинейный путь: отсортировать каждую строку по алфавиту и использовать результат как строковый ключ мапы <code>map[string][]string</code>.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2193,41 +2228,38 @@
     </button>
   </div>
   <pre class="language-go"><code class="language-go">func groupAnagramsSort(strs []string) [][]string {
-    groups := make(map[string][]string)
+    groups := make(map[string][]string, len(strs))
+
     for _, s := range strs {
-        // Конвертируем в слайс байт для сортировки
-        bytes := []byte(s)
-        sort.Slice(bytes, func(i, j int) bool {
-            return bytes[i] &lt; bytes[j]
+        // Конвертация в срез байт для сортировки
+        b := []byte(s)
+        sort.Slice(b, func(i, j int) bool {
+            return b[i] &lt; b[j]
         })
-        key := string(bytes)
+        key := string(b)
         groups[key] = append(groups[key], s)
     }
 
     result := make([][]string, 0, len(groups))
-    for _, v := range groups {
-        result = append(result, v)
+    for _, group := range groups {
+        result = append(result, group)
     }
     return result
 }
 </code></pre>
 </div>
 
-<p><strong>Проблема:</strong> Сложность такого решения $O(N \cdot K \log K)$, где $N$ — количество строк, а $K$ — максимальная длина строки. Сортировка — дорогая операция. Кроме того, конвертация <code>string</code> в <code>[]byte</code> и обратно вызывает аллокации в куче.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Строки в Go иммутабельны (неизменяемы). Вы не можете отсортировать строку напрямую. Конструкция <code>[]byte(s)</code> создает копию данных строки в куче. Для длинных строк и больших массивов это создаст колоссальное давление на Garbage Collector. В высоконагруженном бэкенде такое решение приведет к деградации latency.</p>
-  </div>
-</div>
+<h3 id="v-chem-slabost-etogo-resheniya-dlya-prodakshena">В чем слабость этого решения для продакшена?</h3>
+<ol>
+<li><strong>Сложность:</strong> $O(N \cdot K \log K)$, где $K$ — длина строки. Сортировка каждой строки дорога.</li>
+<li><strong>Лишние аллокации в куче:</strong> Строки в Go неизменяемы (<code>immutable</code>). Каждая конвертация <code>[]byte(s)</code> и обратная <code>string(b)</code> аллоцируют память в куче, создавая бессмысленную нагрузку на Garbage Collector.</li>
+</ol>
+<hr />
+<h2 id="podkhod-2-fiksirovannyy-massiv-kak-klyuch-mapy-on-cdot-k">Подход 2: Фиксированный массив как ключ мапы ($O(N \cdot K)$)</h2>
 
-<h2 id="idiomatichnyy-go-massiv-kak-klyuch-mapy-frequency-pattern">Идиоматичный Go: Массив как ключ мапы (Frequency Pattern)</h2>
-
-<p>Мы можем использовать частотный паттерн из <a href="2-chastotnye-patterny.html" class="wikilink">2. Частотные паттерны</a>. Если мы знаем, что строки состоят только из маленьких латинских букв (a-z), нам достаточно посчитать частоту каждой буквы. </p>
-<p>В C++ или Java вы не сможете использовать массив как ключ хеш-таблицы напрямую (в Java массивы не переопределяют <code>hashCode</code> корректно, а в C++ <code>std::unordered_map</code> требует хешер). Но <strong>в Go массивы (<code>[N]T</code>) поддерживают операцию сравнения <code>==</code></strong>, если тип <code>T</code> тоже сравнимый. А значит, массив может быть ключом в <code>map</code>!</p>
+<p>В большинстве языков программирования (Java, Python, C++) вы не можете напрямую использовать массив как ключ хеш-таблицы (в Java <code>int[]</code> использует ссылочный <code>hashCode</code>, в C++ <code>std::unordered_map</code> требует отдельного функтора хеширования).</p>
+<p>Но <strong>в языке Go массивы фиксированного размера <code>[26]int</code> сравнимы оператором <code>==</code></strong>!<br />
+А это значит, что массив может выступать ключом в <code>map</code> «из коробки» без каких-либо строковых конвертаций!</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2237,104 +2269,29 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func groupAnagrams(strs []string) [][]string {
-    // Ключ - массив из 26 счетчиков. Значение - слайс исходных строк.
-    groups := make(map[[26]int][]string)
+  <pre class="language-go"><code class="language-go">package anagrams
+
+// GroupAnagrams группирует слова-анаграммы за линейное время O(N * K).
+func GroupAnagrams(strs []string) [][]string {
+    // Ключ — 26-элементный массив счетчиков букв!
+    groups := make(map[[26]int][]string, len(strs))
 
     for _, s := range strs {
-        var counts [26]int // Zero-value: все счетчики равны 0. Лежит на стеке!
-        for _, ch := range s {
-            counts[ch-'a']++
+        var counts [26]int // Выделяется на стеке (0 B/op в куче!)
+        for i := 0; i &lt; len(s); i++ {
+            counts[s[i]-'a']++
         }
-        // Используем массив напрямую как ключ!
         groups[counts] = append(groups[counts], s)
     }
 
     result := make([][]string, 0, len(groups))
-    for _, v := range groups {
-        result = append(result, v)
+    for _, group := range groups {
+        result = append(result, group)
     }
     return result
 }
 </code></pre>
 </div>
-
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Как Go использует массив <code>[26]int</code> как ключ?<br />
-Размер этого массива — 208 байт (26 * 8 байт на 64-битных системах). Когда компилятор Go видит <code>map[[26]int]...</code>, он понимает, что ключ имеет фиксированный размер. Для вычисления хеша рантайм использует функцию <code>memhash</code>, которая просто читает эти 208 байт как кусок памяти. <br />
-При сравнении ключей (поиск коллизий в бакетах <code>hmap</code>) используется <code>memeq</code>, которая побайтово сравнивает два куска памяти по 208 байт. </p>
-<p>С точки зрения Mechanical Sympathy, массив на стеке не аллоцируется в куче. Мы избегаем создания промежуточных объектов (как при сортировке), а значит Garbage Collector не получает лишней работы.</p>
-  </div>
-</div>
-
-<p>Сложность такого решения: $O(N \cdot K)$ по времени (проходим каждую строку один раз) и $O(N \cdot K)$ по памяти на хранение результата. Это оптимальный алгоритм.</p>
-<h2 id="alternativa-strokovyy-klyuch-cherez-strings-builder">Альтернатива: Строковый ключ через strings.Builder</h2>
-
-<p>Что если на интервью скажут: "А что если строки состоят не только из a-z, а из любого Unicode?" <br />
-Массив <code>[26]int</code> не подойдет. Использовать <code>map[rune]int</code> как ключ в Go <strong>нельзя</strong>, так как слайсы и мапы не поддерживают оператор <code>==</code> и не могут быть ключами мапы.</p>
-<p>В таком случае нам нужно превратить частотный паттерн в уникальную строку (каноническую форму). Чтобы не аллоцировать память конкатенациями, мы используем <code>strings.Builder</code>.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func groupAnagramsUnicode(strs []string) [][]string {
-    groups := make(map[string][]string)
-
-    for _, s := range strs {
-        // Считаем частоты через мапу (раньше мы уже разбирали этот паттерн)
-        freq := make(map[rune]int)
-        for _, r := range s {
-            freq[r]++
-        }
-
-        // Строим строку вида &quot;а2б1в3&quot; 
-        var sb strings.Builder
-        // Для детерминизма ключа сортируем руны
-        runes := make([]rune, 0, len(freq))
-        for r := range freq {
-            runes = append(runes, r)
-        }
-        sort.Slice(runes, func(i, j int) bool { return runes[i] &lt; runes[j] })
-
-        for _, r := range runes {
-            sb.WriteRune(r)
-            sb.WriteString(strconv.Itoa(freq[r]))
-        }
-
-        key := sb.String()
-        groups[key] = append(groups[key], s)
-    }
-
-    result := make([][]string, 0, len(groups))
-    for _, v := range groups {
-        result = append(result, v)
-    }
-    return result
-}
-</code></pre>
-</div>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p>Если вы на интервью сначала пишете решение с сортировкой строк — это нормально (покажет, что вы можете решить задачу). Но затем обязательно скажите: <em>"Это $O(N \cdot K \log K)$. Мы можем оптимизировать до $O(N \cdot K)$, если алфавит ограничен. В Go для этого есть элегантный трюк: массивы сравнимы, поэтому мы можем использовать <code>[26]int</code> как ключ мапы без преобразования обратно в строку"</em>. Это моментально повышает вашу оценку до Senior.</p>
-  </div>
-</div>
-
-<h2 id="diagramma-patterna">Диаграмма паттерна</h2>
 
 
 <div class="mermaid-wrapper">
@@ -2350,38 +2307,117 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Строка tea&quot;]:::process --&gt; B[&quot;Подсчет частот&quot;]
-C[&quot;Строка eat&quot;]:::process --&gt; D[&quot;Подсчет частот&quot;]
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
 
-B --&gt; E[&quot;Массив-ключ 1,0,0,0,1...&quot;]
-D --&gt; F[&quot;Массив-ключ 1,0,0,0,1...&quot;]
-
-E --&gt; G[&quot;map ключ - слайс строк&quot;]
-F --&gt; G
-
-G --&gt; H[&quot;tea, eat, ate&quot;]
+A[&quot;Слова: &#x27;eat&#x27;, &#x27;tea&#x27;, &#x27;tan&#x27;, &#x27;ate&#x27;, &#x27;nat&#x27;, &#x27;bat&#x27;&quot;]:::entry --&gt; B[&quot;Вычисление частотного вектора [26]int на стеке&quot;]:::process
+B --&gt; C[&quot;&#x27;eat&#x27;, &#x27;tea&#x27;, &#x27;ate&#x27; -&gt; ключ [1, 0, ... 1(e), ... 1(t)]&quot;]:::accent
+B --&gt; D[&quot;&#x27;tan&#x27;, &#x27;nat&#x27; -&gt; ключ [1, 0, ... 1(n), ... 1(t)]&quot;]:::accent
+B --&gt; E[&quot;&#x27;bat&#x27; -&gt; ключ [1(a), 1(b), ... 1(t)]&quot;]:::accent
+C --&gt; F[&quot;Группа 1: [&#x27;eat&#x27;, &#x27;tea&#x27;, &#x27;ate&#x27;]&quot;]:::success
+D --&gt; G[&quot;Группа 2: [&#x27;tan&#x27;, &#x27;nat&#x27;]&quot;]:::success
+E --&gt; H[&quot;Группа 3: [&#x27;bat&#x27;]&quot;]:::success
   </pre>
 </div>
 
 
-<h2 id="itogi-po-rabote-s-mapami-v-kontekste-zadachi">Итоги по работе с мапами в контексте задачи</h2>
+<hr />
+<h2 id="mechanical-sympathy-kak-rantaym-go-kheshiruet-26int">⚙️ Mechanical Sympathy: Как рантайм Go хеширует `[26]int`</h2>
 
-<ol>
-<li><strong>Ключи в Go:</strong> Ими могут быть любые типы, для которых определен оператор <code>==</code> (кроме слайсов, мап и функций). Массивы — отличные ключи для фиксированных алфавитов.</li>
-<li><strong>Аллокации:</strong> В высоконагруженном коде избегайте конвертаций <code>string</code> &lt;-&gt; <code>[]byte</code> там, где можно обойтись вычислениями на стеке (подсчет индексов массива).</li>
-<li><strong>Детерминизм:</strong> Если вы строите строковый ключ из частот, порядок вставки не гарантирован (мапы в Go не сохраняют порядок). Поэтому ключи нужно обязательно сортировать, иначе <code>"а1б2"</code> и <code>"б2а1"</code> станут разными ключами, хотя частоты совпадают.</li>
+<div class="callout callout-info">
+  <div class="callout-header">
+    <span class="callout-icon">⚙️</span>
+    <span class="callout-title">Под капотом рантайма</span>
+  </div>
+  <div class="callout-body">
+    <ol>
+<li><strong>Размер ключа в памяти:</strong> Массив <code>[26]int</code> на 64-битной архитектуре занимает ровно $26 \times 8 = 208$ байт.</li>
+<li><strong>Хеширование:</strong> Для типов с фиксированным размером компилятор генерирует вызов <code>runtime.memhash</code>, который читает блок памяти 208 байт напрямую.</li>
+<li><strong>Сравнение:</strong> Сравнение двух ключей выполняется функцией <code>runtime.memequal</code> (оптимизированной векторизованными AVX/SSE инструкциями, сравнивающими память блоками по 32 или 64 байта за такт).</li>
+<li><strong>Стек вместо кучи:</strong> Массив <code>var counts [26]int</code> живет исключительно в стековом фрейме текущей функции. В кучу попадает только копия ключа внутри бакета мапы. Никаких промежуточных аллокаций <code>[]byte</code>!</li>
 </ol>
-<p>В следующей статье мы разберем еще одну классическую хеш-задачу, где частотный паттерн комбинируется с жадным выбором самых частых элементов — <a href="../16-kuchi-i-top-k/4-top-k-frequent-elements.html" class="wikilink">4. Top K Frequent Elements</a>.</p>
+  </div>
+</div>
+
+<hr />
+<h2 id="chto-delat-esli-stroki-soderzhat-proizvolnyy-unicode">🌐 Что делать, если строки содержат произвольный Unicode?</h2>
+
+<p>Если на собеседовании условие расширяют до произвольного Unicode (кириллица, китайские иероглифы, эмодзи), размер массива в 26 ячеек не подойдет.<br />
+Слайс <code>[]rune</code> или <code>map[rune]int</code> не могут быть ключами мапы (они несравнимы через <code>==</code>).</p>
+<p>В этом случае строят <strong>детерминированную строковую сигнатуру</strong> через <code>strings.Builder</code>:<br />
+1. Подсчитываем частоты в <code>map[rune]int</code>;<br />
+2. Извлекаем уникальные руны и <strong>сортируем их</strong> (чтобы порядок записи был детерминированным!);<br />
+3. Формируем строку вида <code>"#а2#б1#в3"</code>.</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">func makeUnicodeSignature(s string) string {
+    freq := make(map[rune]int)
+    for _, r := range s {
+        freq[r]++
+    }
+
+    runes := make([]rune, 0, len(freq))
+    for r := range freq {
+        runes = append(runes, r)
+    }
+    sort.Slice(runes, func(i, j int) bool { return runes[i] &lt; runes[j] })
+
+    var sb strings.Builder
+    for _, r := range runes {
+        sb.WriteRune('#')
+        sb.WriteRune(r)
+        sb.WriteString(strconv.Itoa(freq[r]))
+    }
+    return sb.String()
+}
+</code></pre>
+</div>
+
+<hr />
+<h2 id="voprosy-dlya-sobesedovaniya">💡 Вопросы для собеседования</h2>
+
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопросы сеньор-уровня:</span>
+  </div>
+  <div class="callout-body">
+    <ol>
+<li><strong>Каковы временная и пространственная сложности решения с <code>[26]int</code>?</strong><br />
+<em>Ответ:</em> Временная сложность $O(N \cdot K)$ — мы проходим по каждому символу каждой строки один раз. Память — $O(N \cdot K)$ для хранения всех сгруппированных строк в мапе.</li>
+<li><strong>Почему нельзя использовать слайс <code>[]int</code> в качестве ключа мапы?</strong><br />
+<em>Ответ:</em> В Go слайсы не поддерживают оператор <code>==</code> (за исключением сравнения с <code>nil</code>), так как слайс — это заголовок с указателем на мутабельный массив. Нельзя гарантировать неизменность хеша ключа. Массив фиксированного размера <code>[26]int</code> копируется по значению и является строго сравнимым.</li>
+</ol>
+  </div>
+</div>
+
+<hr />
+<h2 id="navigatsiya">🗺️ Навигация</h2>
+
+<div class="table-container"><table>
+<thead>
+<tr>
+<th style="text-align: left;">Назад</th>
+<th style="text-align: left;">Вперед</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">← <a href="2-chastotnye-patterny.html" class="wikilink">2. Частотные паттерны</a></td>
+<td style="text-align: left;"><a href="../16-kuchi-i-top-k/4-top-k-frequent-elements.html" class="wikilink">4. Top K Frequent Elements</a> →</td>
+</tr>
+</tbody>
+</table></div>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2409,7 +2445,7 @@ G --&gt; H[&quot;tea, eat, ate&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#naivnyy-podkhod-sortirovka-kak-klyuch">Наивный подход: Сортировка как ключ</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-massiv-kak-klyuch-mapy-frequency-pattern">Идиоматичный Go: Массив как ключ мапы (Frequency Pattern)</a></li><li class="toc-item toc-h2"><a href="#alternativa-strokovyy-klyuch-cherez-strings-builder">Альтернатива: Строковый ключ через strings.Builder</a></li><li class="toc-item toc-h2"><a href="#diagramma-patterna">Диаграмма паттерна</a></li><li class="toc-item toc-h2"><a href="#itogi-po-rabote-s-mapami-v-kontekste-zadachi">Итоги по работе с мапами в контексте задачи</a></li>
+    <li class="toc-item toc-h2"><a href="#vvedenie-invariant-anagrammy">Введение: Инвариант анаграммы</a></li><li class="toc-item toc-h2"><a href="#voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</a></li><li class="toc-item toc-h2"><a href="#podkhod-1-sortirovka-kak-kanonicheskiy-klyuch-on-cdot-k-log-k">Подход 1: Сортировка как канонический ключ ($O(N \cdot K \log K)$)</a></li><li class="toc-item toc-h3"><a href="#v-chem-slabost-etogo-resheniya-dlya-prodakshena">В чем слабость этого решения для продакшена?</a></li><li class="toc-item toc-h2"><a href="#podkhod-2-fiksirovannyy-massiv-kak-klyuch-mapy-on-cdot-k">Подход 2: Фиксированный массив как ключ мапы ($O(N \cdot K)$)</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-kak-rantaym-go-kheshiruet-26int">⚙️ Mechanical Sympathy: Как рантайм Go хеширует [26]int</a></li><li class="toc-item toc-h2"><a href="#chto-delat-esli-stroki-soderzhat-proizvolnyy-unicode">🌐 Что делать, если строки содержат произвольный Unicode?</a></li><li class="toc-item toc-h2"><a href="#voprosy-dlya-sobesedovaniya">💡 Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#navigatsiya">🗺️ Навигация</a></li>
   </ul>
 </aside>
 

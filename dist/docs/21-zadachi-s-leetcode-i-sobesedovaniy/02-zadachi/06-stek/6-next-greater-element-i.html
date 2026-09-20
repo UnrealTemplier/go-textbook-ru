@@ -2171,36 +2171,58 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~16 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~11 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">6. Next Greater Element I</h1>
           </header>
 
           <div class="article-markdown">
-            <p>В прошлой статье мы разобрали классическое применение монотонного стека на примере температур, где нам нужно было найти <em>расстояние</em> до следующего большего элемента. </p>
-<p>Но в реальных системах (и на собеседованиях) задачи редко ходят поодиночке. Часто паттерны нужно комбинировать. Задача <strong>Next Greater Element I</strong> (LeetCode 496) — это отличный полигон, чтобы показать, как монотонный стек работает в связке с хэш-таблицами, и поговорить о том, как рантайм Go оптимизирует мапы для примитивных типов.</p>
-<p><strong>Суть задачи:</strong> Даны два массива уникальных целых чисел <code>nums1</code> и <code>nums2</code>, где <code>nums1</code> является подмножеством <code>nums2</code>. Для каждого элемента из <code>nums1</code> нужно найти "следующий больший элемент" (ближайший справа, который больше текущего) в массиве <code>nums2</code>. Если такого нет, вернуть <code>-1</code>.</p>
+            <h1>6. Next Greater Element I</h1>
+<blockquote>
+<p><em>«Разделяй и властвуй — это не только военная стратагема, но и главный инженерный принцип: подготовьте данные один раз, проиндексируйте их, и любые последующие запросы превратятся в мгновенные ответы».</em><br />
+— Брайан Керниган</p>
+<p>💡 <strong>Связанные темы:</strong><br />
+- <a href="1-teoriya-stek.html" class="wikilink">1. Теория. Стек</a> — базовая структура LIFO<br />
+- <a href="2-monotonnyy-stek.html" class="wikilink">2. Монотонный стек</a> — алгоритм поддержания порядка<br />
+- <a href="5-daily-temperatures.html" class="wikilink">5. Daily Temperatures</a> — монотонный стек с хранением дистанций<br />
+- <a href="7-largest-rectangle-in-histogram.html" class="wikilink">7. Largest Rectangle in Histogram</a> — применение монотонного стека для площадей<br />
+- <span class="wikilink-unresolved" title="Заметка в разработке">05. Хеш таблицы: 1. Теория</span> — оптимизация <code>no-scan</code> в Go GC</p>
+</blockquote>
 <hr />
-<h2 id="arkhitektura-resheniya-razdelyay-i-vlastvuy">Архитектура решения: Разделяй и властвуй</h2>
+<h2 id="vvedenie-simbioz-steka-i-khesh-tablitsy">Введение: Симбиоз стека и хеш-таблицы</h2>
 
-<p>Наивное решение — для каждого элемента из <code>nums1</code> искать его в <code>nums2</code> за $O(M)$, а затем бежать дальше по <code>nums2</code> в поиске большего элемента за $O(M)$. Итоговая сложность $O(N \times M)$ — типичный маркер того, что на интервью вам скажут: "А можно ли быстрее?".</p>
-<p>Быстрее можно за $O(N + M)$. Для этого мы разбиваем задачу на два независимых этапа:</p>
+<p>В реальных распределенных сервисах задачи редко решаются одной изолированной структурой. Архитектурная сила проявляется в их <strong>композиции</strong>.<br />
+Задача <strong>Next Greater Element I</strong> (LeetCode 496) демонстрирует этот паттерн:</p>
+<blockquote>
+<p><em>Даны два массива уникальных целых чисел: <code>nums1</code> и <code>nums2</code>, где <code>nums1</code> является подмножеством <code>nums2</code>.<br />
+Для каждого числа из <code>nums1</code> найти следующий больший элемент справа в массиве <code>nums2</code>. Если большего элемента справа нет, вернуть <code>-1</code>.</em></p>
+</blockquote>
+<p>Наивный подход ищет каждое число из <code>nums1</code> в <code>nums2</code> линейно, а затем бежит вправо в поисках большего: $O(N_1 \cdot N_2)$.<br />
+При $N_1, N_2 = 10^5$ это $10^{10}$ операций — тяжелый провал по производительности.</p>
+<p>Мы объединим <strong>монотонно убывающий стек</strong> и <strong>хеш-таблицу</strong>, решив задачу за линейное время $O(N_1 + N_2)$!</p>
+<hr />
+<h2 id="voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</h2>
+
 <ol>
-<li><strong>Препроцессинг (Monotonic Stack):</strong> Мы забываем про <code>nums1</code>. Мы один раз проходим по <code>nums2</code> и с помощью монотонно убывающего стека находим следующий больший элемент для <em>каждого</em> числа в <code>nums2</code>.</li>
-<li><strong>Индексирование (Hash Map):</strong> Результаты поиска из первого этапа мы складываем в хэш-таблицу (map). Ключ — само число, значение — его следующий больший элемент.</li>
-<li><strong>Формирование ответа:</strong> Мы проходим по <code>nums1</code> и за $O(1)$ достаем готовые ответы из мапы.</li>
+<li><strong>Уникальность элементов:</strong><br />
+<em>«Гарантируется ли уникальность чисел в массивах?»</em><br />
+<em>(Да! В классическом условии LeetCode 496 все числа уникальны. Это дает нам право использовать </em><em>сами значения как ключи</em><em> хеш-таблицы, не сохраняя индексы).</em></li>
+<li><strong>Вложенность подмножества:</strong><br />
+<em>«Все ли элементы <code>nums1</code> присутствуют в <code>nums2</code>?»</em><br />
+<em>(Да, по условию <code>nums1</code> — строгое подмножество <code>nums2</code>).</em></li>
+<li><strong>Что если большего элемента нет:</strong><br />
+<em>«Какое значение возвращать, если большего элемента справа нет?»</em><br />
+<em>(Возвращаем <code>-1</code>).</em></li>
 </ol>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>В задаче <a href="5-daily-temperatures.html" class="wikilink">5. Daily Temperatures</a> мы жестко договорились <strong>всегда хранить в стеке индексы</strong>. Но здесь нам не нужно вычислять <em>расстояние</em> (разницу индексов), и все элементы по условию <strong>уникальны</strong>. В этом специфичном случае мы имеем право хранить в стеке сами <strong>значения</strong>. Это упростит код и избавит от лишних обращений к массиву по индексу.</p>
-  </div>
-</div>
+<hr />
+<h2 id="arkhitektura-preprotsessing-za-on2-zaprosy-za-on1">Архитектура: Препроцессинг за $O(N_2)$ + Запросы за $O(N_1)$</h2>
 
+<p>Вместо того чтобы метаться между двумя массивами, разделим задачу на две независимые фазы:<br />
+1. <strong>Фаза 1 (Монотонный стек по <code>nums2</code>):</strong><br />
+   Проходим по <code>nums2</code> один раз. Монотонно убывающий стек находит следующий больший элемент для каждого числа. Результаты записываем в словарь: <code>mapping[val] = nextGreaterVal</code>.<br />
+2. <strong>Фаза 2 (O(1) чтение для <code>nums1</code>):</strong><br />
+   Проходим по <code>nums1</code> и за константное время $O(1)$ читаем готовый ответ из <code>mapping</code>.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2215,39 +2237,25 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-subgraph Stage1 [&quot;Этап 1 - Монотонный стек для nums2&quot;]
-Num2[&quot;Элемент из nums2&quot;]:::warning --&gt; IsGreater{&quot;Больше вершины стека?&quot;}
-IsGreater --&gt;|&quot;Да&quot;| Pop[&quot;Извлекаем вершину&quot;]
-Pop --&gt; SaveMap[&quot;Сохраняем в Map&lt;br&gt;Ключ: Вершина&lt;br&gt;Значение: Элемент&quot;]
-SaveMap --&gt; IsGreater
-IsGreater --&gt;|&quot;Нет или Стек пуст&quot;| Push[&quot;Добавляем Элемент в стек&quot;]
-end
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
 
-subgraph Stage2 [&quot;Этап 2 - Ответ для nums1&quot;]
-Num1[&quot;Элемент из nums1&quot;]:::process --&gt; Lookup[&quot;Поиск в Map&quot;]
-Lookup --&gt;|&quot;Найдено&quot;| Res1[&quot;Пишем значение в ответ&quot;]
-Lookup --&gt;|&quot;Не найдено&quot;| Res2[&quot;Пишем -1 в ответ&quot;]
-end
-
-Stage1 --&gt; Stage2
+A[&quot;nums2 = [1, 3, 4, 2]&quot;]:::entry --&gt; B[&quot;Монотонно убывающий стек + map[int]int&quot;]:::process
+B --&gt; C[&quot;1 &lt; 3 -&gt; Pop(1), map[1] = 3&lt;br/&gt;3 &lt; 4 -&gt; Pop(3), map[3] = 4&lt;br/&gt;В стеке остались: [4, 2]&quot;]:::accent
+C --&gt; D[&quot;Готовая хеш-таблица: {1: 3, 3: 4}&quot;]:::process
+D --&gt; E[&quot;nums1 = [4, 1, 2]&quot;]:::warning
+E --&gt; F[&quot;Запрос 4 -&gt; нет в map -&gt; -1&lt;br/&gt;Запрос 1 -&gt; есть в map -&gt; 3&lt;br/&gt;Запрос 2 -&gt; нет в map -&gt; -1&quot;]:::process
+F --&gt; G[&quot;Итоговый срез: [-1, 3, -1]&quot;]:::success
   </pre>
 </div>
 
 
 <hr />
-<h2 id="idiomatichnyy-kod-na-go">Идиоматичный код на Go</h2>
+<h2 id="optimalnoe-reshenie-na-go">🛠️ Оптимальное решение на Go</h2>
 
-<p>Обратите внимание на предварительную аллокацию (capacity) для слайсов и мапы. Это признак инженерной культуры (Mechanical Sympathy), который интервьюер обязательно отметит.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2257,92 +2265,91 @@ Stage1 --&gt; Stage2
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">package main
+  <pre class="language-go"><code class="language-go">package nextgreater
 
-// nextGreaterElement находит следующие большие элементы для подмножества
-func nextGreaterElement(nums1 []int, nums2 []int) []int {
-    // 1. Инициализируем хэш-таблицу для хранения ответов элементов из nums2
-    // Выделяем память под размер nums2, так как в худшем случае
-    // (если массив убывающий) мапа будет пустой, но в среднем заполнится почти вся.
+// NextGreaterElement находит следующий больший элемент за O(len(nums1) + len(nums2)).
+func NextGreaterElement(nums1 []int, nums2 []int) []int {
+    // Хеш-таблица хранит: число -&gt; его следующий больший элемент
+    // Преаллокация под размер nums2 устраняет рехеширование
     nextGreater := make(map[int]int, len(nums2))
 
-    // Стек для хранения самих ЗНАЧЕНИЙ (т.к. все числа уникальны)
+    // Стек значений (так как все элементы уникальны)
     stack := make([]int, 0, len(nums2))
 
-    // Этап 1: Проходим по nums2 и заполняем мапу
+    // Шаг 1: сканируем nums2 монотонным стеком
     for _, num := range nums2 {
-        // Пока стек не пуст и текущее число больше вершины стека
         for len(stack) &gt; 0 &amp;&amp; num &gt; stack[len(stack)-1] {
-            // Pop
             top := stack[len(stack)-1]
-            stack = stack[:len(stack)-1]
+            stack = stack[:len(stack)-1] // Pop
 
-            // Для извлеченного элемента 'top', следующим бОльшим является 'num'
             nextGreater[top] = num
         }
-        // Push
         stack = append(stack, num)
     }
 
-    // Оставшиеся в стеке элементы не имеют большего элемента справа.
-    // Их можно было бы записать в мапу со значением -1, но в Go 
-    // при отсутствии ключа мапа и так требует проверки (comma ok idiom).
-
-    // Этап 2: Строим ответ для nums1
-    ans := make([]int, len(nums1))
+    // Шаг 2: собираем результат для nums1 за O(len(nums1))
+    res := make([]int, len(nums1))
     for i, num := range nums1 {
-        if greaterVal, exists := nextGreater[num]; exists {
-            ans[i] = greaterVal
+        if val, exists := nextGreater[num]; exists {
+            res[i] = val
         } else {
-            ans[i] = -1
+            res[i] = -1 // Для элементов, оставшихся в стеке
         }
     }
 
-    return ans
+    return res
 }
 </code></pre>
 </div>
 
 <hr />
-<h2 id="pod-kapotom-mapintint-i-sborshchik-musora-gc">Под капотом: map[int]int и Сборщик Мусора (GC)</h2>
+<h2 id="mechanical-sympathy-optimizatsiya-no-scan-v-go-garbage-collector">⚙️ Mechanical Sympathy: Оптимизация `no-scan` в Go Garbage Collector</h2>
 
-<p>В нашем решении мы используем <code>map[int]int</code>. Для бэкенд-разработчика это не просто "словарь", а структура <code>hmap</code> из рантайма Go. </p>
-<h3 id="bystroe-kheshirovanie">Быстрое хеширование</h3>
-<p>Ключом в нашей мапе выступает <code>int</code>. На современных архитектурах (x86_64, ARM64) рантайм Go не использует тяжелые алгоритмы хеширования для базовых типов. Для <code>int</code> применяется аппаратно-ускоренное хеширование (например, на основе инструкций AES-NI, если они поддерживаются процессором, или сверхбыстрые алгоритмы вроде <code>wyhash</code>). Это делает поиск и вставку ключей молниеносными.</p>
-<h3 id="gc-no-scan-optimization">GC No-Scan Optimization</h3>
-<p>Самый интересный аспект <code>map[int]int</code> заключается во взаимодействии со сборщиком мусора (Garbage Collector).</p>
-<p>Сборщик мусора в Go работает по алгоритму Mark and Sweep. Ему нужно сканировать объекты в куче на наличие указателей (pointers). Если объект содержит указатель, GC должен пойти по нему и отметить следующий объект, чтобы не удалить его.</p>
-<p>Мапа <code>map[int]int</code> <strong>не содержит указателей в ключах или значениях</strong> (оба типа — скалярные). Компилятор Go (с версии 1.5) достаточно умен, чтобы заметить это. Он помечает бакеты (buckets) этой мапы как <strong>no-scan</strong>. <br />
-Это означает, что даже если в мапе будет 10 миллионов элементов, сборщик мусора просто проигнорирует содержимое её бакетов во время фазы сканирования (Mark). Он посмотрит только на саму структуру <code>hmap</code>, но не будет перебирать все пары ключ-значение.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом: Размер бакета</span>
-  </div>
-  <div class="callout-body">
-    <p>В Go один бакет мапы (<code>bmap</code>) вмещает ровно 8 пар ключ-значение. Когда вы делаете <code>make(map[int]int, len(nums2))</code>, Go под капотом вычисляет количество необходимых бакетов по формуле $B = \lceil \log_2(\frac{capacity}{6.5}) \rceil$ (где 6.5 — это load factor). Если бы мы не указали <code>len(nums2)</code>, при добавлении элементов мапе пришлось бы постоянно выполнять эвакуацию данных (перехэширование и перенос в бакеты большего размера), что заблокировало бы операции записи.</p>
-  </div>
-</div>
-
+<p>Почему использование <code>map[int]int</code> в Go работает в разы быстрее, чем аналогичные коллекции в Java или Python?</p>
+<ol>
+<li><strong>Отсутствие указателей (Scalar Types):</strong><br />
+   И ключ, и значение имеют тип <code>int</code>. В них нет ссылок, срезов или интерфейсов.</li>
+<li><strong>Флаг <code>no-scan</code> рантайма Go:</strong><br />
+   Компилятор и рантайм Go помечают бакеты этой мапы специальным флагом. Во время фазы маркировки (GC Mark Phase) сборщик мусора <strong>вообще не сканирует бакеты этой мапы</strong>! Он не заходит внутрь пар ключ-значение, так как там гарантированно нет адресов в куче.</li>
+<li><strong>Хеширование на уровне инструкций CPU:</strong><br />
+   Хеширование 64-битного целого числа <code>int</code> не требует обхода байт: оно выполняется за 2–3 процессорных такта аппаратно-ускоренными алгоритмами.</li>
+</ol>
 <hr />
-<h2 id="uslozhnenie-zadachi-follow-up">Усложнение задачи (Follow-up)</h2>
+<h2 id="uslozhnenie-zadachi-chto-delat-esli-v-nums2-est-dublikaty">💡 Усложнение задачи: Что делать, если в `nums2` есть дубликаты?</h2>
 
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос сеньор-уровня на собеседовании:</span>
   </div>
   <div class="callout-body">
-    <p>На интервью (особенно в Яндекс или VK) вам могут усложнить задачу:<br />
-<strong>Интервьюер:</strong> "Отличное решение. А как изменится алгоритм, если в массиве <code>nums2</code> будут <strong>дубликаты</strong>? Например, <code>nums2 = [2, 1, 2, 4, 3]</code>, а найти нужно ответ для <code>nums1</code> в виде набора индексов."</p>
-<p><strong>Ваш ответ:</strong> "Если есть дубликаты, ключом в хэш-таблице <code>nextGreater</code> больше не может быть <em>значение</em> элемента, так как одинаковые числа будут перезаписывать друг друга (коллизия логики, а не хэшей). В этом случае мы обязаны вернуться к классическому монотонному стеку, который хранит <strong>индексы</strong>. Мапа также должна преобразовывать <code>индекс -&gt; индекс_следующего_большего</code>. Это еще раз доказывает, что хранение индексов в монотонном стеке — это универсальный и пуленепробиваемый подход."</p>
+    <p><em>«А как изменится решение, если в <code>nums2</code> разрешены одинаковые числа?»</em><br />
+<strong>Ответ:</strong><br />
+Если в массиве есть дубликаты, использовать числа в качестве ключей мапы нельзя (последующие вхождения затрут предыдущие).<br />
+Мы обязаны вернуться к <strong>классическому монотонному стеку индексов</strong>:<br />
+1. Стек хранит индексы <code>i</code> массива <code>nums2</code>;<br />
+2. Мапа связывает <code>индекс_в_nums2 -&gt; следующий_больший_элемент</code>;<br />
+3. Поиск для <code>nums1</code> требует предварительного сопоставления значений с их позициями. Это наглядно доказывает: <strong>стек индексов — самый универсальный инвариант!</strong></p>
   </div>
 </div>
 
-<h2 id="itog">Итог</h2>
+<hr />
+<h2 id="navigatsiya">🗺️ Навигация</h2>
 
-<p>Задача <strong>Next Greater Element I</strong> показывает, как эффективно связывать разные структуры данных (Стек + Хэш-таблица) для достижения линейного времени выполнения <code>O(N+M)</code>. Использование <code>map[int]int</code> в Go — это не только алгоритмически верно, но и максимально "дружелюбно" к железу и сборщику мусора.</p>
-<p>Теперь, когда мы отточили монотонный стек на поиске элементов "кто больше" и "кто меньше", мы готовы встретиться с главным боссом этой темы. Одной из самых пугающих и часто встречающихся задач на секциях по алгоритмам уровня Senior. Переходим к: <a href="7-largest-rectangle-in-histogram.html" class="wikilink">7. Largest Rectangle in Histogram</a>.</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th style="text-align: left;">Назад</th>
+<th style="text-align: left;">Вперед</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">← <a href="5-daily-temperatures.html" class="wikilink">5. Daily Temperatures</a></td>
+<td style="text-align: left;"><a href="7-largest-rectangle-in-histogram.html" class="wikilink">7. Largest Rectangle in Histogram</a> →</td>
+</tr>
+</tbody>
+</table></div>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2370,7 +2377,7 @@ func nextGreaterElement(nums1 []int, nums2 []int) []int {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#arkhitektura-resheniya-razdelyay-i-vlastvuy">Архитектура решения: Разделяй и властвуй</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-kod-na-go">Идиоматичный код на Go</a></li><li class="toc-item toc-h2"><a href="#pod-kapotom-mapintint-i-sborshchik-musora-gc">Под капотом: map[int]int и Сборщик Мусора (GC)</a></li><li class="toc-item toc-h3"><a href="#bystroe-kheshirovanie">Быстрое хеширование</a></li><li class="toc-item toc-h3"><a href="#gc-no-scan-optimization">GC No-Scan Optimization</a></li><li class="toc-item toc-h2"><a href="#uslozhnenie-zadachi-follow-up">Усложнение задачи (Follow-up)</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#vvedenie-simbioz-steka-i-khesh-tablitsy">Введение: Симбиоз стека и хеш-таблицы</a></li><li class="toc-item toc-h2"><a href="#voprosy-dlya-utochneniya-usloviy-interview-warm-up">🎯 Вопросы для уточнения условий (Interview Warm-up)</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-preprotsessing-za-on2-zaprosy-za-on1">Архитектура: Препроцессинг за $O(N2)$ + Запросы за $O(N1)$</a></li><li class="toc-item toc-h2"><a href="#optimalnoe-reshenie-na-go">🛠️ Оптимальное решение на Go</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-optimizatsiya-no-scan-v-go-garbage-collector">⚙️ Mechanical Sympathy: Оптимизация no-scan в Go Garbage Collector</a></li><li class="toc-item toc-h2"><a href="#uslozhnenie-zadachi-chto-delat-esli-v-nums2-est-dublikaty">💡 Усложнение задачи: Что делать, если в nums2 есть дубликаты?</a></li><li class="toc-item toc-h2"><a href="#navigatsiya">🗺️ Навигация</a></li>
   </ul>
 </aside>
 

@@ -2171,24 +2171,39 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~17 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~19 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. Монотонная очередь</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Если монотонный стек — это инструмент для поиска ближайшего большего/меньшего элемента в статичном массиве, то <strong>Монотонная очередь (Monotonic Queue)</strong> — это его эволюция для работы с <strong>движущимся окном (Sliding Window)</strong> или потоком данных (Data Stream).</p>
-<p>Эта структура данных жизненно необходима, когда нам нужно отвечать на вопрос: <em>"Какой элемент является максимальным (или минимальным) в текущем окне, и как этот максимум меняется при сдвиге окна?"</em> На собеседованиях этот паттерн встречается в задачах уровня Medium-Hard, и умение реализовать его в Go без утечек памяти и лишних аллокаций — верный признак сильного Senior-инженера.</p>
-<hr />
-<h2 id="chto-takoe-monotonnaya-ochered">Что такое Монотонная Очередь?</h2>
+            <blockquote>
+<p><em>«Устранение лишней информации в нужный момент — ключ к созданию быстрых алгоритмов».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="ot-monotonnogo-steka-k-skolzyashchemu-oknu-dvustoronnyaya-ochered-deque">От монотонного стека к скользящему окну: Двусторонняя очередь (Deque)</h2>
 
-<p>В основе монотонной очереди лежит <strong>Дек (Deque - Double Ended Queue)</strong> — двусторонняя очередь, которая позволяет добавлять и удалять элементы как с головы (Head), так и с хвоста (Tail) за $O(1)$.</p>
-<p>Очередь называется <em>монотонной</em>, потому что мы искусственно поддерживаем в ней строгий порядок элементов (например, строго убывающий). <br />
-- Самый большой элемент всегда находится на <strong>голове</strong>.<br />
-- Более мелкие элементы (потенциальные кандидаты на лидерство в будущем) выстраиваются за ним к <strong>хвосту</strong>.</p>
-<h3 id="glavnoe-pravilo-na-primere-poiska-maksimuma">Главное правило (на примере поиска максимума)</h3>
-<p>Когда приходит новый элемент, он "выбивает" с хвоста очереди все элементы, которые меньше него. Почему? Потому что новый элемент вошел в окно позже (он "свежее") и он больше — значит, старые мелкие элементы <strong>никогда</strong> больше не смогут стать максимумом текущего окна. Они становятся абсолютно бесполезными.</p>
+<p>В теме <a href="../06-stek/2-monotonnyy-stek.html" class="wikilink">2. Монотонный стек</a> мы исследовали мощный инструмент поиска ближайших больших или меньших элементов в статичном массиве за $O(N)$. Стек работал безупречно, потому что нам требовалось возвращаться назад и срезать локальные пики только с одного конца структуры.</p>
+<p>Однако при обработке потоковых данных или анализе <strong>скользящего окна (Sliding Window)</strong> размера $K$ возникает новая фундаментальная проблема:<br />
+1. Новые элементы поступают справа (в хвост окна).<br />
+2. Старые элементы «протухают» и покидают окно слева (из головы окна).<br />
+3. При этом на каждом шаге сдвига окна требуется мгновенно отвечать на вопрос: <em>«Какой элемент является максимальным (или минимальным) прямо сейчас?»</em></p>
+<p>Обычный стек бессилен: он не умеет эффективно удалять элементы с самого своего дна. Обычная FIFO-очередь умеет удалять элементы из головы, но не хранит информацию об экстремумах. </p>
+<p>Решением является синтез этих двух структур: <strong>Монотонная двусторонняя очередь (Monotonic Deque — Double-Ended Queue)</strong>.</p>
+<hr />
+<h2 id="invariant-monotonnogo-deka">Инвариант Монотонного Дека</h2>
+
+<p><strong>Дек (Deque)</strong> — это структура данных, позволяющая добавлять и удалять элементы как с головы (<em>Head / Front</em>), так и с хвоста (<em>Tail / Back</em>) за гарантированное $O(1)$.</p>
+<p>Очередь называется <strong>монотонной</strong>, если в любой момент времени значения её элементов образуют строго монотонную последовательность (убывающую или возрастающую).</p>
+<h3 id="pravilo-podderzhaniya-maksimuma-strictly-decreasing-deque">Правило поддержания максимума (Strictly Decreasing Deque):</h3>
+<ol>
+<li><strong>Голова (Head):</strong> Здесь всегда находится абсолютный максимум текущего окна.</li>
+<li><strong>Хвост (Tail):</strong> Здесь выстраиваются кандидаты, упорядоченные по убыванию. Каждый последующий элемент меньше предыдущего, но появился в окне позже (он моложе).</li>
+<li><strong>Очистка хвоста при добавлении:</strong> Когда в окно входит новый элемент <code>nums[i]</code>, мы смотрим на хвост дека. Если элемент на хвосте <strong>меньше либо равен</strong> новому, мы выбиваем его (<code>PopBack</code>).<br />
+<em>Почему?</em> Новый элемент больше старого и появился позже. Старый элемент уже <strong>никогда</strong> не сможет стать максимумом ни в текущем окне, ни во всех последующих сдвигах — он полностью затмлен новым лидером.</li>
+<li><strong>Очистка головы по времени:</strong> Если индекс элемента на голове дека вышел за левую границу текущего окна (<code>dq.Front() &lt; i - k + 1</code>), он вытесняется (<code>PopFront</code>).</li>
+</ol>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2203,57 +2218,48 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-subgraph Добавление элемента в монотонный дек
-New[&quot;Новый элемент - Значение 5&quot;]:::warning --&gt; CheckTail{&quot;Значение хвоста меньше 5?&quot;}
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
 
-CheckTail --&gt;|&quot;Да - Извлекаем хвост&quot;| PopTail[&quot;Pop Back&quot;]
+New[&quot;Новый элемент: nums[i]&quot;]:::entry --&gt; CheckTail{&quot;nums[i] &gt;= хвоста дека?&quot;}:::warning
+
+CheckTail --&gt;|&quot;Да (старый хвост бесполезен)&quot;| PopTail[&quot;PopBack: удаляем хвост&quot;]:::error
 PopTail --&gt; CheckTail
 
-CheckTail --&gt;|&quot;Нет или Дек пуст&quot;| PushTail[&quot;Push Back - Добавляем 5&quot;]
+CheckTail --&gt;|&quot;Нет (порядок сохранен)&quot;| PushTail[&quot;PushBack: добавляем индекс i&quot;]:::process
+PushTail --&gt; CheckHead{&quot;Индекс головы &lt; i - k + 1?&quot;}:::warning
 
-PushTail --&gt; CheckHead{&quot;Индекс головы устарел?&quot;}
-CheckHead --&gt;|&quot;Да - Выпал из окна&quot;| PopHead[&quot;Pop Front&quot;]
-CheckHead --&gt;|&quot;Нет&quot;| Ready[&quot;Голова дека - это текущий Максимум&quot;]
-end
+CheckHead --&gt;|&quot;Да (элемент выпал из окна)&quot;| PopHead[&quot;PopFront: удаляем голову&quot;]:::error
+CheckHead --&gt;|&quot;Нет (окно актуально)&quot;| Result[&quot;Голова дека — это МАКСИМУМ окна&quot;]:::success
   </pre>
 </div>
 
 
 <hr />
-<h2 id="problema-slicing-a-v-go-i-memory-drag">Проблема Slicing-а в Go и Memory Drag</h2>
+<h2 id="mechanical-sympathy-problema-slaysinga-v-go">Mechanical Sympathy: Проблема слайсинга в Go</h2>
 
-<p>В Go нет встроенной структуры <code>Deque</code>. В 99% случаев на LeetCode разработчики используют обычный слайс:<br />
-- Добавить в хвост: <code>q = append(q, x)</code><br />
-- Удалить с хвоста: <code>q = q[:len(q)-1]</code><br />
-- Удалить с головы: <code>q = q[1:]</code></p>
+<p>В стандартной библиотеке Go нет специализированного типа <code>deque</code>. Подавляющее большинство программистов пишут дек на основе стандартного слайса:<br />
+- Вставка в хвост: <code>dq = append(dq, x)</code><br />
+- Удаление с хвоста: <code>dq = dq[:len(dq)-1]</code><br />
+- Удаление из головы: <code>dq = dq[1:]</code></p>
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Утечка Capacity</span>
+    <span class="callout-title">Ловушка / Gotcha: Memory Drag и скрытые реаллокации</span>
   </div>
   <div class="callout-body">
-    <p>Операция удаления с головы <code>q = q[1:]</code> работает за $O(1)$, но она <strong>не освобождает</strong> память базового массива (underlying array), а лишь сдвигает указатель (data pointer) вправо. <br />
-Представьте, что через вашу очередь прошел миллион элементов. Вы постоянно делаете <code>append</code> (добавляете в конец) и <code>q[1:]</code> (обрезаете начало). Ваше "активное" окно всегда состоит из 3 элементов, но базовый массив слайса будет бесконечно расти вправо, провоцируя постоянные вызовы <code>growslice</code> (реаллокации) и заставляя Garbage Collector копировать гигантские объемы мусора. Это классический <strong>Memory Drag</strong>.</p>
+    <p>Операция <code>dq = dq[1:]</code> формально занимает $O(1)$, но не освобождает выделенный буфер, а лишь смещает указатель данных в заголовке слайса вправо.<br />
+Если через ваше скользящее окно проходит поток из 10 000 000 чисел, а активное окно содержит всего 5 элементов, базовый массив слайса будет непрерывно расти вправо. Каждые несколько тысяч шагов емкость <code>cap</code> будет исчерпываться, вызывая системную реаллокацию памяти <code>runtime.growslice</code>.<br />
+В высоконагруженном коде это приводит к деградации производительности и колоссальному расходу памяти на ровном месте.</p>
   </div>
 </div>
 
-<h3 id="mechanical-sympathy-reshenie-cherez-indeksy">Mechanical Sympathy: Решение через индексы</h3>
-<p>Чтобы написать production-ready код без реаллокаций, мы выделим память один раз (на максимальное количество элементов) и будем имитировать удаление с головы перемещением целочисленного указателя <code>head</code>.</p>
-<hr />
-<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
+<h3 id="idiomatichnyy-podkhod-virtualnyy-ukazatel-golovy">Идиоматичный подход: Виртуальный указатель головы</h3>
 
-<p>Давайте спроектируем структуру <code>MonotonicQueue</code>. В отличие от стека, где мы хранили только индексы, здесь для ясности абстракции (и если мы работаем с потоком, где нет индексов) мы можем реализовать ее через сравнение значений. </p>
-<p>Но для классических задач с массивами <strong>сохранение индексов</strong> остается золотым стандартом, так как только индекс позволяет понять, "выпал" ли элемент из скользящего окна.</p>
+<p>Чтобы устранить аллокации, достаточно выделить память под дек ровно один раз и имитировать операцию <code>PopFront</code> простым инкрементом целочисленного индекса <code>head++</code>.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2263,58 +2269,58 @@ end
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">package main
+  <pre class="language-go"><code class="language-go">package monotonic
 
-// Deque реализует двустороннюю очередь поверх слайса с оптимизацией памяти.
+// Deque реализует двустороннюю очередь индексов без реаллокаций памяти.
 type Deque struct {
-    items []int // Храним индексы исходного массива
-    head  int   // Виртуальный указатель на начало (Front)
+    items []int // Слайс для хранения индексов массива
+    head  int   // Виртуальный указатель на начало активной зоны
 }
 
+// NewDeque инициализирует дек с заданной емкостью.
 func NewDeque(capacity int) *Deque {
     return &amp;Deque{
-        // Выделяем память заранее. 
-        // Важно: len=0, чтобы append работал корректно от начала массива.
         items: make([]int, 0, capacity),
         head:  0,
     }
 }
 
-// PushBack добавляет элемент в конец
+// PushBack добавляет индекс в конец дека за O(1).
 func (d *Deque) PushBack(idx int) {
     d.items = append(d.items, idx)
 }
 
-// PopBack удаляет элемент с конца
+// PopBack удаляет элемент с конца дека за O(1).
 func (d *Deque) PopBack() {
     d.items = d.items[:len(d.items)-1]
 }
 
-// PopFront удаляет элемент из начала, просто сдвигая виртуальный указатель
+// PopFront сдвигает виртуальную голову вперед за O(1) без реаллокаций.
 func (d *Deque) PopFront() {
     d.head++
 }
 
-// Front возвращает индекс на голове очереди
+// Front возвращает индекс на голове очереди.
 func (d *Deque) Front() int {
     return d.items[d.head]
 }
 
-// Back возвращает индекс на хвосте очереди
+// Back возвращает индекс на хвосте очереди.
 func (d *Deque) Back() int {
     return d.items[len(d.items)-1]
 }
 
-// IsEmpty проверяет, пуст ли дек (с учетом виртуальной головы)
+// IsEmpty проверяет, пуст ли дек с учетом смещения головы.
 func (d *Deque) IsEmpty() bool {
     return d.head == len(d.items)
 }
 </code></pre>
 </div>
 
-<h3 id="primenenie-shablon-skolzyashchego-okna">Применение: Шаблон скользящего окна</h3>
+<hr />
+<h2 id="kanonicheskiy-shablon-skolzyashchego-okna">Канонический шаблон скользящего окна</h2>
 
-<p>Теперь используем наш <code>Deque</code> для поддержания максимума в окне размером <code>k</code>.</p>
+<p>Продемонстрируем, как лаконично и надежно выглядит алгоритм нахождения максимумов во всех окнах размера $K$ с использованием нашей структуры:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2324,35 +2330,38 @@ func (d *Deque) IsEmpty() bool {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// maxSlidingWindow находит максимумы в окнах размера k
+  <pre class="language-go"><code class="language-go">// maxSlidingWindow возвращает срез максимальных элементов во всех окнах размера k.
 func maxSlidingWindow(nums []int, k int) []int {
     n := len(nums)
-    if n == 0 || k == 0 {
-        return []int{}
+    if n == 0 || k &lt;= 0 {
+        return nil
+    }
+    if k == 1 {
+        return nums
     }
 
-    // Инициализируем ответ и дек.
-    // Capacity для дека = n, так как в худшем случае мы сделаем n аппендов,
-    // и благодаря нашему указателю head, мы избежим единой реаллокации!
+    // Результат содержит ровно n - k + 1 элементов
     res := make([]int, 0, n-k+1)
+
+    // Выделяем память под дек ровно один раз: емкость n исключает любые growslice!
     dq := NewDeque(n)
 
     for i := 0; i &lt; n; i++ {
-        // 1. Очистка головы: удаляем элементы, которые уже не входят в окно [i-k+1 ; i]
+        // 1. Очистка головы: удаляем индексы, вышедшие за пределы левой границы [i - k + 1, i]
         for !dq.IsEmpty() &amp;&amp; dq.Front() &lt; i-k+1 {
             dq.PopFront()
         }
 
-        // 2. Очистка хвоста: поддерживаем монотонность (строго убывающую)
-        // Все элементы в деке, которые меньше или равны новому, бесполезны
+        // 2. Очистка хвоста: поддерживаем строго убывающий порядок значений
+        // Выбиваем всех кандидатов, которые меньше или равны текущему nums[i]
         for !dq.IsEmpty() &amp;&amp; nums[dq.Back()] &lt;= nums[i] {
             dq.PopBack()
         }
 
-        // 3. Добавление текущего элемента (его индекса)
+        // 3. Добавляем текущий индекс в дек
         dq.PushBack(i)
 
-        // 4. Запись ответа (начинаем записывать, когда окно полностью сформировалось)
+        // 4. Запись ответа: начинаем фиксировать максимум, как только сформировано первое полное окно
         if i &gt;= k-1 {
             res = append(res, nums[dq.Front()])
         }
@@ -2364,37 +2373,101 @@ func maxSlidingWindow(nums []int, k int) []int {
 </div>
 
 <hr />
-<h2 id="vzglyad-pod-kapot-vremennaya-slozhnost-i-kesh">Взгляд под капот: Временная сложность и Кэш</h2>
+<h2 id="vzglyad-pod-kapot-vremennaya-slozhnost-i-cpu-kesh">Взгляд под капот: Временная сложность и CPU-кэш</h2>
 
-<p>На первый взгляд, мы видим цикл <code>while</code> (<code>for</code>) внутри цикла <code>for</code>. Кажется, что сложность может деградировать до $O(N \times K)$. Но это иллюзия.</p>
-<p><strong>Амортизированная сложность: $O(N)$</strong><br />
-Каждый индекс от $0$ до $N-1$ попадает в <code>Deque</code> (<code>PushBack</code>) ровно <strong>один раз</strong>. И каждый индекс может быть извлечен (<code>PopBack</code> или <code>PopFront</code>) максимум <strong>один раз</strong>. Суммарное количество операций со структурой данных за весь проход жестко ограничено $2N$. Время выполнения строго линейно.</p>
-<div class="callout callout-info">
+<p>Вложенный цикл <code>for !dq.IsEmpty() &amp;&amp; nums[dq.Back()] &lt;= nums[i]</code> может создать обманчивое впечатление квадратичной сложности $O(N \times K)$. Однако это строгая иллюзия.</p>
+<h3 id="amortizirovannaya-slozhnost-on">Амортизированная сложность: $O(N)$</h3>
+<p>Каждый индекс $i \in [0, N-1]$ исходного массива:<br />
+1. Ровно <strong>один раз</strong> добавляется в хвост дека (<code>PushBack</code>).<br />
+2. Максимум <strong>один раз</strong> удаляется из дека — либо с хвоста (<code>PopBack</code>), либо с головы (<code>PopFront</code>).</p>
+<p>Суммарное количество манипуляций с деком за весь проход по массиву длины $N$ строго ограничено $2N$ операциями. Среднее время обработки одного элемента составляет честное $O(1)$.</p>
+<h3 id="sravnenie-s-prioritetnoy-ocheredyu-max-heap">Сравнение с Приоритетной очередью (Max-Heap)</h3>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Характеристика</th>
+<th>Monotonic Deque</th>
+<th>Max-Heap (<code>container/heap</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Временная сложность</strong></td>
+<td>$O(N)$ строго</td>
+<td>$O(N \log K)$</td>
+</tr>
+<tr>
+<td><strong>Дополнительная память</strong></td>
+<td>$O(K)$ или $O(N)$</td>
+<td>$O(K)$</td>
+</tr>
+<tr>
+<td><strong>Локальность данных</strong></td>
+<td>Превосходная (непрерывный слайс)</td>
+<td>Средняя (массив двоичного дерева)</td>
+</tr>
+<tr>
+<td><strong>Удаление устаревших</strong></td>
+<td>$O(1)$ с головы</td>
+<td>$O(\log K)$ или ленивое удаление</td>
+</tr>
+<tr>
+<td><strong>Нагрузка на GC</strong></td>
+<td>Нулевая (Zero-allocs)</td>
+<td>Высокая при частых интерфейсных обертках</td>
+</tr>
+</tbody>
+</table></div>
+<div class="callout callout-tip">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом: Cache Locality</span>
+    <span class="callout-icon">💡</span>
+    <span class="callout-title">Mechanical Sympathy: Локальность данных против `container/list`</span>
   </div>
   <div class="callout-body">
-    <p>Использование слайса с указателем <code>head</code> (вместо классического <code>list.List</code> из стандартной библиотеки) делает алгоритм невероятно быстрым на уровне CPU. Все индексы лежат в памяти последовательно. Когда мы обращаемся к <code>nums[dq.Back()]</code>, префетчер (Prefetcher) процессора подтягивает следующие элементы массива в L1-кэш, минимизируя дорогостоящие походы в оперативную память (Cache Misses). <code>list.List</code> же раскидал бы каждый узел по куче, заставляя процессор бегать по случайным адресам памяти при каждом переходе по указателям <code>Next</code>/<code>Prev</code>.</p>
+    <p>В стандартной библиотеке Go есть пакет <code>container/list</code>, реализующий двусвязный список. Но использовать его для монотонного дека — грубейшая ошибка.<br />
+<code>list.List</code> упаковывает каждый элемент в структуру <code>Element</code> в куче:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">type Element struct {
+    next, prev *Element
+    list       *List
+    Value      any // Интерфейс: еще одна скрытая аллокация!
+}
+</code></pre>
+</div>
+
+<p>При обходе такого списка процессор тратит сотни тактов на ожидание подгрузки разрозненных адресов памяти из RAM (Cache Misses).<br />
+Наш монотонный дек на непрерывном слайсе <code>[]int</code> размещается прямо в строках L1d-кэша процессора. Инструкции сравнения выполняются на предельной скорости конвейера CPU.</p>
   </div>
 </div>
 
+<hr />
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопросы для собеседований</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Если монотонная очередь так хороша, почему бы не использовать <code>Heap</code> (Кучу / Priority Queue)? Она же тоже умеет находить максимум!<br />
-<strong>Ответ:</strong> Куча (Heap) имеет сложность $O(\log K)$ на добавление и удаление элемента. Поиск максимумов в окне с помощью кучи займет $O(N \log K)$ времени. Монотонная очередь делает это за амортизированное $O(1)$ на каждый элемент, достигая итоговой сложности $O(N)$. Кроме того, куче сложно и дорого выполнять удаление произвольного элемента (который выпал из окна), если он не на вершине.</p>
+    <ol>
+<li><strong>Почему мы сохраняем в деке именно индексы, а не сами значения элементов?</strong><br />
+<em>Ответ:</em> Значение само по себе не позволяет определить, находится ли элемент внутри текущего временного интервала скользящего окна $[i - k + 1, i]$. Индекс дает полную информацию: он позволяет мгновенно проверить актуальность окна за $O(1)$ и получить само значение через <code>nums[idx]</code>.</li>
+<li><strong>Как адаптировать монотонную очередь для поиска минимума?</strong><br />
+<em>Ответ:</em> Достаточно инвертировать условие очистки хвоста: выбивать элементы, которые <strong>больше либо равны</strong> входящему (<code>nums[dq.Back()] &gt;= nums[i]</code>). Тогда на голове дека всегда будет минимальный элемент.</li>
+</ol>
   </div>
 </div>
 
 <h2 id="itog">Итог</h2>
 
-<p>Монотонная очередь (Deque) — это паттерн, сочетающий в себе логику "линии видимости" монотонного стека и FIFO-природу окна. <br />
-Для Go-разработчика ключевым навыком здесь является не просто зазубривание алгоритма, а способность написать <code>Deque</code> так, чтобы он не "протек" по памяти при обработке бесконечных потоков.</p>
-<p>Заложив этот мощный фундамент, мы можем вернуться к структурным абстракциям. На собеседованиях часто проверяют способность инженера собирать сложные механизмы из простых. В следующей статье мы разберем классическую архитектурную головоломку: <a href="3-implement-queue-using-stacks.html" class="wikilink">3. Implement Queue using Stacks</a>.</p>
+<p>Монотонный дек — это вершина алгоритмической оптимизации для скользящих окон. Он превращает тяжелые поиски экстремумов из $O(N \times K)$ в мгновенный линейный проход $O(N)$.</p>
+<p>Закрепив фундаментальные концепции очередей и деков, вернемся к классической инженерной головоломке, которую так любят задавать на скринингах для проверки понимания инвариантов: <a href="3-implement-queue-using-stacks.html" class="wikilink">3. Implement Queue using Stacks</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2422,7 +2495,7 @@ func maxSlidingWindow(nums []int, k int) []int {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#chto-takoe-monotonnaya-ochered">Что такое Монотонная Очередь?</a></li><li class="toc-item toc-h3"><a href="#glavnoe-pravilo-na-primere-poiska-maksimuma">Главное правило (на примере поиска максимума)</a></li><li class="toc-item toc-h2"><a href="#problema-slicing-a-v-go-i-memory-drag">Проблема Slicing-а в Go и Memory Drag</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-reshenie-cherez-indeksy">Mechanical Sympathy: Решение через индексы</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h3"><a href="#primenenie-shablon-skolzyashchego-okna">Применение: Шаблон скользящего окна</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-vremennaya-slozhnost-i-kesh">Взгляд под капот: Временная сложность и Кэш</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#ot-monotonnogo-steka-k-skolzyashchemu-oknu-dvustoronnyaya-ochered-deque">От монотонного стека к скользящему окну: Двусторонняя очередь (Deque)</a></li><li class="toc-item toc-h2"><a href="#invariant-monotonnogo-deka">Инвариант Монотонного Дека</a></li><li class="toc-item toc-h3"><a href="#pravilo-podderzhaniya-maksimuma-strictly-decreasing-deque">Правило поддержания максимума (Strictly Decreasing Deque):</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-problema-slaysinga-v-go">Mechanical Sympathy: Проблема слайсинга в Go</a></li><li class="toc-item toc-h3"><a href="#idiomatichnyy-podkhod-virtualnyy-ukazatel-golovy">Идиоматичный подход: Виртуальный указатель головы</a></li><li class="toc-item toc-h2"><a href="#kanonicheskiy-shablon-skolzyashchego-okna">Канонический шаблон скользящего окна</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-vremennaya-slozhnost-i-cpu-kesh">Взгляд под капот: Временная сложность и CPU-кэш</a></li><li class="toc-item toc-h3"><a href="#amortizirovannaya-slozhnost-on">Амортизированная сложность: $O(N)$</a></li><li class="toc-item toc-h3"><a href="#sravnenie-s-prioritetnoy-ocheredyu-max-heap">Сравнение с Приоритетной очередью (Max-Heap)</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 
