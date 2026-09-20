@@ -363,47 +363,47 @@ sources/22. Вопросы и ответы с собеседований по Go
 
 ### Файл 18: Базы данных. Теория
 
-- [ ] **Эпиграф** (Грей или Клеппман о ACID)
-- [ ] **Mermaid:** ACID свойства — flowchart с примерами нарушений
-- [ ] **Mermaid:** Уровни изоляции транзакций и аномалии (таблица → flowchart)
-- [ ] **Mermaid:** B-tree vs LSM-tree — сравнение write/read path
-- [ ] **Callout `[!INTERVIEW]`:** «Что такое Serializable vs Repeatable Read?»
+- [x] **Эпиграф** (Грей или Клеппман о ACID)
+- [x] **Mermaid:** ACID свойства — flowchart с примерами нарушений
+- [x] **Mermaid:** Уровни изоляции транзакций и аномалии (таблица → flowchart)
+- [x] **Mermaid:** B-tree vs LSM-tree — сравнение write/read path
+- [x] **Callout `[!INTERVIEW]`:** «Что такое Serializable vs Repeatable Read?»
 
 ### Файл 19: Базы данных в Go
 
-- [ ] **Эпиграф** (об абстракциях доступа к данным)
-- [ ] **Mermaid:** database/sql архитектура (Driver → DB pool → Stmt → Rows)
-- [ ] **Mermaid:** Connection pool lifecycle (MaxOpenConns, MaxIdleConns, ConnMaxLifetime)
-- [ ] **Callout `[!WARNING]`:** забытый `rows.Close()` — goroutine + connection leak
-- [ ] **Callout `[!INTERVIEW]`:** «В чём разница между `db.Query` и `db.Exec`?»
+- [x] **Эпиграф** (об абстракциях доступа к данным)
+- [x] **Mermaid:** database/sql архитектура (Driver → DB pool → Stmt → Rows)
+- [x] **Mermaid:** Connection pool lifecycle (MaxOpenConns, MaxIdleConns, ConnMaxLifetime)
+- [x] **Callout `[!WARNING]`:** забытый `rows.Close()` — goroutine + connection leak
+- [x] **Callout `[!INTERVIEW]`:** «В чём разница между `db.Query` и `db.Exec`?»
 
 ### Файл 20: Очереди и брокеры
 
-- [ ] **Эпиграф** (о асинхронности и слабой связанности)
-- [ ] **Mermaid:** Kafka архитектура (producers → partitions → consumer groups)
-- [ ] **Mermaid:** At-least-once vs Exactly-once vs At-most-once delivery (flowchart)
-- [ ] **Callout `[!INTERVIEW]`:** «Как обеспечить idempotency при exactly-once?»
+- [x] **Эпиграф** (о асинхронности и слабой связанности)
+- [x] **Mermaid:** Kafka архитектура (producers → partitions → consumer groups)
+- [x] **Mermaid:** At-least-once vs Exactly-once vs At-most-once delivery (flowchart)
+- [x] **Callout `[!INTERVIEW]`:** «Как обеспечить idempotency при exactly-once?»
 
 ### Файл 21: System Design. База
 
-- [ ] **Эпиграф** (Клеппман о распределённых системах)
-- [ ] **Mermaid:** CAP-теорема — треугольник с примерами систем (CP: etcd, AP: Cassandra)
-- [ ] **Mermaid:** Consistent hashing — кольцо узлов с virtual nodes
-- [ ] **Mermaid:** Rate limiting паттерны (token bucket / leaky bucket / sliding window)
-- [ ] **Callout `[!INTERVIEW]`:** «Как спроектировать rate limiter для 1M RPS?»
+- [x] **Эпиграф** (Клеппман о распределённых системах)
+- [x] **Mermaid:** CAP-теорема — треугольник с примерами систем (CP: etcd, AP: Cassandra)
+- [x] **Mermaid:** Consistent hashing — кольцо узлов с virtual nodes
+- [x] **Mermaid:** Rate limiting паттерны (token bucket / leaky bucket / sliding window)
+- [x] **Callout `[!INTERVIEW]`:** «Как спроектировать rate limiter для 1M RPS?»
 
 ### Файл 22: System Design. Highload и FinTech
 
-- [ ] **Эпиграф** (о highload и отказоустойчивости)
-- [ ] **Mermaid:** Сага-паттерн (choreography vs orchestration)
-- [ ] **Mermaid:** Circuit Breaker — состояния (closed → open → half-open)
-- [ ] **Callout `[!INTERVIEW]`:** «Как спроектировать систему переводов с гарантией атомарности?»
+- [x] **Эпиграф** (о highload и отказоустойчивости)
+- [x] **Mermaid:** Сага-паттерн (choreography vs orchestration)
+- [x] **Mermaid:** Circuit Breaker — состояния (closed → open → half-open)
+- [x] **Callout `[!INTERVIEW]`:** «Как спроектировать систему переводов с гарантией атомарности?»
 
 ### Критерии приёмки этапа 5:
-- [ ] `python3 builder/build_all.py --all` → exit 0
-- [ ] `python3 builder/audit_all.py` → 0 errors
-- [ ] Каждый файл: эпиграф + минимум 2 Mermaid с цветами
-- [ ] Коммит: `refactor(module22): этап 5 — БД, очереди, System Design (файлы 18–22)`
+- [x] `python3 builder/build_all.py --all` → exit 0
+- [x] `python3 builder/audit_all.py` → 0 errors
+- [x] Каждый файл: эпиграф + минимум 2 Mermaid с цветами
+- [x] Коммит: `refactor(module22): этап 5 — БД, очереди, System Design (файлы 18–22)`
 
 ---
 
