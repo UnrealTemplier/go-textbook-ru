@@ -255,47 +255,47 @@ sources/22. Вопросы и ответы с собеседований по Go
 
 ### Файл 10: Горутины и базовая конкурентность
 
-- [ ] **Эпиграф** (Хоар о CSP и «Communicating Sequential Processes»)
-- [ ] **Mermaid:** Создание горутины — стековый фрейм (g struct, 2KB начальный стек)
-- [ ] **Mermaid:** Паттерн «fan-out / fan-in» — диаграмма потоков данных
-- [ ] **Callout `[!INTERVIEW]`:** «Сколько горутин можно запустить? Что ограничивает?»
-- [ ] **Callout `[!WARNING]`:** goroutine leak — типичные причины и диагностика
+- [x] **Эпиграф** (Хоар о CSP и «Communicating Sequential Processes»)
+- [x] **Mermaid:** Создание горутины — стековый фрейм (g struct, 2KB начальный стек)
+- [x] **Mermaid:** Паттерн «fan-out / fan-in» — диаграмма потоков данных
+- [x] **Callout `[!INTERVIEW]`:** «Сколько горутин можно запустить? Что ограничивает?»
+- [x] **Callout `[!WARNING]`:** goroutine leak — типичные причины и диагностика
 
 ### Файл 11: Каналы и синхронизация
 
 **Новые вопросы:** Q08 (time.Timer/Ticker изменения в 1.23)
 
-- [ ] **Эпиграф** (Роб Пайк: «Don't communicate by sharing memory; share memory by communicating»)
-- [ ] **Mermaid:** Внутреннее устройство hchan (buf, sendx, recvx, sendq, recvq)
-- [ ] **Mermaid:** Select statement — алгоритм выбора готового case (pseudorandom)
-- [ ] **Mermaid:** sync.Mutex — состояния (unlocked → locked → starving mode)
-- [ ] **Callout `[!INTERVIEW]`:** «Чем буферизованный канал отличается от небуферизованного?»
-- [ ] Интегрировать: Q08 (time.Timer Reset() семантика в Go 1.23)
-- [ ] **Callout `[!WARNING]`:** паттерны deadlock с каналами — примеры кода
+- [x] **Эпиграф** (Роб Пайк: «Don't communicate by sharing memory; share memory by communicating»)
+- [x] **Mermaid:** Внутреннее устройство hchan (buf, sendx, recvx, sendq, recvq)
+- [x] **Mermaid:** Select statement — алгоритм выбора готового case (pseudorandom)
+- [x] **Mermaid:** sync.Mutex — состояния (unlocked → locked → starving mode)
+- [x] **Callout `[!INTERVIEW]`:** «Чем буферизованный канал отличается от небуферизованного?»
+- [x] Интегрировать: Q08 (time.Timer Reset() семантика в Go 1.23)
+- [x] **Callout `[!WARNING]`:** паттерны deadlock с каналами — примеры кода
 
 ### Файл 12: Продвинутая конкурентность
 
-- [ ] **Эпиграф** (Лэмпорт о согласованности и параллелизме)
-- [ ] **Mermaid:** sync.Map vs RWMutex+map — когда что применять (flowchart)
-- [ ] **Mermaid:** Lock-free операции (atomic CAS loop)
-- [ ] **Mermaid:** sync.Pool — lifecycle (Get → Put → GC flush)
-- [ ] **Callout `[!INTERVIEW]`:** «Когда sync.Map быстрее RWMutex?»
-- [ ] **Callout `[!WARNING]`:** false sharing — паттерн и предотвращение (cache line 64B)
+- [x] **Эпиграф** (Лэмпорт о согласованности и параллелизме)
+- [x] **Mermaid:** sync.Map vs RWMutex+map — когда что применять (flowchart)
+- [x] **Mermaid:** Lock-free операции (atomic CAS loop)
+- [x] **Mermaid:** sync.Pool — lifecycle (Get → Put → GC flush)
+- [x] **Callout `[!INTERVIEW]`:** «Когда sync.Map быстрее RWMutex?»
+- [x] **Callout `[!WARNING]`:** false sharing — паттерн и предотвращение (cache line 64B)
 
 ### Файл 13: Memory Model и happens-before
 
-- [ ] **Эпиграф** (Лэмпорт — о модели памяти и упорядочивании событий)
-- [ ] **Mermaid:** Happens-before граф (goroutine launch → channel send → channel receive → goroutine exit)
-- [ ] **Mermaid:** Acquire/Release барьеры — что видит CPU vs что видит программист
-- [ ] **Callout `[!WARNING]`:** Double-Checked Locking — почему не работает без atomic
-- [ ] **Callout `[!INTERVIEW]`:** «Что гарантирует запись в канал перед чтением?»
+- [x] **Эпиграф** (Лэмпорт — о модели памяти и упорядочивании событий)
+- [x] **Mermaid:** Happens-before граф (goroutine launch → channel send → channel receive → goroutine exit)
+- [x] **Mermaid:** Acquire/Release барьеры — что видит CPU vs что видит программист
+- [x] **Callout `[!WARNING]`:** Double-Checked Locking — почему не работает без atomic
+- [x] **Callout `[!INTERVIEW]`:** «Что гарантирует запись в канал перед чтением?»
 
 ### Критерии приёмки этапа 3:
-- [ ] `python3 builder/build_all.py --all` → exit 0
-- [ ] `python3 builder/audit_all.py` → 0 errors
-- [ ] Каждый файл: эпиграф + минимум 2 Mermaid с цветами
-- [ ] Q08 интегрирован в файл 11
-- [ ] Коммит: `refactor(module22): этап 3 — конкурентность и memory model (файлы 10–13)`
+- [x] `python3 builder/build_all.py --all` → exit 0
+- [x] `python3 builder/audit_all.py` → 0 errors
+- [x] Каждый файл: эпиграф + минимум 2 Mermaid с цветами
+- [x] Q08 интегрирован в файл 11
+- [x] Коммит: `refactor(module22): этап 3 — конкурентность и memory model (файлы 10–13)`
 
 ---
 
