@@ -2178,19 +2178,24 @@
           </header>
 
           <div class="article-markdown">
-            <p>В прошлой статье <a href="8-koko-eating-bananas.html" class="wikilink">8. Koko Eating Bananas</a> мы познакомились с концепцией поиска по ответу и поняли, как математическая формула помогает избежать тяжелых вычислений.</p>
-<p>Но в реальном production-коде (и в сложных задачах LeetCode) проверка условия (<code>isValid</code>) редко сводится к простой математической формуле. Гораздо чаще предикат представляет собой <strong>симуляцию процесса</strong>.</p>
-<p>Задача <strong>Capacity To Ship Packages Within D Days</strong> (LeetCode 1011) — это квинтэссенция этого подхода. Она объединяет логарифмический поиск с линейным жадным алгоритмом (Greedy Algorithm).</p>
-<p><strong>Суть задачи:</strong> Есть конвейер с посылками, заданными массивом <code>weights</code>. Посылки должны быть погружены на корабль <strong>строго в том порядке, в котором они лежат на конвейере</strong>. Грузоподъемность корабля неизменна каждый день.</p>
-<p>Нужно найти минимальную грузоподъемность, при которой все посылки будут доставлены не более чем за <code>days</code> дней.</p>
+            <blockquote>
+<p><em>«Жадный алгоритм принимает лучшее решение в моменте, но именно глобальный поиск определяет границы его возможностей».</em><br />
+— Дональд Кнут</p>
+</blockquote>
+<p>В статье <a href="8-koko-eating-bananas.html" class="wikilink">8. Koko Eating Bananas</a> мы убедились, как бинарный поиск оптимизирует числовой параметр через замкнутую аналитическую формулу.</p>
+<p>Однако в реальных бэкенд-сервисах предикат проверки редко сводится к элементарному суммированию. Значительно чаще функция валидации представляет собой <strong>симуляцию физического или бизнес-процесса</strong>.</p>
+<p>Задача <strong>Capacity To Ship Packages Within D Days</strong> (LeetCode 1011) — классический образец такого синтеза. Здесь логарифмический поиск выступает в роли внешнего оптимизатора, а внутри каждого шага исполняется линейный жадный алгоритм упаковки (Greedy Simulation).</p>
+<p><strong>Формулировка задачи:</strong> На конвейере находится срез посылок с массами <code>weights</code>. Посылки обязаны грузиться на корабль <strong>строго в исходном порядке следования</strong> (нельзя менять местами или дробить грузы). Каждый рейс длится ровно один день, и корабль имеет фиксированную грузоподъемность $C$.<br />
+Требуется найти <strong>минимальную грузоподъемность $C$</strong>, позволяющую перевезти все посылки не более чем за <code>days</code> дней.</p>
 <hr />
-<h2 id="arkhitektura-zhadnyy-predikat-i-prostranstvo-resheniy">Архитектура: Жадный предикат и Пространство решений</h2>
+<h2 id="arkhitektura-opredelenie-invariantov-prostranstva-poiska">Архитектура: Определение инвариантов пространства поиска</h2>
 
-<p>Чтобы решить задачу через бинарный поиск, нам нужно ответить на три вопроса:</p>
+<p>Пространство возможных значений грузоподъемности $C$ монотонно:</p>
+<p>$$C \in [\max(\text{weights}), \; \sum \text{weights}]$$</p>
 <ol>
-<li><strong>Минимальная граница (<code>left</code>):</strong> Корабль не может разделить одну посылку на части. Значит, его грузоподъемность должна быть как минимум равна весу <strong>самой тяжелой посылки</strong> в массиве. Иначе мы вообще не сможем ее погрузить. <code>left = max(weights)</code>.</li>
-<li><strong>Максимальная граница (<code>right</code>):</strong> В худшем случае (если <code>days = 1</code>), корабль должен увезти все посылки за один рейс. Значит, максимальная полезная грузоподъемность — это <strong>сумма всех весов</strong>. <code>right = sum(weights)</code>.</li>
-<li><strong>Функция проверки <code>isValid(capacity)</code>:</strong> Это жадная симуляция. Мы грузим посылки по очереди, пока не упремся в лимит <code>capacity</code>. Как только следующая посылка не влезает, мы отправляем корабль (закрываем день) и начинаем грузить ее на следующий день. Если итоговое количество дней $\le days$, грузоподъемность подходит.</li>
+<li><strong>Нижняя граница (<code>left = max(weights)</code>):</strong> Корабль физически не способен разрезать посылку пополам. Следовательно, грузоподъемность не может быть меньше самой тяжелой посылки в списке. Если положить <code>left &lt; max(weights)</code>, симуляция зависнет или станет невалидной.</li>
+<li><strong>Верхняя граница (<code>right = sum(weights)</code>):</strong> Если перевезти все посылки требуется за один день (<code>days = 1</code>), корабль обязан вместить весь груз сразу.</li>
+<li><strong>Жадная симуляция (Предикат):</strong> Для тестируемой грузоподъемности $C = mid$ мы последовательно наполняем корабль. Как только добавление следующей посылки превышает $C$, текущий корабль отправляется в плавание (день завершается), а посылка открывает следующий рейс. Если суммарное число дней $\le days$, грузоподъемность $mid$ допустима.</li>
 </ol>
 
 <div class="mermaid-wrapper">
@@ -2206,32 +2211,27 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-subgraph Пространство грузоподъемности - Capacity
-L[&quot;Left = max(weights)&lt;br&gt;Корабль для самой тяжелой&quot;] --- Mid[&quot;Mid&lt;br&gt;Тестируемая вместимость&quot;] --- R[&quot;Right = sum(weights)&lt;br&gt;Один гигантский корабль&quot;]
-end
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
 
-Mid --&gt; Sim{&quot;Жадная симуляция&lt;br&gt;Сколько дней займет?&quot;}
+Start[&quot;Пространство вместимости: [max(weights) ... sum(weights)]&quot;]:::entry --&gt; Sim{&quot;Жадная симуляция:&lt;br&gt;Хватит ли грузоподъемности mid?&quot;}:::warning
 
-Sim --&gt;|&quot;Дней &lt;= D&quot;| GoLeft[&quot;Успеваем!&lt;br&gt;Пробуем корабль поменьше&lt;br&gt;right = mid&quot;]
-Sim --&gt;|&quot;Дней &gt; D&quot;| GoRight[&quot;Не успеваем!&lt;br&gt;Нужен корабль побольше&lt;br&gt;left = mid + 1&quot;]
+Sim --&gt;|&quot;Дней &lt;= days&lt;br&gt;(Уложились в срок)&quot;| GoLeft[&quot;right = mid&lt;br&gt;Пробуем меньшую вместимость&quot;]:::process
+Sim --&gt;|&quot;Дней &gt; days&lt;br&gt;(Не успеваем)&quot;| GoRight[&quot;left = mid + 1&lt;br&gt;Корабль слишком мал&quot;]:::process
+
+GoLeft --&gt; Loop{&quot;left &lt; right?&quot;}:::warning
+GoRight --&gt; Loop
+Loop --&gt;|&quot;Да&quot;| Sim
+Loop --&gt;|&quot;Нет (left == right)&quot;| End[&quot;Возврат left&lt;br&gt;Минимальная оптимальная грузоподъемность&quot;]:::success
   </pre>
 </div>
 
 
 <hr />
-<h2 id="idiomatichnyy-go-kod">Идиоматичный Go-код</h2>
+<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
 
-<p>Этот код демонстрирует идеальный баланс: $O(N)$ для первичного поиска границ и $O(N \log M)$ для бинарного поиска, где $M$ — разница между суммой и максимумом весов.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2243,42 +2243,42 @@ Sim --&gt;|&quot;Дней &gt; D&quot;| GoRight[&quot;Не успеваем!&lt;
   </div>
   <pre class="language-go"><code class="language-go">package main
 
-// shipWithinDays находит минимальную грузоподъемность корабля.
+// shipWithinDays находит минимальную грузоподъемность корабля
+// для доставки всех посылок за days дней.
+// Временная сложность: O(N * log(sum(weights) - max(weights)))
+// Пространственная сложность: O(1)
 func shipWithinDays(weights []int, days int) int {
     left, right := 0, 0
 
-    // 1. Определяем границы поискового пространства за один проход O(N)
+    // 1. Определение границ за один последовательный проход O(N)
     for _, w := range weights {
         if w &gt; left {
-            left = w // Максимальный вес
+            left = w // Нижняя граница: вес максимальной посылки
         }
-        right += w   // Сумма всех весов
+        right += w   // Верхняя граница: сумма всех весов
     }
 
-    // 2. Бинарный поиск по ответу (Lower Bound)
+    // 2. Бинарный поиск оптимальной вместимости
     for left &lt; right {
         mid := int(uint(left+right) &gt;&gt; 1)
 
-        // 3. Предикат: Жадная симуляция погрузки
+        // 3. Жадный предикат: подсчет требуемых дней
         daysNeeded := 1
         currentLoad := 0
 
         for _, w := range weights {
-            // Если добавление текущей посылки превысит лимит корабля
             if currentLoad+w &gt; mid {
-                daysNeeded++     // Отправляем корабль, начинается новый день
-                currentLoad = 0  // Обнуляем текущую загрузку
+                daysNeeded++
+                currentLoad = 0
             }
-            currentLoad += w // Грузим посылку на новый (или текущий) день
+            currentLoad += w
         }
 
-        // 4. Сдвиг границ на основе результатов симуляции
+        // 4. Сжатие границ
         if daysNeeded &lt;= days {
-            // Уложились в срок. Сохраняем mid и пробуем еще меньше.
-            right = mid
+            right = mid // Уложились, пробуем сделать корабль компактнее
         } else {
-            // Не уложились. Эта грузоподъемность слишком мала.
-            left = mid + 1
+            left = mid + 1 // Превысили лимит дней, увеличиваем грузоподъемность
         }
     }
 
@@ -2288,37 +2288,50 @@ func shipWithinDays(weights []int, days int) int {
 </div>
 
 <hr />
-<h2 id="vzglyad-pod-kapot-sinergiya-kesha-i-zhadnykh-algoritmov">Взгляд под капот: Синергия Кэша и Жадных алгоритмов</h2>
+<h2 id="vzglyad-pod-kapot-mechanical-sympathy-i-apparatnyy-prefetcher">Взгляд под капот: Mechanical Sympathy и аппаратный Prefetcher</h2>
 
-<p>Почему предикат <code>isValid</code> работает так быстро, несмотря на то, что мы запускаем внутренний цикл <code>for _, w := range weights</code> десятки раз?</p>
-<p>Ответ кроется в <strong>строгом последовательном доступе (Sequential Access)</strong> и паттерне жадного алгоритма (Greedy Algorithm).</p>
+<p>Несмотря на то, что внутренний цикл симуляции <code>for _, w := range weights</code> исполняется $\approx 30$ раз, алгоритм работает феноменально быстро. Почему?</p>
 <ol>
-<li>Условие задачи ("посылки должны быть отправлены в заданном порядке") избавляет нас от необходимости сортировать массив или искать оптимальные комбинации (как в задаче о рюкзаке - Knapsack Problem). Жадный выбор здесь математически оптимален.</li>
-<li>Процессор обожает линейные проходы. Когда цикл начинает читать слайс <code>weights</code>, аппаратный Prefetcher (упреждающий загрузчик) загружает данные из оперативной памяти в кэш L1 целыми блоками по 64 байта (Cache Lines).</li>
-<li>За время $\approx 20-30$ итераций логарифмического поиска, массив <code>weights</code> (если он не гигантский) навсегда "оседает" в горячем L1/L2 кэше ядра процессора. Все последующие симуляции <code>isValid</code> происходят на скорости регистров процессора, без единого промаха мимо кэша.</li>
+<li><strong>Идеальный последовательный доступ (Spatial Locality):</strong> Элементы среза <code>weights</code> расположены в оперативной памяти строго непрерывным блоком.</li>
+<li><strong>Аппаратный Prefetcher CPU:</strong> При первой итерации симуляции контроллер памяти процессора считывает линии кэша (Cache Lines по 64 байта). Распознав последовательный шаблон доступа, аппаратный префетчер упреждающе закачивает следующие участки массива в кэш L1/L2 еще до того, как код запросит их.</li>
+<li><strong>Регистровая оптимизация:</strong> Переменные <code>daysNeeded</code>, <code>currentLoad</code> и <code>mid</code> на протяжении всего цикла удерживаются в регистрах общего назначения (<code>RAX</code>, <code>RDX</code>, <code>RCX</code>). Операция сложения <code>currentLoad += w</code> не требует обращений в оперативную память.</li>
 </ol>
-<p>Это идеальный пример <strong>Memory-Bound алгоритма, который стал CPU-Bound</strong> за счет правильной организации доступа к памяти.</p>
+<p>В результате алгоритм трансформируется из потенциально медленного Memory-Bound в ультрабыстрый CPU-Bound, исполняемый со скоростью кэша процессора.</p>
+<hr />
+<h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
+
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Неверная нижняя граница</span>
+    <span class="callout-title">Ловушка: Инициализация нижней границы нулем</span>
   </div>
   <div class="callout-body">
-    <p>Кандидаты часто инициализируют границы "на глазок": <code>left = 1</code>.</p>
-<p>Что произойдет в нашей симуляции, если <code>mid</code> окажется меньше веса хотя бы одной посылки <code>w</code>?</p>
-<p>Код: <code>if currentLoad + w &gt; mid</code> сработает. Мы увеличим <code>daysNeeded</code>, сбросим <code>currentLoad</code> в 0. Но затем мы выполним <code>currentLoad += w</code>. Получится, что мы "погрузили" посылку, вес которой больше грузоподъемности корабля! Логика сломается, функция вернет неверное количество дней, и бинарный поиск сойдет с ума.</p>
-<p>Строгая инициализация <code>left = max(weights)</code> — это <strong>фундаментальный инвариант</strong> безопасности этого алгоритма.</p>
+    <p>Если инициализировать нижнюю границу наивно (<code>left = 1</code> или <code>left = 0</code>), алгоритм сломается.<br />
+Если $mid$ окажется меньше веса текущей посылки $w$, условие <code>currentLoad + w &gt; mid</code> сработает, <code>currentLoad</code> сбросится в 0, а затем выполнится <code>currentLoad += w</code>. Получится, что в корабль погрузили посылку, превосходящую его максимальную грузоподъемность! Расчет дней станет невалидным.<br />
+Строгое равенство <code>left = max(weights)</code> — критический инвариант корректности жадной упаковки.</p>
+  </div>
+</div>
+
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования: Батчинг в Message Queue и MTU</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Как этот алгоритм используется в сетевых протоколах и шинах данных?<br />
+<strong>Ответ:</strong> Ровно по этому принципу работает упаковка сетевых пакетов в Ethernet-кадры с фиксированным MTU (Maximum Transmission Unit, обычно 1500 байт), а также агрегация логов перед отправкой в Elastic/ClickHouse: сообщения накапливаются в батч до достижения лимита размера, после чего батч флашится, и начинается формирование нового.</p>
   </div>
 </div>
 
 <hr />
-<h3 id="interaktivnaya-vizualizatsiya-zhadnaya-upakovka">Интерактивная визуализация: Жадная упаковка</h3>
+<h2 id="rezyume-klastera-09-binarnyy-poisk">Резюме Кластера 09 (Бинарный поиск)</h2>
 
-<p>Лучший способ понять монотонность этого алгоритма — увидеть, как изменение грузоподъемности (Capacity) влияет на группировку посылок по дням. Поиграйте с ползунком в виджете ниже, чтобы понять, почему при достижении определенного порога корабли начинают "вмещать" ровно столько, сколько нужно для укладывания в дедлайн.</p>
-<p>Показать визуализацию</p>
-<h2 id="itog">Итог</h2>
-
-<p>Задача <strong>Capacity To Ship Packages Within D Days</strong> учит нас внедрять бизнес-логику (жадную симуляцию) внутрь строгих математических рамок бинарного поиска. Правильное определение границ <code>[max, sum]</code> — это ключ к тому, чтобы симуляция никогда не перешла в неконсистентное состояние.</p>
+<p>Мы завершили фундаментальное исследование бинарного поиска:<br />
+1. <strong>Exact Match (<code>left &lt;= right</code>):</strong> Поиск точного элемента с ранним выходом.<br />
+2. <strong>Lower Bound (<code>left &lt; right</code>):</strong> Поиск точки вставки, первого дефекта и минимального элемента в непрерывном пространстве ответов.<br />
+3. <strong>Повернутые массивы:</strong> Использование инварианта упорядоченной половины.<br />
+4. <strong>Поиск по ответу:</strong> Решение задач оптимизации через монотонные предикаты и жадные симуляции.</p>
+<p>В следующем кластере мы перейдем к алгоритмам полного перебора с возвратом и ветвлением пространства состояний — разделу <strong>Backtracking</strong>: <a href="../10-backtracking/1-teoriya-backtracking.html" class="wikilink">1. Теория. Backtracking</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2346,7 +2359,7 @@ func shipWithinDays(weights []int, days int) int {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#arkhitektura-zhadnyy-predikat-i-prostranstvo-resheniy">Архитектура: Жадный предикат и Пространство решений</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-kod">Идиоматичный Go-код</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-sinergiya-kesha-i-zhadnykh-algoritmov">Взгляд под капот: Синергия Кэша и Жадных алгоритмов</a></li><li class="toc-item toc-h3"><a href="#interaktivnaya-vizualizatsiya-zhadnaya-upakovka">Интерактивная визуализация: Жадная упаковка</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-opredelenie-invariantov-prostranstva-poiska">Архитектура: Определение инвариантов пространства поиска</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy-i-apparatnyy-prefetcher">Взгляд под капот: Mechanical Sympathy и аппаратный Prefetcher</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#rezyume-klastera-09-binarnyy-poisk">Резюме Кластера 09 (Бинарный поиск)</a></li>
   </ul>
 </aside>
 

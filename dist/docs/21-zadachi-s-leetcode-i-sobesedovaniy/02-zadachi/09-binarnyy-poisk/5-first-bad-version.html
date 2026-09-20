@@ -2171,22 +2171,29 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~12 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">5. First Bad Version</h1>
           </header>
 
           <div class="article-markdown">
-            <p>В статье <a href="4-search-insert-position.html" class="wikilink">4. Search Insert Position</a> мы научились искать абстрактную границу в физическом массиве, который целиком лежит в оперативной памяти. Но в реальной инженерии мы часто не имеем доступа ко всем данным сразу. Данные могут лежать в базе данных, за сетевым балансировщиком или генерироваться "на лету" тяжелыми вычислениями.</p>
-<p>Задача <strong>First Bad Version</strong> (LeetCode 278) — это классический пример бинарного поиска поверх <strong>абстрактного API (черного ящика)</strong>. В мире DevOps и бэкенда этот алгоритм каждый день используется инструментом <code>git bisect</code>, чтобы за логарифмическое время найти конкретный коммит, который сломал сборку.</p>
-<p><strong>Суть задачи:</strong> У вас есть продукт с версиями от $1$ до $n$. Известно, что одна из версий стала "плохой" (бажной), и все последующие версии тоже стали плохими. Дан API <code>isBadVersion(version int) bool</code>. Нужно найти первую плохую версию, минимизировав количество вызовов API.</p>
+            <blockquote>
+<p><em>«Поиск первой ошибки во времени — это всегда поиск точки перелома между тем, что работало, и тем, что сломалось».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>В статье <a href="4-search-insert-position.html" class="wikilink">4. Search Insert Position</a> мы научились находить границу в физическом массиве, непрерывно лежащем в оперативной памяти. Но в реальной инженерии мы редко имеем дело со статическими срезами. Данные могут находиться за сетевым RPC-вызовом, лежать в распределенной базе данных или вычисляться на лету тяжелой функцией.</p>
+<p>Задача <strong>First Bad Version</strong> (LeetCode 278) — это фундаментальный пример бинарного поиска поверх <strong>абстрактного предиката (черного ящика)</strong>. В повседневной инженерной практике ровно этот алгоритм лежит в основе инструмента <code>git bisect</code>, позволяющего локализовать баговый коммит в истории репозитория из десятков тысяч ревизий за $O(\log N)$ шагов.</p>
+<p><strong>Формулировка задачи:</strong> Продукт имеет версионирование от $1$ до $n$. Начиная с некоторой версии $k$, сборка сломалась, и все последующие версии ($k, k+1, \dots, n$) также являются дефектными. Предоставлен API-метод <code>isBadVersion(version int) bool</code>. Необходимо найти номер первой сломанной версии $k$, минимизировав количество обращений к API.</p>
 <hr />
-<h2 id="arkhitektura-mapping-na-lower-bound">Архитектура: Маппинг на Lower Bound</h2>
+<h2 id="arkhitektura-monotonnyy-predikat-i-lower-bound">Архитектура: Монотонный предикат и Lower Bound</h2>
 
-<p>Массива у нас нет, но у нас есть <strong>монотонная функция</strong>. Вызовы <code>isBadVersion</code> от $1$ до $n$ всегда дадут последовательность вида:<br />
-<code>[false, false, false, ..., true, true, true]</code></p>
-<p>Наша задача — найти индекс первого <code>true</code>. Это абсолютно идентично поиску позиции для вставки (Lower Bound), только вместо обращения по индексу <code>nums[mid] &gt;= target</code> мы вызываем функцию <code>isBadVersion(mid)</code>.</p>
+<p>Хотя физического массива нет, последовательность результатов вызова <code>isBadVersion(i)</code> от $i = 1$ до $n$ формирует строго <strong>монотонную булеву последовательность</strong>:</p>
+<p>$$\underbrace{[\text{false}, \text{false}, \dots, \text{false}]}<em>{\text{Рабочие версии}} \;\underbrace{[\text{true}, \text{true}, \dots, \text{true}]}</em>{\text{Сломанные версии}}$$</p>
+<p>Задача сводится к поиску первого индекса со значением <code>true</code>. Это классический паттерн <strong>Lower Bound</strong>:<br />
+1. Границы диапазона: <code>left = 1</code>, <code>right = n</code>. Поскольку гарантируется, что хотя бы одна плохая версия существует, ответ лежит строго в отрезке $[1, n]$.<br />
+2. Если <code>isBadVersion(mid) == true</code>: версия <code>mid</code> дефектна. Она может быть как первой плохой, так и одной из последующих. Мы не можем исключать <code>mid</code>, поэтому сжимаем правую границу: <code>right = mid</code>.<br />
+3. Если <code>isBadVersion(mid) == false</code>: версия <code>mid</code> исправна. Первая ошибка гарантированно появилась позже. Сдвигаем левую границу: <code>left = mid + 1</code>.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2201,35 +2208,27 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-subgraph Поиск первой плохой версии
-Min[&quot;Версия 1&lt;br&gt;Good - false&quot;] --- Mid[&quot;Версия Mid&quot;] --- Max[&quot;Версия n&lt;br&gt;Bad - true&quot;]
-end
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
 
-Mid --&gt; API{&quot;Вызов isBadVersion-mid-&quot;}
+Start[&quot;Интервал версий: [1 ... n]&quot;]:::entry --&gt; Check{&quot;isBadVersion(mid) == true?&quot;}:::warning
 
-API --&gt;|&quot;Вернул true&quot;| GoLeft[&quot;Сдвигаем right = mid&lt;br&gt;Ищем более ранний баг&quot;]
-API --&gt;|&quot;Вернул false&quot;| GoRight[&quot;Сдвигаем left = mid + 1&lt;br&gt;Баг появился позже&quot;]
+Check --&gt;|&quot;Да (версия плохая)&lt;br&gt;Кандидат найден&quot;| GoLeft[&quot;right = mid&lt;br&gt;Ищем более ранний сбой&quot;]:::process
+Check --&gt;|&quot;Нет (версия чистая)&lt;br&gt;Сбой случился позже&quot;| GoRight[&quot;left = mid + 1&lt;br&gt;Исключаем чистую часть&quot;]:::process
 
-GoLeft -.-&gt; Min
-GoRight -.-&gt; Max
+GoLeft --&gt; Loop{&quot;left &lt; right?&quot;}:::warning
+GoRight --&gt; Loop
+Loop --&gt;|&quot;Да&quot;| Check
+Loop --&gt;|&quot;Нет (left == right)&quot;| End[&quot;Возврат left&lt;br&gt;Первая дефектная версия&quot;]:::success
   </pre>
 </div>
 
 
 <hr />
-<h2 id="idiomatichnyy-go-kod">Идиоматичный Go-код</h2>
+<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
 
-<p>Используем эталонный шаблон с полуинтервалом, который мы вывели в прошлых статьях.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2241,78 +2240,81 @@ GoRight -.-&gt; Max
   </div>
   <pre class="language-go"><code class="language-go">package main
 
-// Предполагается, что эта функция реализована где-то в системе.
+// isBadVersion предоставлен рантаймом/внешним API:
 // func isBadVersion(version int) bool
 
-// firstBadVersion находит первую версию с багом.
+// firstBadVersion находит номер первой дефектной версии.
+// Временная сложность: O(log N) обращений к API
+// Пространственная сложность: O(1)
 func firstBadVersion(n int) int {
-    // Границы: версии начинаются с 1 и заканчиваются n.
-    // right инициализируем как n, так как по условию баг ГАРАНТИРОВАННО есть,
-    // и в худшем случае это самая последняя версия.
     left, right := 1, n
 
     for left &lt; right {
-        // Быстрое вычисление середины с защитой от целочисленного переполнения
+        // Защита от переполнения 32-битного int при больших n
         mid := int(uint(left+right) &gt;&gt; 1)
 
         if isBadVersion(mid) {
-            // Текущая версия сломана. 
-            // Она может быть первой сломанной, а может и нет.
-            // Сужаем окно поиска влево, оставляя mid в качестве кандидата.
+            // mid сломан, ищем левее, сохраняя mid как кандидата
             right = mid
         } else {
-            // Текущая версия рабочая.
-            // Значит, первая сломанная версия строго позже.
+            // mid исправен, первый сбой строго справа
             left = mid + 1
         }
     }
 
-    // Когда left и right схлопнулись в одну точку, мы нашли ответ.
+    // По сходимости left == right указывает на первую плохую версию
     return left
 }
 </code></pre>
 </div>
 
 <hr />
-<h2 id="vzglyad-pod-kapot-mechanical-sympathy-i-tsena-vyzova">Взгляд под капот: Mechanical Sympathy и Цена Вызова</h2>
+<h2 id="vzglyad-pod-kapot-mechanical-sympathy-i-tsena-abstraktsii">Взгляд под капот: Mechanical Sympathy и цена абстракции</h2>
 
-<p>Для начинающего алгоритмиста разница между обращением к элементу массива <code>nums[mid]</code> и вызовом функции <code>isBadVersion(mid)</code> минимальна. Но для Principal Engineer-а это два принципиально разных мира.</p>
-<h3 id="1-function-call-overhead-nakladnye-raskhody">1. Function Call Overhead (Накладные расходы)</h3>
-<p>Доступ к элементу слайса <code>nums[mid]</code> (при вырезанном Bounds Check) компилируется в одну ассемблерную инструкцию <code>MOV</code>, выполняемую за долю наносекунды.<br />
-Вызов функции <code>isBadVersion</code> — это прыжок (Jump) к другому участку машинного кода. Если эта функция сложная, компилятор Go не сможет её заинлайнить (Inline). При каждом вызове:<br />
-- В регистры (или на стек) складываются аргументы.<br />
-- Выполняется инструкция <code>CALL</code>.<br />
-- Сбрасывается часть конвейера процессора (Pipeline).<br />
-- Функция может аллоцировать память, заставляя переменные "убегать" в кучу (Escape Analysis).</p>
-<p>Бинарный поиск сокращает количество таких вызовов с $O(N)$ до $O(\log N)$. Для $n = 1\ 000\ 000$ мы делаем всего $\approx 20$ вызовов вместо $1\ 000\ 000$.</p>
-<h3 id="2-io-bound-vs-cpu-bound">2. IO-Bound vs CPU-Bound</h3>
-<p>В реальной системе <code>isBadVersion</code> — это почти наверняка RPC-вызов к другому микросервису по gRPC (сетевая задержка $\sim 1$-2 мс) или запрос к базе данных (задержка $\sim 5$ мс).<br />
-В этом сценарии бинарный поиск перестает быть алгоритмом, упирающимся в процессор или кэш (CPU Bound / Memory Bound). Он становится алгоритмом, упирающимся в ввод-вывод (IO Bound). Экономия на сетевых задержках — это главная причина, почему бинарный поиск применяется в распределенных системах (например, в алгоритмах консенсуса вроде Raft для синхронизации логов).</p>
+<h3 id="1-nakladnye-raskhody-na-vyzov-funktsii-call-overhead">1. Накладные расходы на вызов функции (Call Overhead)</h3>
+<p>В задаче <a href="3-binary-search.html" class="wikilink">3. Binary Search</a> доступ к <code>nums[mid]</code> выполнялся за $\sim 0.5$ нс (одна инструкция <code>MOV</code> из L1-кэша). В <code>firstBadVersion</code> каждый шаг — это вызов функции:<br />
+- Если <code>isBadVersion</code> не может быть заинлайнена (например, из-за внешнего связывания или сложности), рантайм выполняет инструкцию <code>CALL</code>, переключение стековых кадров и сохранение регистров caller-saved.<br />
+- При $N = 2 \times 10^9$ последовательный перебор $O(N)$ занял бы годы. Бинарный поиск делает всего 31 вызов функции, сокращая время работы до микросекунд.</p>
+<h3 id="2-iz-cpu-bound-v-io-bound">2. Из CPU-Bound в I/O-Bound</h3>
+<p>В реальных production-системах (например, распределенная трассировка или репликация WAL-логов) <code>isBadVersion</code> — это не ассемблерная функция, а сетевой RPC по gRPC или HTTP к удаленному узлу.<br />
+- Каждый сетевой вызов стоит от $0.5$ до $5$ миллисекунд.<br />
+- Алгоритм становится полностью зависимым от I/O (I/O-Bound). Сокращение числа сетевых запросов с 1000 до 10 экономит 5 секунд клиентского времени.</p>
+<hr />
+<h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
+
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Превышение лимитов (Time Limit Exceeded)</span>
+    <span class="callout-title">Ловушка: Антипаттерн кэширования в `map`</span>
   </div>
   <div class="callout-body">
-    <p>На собеседованиях кандидаты часто пытаются оптимизировать бинарный поиск, кешируя результаты вызова <code>isBadVersion</code> в <code>map[int]bool</code>, думая, что это ускорит повторные проверки.<br />
-<strong>Это антипаттерн!</strong> Логика логарифмического поиска устроена так, что мы <strong>никогда</strong> не проверяем один и тот же <code>mid</code> дважды (на каждой итерации границы строго сужаются). Использование мапы только замедлит код за счет аллокаций и хеширования, не сэкономив ни одного вызова API.</p>
+    <p>Кандидаты нередко предлагают: <em>«Давайте обернем вызовы <code>isBadVersion</code> в кэш <code>map[int]bool</code>, чтобы не делать повторных запросов»</em>.<br />
+Это грубая ошибка понимания инвариантов бинарного поиска:<br />
+- На каждом шаге полуинтервал $[left, right)$ строго сжимается.<br />
+- Центральная точка <code>mid</code> <strong>никогда не проверяется дважды</strong> в течение одного цикла поиска.<br />
+- Создание хэш-таблицы приведет лишь к паразитным аллокациям в куче (<code>runtime.makemap</code>), накладным расходам на хеширование и нагрузке на сборщик мусора (GC) без единого Cache Hit!</p>
   </div>
 </div>
 
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование: Тестирование распределенных систем</span>
+    <span class="callout-title">Вопрос с собеседования: Локализация деградаций в CI/CD</span>
   </div>
   <div class="callout-body">
-    <p>Если вас спросят, как протестировать распределенную транзакцию, которая сломалась где-то в цепочке из 10 микросервисов, вы можете смело сослаться на этот паттерн. Вместо того чтобы читать логи всех 10 сервисов последовательно, вы опрашиваете 5-й сервис (середину). Если в нем данные уже испорчены, вы "сужаете окно" до сервисов 1-4. Если нет — до 6-10. Это реальное применение First Bad Version в System Design.</p>
+    <p><strong>Вопрос:</strong> Как устроен <code>git bisect run &lt;test_script&gt;</code> и почему иногда бинарный поиск по истории коммитов находит ложный результат?<br />
+<strong>Ответ:</strong> <code>git bisect</code> использует бинарный поиск по топологически отсортированному DAG коммитов. Поиск работает корректно только при строгой монотонности предиката: если коммит сломан, все его потомки сломаны. Если в ветку попал flaky-тест (мигающий) или коммит, который временно чинит билд обходным путем, монотонность нарушается, и бинарный поиск попадает в локальный ложный оптимум. Для борьбы с этим применяют повторные прогоны на подозрительных коммитах.</p>
   </div>
 </div>
 
-<h2 id="itog">Итог</h2>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
-<p>Задача <strong>First Bad Version</strong> учит абстрагировать алгоритм поиска от физического хранения данных. Мы используем монотонность бизнес-логики для навигации по пространству решений, экономя колоссальное количество времени и сетевых ресурсов.</p>
-<p>До этого момента мы работали со строго отсортированными и монотонными функциями. Но что, если массив был отсортирован, а затем его "разрезали" и поменяли куски местами? Логика монотонности ломается. Разбор этого популярного класса хардкорных задач мы начнем со следующей статьи: <a href="6-find-minimum-in-rotated-sorted-array.html" class="wikilink">6. Find Minimum in Rotated Sorted Array</a>.</p>
+<p>Паттерн поиска по предикату позволяет применять бинарный поиск к системам любой сложности:<br />
+- Физический массив не требуется — достаточно монотонности булевой функции $[0, \dots, 0, 1, \dots, 1]$.<br />
+- Сходимость полуинтервала $left = right$ гарантирует минимальное число вызовов $O(\log N)$.<br />
+- Никакой избыточной памяти и хэш-таблиц — только чистая работа регистров.</p>
+<p>В следующей лекции мы разберем случай, когда монотонность данных нарушена циклическим сдвигом: <a href="6-find-minimum-in-rotated-sorted-array.html" class="wikilink">6. Find Minimum in Rotated Sorted Array</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2340,7 +2342,7 @@ func firstBadVersion(n int) int {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#arkhitektura-mapping-na-lower-bound">Архитектура: Маппинг на Lower Bound</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-kod">Идиоматичный Go-код</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy-i-tsena-vyzova">Взгляд под капот: Mechanical Sympathy и Цена Вызова</a></li><li class="toc-item toc-h3"><a href="#1-function-call-overhead-nakladnye-raskhody">1. Function Call Overhead (Накладные расходы)</a></li><li class="toc-item toc-h3"><a href="#2-io-bound-vs-cpu-bound">2. IO-Bound vs CPU-Bound</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-monotonnyy-predikat-i-lower-bound">Архитектура: Монотонный предикат и Lower Bound</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy-i-tsena-abstraktsii">Взгляд под капот: Mechanical Sympathy и цена абстракции</a></li><li class="toc-item toc-h3"><a href="#1-nakladnye-raskhody-na-vyzov-funktsii-call-overhead">1. Накладные расходы на вызов функции (Call Overhead)</a></li><li class="toc-item toc-h3"><a href="#2-iz-cpu-bound-v-io-bound">2. Из CPU-Bound в I/O-Bound</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

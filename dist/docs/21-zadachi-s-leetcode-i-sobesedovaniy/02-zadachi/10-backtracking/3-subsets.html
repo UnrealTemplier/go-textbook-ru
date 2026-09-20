@@ -2171,94 +2171,27 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~19 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~11 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">3. Subsets</h1>
           </header>
 
           <div class="article-markdown">
-            <p><strong>LeetCode 78. Subsets.</strong> Дан целочисленный массив <code>nums</code>, все элементы которого <strong>уникальны</strong>. Требуется вернуть <strong>все возможные подмножества</strong> (включая пустое) в виде списка списков. Порядок элементов внутри подмножества не важен, как и порядок самих подмножеств в ответе, но обычно ожидают лексикографический или естественный порядок обхода.</p>
-<p>Эта задача — идеальный старт для практики backtracking после теоретического каркаса из <a href="2-generatsiya-kombinatsiy.html" class="wikilink">2. Генерация комбинаций</a>. Она минималистична: нет дубликатов (в отличие от <a href="4-subsets-ii.html" class="wikilink">4. Subsets II</a>), нет ограничений на сумму или размер. Здесь мы впервые применяем полный цикл «добавил элемент → рекурсия → откатил» для генерации степенного множества, и именно на этом примере Senior Go-разработчик показывает, как переиспользование одного слайса и аккуратное копирование результата превращают экспоненциальный алгоритм в образец эффективности без скрытых аллокаций.</p>
-<h3 id="formulirovka-i-utochneniya">Формулировка и уточнения</h3>
+            <blockquote>
+<p><em>«Всякое множество содержит в себе все свои части, и мудрость состоит в том, чтобы перечислить их, ни разу не повторившись».</em><br />
+— Бертран Рассел</p>
+</blockquote>
+<p>Задача <strong>Subsets</strong> (LeetCode 78) — фундаментальная азбука комбинаторного поиска.<br />
+<strong>Условие:</strong> Дан целочисленный срез <code>nums</code>, все элементы которого <strong>строго уникальны</strong>. Требуется вернуть булеан множества (степенное множество, Power Set) — список всех возможных подмножеств (включая пустое).</p>
+<p>На этом примере senior-инженер демонстрирует эталонную культуру работы со структурами данных Go: как развернуть экспоненциальное пространство состояний $O(2^N)$ с <strong>абсолютно нулевыми промежуточными аллокациями</strong> и почему предварительное выделение емкости буфера спасает стек от фрагментации.</p>
+<hr />
+<h2 id="arkhitektura-derevo-prostranstva-sostoyaniy-dlya-nums-1-2-3">Архитектура: Дерево пространства состояний для `nums = [1, 2, 3]`</h2>
 
-<p><strong>Условие:</strong> функция <code>subsets(nums []int) [][]int</code>. Все элементы <code>nums</code> уникальны, длина <code>n</code> от 0 до 10.</p>
-<p><strong>Вопросы интервьюеру (Senior-стиль):</strong><br />
-- <em>Может ли <code>nums</code> быть пустым?</em> Да, тогда ответ — <code>&lt;span class="wikilink-unresolved" title="Заметка в разработке"&gt;&lt;/span&gt;</code> (множество, содержащее только пустое подмножество).<br />
-- <em>Допустимы ли отрицательные числа?</em> Да, значения любые, это не влияет на логику.<br />
-- <em>Важен ли порядок подмножеств?</em> Обычно нет, но естественный порядок генерации через backtracking даст лексикографический (по индексам) без дополнительных усилий.<br />
-- <em>Можно ли изменять входной массив?</em> Мы его не модифицируем, только читаем.</p>
-<p>Ответы фиксируют выбор: рекурсивный backtracking с параметром <code>start</code>, где на каждом шагу мы принимаем решение, включать ли <code>nums[i]</code> или нет.</p>
-<h3 id="naivnoe-reshenie-iterativnoe-rasshirenie">Наивное решение: итеративное расширение</h3>
-
-<p>Существует простой итеративный метод: начать с <code>&lt;span class="wikilink-unresolved" title="Заметка в разработке"&gt;&lt;/span&gt;</code>, затем для каждого элемента <code>num</code> из <code>nums</code> создать новые подмножества, добавив <code>num</code> ко всем существующим. Время O(N * 2^N), память O(2^N) для хранения всех результатов. Это работает, но требует постоянного копирования и расширения слайса, что может порождать множество аллокаций. Более того, это не демонстрирует владение backtracking, который ожидается на собеседовании.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func subsetsIterative(nums []int) [][]int {
-    res := [][]int{{}}
-    for _, num := range nums {
-        n := len(res)
-        for i := 0; i &lt; n; i++ {
-            // Копируем существующее подмножество и добавляем num
-            subset := make([]int, len(res[i]))
-            copy(subset, res[i])
-            subset = append(subset, num)
-            res = append(res, subset)
-        }
-    }
-    return res
-}
-</code></pre>
-</div>
-
-<p>Этот код корректен, но на собеседовании Senior сразу предложит backtracking, объяснив его преимущества: единый буфер для построения, меньше аллокаций, естественная рекурсивная структура.</p>
-<h3 id="optimalnoe-reshenie-backtracking-s-pereispolzovaniem-slaysa">Оптимальное решение: backtracking с переиспользованием слайса</h3>
-
-<p><strong>Идея.</strong> Мы рекурсивно обходим индексы массива. На каждом шагу у нас есть текущее состояние <code>cur</code> (собранное подмножество) и индекс <code>start</code>, с которого можно продолжать добавление. Мы <strong>всегда</strong> сохраняем копию <code>cur</code> в результат, потому что любое промежуточное состояние — валидное подмножество. Затем для каждого <code>i</code> от <code>start</code> до <code>n-1</code> добавляем <code>nums[i]</code> в <code>cur</code>, вызываем рекурсию с <code>i+1</code> и откатываем добавление.</p>
-<p><strong>Инвариант цикла:</strong> после обработки всех элементов правее <code>start</code>, слайс <code>cur</code> возвращается в то же состояние, что и до начала цикла. Это гарантирует, что ветви не загрязняют друг друга.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func subsets(nums []int) [][]int {
-    var res [][]int
-    var cur []int
-    var backtrack func(start int)
-    backtrack = func(start int) {
-        // Сохраняем копию текущего подмножества
-        cp := make([]int, len(cur))
-        copy(cp, cur)
-        res = append(res, cp)
-
-        for i := start; i &lt; len(nums); i++ {
-            cur = append(cur, nums[i])
-            backtrack(i + 1)
-            cur = cur[:len(cur)-1] // откат
-        }
-    }
-    backtrack(0)
-    return res
-}
-</code></pre>
-</div>
-
-<p><strong>Go-идиомы и комментарии:</strong><br />
-- <code>cur</code> — единственный мутабельный слайс, переиспользуемый между всеми ветвями. Это минимизирует аллокации: все промежуточные состояния живут в одном нижележащем массиве (пока хватает capacity).<br />
-- <code>cp := make([]int, len(cur)); copy(cp, cur)</code> — обязательная копия перед сохранением. Без неё все элементы <code>res</code> будут указывать на один и тот же массив и в конце станут идентичными.<br />
-- <code>backtrack</code> — замыкание, захватывающее <code>res</code>, <code>cur</code> и <code>nums</code>. Это чище, чем передавать множество параметров.<br />
-- Порядок обхода гарантирует, что подмножества генерируются в лексикографическом порядке индексов без дополнительной сортировки.</p>
+<p>Существует два равноправных взгляда на генерацию степенного множества:<br />
+1. <strong>Бинарное дерево (Include / Exclude):</strong> для каждого элемента мы делаем ровно два выбора: берем его в подмножество или пропускаем.<br />
+2. <strong>N-арное дерево префиксов (Start-loop):</strong> каждая вершина дерева сохраняется как валидное подмножество, а ребра представляют выбор следующего элемента с индексом <code>i &gt;= start</code>.</p>
+<p>Ниже представлено дерево состояний алгоритма со счетчиком <code>start</code> для массива <code>[1, 2, 3]</code>:</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2272,82 +2205,168 @@
     </button>
   </div>
   <pre class="mermaid">
-flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;backtrack(0):::process&quot;] --&gt; B[&quot;Сохранить копию cur&quot;]
-B --&gt; C{&quot;i = start..n-1&quot;}
-C --&gt; D[&quot;cur = append(cur, nums[i])&quot;]
-D --&gt; E[&quot;backtrack(i+1)&quot;]
-E --&gt; F[&quot;cur = cur[&quot;:len(cur)-1&quot;]&quot;]
-F --&gt; C
-C --&gt;|&quot;конец&quot;| G[&quot;Выход&quot;]
+flowchart TD
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+
+Root[&quot;Корень: []&quot;]:::entry
+
+%% Ветви первого уровня
+Root --&gt;|&quot;выбор 1&quot;| N1[&quot;[1]&quot;]:::process
+Root --&gt;|&quot;выбор 2&quot;| N2[&quot;[2]&quot;]:::process
+Root --&gt;|&quot;выбор 3&quot;| N3[&quot;[3]&quot;]:::success
+
+%% Ветви от [1]
+N1 --&gt;|&quot;выбор 2&quot;| N12[&quot;[1, 2]&quot;]:::process
+N1 --&gt;|&quot;выбор 3&quot;| N13[&quot;[1, 3]&quot;]:::success
+N12 --&gt;|&quot;выбор 3&quot;| N123[&quot;[1, 2, 3]&quot;]:::success
+
+%% Ветви от [2]
+N2 --&gt;|&quot;выбор 3&quot;| N23[&quot;[2, 3]&quot;]:::success
   </pre>
 </div>
 
 
-<h3 id="pochemu-iterativnoe-reshenie-ne-idealno-dlya-demonstratsii-glubiny">Почему итеративное решение не идеально для демонстрации глубины</h3>
+<p>Каждый узел этого дерева (включая корень <code>[]</code>) представляет собой уникальное подмножество. Всего генерируется ровно $2^3 = 8$ подмножеств:<br />
+<code>[]</code>, <code>[1]</code>, <code>[1, 2]</code>, <code>[1, 2, 3]</code>, <code>[1, 3]</code>, <code>[2]</code>, <code>[2, 3]</code>, <code>[3]</code>.</p>
+<hr />
+<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
 
-<p>Итеративный метод подходит для быстрого решения, но он менее гибок: если в задаче появятся дополнительные условия (например, Subsets II с дубликатами, требующими пропуска), backtracking с отсечениями адаптируется естественно, а итеративный — с трудом. Кроме того, backtracking демонстрирует понимание рекурсивного обхода дерева состояний, что является ключевым для многих сложных задач.</p>
-<h3 id="edge-cases">Edge Cases</h3>
 
-<ul>
-<li><strong>Пустой массив:</strong> <code>n = 0</code>. <code>backtrack(0)</code> сразу сохранит копию пустого <code>cur</code> и выйдет из цикла (так как <code>start = len(nums) = 0</code>). Результат: <code>&lt;span class="wikilink-unresolved" title="Заметка в разработке"&gt;&lt;/span&gt;</code>.</li>
-<li><strong>Один элемент:</strong> <code>[1]</code>. Генерируются <code>[]</code> и <code>[1]</code>. Корректно.</li>
-<li><strong>Максимальная длина (N=10):</strong> 2^10 = 1024 подмножества. Отлично вписывается в лимиты. Механизм отката на слайсе с начальным <code>cap</code> 0 будет расширяться до 10, что не создаёт проблем.</li>
-</ul>
-<h3 id="analiz-slozhnosti">Анализ сложности</h3>
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package main
 
-<ul>
-<li><strong>Время:</strong> O(N * 2^N). Количество подмножеств — 2^N. Для каждого подмножества мы тратим O(N) на копирование в результат (длина подмножества ≤ N). Но сумма длин всех подмножеств равна N * 2^(N-1), так что общее время копирования O(N * 2^N). Сам обход делает ровно столько же операций.</li>
-<li><strong>Память:</strong> O(N * 2^N) для хранения всех подмножеств (выходные данные). Дополнительная память помимо результата — O(N) на стек рекурсии и слайс <code>cur</code>.</li>
-</ul>
-<h3 id="mechanical-sympathy-gde-vyigryvaet-go">Mechanical Sympathy: где выигрывает Go</h3>
+// subsets генерирует все подмножества уникального набора чисел.
+// Временная сложность: O(N * 2^N)
+// Пространственная сложность: O(N) дополнительной памяти (стек + буфер path)
+func subsets(nums []int) [][]int {
+    n := len(nums)
+    // Всего подмножеств ровно 2^n: предвыделяем емкость слайса результатов
+    totalSubsets := 1 &lt;&lt; n
+    result := make([][]int, 0, totalSubsets)
 
-<ul>
-<li><strong>Переиспользование <code>cur</code>.</strong> Слайс <code>cur</code> растёт и усекается. Пока его capacity достаточно (а максимальная длина — N), <code>append</code> не вызывает новых аллокаций после того, как capacity достигнет N. При спуске вглубь <code>append</code> может расширить массив, но тогда на более высоких уровнях будет использоваться старый массив — это безопасно, так как каждый уровень рекурсии имеет свой заголовок слайса, указывающий на соответствующий массив. Откат просто уменьшает длину, не трогая массив.</li>
-<li><strong>Копирование в результат.</strong> <code>make([]int, len(cur))</code> аллоцирует новый массив в куче ровно нужного размера. Это неизбежная плата за сохранение. <code>copy</code> копирует данные — эффективно, так как элементы <code>int</code> маленькие и лежат в L1-кэше.</li>
-<li><strong>Стек рекурсии.</strong> Глубина не превышает N (≤10). Никаких расширений стека горутины, всё быстро.</li>
-<li><strong>Отсутствие map и pointer chasing.</strong> Обход чисто линейный по индексам, доступ к массиву <code>nums</code> прямой.</li>
-</ul>
-<div class="callout callout-info">
+    // Буфер текущего пути: емкость n гарантирует 0 реаллокаций при спуске!
+    path := make([]int, 0, n)
+
+    var backtrack func(start int)
+    backtrack = func(start int) {
+        // 1. Каждая вершина дерева состояний — валидное подмножество
+        snapshot := make([]int, len(path))
+        copy(snapshot, path)
+        result = append(result, snapshot)
+
+        // 2. Исследование вариантов: берем кандидатов строго правее start
+        for i := start; i &lt; n; i++ {
+            path = append(path, nums[i]) // Choose
+            backtrack(i + 1)             // Explore
+            path = path[:len(path)-1]    // Unchoose (откат за 0 нс)
+        }
+    }
+
+    backtrack(0)
+    return result
+}
+</code></pre>
+</div>
+
+<hr />
+<h2 id="vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</h2>
+
+<h3 id="1-path-makeint-0-n-ustranenie-skrytykh-allokatsiy">1. `path := make([]int, 0, n)` — устранение скрытых аллокаций</h3>
+<p>Если написать наивное <code>var path []int</code>, начальная емкость будет равна 0.<br />
+По мере спуска в рекурсию рантайм Go при <code>append</code> будет последовательно выделять массивы емкостью 1, 2, 4, 8... Каждый такой шаг — это аллокация в куче и копирование старых данных.<br />
+Инициализация <code>make([]int, 0, n)</code> гарантирует:<br />
+- Базовый массив создается ровно один раз.<br />
+- Глубина рекурсии никогда не превысит $n$.<br />
+- Все операции <code>append</code> и <code>path[:len(path)-1]</code> на всех $2^N$ ветвях дерева происходят <strong>strictly in-place</strong> в одном предварительно выделенном блоке памяти.</p>
+<h3 id="2-sravnenie-s-bitovymi-maskami-bitmask-alternative">2. Сравнение с битовыми масками (Bitmask Alternative)</h3>
+<p>Подмножества можно генерировать итеративно без рекурсии через битовую маску:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">func subsetsBitmask(nums []int) [][]int {
+    n := len(nums)
+    total := 1 &lt;&lt; n
+    res := make([][]int, total)
+    for mask := 0; mask &lt; total; mask++ {
+        sub := make([]int, 0, bits.OnesCount(uint(mask)))
+        for i := 0; i &lt; n; i++ {
+            if (mask &amp; (1 &lt;&lt; i)) != 0 {
+                sub = append(sub, nums[i])
+            }
+        }
+        res[mask] = sub
+    }
+    return res
+}
+</code></pre>
+</div>
+
+<p><strong>Сравнение производительности:</strong><br />
+- Решение на битовых масках выигрывает в предсказуемости конвейера (нет рекурсивных вызовов), но ограничено $N \le 64$.<br />
+- Backtracking-подход универсален: он масштабируется на деревья с условиями раннего отсечения (pruning) и дубликатами, где перебор всех $2^N$ масок был бы расточительным.</p>
+<hr />
+<h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
+
+<div class="callout callout-warning">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Ловушка: Забытый снимок состояния</span>
   </div>
   <div class="callout-body">
-    <p>При <code>append(cur, nums[i])</code> компилятор видит, что <code>cur</code> — локальная переменная замыкания, и её заголовок хранится на стеке внешней функции, а нижележащий массив — в куче (потому что он был расширен через <code>append</code>). Escape analysis в этом случае помещает массив в кучу. Это одна аллокация на всё время работы — при первом расширении с 0 до 1. После capacity станет достаточно.</p>
+    <p>Строка:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">result = append(result, path) // КАТАСТРОФА
+</code></pre>
+</div>
+
+<p>В срез <code>result</code> добавляется заголовок слайса <code>path</code>, указывающий на единый внутренний массив. После всех откатов длина <code>path</code> станет равной 0. В итоге <code>result</code> будет содержать $2^N$ пустых слайсов!<br />
+Создание независимой копии <code>snapshot := make([]int, len(path)); copy(snapshot, path)</code> обязательно.</p>
   </div>
 </div>
 
-<h3 id="alternativy-i-trade-off">Альтернативы и trade-off</h3>
-
-<ul>
-<li><strong>Битовые маски.</strong> Можно обойтись без рекурсии: перебрать все целые числа от 0 до 2^N - 1 и для каждого бита, равного 1, включить соответствующий элемент. Это O(N * 2^N) времени и O(1) дополнительной памяти (не считая результата), но не требует копирования промежуточных состояний и рекурсии. Однако это менее наглядно для демонстрации backtracking.</li>
-<li><strong>Библиотечные решения.</strong> В Go нет встроенной функции <code>subsets</code>, и писать её самому — стандарт.</li>
-</ul>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования: Временная сложность копирования</span>
   </div>
   <div class="callout-body">
-    <p>Вопрос: «Чем ваш backtracking лучше битовых масок?»<br />
-Ответ: «Backtracking естественно расширяется на задачи с дубликатами и отсечениями, а битовые маски ограничены N ≤ 64 и сложнее адаптируются к условиям. Кроме того, backtracking с переиспользованием слайса даёт меньше аллокаций, чем создание нового слайса на каждой итерации битовой маски. Но для N ≤ 20 оба подхода приемлемы, и я готов реализовать любой».</p>
+    <p><strong>Вопрос:</strong> Почему общая сложность равна $O(N \cdot 2^N)$, а не $O(2^N)$?<br />
+<strong>Ответ:</strong> Всего существует $2^N$ подмножеств. Но добавление каждого подмножества требует создания его копии. Средняя длина подмножества равна $N / 2$. Суммарное количество операций копирования элементов памяти составляет:<br />
+$$\sum_{k=0}^{N} k \binom{N}{k} = N \cdot 2^{N-1} = O(N \cdot 2^N)$$<br />
+Копирование данных в выходной массив доминирует по времени выполнения.</p>
   </div>
 </div>
 
-<h3 id="itog">Итог</h3>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
-<p>Subsets — это первая практическая демонстрация backtracking в действии. Всего несколько строк кода, использующих единый буфер <code>cur</code> и рекурсию с откатом, генерируют степенное множество. Senior Go-разработчик не только выдаёт это решение, но и объясняет, как переиспользование слайса экономит аллокации, как копирование гарантирует изоляцию результатов и как тот же каркас будет расширен для обработки дубликатов в следующей задаче — <strong>Subsets II</strong>, где простого перебора уже недостаточно. <a href="4-subsets-ii.html" class="wikilink">4. Subsets II</a></p>
+<p><strong>Subsets</strong> — каноническая модель поиска с возвратом:<br />
+- $2^N$ вершин дерева состояний проходятся за $O(N \cdot 2^N)$ с единым предварительно выделенным буфером.<br />
+- Декремент длины <code>path[:len(path)-1]</code> реализует мгновенный откат без давления на сборщик мусора.</p>
+<p>Но что произойдет, если во входном массиве появятся повторяющиеся числа? Ветви начнут дублировать друг друга. Как предотвратить комбинаторный взрыв при наличии дубликатов — разбираем в следующей статье: <a href="4-subsets-ii.html" class="wikilink">4. Subsets II</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2375,7 +2394,7 @@ C --&gt;|&quot;конец&quot;| G[&quot;Выход&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#formulirovka-i-utochneniya">Формулировка и уточнения</a></li><li class="toc-item toc-h3"><a href="#naivnoe-reshenie-iterativnoe-rasshirenie">Наивное решение: итеративное расширение</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-backtracking-s-pereispolzovaniem-slaysa">Оптимальное решение: backtracking с переиспользованием слайса</a></li><li class="toc-item toc-h3"><a href="#pochemu-iterativnoe-reshenie-ne-idealno-dlya-demonstratsii-glubiny">Почему итеративное решение не идеально для демонстрации глубины</a></li><li class="toc-item toc-h3"><a href="#edge-cases">Edge Cases</a></li><li class="toc-item toc-h3"><a href="#analiz-slozhnosti">Анализ сложности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-gde-vyigryvaet-go">Mechanical Sympathy: где выигрывает Go</a></li><li class="toc-item toc-h3"><a href="#alternativy-i-trade-off">Альтернативы и trade-off</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-derevo-prostranstva-sostoyaniy-dlya-nums-1-2-3">Архитектура: Дерево пространства состояний для nums = [1, 2, 3]</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#1-path-makeint-0-n-ustranenie-skrytykh-allokatsiy">1. path := make([]int, 0, n) — устранение скрытых аллокаций</a></li><li class="toc-item toc-h3"><a href="#2-sravnenie-s-bitovymi-maskami-bitmask-alternative">2. Сравнение с битовыми масками (Bitmask Alternative)</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

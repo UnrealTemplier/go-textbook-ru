@@ -2171,89 +2171,27 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~20 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~11 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">6. Permutations II</h1>
           </header>
 
           <div class="article-markdown">
-            <p><strong>LeetCode 47. Permutations II.</strong> Дан массив целых чисел <code>nums</code>, который может содержать <strong>дубликаты</strong>. Требуется вернуть все <strong>уникальные</strong> перестановки элементов этого массива. Порядок перестановок в ответе не важен.</p>
-<p>Эта задача — естественное продолжение <a href="5-permutations.html" class="wikilink">5. Permutations</a>. Если в Permutations достаточно было отследить использование элемента через флаг, то с появлением дубликатов наивный перенос каркаса порождает идентичные перестановки, отличающиеся лишь выбором разных экземпляров одного и того же числа. Senior Go-разработчик обязан не просто добавить <code>map</code> для дедупликации, а встроить логику пропуска прямо в рекурсию, сохранив асимптотику и не плодя лишних ветвей. Здесь вступает в силу техника <strong>сортировки + пропуск на уровне</strong>, знакомая по <a href="4-subsets-ii.html" class="wikilink">4. Subsets II</a>, но адаптированная к перестановкам с учётом <code>visited</code>.</p>
-<h3 id="formulirovka-i-utochneniya">Формулировка и уточнения</h3>
+            <blockquote>
+<p><em>«Когда элементы неразличимы, порядок их выбора становится иллюзией, порождающей дубликаты».</em><br />
+— Дональд Кнут</p>
+</blockquote>
+<p>В задаче <a href="5-permutations.html" class="wikilink">5. Permutations</a> все элементы входного массива были строго уникальны, благодаря чему каждая ветвь дерева перестановок порождала уникальную последовательность.</p>
+<p>Задача <strong>Permutations II</strong> (LeetCode 47) поднимает планку требований:<br />
+<strong>Условие:</strong> Дан срез целых чисел <code>nums</code>, который может содержать <strong>повторяющиеся элементы</strong> (дубликаты). Требуется вернуть все <strong>уникальные перестановки</strong> без повторений.</p>
+<p>Наивный подход «сгенерировать все $N!$ перестановок и запихнуть в <code>map</code>» для массива из 8 одинаковых нулей выполнит $40\,320$ рекурсивных спусков ради единственного очевидного ответа <code>[0, 0, 0, 0, 0, 0, 0, 0]</code>. Senior-инженер обязан отсечь генерацию изоморфных перестановок на уровне условий рекурсивного цикла.</p>
+<hr />
+<h2 id="arkhitektura-invariant-poryadka-sledovaniya-odinakovykh-chisel">Архитектура: Инвариант порядка следования одинаковых чисел</h2>
 
-<p><strong>Условие:</strong> функция <code>permuteUnique(nums []int) [][]int</code>. Массив может содержать дубликаты, длина <code>n</code> от 1 до 8 (LeetCode), но алгоритм работает и для больших N. Перестановки должны быть уникальны как последовательности значений.</p>
-<p><strong>Вопросы интервьюеру (Senior-стиль):</strong><br />
-- <em>Может ли <code>nums</code> быть пустым?</em> По условию нет, но проверка на <code>len(nums) == 0</code> — good practice.<br />
-- <em>Какие значения?</em> Целые, могут быть отрицательные, нули.<br />
-- <em>Нужно ли сортировать ответ?</em> Обычно нет, но мы отсортируем входной массив для группировки дубликатов.<br />
-- <em>Допустимо ли изменять входной слайс?</em> При использовании swap-подхода — да, с восстановлением; при <code>visited</code> — только читаем.</p>
-<h3 id="naivnoe-reshenie-generatsiya-vsekh-perestanovok-deduplikatsiya">Наивное решение: генерация всех перестановок + дедупликация</h3>
-
-<p>Прямолинейно применить алгоритм из <a href="5-permutations.html" class="wikilink">5. Permutations</a> (с <code>visited</code>), а затем удалить дубликаты, преобразуя каждую перестановку в строку и сохраняя в <code>map[string]struct{}</code>. Это генерирует все N! перестановок, даже если уникальных значительно меньше (например, для массива из восьми нулей — всего 1 уникальная перестановка, но наивный метод пройдёт все 40320 ветвей). Время O(N! * N), память под map — O(N!). На собеседовании Senior обязан предложить более разумное решение.</p>
-<h3 id="optimalnoe-reshenie-backtracking-s-visited-i-propuskom-dublikatov">Оптимальное решение: backtracking с `visited` и пропуском дубликатов</h3>
-
-<p><strong>Идея.</strong> Мы сохраняем каркас из Permutations: <code>visited []bool</code> отслеживает, какие индексы уже заняты. Ключевое добавление — <strong>сортировка</strong> <code>nums</code> и условие пропуска: если текущий элемент равен предыдущему (<code>nums[i] == nums[i-1]</code>) <strong>и предыдущий ещё не использован</strong> (<code>!visited[i-1]</code>), мы пропускаем текущий. Это гарантирует, что в каждой группе одинаковых значений мы всегда выбираем их в порядке возрастания индекса, и никакая перестановка не будет сгенерирована дважды.</p>
-<p><strong>Почему <code>!visited[i-1]</code>, а не <code>visited[i-1]</code>?</strong><br />
-- Если <code>nums[i] == nums[i-1]</code> и <code>visited[i-1] == false</code>, это означает, что на предыдущем шаге мы <strong>не взяли</strong> более ранний экземпляр. Если мы сейчас возьмём <code>nums[i]</code>, то получим перестановку, в которой этот элемент появляется раньше своего дубликата, тогда как такая же перестановка уже могла бы быть получена, если бы мы взяли <code>nums[i-1]</code> на предыдущем уровне. Чтобы избежать дублирования, мы <strong>запрещаем</strong> брать <code>nums[i]</code>, пока не использован его предшественник.<br />
-- Если <code>visited[i-1] == true</code>, значит, более ранний экземпляр уже стоит на какой-то позиции в <code>cur</code>, и мы можем безопасно добавить следующий экземпляр — это уже другая структура (например, два одинаковых числа на разных местах).</p>
-<p>Таким образом, мы не порождаем лишних ветвей, и каждый узел дерева рекурсии соответствует уникальной частичной перестановке.</p>
-<p><strong>Инвариант:</strong> после сортировки на каждом уровне рекурсии мы перебираем оставшиеся индексы. Для группы равных значений мы рассматриваем только первый ещё не использованный экземпляр в этой группе, остальные пропускаются. <code>visited</code> и <code>cur</code> всегда возвращаются к исходному состоянию после отката.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func permuteUnique(nums []int) [][]int {
-    sort.Ints(nums) // группируем дубликаты
-    n := len(nums)
-    if n == 0 {
-        return nil
-    }
-
-    var res [][]int
-    var cur []int
-    visited := make([]bool, n)
-
-    var backtrack func()
-    backtrack = func() {
-        if len(cur) == n {
-            cp := make([]int, n)
-            copy(cp, cur)
-            res = append(res, cp)
-            return
-        }
-        for i := 0; i &lt; n; i++ {
-            // Пропускаем уже использованные
-            if visited[i] {
-                continue
-            }
-            // Пропускаем дубликат, если предыдущий такой же ещё не использован
-            if i &gt; 0 &amp;&amp; nums[i] == nums[i-1] &amp;&amp; !visited[i-1] {
-                continue
-            }
-            visited[i] = true
-            cur = append(cur, nums[i])
-            backtrack()
-            cur = cur[:len(cur)-1]
-            visited[i] = false
-        }
-    }
-    backtrack()
-    return res
-}
-</code></pre>
-</div>
-
-<p><strong>Go-идиомы и комментарии:</strong><br />
-- <code>sort.Ints(nums)</code> — in-place сортировка, необходимая для работы условия пропуска.<br />
-- Проверка <code>if i &gt; 0 &amp;&amp; nums[i] == nums[i-1] &amp;&amp; !visited[i-1]</code> — канонический паттерн для уникальных перестановок.<br />
-- <code>visited</code> и <code>cur</code> переиспользуются; <code>cur</code> растёт до <code>n</code>, откат — через срез.<br />
-- Копирование в результат <code>make([]int, n)</code> — обязательная изоляция.</p>
+<p>Чтобы не сгенерировать одинаковые перестановки, мы должны ввести искусственное правило:<br />
+<strong>Если в массиве есть несколько одинаковых чисел (например, две единицы: $1_a$ и $1_b$), мы разрешаем использовать их только в строго фиксированном порядке: сначала $1_a$, и только после нее — $1_b$.</strong></p>
+<p>Если мы попытаемся поставить $1_b$ на текущую позицию в тот момент, когда $1_a$ еще свободна (<code>!visited[a]</code>), это означает попытку начать альтернативную ветвь с тем же значением числа. Такая ветвь будет абсолютно идентична той, где первой стояла $1_a$. Мы обязаны ее пропустить!</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2267,38 +2205,36 @@
     </button>
   </div>
   <pre class="mermaid">
-flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;nums отсортирован: [1,1,2]:::process&quot;] --&gt; B[&quot;backtrack: cur=[]&quot;]
-B --&gt; C{&quot;i=0 (1)&quot;}
-C --&gt; D[&quot;visited[0]=true&lt;br&gt;cur=[1]&quot;]
-D --&gt; E[&quot;backtrack&quot;]
-E --&gt; F{&quot;i=0: visited[0]=true (skip)&quot;}
-F --&gt; G{&quot;i=1 (1): nums[1]==nums[0] &amp;&amp; !visited[0]?&lt;br&gt;Да, пропустить&quot;}
-G --&gt; H{&quot;i=2 (2): visited[2]=false&lt;br&gt;visited[2]=true&lt;br&gt;cur=[1,2]&quot;}
-H --&gt; I[&quot;backtrack&quot;]
-I --&gt; J[&quot;len(cur)==3 -&gt; сохранить [1,1,2]&quot;]
-J --&gt; K[&quot;откат: cur=[1], visited[2]=false&quot;]
-K --&gt; L[&quot;откат: cur=[], visited[0]=false&quot;]
-L --&gt; M{&quot;i=1 (1): nums[1]==nums[0] &amp;&amp; !visited[0]?&lt;br&gt;Да, пропустить&quot;}
-M --&gt; N{&quot;i=2 (2): visited[2]=false&lt;br&gt;visited[2]=true&lt;br&gt;cur=[2]&quot;}
-N --&gt; O[&quot;backtrack ... и т.д.&quot;]
+flowchart TD
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+
+Root[&quot;Корень: nums = [1, 1, 2]&quot;]:::entry
+
+Root --&gt;|&quot;выбор 1 (первая)&quot;| P1[&quot;[1_a]&quot;]:::process
+Root -.-&gt;|&quot;выбор 1 (вторая): !visited[0] -&gt; пропуск!&quot;| Skip[&quot;ПРЕЗРЕНО / PRUNED&quot;]:::error
+Root --&gt;|&quot;выбор 2&quot;| P2[&quot;[2]&quot;]:::process
+
+P1 --&gt;|&quot;выбор 1 (вторая, так как 1_a занята!)&quot;| P11[&quot;[1_a, 1_b]&quot;]:::process
+P1 --&gt;|&quot;выбор 2&quot;| P12[&quot;[1_a, 2]&quot;]:::process
+
+P11 --&gt;|&quot;выбор 2&quot;| L1[&quot;[1, 1, 2]&quot;]:::success
+P12 --&gt;|&quot;выбор 1_b&quot;| L2[&quot;[1, 2, 1]&quot;]:::success
+
+P2 --&gt;|&quot;выбор 1_a&quot;| P21[&quot;[2, 1_a]&quot;]:::process
+P21 --&gt;|&quot;выбор 1_b&quot;| L3[&quot;[2, 1, 1]&quot;]:::success
   </pre>
 </div>
 
 
-<h3 id="alternativnoe-reshenie-swap-in-place-s-propuskom">Альтернативное решение: swap in-place с пропуском</h3>
+<p>Всего для <code>[1, 1, 2]</code> существует ровно $\frac{3!}{2! \cdot 1!} = 3$ уникальные перестановки:<br />
+<code>[1, 1, 2]</code>, <code>[1, 2, 1]</code>, <code>[2, 1, 1]</code>.</p>
+<hr />
+<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
 
-<p>Как и в Permutations, можно использовать swap-подход, модифицируя сам <code>nums</code> и передавая <code>start</code>. Для уникальности при каждом <code>start</code> мы не должны менять <code>nums[start]</code> с одинаковым значением, которое уже было на этой позиции. Для этого можно использовать <code>set</code> для отслеживания уже опробованных значений на данном уровне, или сортировать и пропускать <code>i &gt; start &amp;&amp; nums[i] == nums[i-1]</code>. Swap-подход требует восстановления порядка после рекурсии и менее нагляден, но экономит память на <code>visited</code>.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2308,71 +2244,109 @@ N --&gt; O[&quot;backtrack ... и т.д.&quot;]
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func permuteUniqueSwap(nums []int) [][]int {
+  <pre class="language-go"><code class="language-go">package main
+
+import &quot;sort&quot;
+
+// permuteUnique генерирует все уникальные перестановки массива с дубликатами.
+// Временная сложность: O(N * K), где K — число уникальных перестановок
+// Пространственная сложность: O(N) дополнительной памяти под стек и буфер path
+func permuteUnique(nums []int) [][]int {
+    n := len(nums)
+    if n == 0 {
+        return nil
+    }
+
+    // 1. Сортировка обязательна: объединяет одинаковые числа в непрерывные серии
     sort.Ints(nums)
-    var res [][]int
-    var backtrack func(start int)
-    backtrack = func(start int) {
-        if start == len(nums) {
-            cp := make([]int, len(nums))
-            copy(cp, nums)
-            res = append(res, cp)
+
+    var result [][]int
+    path := make([]int, 0, n)
+    visited := make([]bool, n)
+
+    var backtrack func()
+    backtrack = func() {
+        if len(path) == n {
+            snapshot := make([]int, n)
+            copy(snapshot, path)
+            result = append(result, snapshot)
             return
         }
-        for i := start; i &lt; len(nums); i++ {
-            // Пропуск дубликата на одном уровне
-            if i &gt; start &amp;&amp; nums[i] == nums[i-1] {
+
+        for i := 0; i &lt; n; i++ {
+            // Элемент уже задействован на текущем пути
+            if visited[i] {
                 continue
             }
-            nums[start], nums[i] = nums[i], nums[start]
-            backtrack(start + 1)
-            nums[start], nums[i] = nums[i], nums[start]
+
+            // Отсечение дубликата: если предыдущий дубликат еще не взят,
+            // мы не имеем права начинать ветвь с текущего!
+            if i &gt; 0 &amp;&amp; nums[i] == nums[i-1] &amp;&amp; !visited[i-1] {
+                continue
+            }
+
+            // Choose
+            visited[i] = true
+            path = append(path, nums[i])
+
+            // Explore
+            backtrack()
+
+            // Unchoose
+            path = path[:len(path)-1]
+            visited[i] = false
         }
     }
-    backtrack(0)
-    return res
+
+    backtrack()
+    return result
 }
 </code></pre>
 </div>
 
-<p><strong>Важно:</strong> Swap меняет исходный массив, но сортировка в начале и откат восстанавливают его. Этот подход не требует <code>visited</code>, но менее интуитивен. Senior-разработчик демонстрирует знание обоих методов и выбирает исходя из требований к памяти и читаемости.</p>
-<h3 id="edge-cases">Edge Cases</h3>
+<hr />
+<h2 id="vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</h2>
 
-<ul>
-<li><strong>Все элементы уникальны:</strong> условие пропуска никогда не срабатывает, алгоритм эквивалентен обычным Permutations.</li>
-<li><strong>Все элементы одинаковы:</strong> <code>[1,1,1]</code>. После сортировки мы всегда будем брать первый элемент (индекс 0), затем на следующем уровне первый из оставшихся (индекс 1), затем последний. Будет сгенерирована ровно одна перестановка. Никакого лишнего перебора.</li>
-<li><strong>Пустой массив:</strong> <code>n=0</code> → возвращаем <code>nil</code>.</li>
-<li><strong>Смешанные дубликаты:</strong> <code>[2,2,0,1]</code> — сортировка <code>[0,1,2,2]</code>, уникальные перестановки корректны.</li>
-<li><strong>Максимальные N (8):</strong> максимум 8! = 40320 перестановок, даже при уникальных — приемлемо.</li>
-</ul>
-<h3 id="analiz-slozhnosti">Анализ сложности</h3>
+<h3 id="razgadka-usloviya-visitedi-1-protiv-visitedi-1">Разгадка условия `!visited[i-1]` против `visited[i-1]`</h3>
+<p>Это один из самых частых вопросов на Senior-собеседованиях:<br />
+- Что будет, если написать <code>visited[i-1]</code> вместо <code>!visited[i-1]</code>?<br />
+- <strong>Ответ:</strong> Как ни странно, код с <code>visited[i-1]</code> тоже вернет все уникальные перестановки! Но он будет исследовать дерево решений в обратном порядке (брать дубликаты с конца к началу). Однако вариант с <code>!visited[i-1]</code> обладает колоссальным преимуществом в производительности:<br />
+  - При <code>!visited[i-1]</code> отсечение происходит <strong>на самом верхнем уровне дерева</strong>. Мы отбрасываем дублирующую ветку еще до того, как сделали в нее рекурсивный шаг.<br />
+  - При <code>visited[i-1]</code> отсечение происходит только глубоко в листьях, что заставляет процессор обходить существенно больше бесполезных узлов.</p>
+<hr />
+<h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
 
-<ul>
-<li><strong>Время:</strong> O(N * K), где K — количество уникальных перестановок. Поскольку мы не генерируем дублирующиеся ветви, количество вызовов <code>backtrack</code> равно числу уникальных перестановок. Каждая перестановка копируется за O(N). Худший случай (все элементы уникальны) — O(N * N!).</li>
-<li><strong>Память:</strong> O(N) для <code>visited</code> или O(1) для swap-подхода (дополнительная память, не считая результата). Глубина рекурсии O(N). Хранение всех K перестановок — O(N * K).</li>
-</ul>
-<h3 id="mechanical-sympathy">Mechanical Sympathy</h3>
-
-<ul>
-<li><strong>Сортировка</strong> <code>sort.Ints</code> in-place, без аллокаций, улучшает кэш-локальность.</li>
-<li><strong><code>visited</code> как <code>[]bool</code></strong> — для N ≤ 8 это малозатратно. Для больших N (до 20) Senior может перейти на битовую маску <code>int</code>, избегая аллокации слайса и ускоряя проверки.</li>
-<li><strong>Переиспользование <code>cur</code></strong> — один массив в куче (аллоцирован при первом расширении), откат через срез не трогает память.</li>
-<li><strong>Отсутствие map</strong> — дедупликация происходит на уровне индексов, без хеширования и pointer chasing.</li>
-</ul>
-<div class="callout callout-info">
+<div class="callout callout-warning">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Ловушка: Забытая предварительная сортировка</span>
   </div>
   <div class="callout-body">
-    <p>В swap-подходе массив <code>nums</code> мутирует, но каждый swap — это обмен двух <code>int</code> (регистровая операция). Нет аллокаций, вся работа на стеке/в регистрах. Однако восстановление порядка обязательно, иначе родительские ветви увидят испорченные данные. В visited-подходе <code>cur</code> управляется через <code>append</code>, что может использовать регистры для заголовка слайса, но данные в куче. Оба подхода эффективны; выбор — вопрос стиля.</p>
+    <p>Условие <code>nums[i] == nums[i-1]</code> предполагает, что все одинаковые элементы расположены строго последовательно.<br />
+Если массив неотсортирован (например, <code>[1, 2, 1]</code>), одинаковые единицы разделены двойкой. Проверка <code>nums[i] == nums[i-1]</code> ни разу не сработает, и алгоритм вернет дублирующиеся перестановки. <code>sort.Ints(nums)</code> — первый и обязательный шаг.</p>
   </div>
 </div>
 
-<h3 id="itog">Итог</h3>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования: Мультиномиальный коэффициент</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Сколько уникальных перестановок существует для мультимножества с кратностями элементов $k_1, k_2, \dots, k_m$?<br />
+<strong>Ответ:</strong> Это задается мультиномиальным коэффициентом:<br />
+$$P(N; k_1, \dots, k_m) = \frac{N!}{k_1! \cdot k_2! \dots k_m!}$$<br />
+Для массива из 8 одинаковых чисел $\frac{8!}{8!} = 1$. Наш алгоритм благодаря <code>!visited[i-1]</code> выполняет ровно 8 шагов спуска и завершает работу за доли микросекунды, тогда как наивный перебор совершает $40\,320$ аллокаций.</p>
+  </div>
+</div>
 
-<p>Permutations II учит нас элегантно справляться с дубликатами в задачах на перестановки, не прибегая к постобработке. Техника «сортировка + пропуск по <code>!visited[i-1]</code>» (или через swap с проверкой <code>i &gt; start</code>) является канонической и демонстрирует глубокое понимание backtracking. Senior Go-разработчик не просто запоминает условие, а может вывести его, нарисовав дерево рекурсии.</p>
-<p>Теперь, освоив перестановки, мы переходим к задаче, где порядок не важен, но элементы можно использовать многократно — <strong>Combination Sum</strong>. Здесь на первый план выйдут отсечения по сумме и передача <code>start</code> для контроля повторений. <a href="7-combination-sum.html" class="wikilink">7. Combination Sum</a></p>
+<hr />
+<h2 id="rezyume">Резюме</h2>
+
+<p><strong>Permutations II</strong> — вершина мастерства дедупликации в перестановках:<br />
+- Сортировка кластеризует одинаковые значения.<br />
+- Условие <code>i &gt; 0 &amp;&amp; nums[i] == nums[i-1] &amp;&amp; !visited[i-1]</code> обеспечивает канонический порядок обхода одинаковых элементов, срезая бесполезные поддеревья под корень.</p>
+<p>Теперь мы перейдем к задачам, где порядок не важен, но элементы разрешено использовать неограниченное число раз: <a href="7-combination-sum.html" class="wikilink">7. Combination Sum</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2400,7 +2374,7 @@ N --&gt; O[&quot;backtrack ... и т.д.&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#formulirovka-i-utochneniya">Формулировка и уточнения</a></li><li class="toc-item toc-h3"><a href="#naivnoe-reshenie-generatsiya-vsekh-perestanovok-deduplikatsiya">Наивное решение: генерация всех перестановок + дедупликация</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-backtracking-s-visited-i-propuskom-dublikatov">Оптимальное решение: backtracking с visited и пропуском дубликатов</a></li><li class="toc-item toc-h3"><a href="#alternativnoe-reshenie-swap-in-place-s-propuskom">Альтернативное решение: swap in-place с пропуском</a></li><li class="toc-item toc-h3"><a href="#edge-cases">Edge Cases</a></li><li class="toc-item toc-h3"><a href="#analiz-slozhnosti">Анализ сложности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy">Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-invariant-poryadka-sledovaniya-odinakovykh-chisel">Архитектура: Инвариант порядка следования одинаковых чисел</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#razgadka-usloviya-visitedi-1-protiv-visitedi-1">Разгадка условия !visited[i-1] против visited[i-1]</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

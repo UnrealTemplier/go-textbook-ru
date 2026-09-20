@@ -2171,18 +2171,27 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~23 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. Генерация комбинаций</h1>
           </header>
 
           <div class="article-markdown">
-            <p>В предыдущей статье <a href="1-teoriya-backtracking.html" class="wikilink">1. Теория. Backtracking</a> мы заложили фундамент: общий рекурсивный каркас, переиспользование слайса, инварианты и отсечения. Теперь мы переходим к конкретным разновидностям генерации комбинаций — основе, на которой строятся задачи кластера: Subsets, Permutations, Combination Sum и их вариации с дубликатами. В отличие от абстрактного «дерева решений», здесь мы работаем с конкретными типами комбинаторных объектов: <strong>подмножествами</strong>, <strong>сочетаниями</strong>, <strong>перестановками</strong> и <strong>комбинациями с повторениями</strong>.</p>
-<p>Senior Go-разработчик не просто помнит шаблоны — он понимает, как выбор представления состояния (слайс, массив, битовая маска) влияет на аллокации, как отсечения меняют константу, и как корректно обрабатывать дубликаты, не плодя идентичные ветви. В этой статье мы систематизируем три основных каркаса генерации, разберём их механическую симпатию и подготовимся к штурму конкретных задач.</p>
-<h3 id="edinaya-osnova-sostoyanie-kak-slays">Единая основа: состояние как слайс</h3>
+            <blockquote>
+<p><em>«Комбинаторика учит нас уважению к экспоненте: если вы не умеете отсекать лишнее, машина быстро поставит вас на место».</em><br />
+— Дональд Кнут</p>
+</blockquote>
+<p>В вводной статье <a href="1-teoriya-backtracking.html" class="wikilink">1. Теория. Backtracking</a> мы заложили архитектурный фундамент: трехфазный инвариант, работу с заголовком среза и цену стековых вызовов. Теперь мы систематизируем прикладные шаблоны генерации дискретных структур.</p>
+<p>Практически все олимпиадные и собеседовательские задачи на поиск с возвратом распадаются на <strong>три фундаментальных комбинаторных класса</strong>:<br />
+1. <strong>Подмножества и сочетания (Subsets &amp; Combinations):</strong> порядок элементов не имеет значения (<code>{1, 2}</code> эквивалентно <code>{2, 1}</code>).<br />
+2. <strong>Перестановки (Permutations):</strong> порядок элементов имеет решающее значение (<code>[1, 2]</code> и <code>[2, 1]</code> — два разных результата), каждый элемент используется ровно один раз.<br />
+3. <strong>Комбинации с повторениями (Combinations with Replacement):</strong> элементы можно переиспользовать неограниченное число раз, пока выполняется целевое ограничение (например, сумма).</p>
+<p>Понимание анатомических различий между этими тремя каркасами позволяет за 30 секунд безошибочно выбрать нужный шаблон на интервью.</p>
+<hr />
+<h2 id="arkhitektura-edinyy-tsikl-mutatsii-i-otkata">Архитектура: Единый цикл мутации и отката</h2>
 
-<p>Все каркасы объединяет работа с мутабельным слайсом <code>cur</code>, который представляет текущую строящуюся комбинацию. Алгоритм на каждом шагу <strong>добавляет</strong> элемент, <strong>рекурсивно спускается</strong> и затем <strong>откатывает</strong> изменение. Благодаря переиспользованию одного и того же нижележащего массива через <code>append</code> и срез <code>cur = cur[:len(cur)-1]</code>, мы избегаем лавины аллокаций — все промежуточные состояния живут в одном буфере, пока хватает <code>cap</code>.</p>
+<p>Все три класса объединяет общий алгоритмический цикл управления состоянием в мутабельном срезе <code>cur</code>:</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2197,31 +2206,28 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-Start[&quot;cur = []:::warning&quot;] --&gt; Loop{&quot;Есть ещё кандидаты?&quot;}
-Loop --&gt;|&quot;Да&quot;| Add[&quot;cur = append(cur, candidate)&quot;]
-Add --&gt; Recurse[&quot;Рекурсивный вызов&lt;br&gt;с обновлённым cur&quot;]
-Recurse --&gt; Backtrack[&quot;cur = cur[&quot;:len(cur)-1&quot;]&quot;]
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+
+Start[&quot;Старт: cur = []&quot;]:::entry --&gt; Loop{&quot;Есть доступные кандидаты?&quot;}:::warning
+
+Loop --&gt;|&quot;Да&quot;| Add[&quot;Choose: cur = append(cur, x)&quot;]:::process
+Add --&gt; Recurse[&quot;Explore: Рекурсивный спуск&quot;]:::process
+Recurse --&gt; Backtrack[&quot;Unchoose: cur = cur[&quot;:len(cur)-1&quot;]&quot;]:::process
 Backtrack --&gt; Loop
-Loop --&gt;|&quot;Нет&quot;| Done[&quot;Ветвь исчерпана&quot;]
+
+Loop --&gt;|&quot;Нет&quot;| Done[&quot;Ветвь дерева исчерпана&quot;]:::success
   </pre>
 </div>
 
 
-<p>Этот каркас неизменен, а различия заключаются в том, <strong>как мы выбираем кандидатов</strong> на каждом шагу и <strong>когда фиксируем результат</strong>.</p>
-<h3 id="karkas-1-podmnozhestva-i-sochetaniya-subsets-combinations">Каркас 1: Подмножества и сочетания (Subsets, Combinations)</h3>
+<p>Разница между классами заключается исключительно в двух параметрах: <strong>пространстве выбора кандидатов на каждой итерации</strong> и <strong>условии фиксации результата</strong>.</p>
+<hr />
+<h2 id="karkas-1-podmnozhestva-i-sochetaniya-poryadok-ne-vazhen">Каркас 1: Подмножества и Сочетания (Порядок не важен)</h2>
 
-<p>Здесь порядок элементов в комбинации <strong>не важен</strong>. Мы рассматриваем элементы исходного множества в фиксированном порядке (обычно индексы от 0 до n-1) и на каждом шагу решаем, <strong>включать ли текущий элемент</strong> или пропустить. Чтобы избежать дублирования комбинаций, отличающихся только перестановкой, мы передаём параметр <code>start</code> — минимальный индекс, с которого можно брать следующий элемент.</p>
-<p><strong>Идиоматичный каркас на Go:</strong></p>
+<p>Когда порядок не имеет значения, чтобы избежать дубликатов (не сгенерировать <code>{1, 2}</code> и <code>{2, 1}</code> одновременно), вводится строгий инвариант: <strong>следующий элемент можно брать только строго правее предыдущего</strong>. Для этого используется указатель <code>start</code>.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2231,37 +2237,47 @@ Loop --&gt;|&quot;Нет&quot;| Done[&quot;Ветвь исчерпана&quot;]
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func subsets(nums []int) [][]int {
-    var res [][]int
-    var cur []int
+  <pre class="language-go"><code class="language-go">package main
+
+// combinations генерирует сочетания C(n, k)
+func combinations(n int, k int) [][]int {
+    var result [][]int
+    cur := make([]int, 0, k)
+
     var backtrack func(start int)
     backtrack = func(start int) {
-        // Копируем cur в результат (каждое состояние — валидное подмножество)
-        cp := make([]int, len(cur))
-        copy(cp, cur)
-        res = append(res, cp)
+        // Базовый случай: набрана требуемая длина k
+        if len(cur) == k {
+            snapshot := make([]int, k)
+            copy(snapshot, cur)
+            result = append(result, snapshot)
+            return
+        }
 
-        for i := start; i &lt; len(nums); i++ {
-            cur = append(cur, nums[i])
-            backtrack(i + 1) // следующий элемент строго правее
+        // Pruning (Отсечение): если оставшихся чисел физически не хватит
+        // для заполнения cur до размера k, прерываем цикл!
+        // Требуется еще: k - len(cur) элементов
+        // Доступно от i до n включительно: n - i + 1 элементов
+        for i := start; i &lt;= n-(k-len(cur))+1; i++ {
+            cur = append(cur, i)
+            backtrack(i + 1) // Строго правее: каждый элемент используется 1 раз
             cur = cur[:len(cur)-1]
         }
     }
-    backtrack(0)
-    return res
+
+    backtrack(1)
+    return result
 }
 </code></pre>
 </div>
 
-<p><strong>Что здесь важно:</strong><br />
-- Мы добавляем текущее состояние в результат <strong>до</strong> цикла — это даёт пустое подмножество и все промежуточные.<br />
-- Инкремент <code>start</code> гарантирует, что каждый элемент либо включается один раз, либо пропускается навсегда.<br />
-- Если бы нам нужны были сочетания ровно длины <code>k</code>, мы бы завершали рекурсию при <code>len(cur) == k</code>.</p>
-<p><strong>Отсечения:</strong> если оставшихся элементов не хватит для набора нужной длины, можно прервать цикл досрочно (<code>if len(nums)-i &lt; k-len(cur) { break }</code>). Это радикально сокращает перебор для больших N и малых k.</p>
-<h3 id="karkas-2-perestanovki-permutations">Каркас 2: Перестановки (Permutations)</h3>
+<hr />
+<h2 id="karkas-2-perestanovki-poryadok-kritichen">Каркас 2: Перестановки (Порядок критичен)</h2>
 
-<p>Здесь порядок <strong>важен</strong>, и каждый элемент используется ровно один раз. На каждом шагу мы выбираем <strong>любой из ещё не использованных</strong> элементов. Для отслеживания используется <code>visited []bool</code> или swap in-place на исходном слайсе (но swap реже применяется в Go из-за необходимости восстанавливать порядок).</p>
-<p><strong>Идиоматичный каркас с <code>visited</code>:</strong></p>
+<p>В перестановках каждый элемент исходного набора обязан присутствовать, а его позиция уникальна. На каждом шаге мы перебираем <strong>все</strong> элементы от <code>0</code> до <code>n-1</code>, но пропускаем уже занятые.</p>
+<p>Для отслеживания занятости элементов используются:<br />
+- <code>visited []bool</code> — срез булевых флагов;<br />
+- <strong>Битовая маска <code>mask uint64</code></strong> — ультрабыстрое регистровое представление для $N \le 64$.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2271,43 +2287,46 @@ Loop --&gt;|&quot;Нет&quot;| Done[&quot;Ветвь исчерпана&quot;]
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func permute(nums []int) [][]int {
-    var res [][]int
-    var cur []int
-    visited := make([]bool, len(nums))
-    var backtrack func()
-    backtrack = func() {
-        if len(cur) == len(nums) {
-            cp := make([]int, len(cur))
-            copy(cp, cur)
-            res = append(res, cp)
+  <pre class="language-go"><code class="language-go">package main
+
+// permuteBitmask генерирует все N! перестановок без аллокаций на visited
+func permuteBitmask(nums []int) [][]int {
+    var result [][]int
+    n := len(nums)
+    cur := make([]int, 0, n)
+
+    var backtrack func(mask int)
+    backtrack = func(mask int) {
+        if len(cur) == n {
+            snapshot := make([]int, n)
+            copy(snapshot, cur)
+            result = append(result, snapshot)
             return
         }
-        for i := 0; i &lt; len(nums); i++ {
-            if visited[i] {
+
+        for i := 0; i &lt; n; i++ {
+            // Проверка занятости бита в регистре CPU за 1 такт: (mask &amp; (1 &lt;&lt; i)) != 0
+            if (mask &amp; (1 &lt;&lt; i)) != 0 {
                 continue
             }
-            visited[i] = true
+
             cur = append(cur, nums[i])
-            backtrack()
+            backtrack(mask | (1 &lt;&lt; i)) // Устанавливаем i-й бит
             cur = cur[:len(cur)-1]
-            visited[i] = false
+            // Откат маски происходит автоматически, так как mask передается по значению!
         }
     }
-    backtrack()
-    return res
+
+    backtrack(0)
+    return result
 }
 </code></pre>
 </div>
 
-<p><strong>Особенности:</strong><br />
-- Состояние завершено, когда <code>len(cur) == len(nums)</code>.<br />
-- Массив <code>visited</code> — срез <code>bool</code> в куче (одна аллокация). Альтернатива — битовая маска в <code>int</code> (для N ≤ 64) даёт ещё более быстрый код без аллокации под <code>visited</code>.<br />
-- Откат восстанавливает и <code>cur</code>, и <code>visited</code>.</p>
-<p><strong>Вариация с дубликатами (Permutations II):</strong> если входной массив содержит дубликаты, просто <code>visited</code> недостаточно — мы можем сгенерировать одинаковые перестановки. Решение: сортировка массива и пропуск элемента, если <code>i &gt; 0 &amp;&amp; nums[i] == nums[i-1] &amp;&amp; !visited[i-1]</code>. Это гарантирует, что на одной позиции одинаковые элементы выбираются только в одном порядке, не плодя дубликаты ветвей.</p>
-<h3 id="karkas-3-kombinatsii-s-povtoreniyami-combination-sum">Каркас 3: Комбинации с повторениями (Combination Sum)</h3>
+<hr />
+<h2 id="karkas-3-kombinatsii-s-neogranichennym-povtoreniem">Каркас 3: Комбинации с неограниченным повторением</h2>
 
-<p>Элементы можно использовать <strong>неограниченное число раз</strong>, но сумма (или иное условие) ограничивает глубину. Вместо <code>start = i+1</code> мы передаём <code>start = i</code>, позволяя выбирать тот же элемент снова. Отсечение — по превышению целевой суммы.</p>
+<p>Когда элемент разрешено использовать повторно любое число раз (как в задаче размена монет или <code>Combination Sum</code>), инвариант изменяется: вместо перехода к <code>i + 1</code> мы передаем в рекурсию тот же индекс <code>i</code>.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2317,97 +2336,122 @@ Loop --&gt;|&quot;Нет&quot;| Done[&quot;Ветвь исчерпана&quot;]
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func combinationSum(candidates []int, target int) [][]int {
-    sort.Ints(candidates) // для отсечений
-    var res [][]int
-    var cur []int
-    var backtrack func(start, remain int)
-    backtrack = func(start, remain int) {
+  <pre class="language-go"><code class="language-go">package main
+
+import &quot;sort&quot;
+
+// combinationSumRepeated находит все уникальные наборы с повторением элементов
+func combinationSumRepeated(candidates []int, target int) [][]int {
+    sort.Ints(candidates) // Сортировка обязательна для отсечения
+    var result [][]int
+    cur := make([]int, 0, 16)
+
+    var backtrack func(start int, remain int)
+    backtrack = func(start int, remain int) {
         if remain == 0 {
-            cp := make([]int, len(cur))
-            copy(cp, cur)
-            res = append(res, cp)
+            snapshot := make([]int, len(cur))
+            copy(snapshot, cur)
+            result = append(result, snapshot)
             return
         }
+
         for i := start; i &lt; len(candidates); i++ {
+            // Отсечение по отсортированному массиву:
+            // если текущий кандидат превышает остаток, все следующие тоже больше!
             if candidates[i] &gt; remain {
-                break // все последующие ещё больше
+                break
             }
+
             cur = append(cur, candidates[i])
-            backtrack(i, remain-candidates[i]) // i, а не i+1
+            backtrack(i, remain-candidates[i]) // i, а не i + 1: разрешено повторение!
             cur = cur[:len(cur)-1]
         }
     }
+
     backtrack(0, target)
-    return res
+    return result
 }
 </code></pre>
 </div>
 
-<p><strong>Почему сортировка?</strong> Чтобы отсечение <code>candidates[i] &gt; remain</code> было эффективным: после первого неподходящего все следующие заведомо больше, и цикл прекращается.</p>
-<h3 id="go-spetsifika-pereispolzovanie-slaysa-i-kopirovanie">Go-специфика: переиспользование слайса и копирование</h3>
+<hr />
+<h2 id="vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</h2>
 
-<p>Как обсуждалось в <a href="1-teoriya-backtracking.html" class="wikilink">1. Теория. Backtracking</a>, ключевое правило: <strong>всегда копировать <code>cur</code> перед сохранением в результат</strong>. Без этого все элементы <code>res</code> будут указывать на один и тот же массив, и финальный результат превратится в набор одинаковых слайсов с последним состоянием.</p>
+<h3 id="bitovaya-maska-protiv-bool">Битовая маска против `[]bool`</h3>
+<p>В классических учебниках для учета посещенных вершин часто рекомендуют <code>visited := make([]bool, n)</code>.<br />
+Сравним это с целочисленной маской <code>mask int</code>:<br />
+1. <code>make([]bool, n)</code> аллоцирует блок памяти в куче (<code>runtime.newobject</code>). Чтение <code>visited[i]</code> требует загрузки адреса из памяти и проверки границ (Bounds Check).<br />
+2. <code>mask int</code> целиком помещается в <strong>один 64-битный регистр процессора</strong> (<code>RAX</code>).<br />
+   - Проверка: инструкция <code>BT</code> (Bit Test) или <code>TEST</code> + <code>SHL</code>.<br />
+   - Установка бита: инструкция <code>BTS</code> или <code>OR</code>.<br />
+   - Откат: нулевая стоимость (передача значения по стеку).<br />
+На наборах $N \le 20$ реализация на битовой маске работает в <strong>3–4 раза быстрее</strong> решения с <code>[]bool</code> за счет исключения обращений к кэшу и отсутствия работы для GC.</p>
+<hr />
+<h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
 
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">cp := make([]int, len(cur))
-copy(cp, cur)
-res = append(res, cp)
-</code></pre>
-</div>
-
-<p>Это единственная регулярная аллокация в процессе backtracking. Всё остальное — манипуляции с заголовками слайсов через <code>append</code> и срезы — бесплатно.</p>
-<p><strong>Переиспользование <code>cur</code> между ветвями одного уровня:</strong><br />
-Цикл <code>for i := start; i &lt; n; i++</code> для каждого <code>i</code> добавляет элемент, вызывает рекурсию и откатывает. Благодаря откату каждое следующее <code>i</code> видит <code>cur</code> в том же состоянии, что и в начале итерации. Никакого копирования между итерациями не требуется.</p>
-<h3 id="otsecheniya-kogda-i-kak-obrezat-derevo">Отсечения: когда и как обрезать дерево</h3>
-
-<p>Senior отличает «слепой» backtracking от эффективного именно наличием осмысленных отсечений. Основные типы:</p>
-<ol>
-<li><strong>По длине:</strong> если нужны комбинации фиксированной длины <code>k</code>, завершаем рекурсию при <code>len(cur) == k</code> и не идём глубже.</li>
-<li><strong>По сумме:</strong> для задач с суммой (<code>remain</code>). Если все числа положительные, превышение — стоп-сигнал. Если есть отрицательные — сортировка не даёт гарантий, отсечения сложнее, и стоит рассмотреть мемоизацию (DP).</li>
-<li><strong>По лексикографическому порядку:</strong> для генерации уникальных последовательностей вроде скобок (Generate Parentheses) — проверка баланса.</li>
-<li><strong>По доступным ресурсам:</strong> если оставшихся кандидатов меньше, чем требуется для достижения целевой длины — <code>break</code>.</li>
-</ol>
-<p>Каждое отсечение многократно окупает себя при больших N, превращая экспоненту в нечто обозримое.</p>
-<h3 id="mekhanicheskaya-simpatiya-benchmarki-i-kesh">Механическая симпатия: бенчмарки и кэш</h3>
-
-<p>Поскольку backtracking порождает экспоненциальное количество узлов, константа на каждом шагу критична. Вот что влияет на неё в Go:</p>
-<ul>
-<li><strong>Аллокация <code>visited</code> или битовая маска.</strong> Слайс <code>[]bool</code> для 20 элементов — 20 байт в куче, одна аллокация. Битовая маска в <code>int</code> (до 64 элементов) — ноль аллокаций, все операции — регистровые AND/OR. Для Permutations Senior может выбрать маску и объяснить выбор.</li>
-<li><strong>Передача параметров.</strong> Замыкания захватывают переменные бесплатно, но если передавать слайс по значению на каждый вызов (копирование заголовка — 24 байта) — это дешевле, чем разыменование указателя. Избегайте лишних указателей.</li>
-<li><strong>Стек рекурсии.</strong> Глубина до нескольких десятков — безопасна. Если глубина больше 1000, стек растёт, но стоимость расширения стека (stack copying) пренебрежима на фоне экспоненциального времени.</li>
-<li><strong>Кэш-локальность.</strong> Слайс <code>cur</code> и <code>visited</code> живут в одном массиве в памяти, доступ последовательный — максимум попаданий в L1. Никаких map, никаких pointer chasing.</li>
-</ul>
-<div class="callout callout-info">
+<div class="callout callout-warning">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Ловушка: Отсечение без сортировки</span>
   </div>
   <div class="callout-body">
-    <p>Escape analysis в замыкании: переменные <code>res</code>, <code>cur</code>, <code>visited</code> захвачены замыканием <code>backtrack</code>. Компилятор Go видит, что они используются внутри функции и могут пережить выход из внешней функции (если <code>backtrack</code> возвращается наружу — в нашем случае нет, она вызывается синхронно). Обычно они размещаются на стеке, но <code>res</code> и <code>cur</code> — слайсы, их заголовки могут быть на стеке, а нижележащие массивы — в куче (потому что <code>append</code> может переаллоцировать массив). Это штатная ситуация.</p>
+    <p>Конструкция <code>if candidates[i] &gt; remain { break }</code> корректна <strong>только в том случае, если массив предварительно отсортирован</strong> по возрастанию!<br />
+Если массив неотсортирован (например, <code>[8, 2, 3]</code>, а <code>remain = 4</code>), условие <code>8 &gt; 4</code> сработает на первой же итерации и вызовет <code>break</code>, в результате чего алгоритм пропустит валидную комбинацию <code>2 + 2 = 4</code>. Забытая строка <code>sort.Ints(candidates)</code> — частая причина провала тестов.</p>
   </div>
 </div>
 
-<h3 id="tipichnye-oshibki-pri-realizatsii-kombinatsiy">Типичные ошибки при реализации комбинаций</h3>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования: Перебор подмножеств через битовые маски</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Можно ли сгенерировать все $2^N$ подмножеств вообще без рекурсии?<br />
+<strong>Ответ:</strong> Да. Каждое подмножество $N$-элементного множества взаимно однозначно соответствует двоичному числу от $0$ до $2^N - 1$. Итеративный цикл от $0$ до $(1 \ll N) - 1$ с проверкой битов <code>if (mask &amp; (1 &lt;&lt; j)) != 0</code> генерирует все подмножества. Однако рекурсивный backtracking превосходит битовые маски, когда требуется раннее отсечение (pruning) или обработка дубликатов.</p>
+  </div>
+</div>
 
-<ol>
-<li><strong>Сохранение <code>cur</code> без копии.</strong> Симптом: все ответы одинаковы. Исправление: обязательное <code>make</code> + <code>copy</code>.</li>
-<li><strong>Забытый инкремент <code>start</code> в цикле.</strong> Для подмножеств передача <code>i</code> вместо <code>i+1</code> приводит к повторному включению того же элемента на следующих уровнях и дублированию ветвей.</li>
-<li><strong>Использование <code>visited</code> без отката.</strong> В перестановках забывают <code>visited[i] = false</code> после рекурсии — последующие ветви теряют элемент.</li>
-<li><strong>Неправильная обработка дубликатов.</strong> В Subsets II / Permutations II без сортировки и проверки <code>!visited[i-1]</code> результат будет содержать повторяющиеся комбинации.</li>
-<li><strong>Отсутствие сортировки перед отсечениями.</strong> Без сортировки <code>break</code> по <code>candidates[i] &gt; remain</code> не имеет смысла.</li>
-</ol>
-<p>Каждая из этих ошибок может стоить оффера, потому что демонстрирует непонимание инвариантов. Перед написанием кода Senior проговаривает: «Мой инвариант: после каждой итерации цикла <code>cur</code> и <code>visited</code> возвращаются в состояние до итерации».</p>
-<h3 id="zaklyuchenie">Заключение</h3>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
-<p>Генерация комбинаций в Go — это три слаженных каркаса (подмножества, перестановки, комбинации с повторениями), опирающиеся на единый механизм: рекурсивное замыкание, мутабельный слайс <code>cur</code> с откатом и копирование результата. Ключ к эффективности — отсечения, переиспользование буфера и осознанный выбор структуры для учёта использованных элементов. Освоив эти каркасы, вы сможете без труда адаптировать их к конкретным задачам кластера, начиная с самой фундаментальной — <strong>Subsets</strong>, где мы применим каркас подмножеств для генерации всех подмножеств уникального набора. <a href="3-subsets.html" class="wikilink">3. Subsets</a></p>
+<p>Матрица выбора шаблона:</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Задача</th>
+<th>Указатель в рекурсию</th>
+<th>Учет элементов</th>
+<th>Условие сохранения</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Subsets</strong></td>
+<td><code>i + 1</code></td>
+<td><code>start</code> индекс</td>
+<td>Каждая вершина</td>
+</tr>
+<tr>
+<td><strong>Combinations $C(n,k)$</strong></td>
+<td><code>i + 1</code></td>
+<td><code>start</code> индекс</td>
+<td><code>len(cur) == k</code></td>
+</tr>
+<tr>
+<td><strong>Permutations</strong></td>
+<td><code>0</code></td>
+<td><code>visited</code> / <code>mask</code></td>
+<td><code>len(cur) == n</code></td>
+</tr>
+<tr>
+<td><strong>Combination Sum</strong></td>
+<td><code>i</code> (повтор)</td>
+<td><code>start</code> индекс</td>
+<td><code>remain == 0</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Теперь мы переходим к практической реализации каждого класса, начав с классической задачи: <a href="3-subsets.html" class="wikilink">3. Subsets</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2435,7 +2479,7 @@ res = append(res, cp)
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#edinaya-osnova-sostoyanie-kak-slays">Единая основа: состояние как слайс</a></li><li class="toc-item toc-h3"><a href="#karkas-1-podmnozhestva-i-sochetaniya-subsets-combinations">Каркас 1: Подмножества и сочетания (Subsets, Combinations)</a></li><li class="toc-item toc-h3"><a href="#karkas-2-perestanovki-permutations">Каркас 2: Перестановки (Permutations)</a></li><li class="toc-item toc-h3"><a href="#karkas-3-kombinatsii-s-povtoreniyami-combination-sum">Каркас 3: Комбинации с повторениями (Combination Sum)</a></li><li class="toc-item toc-h3"><a href="#go-spetsifika-pereispolzovanie-slaysa-i-kopirovanie">Go-специфика: переиспользование слайса и копирование</a></li><li class="toc-item toc-h3"><a href="#otsecheniya-kogda-i-kak-obrezat-derevo">Отсечения: когда и как обрезать дерево</a></li><li class="toc-item toc-h3"><a href="#mekhanicheskaya-simpatiya-benchmarki-i-kesh">Механическая симпатия: бенчмарки и кэш</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-pri-realizatsii-kombinatsiy">Типичные ошибки при реализации комбинаций</a></li><li class="toc-item toc-h3"><a href="#zaklyuchenie">Заключение</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-edinyy-tsikl-mutatsii-i-otkata">Архитектура: Единый цикл мутации и отката</a></li><li class="toc-item toc-h2"><a href="#karkas-1-podmnozhestva-i-sochetaniya-poryadok-ne-vazhen">Каркас 1: Подмножества и Сочетания (Порядок не важен)</a></li><li class="toc-item toc-h2"><a href="#karkas-2-perestanovki-poryadok-kritichen">Каркас 2: Перестановки (Порядок критичен)</a></li><li class="toc-item toc-h2"><a href="#karkas-3-kombinatsii-s-neogranichennym-povtoreniem">Каркас 3: Комбинации с неограниченным повторением</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#bitovaya-maska-protiv-bool">Битовая маска против []bool</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

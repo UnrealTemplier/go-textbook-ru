@@ -2171,98 +2171,29 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~20 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">10. Generate Parentheses</h1>
           </header>
 
           <div class="article-markdown">
-            <p><strong>LeetCode 22. Generate Parentheses.</strong> Дано целое число <code>n</code> — количество пар скобок. Требуется сгенерировать <strong>все</strong> правильные комбинации из <code>n</code> пар круглых скобок и вернуть их в виде списка строк. Правильная комбинация — это такая строка, в которой в любом префиксе количество закрывающих скобок не превышает количества открывающих, а в конце их число равно.</p>
-<p>Эта задача завершает кластер <strong>Backtracking</strong>, объединяя всё, чему мы научились: генерацию последовательностей (<a href="2-generatsiya-kombinatsiy.html" class="wikilink">2. Генерация комбинаций</a>), отсечения по локальным условиям (<a href="7-combination-sum.html" class="wikilink">7. Combination Sum</a>) и построение строк с переиспользованием буфера (<a href="8-word-search.html" class="wikilink">8. Word Search</a>). В отличие от N Queens (<a href="9-n-queens.html" class="wikilink">9. N Queens</a>), где ограничения были глобальными (диагонали, колонки), здесь условие правильности <strong>локально</strong> и проверяется по двум счётчикам: сколько открывающих скобок уже поставлено и сколько закрывающих. Для Senior Go-разработчика эта задача — идеальный полигон для демонстрации того, как замена конкатенации строк на <code>[]byte</code> с откатом устраняет лавину аллокаций, а передача счётчиков вместо построения подстрок на каждом шагу превращает экспоненциальный перебор в элегантный обход дерева Каталана.</p>
-<h3 id="formulirovka-i-utochneniya">Формулировка и уточнения</h3>
+            <blockquote>
+<p><em>«Синтаксис — это дисциплина равновесия: ничто не может быть закрыто, пока не было открыто, и ничто не может остаться открытым вовек».</em><br />
+— Никлаус Вирт</p>
+</blockquote>
+<p>Задача <strong>Generate Parentheses</strong> (LeetCode 22) гармонично завершает кластер поиска с возвратом:<br />
+<strong>Условие:</strong> Задано целое число $n$ — количество пар круглых скобок. Требуется сгенерировать <strong>все синтаксически правильные</strong> скобочные последовательности длины $2n$.</p>
+<p>Правильная скобочная последовательность (ПСП) удовлетворяет двум строгим грамматическим инвариантам:<br />
+1. В любом префиксе строки количество закрывающих скобок <code>')'</code> не превышает количества открывающих <code>'('</code>.<br />
+2. В конце строки суммарное количество <code>'('</code> строго равно количеству <code>')'</code>.</p>
+<p>В отличие от задачи о ферзях, где ограничения были глобальными, здесь условия локальны и элементарно контролируются <strong>двумя целочисленными счетчиками</strong>. Задача демонстрирует, как правильная модель пространства состояний превращает слепой перебор в обход дерева путей Дика (Dyck Paths) и чисел Каталана без единой лишней тупиковой ветви.</p>
+<hr />
+<h2 id="arkhitektura-derevo-pravilnykh-prefiksov-dlya-n-3">Архитектура: Дерево правильных префиксов для $n = 3$</h2>
 
-<p><strong>Условие:</strong> функция <code>generateParenthesis(n int) []string</code>. Возвращает слайс всех правильных скобочных последовательностей длины <code>2n</code>. Порядок строк не важен.</p>
-<p><strong>Вопросы интервьюеру (Senior-стиль):</strong><br />
-- <em>Может ли <code>n</code> быть равно 0?</em> Обычно <code>n &gt;= 1</code>, но если <code>n = 0</code>, правильной является пустая строка. Уточним: если <code>n = 0</code>, вернуть <code>[""]</code> или <code>[]string{}</code>. По соглашению LeetCode, <code>n &gt;= 1</code>, но проверка не помешает.<br />
-- <em>Есть ли ограничения на символы?</em> Нет, только <code>'('</code> и <code>')'</code>.<br />
-- <em>Каков максимальный <code>n</code>?</em> До 8 (LeetCode), что даёт 1430 комбинаций для n=8, так что перебор с отсечениями легко укладывается.<br />
-- <em>Допустимо ли модифицировать промежуточный буфер?</em> Да, мы будем переиспользовать слайс байтов.</p>
-<h3 id="naivnoe-reshenie-generatsiya-vsekh-strok-s-posleduyushchey-proverkoy">Наивное решение: генерация всех строк с последующей проверкой</h3>
-
-<p>Можно сгенерировать все возможные строки длины <code>2n</code>, состоящие из <code>'('</code> и <code>')'</code>, и отфильтровать правильные. Всего таких строк <code>2^(2n)</code>. Для <code>n=8</code> это 65536 строк — терпимо, но для <code>n</code> побольше — экспоненциальный взрыв без необходимости. Более того, проверка правильности каждой строки занимает O(N) и требует дополнительного прохода. Это неэффективно и не демонстрирует владение backtracking.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Наивный подход: перебор всех битовых масок и фильтрация
-</code></pre>
-</div>
-
-<p>Senior сразу переходит к целенаправленному построению только правильных последовательностей.</p>
-<h3 id="optimalnoe-reshenie-backtracking-s-dvumya-schyotchikami">Оптимальное решение: backtracking с двумя счётчиками</h3>
-
-<p><strong>Идея.</strong> Мы строим строку посимвольно слева направо. В каждый момент мы можем добавить <code>'('</code>, если количество уже поставленных открывающих скобок меньше <code>n</code>. Мы можем добавить <code>')'</code>, если количество закрывающих скобок строго меньше количества открывающих (иначе скобка не будет иметь пары или нарушит баланс). Это два простых правила гарантируют, что мы никогда не зайдём в тупик, где правильная последовательность невозможна, и каждое полное построение даст правильную комбинацию.</p>
-<p><strong>Состояние:</strong> текущая строка (представленная как <code>[]byte</code>), количество открытых <code>open</code> и закрытых <code>close</code> скобок.</p>
-<p><strong>Инвариант:</strong> на каждом шагу <code>open &gt;= close</code> и <code>open &lt;= n</code>. При <code>open == n</code> и <code>close == n</code> последовательность завершена и добавляется в результат.</p>
-<p><strong>Отсечения</strong> встроены в правила добавления: мы не можем добавить закрывающую, если она нарушит баланс; не можем добавить открывающую сверх <code>n</code>. Это автоматически отсекает все неправильные ветви.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func generateParenthesis(n int) []string {
-    if n == 0 {
-        return []string{&quot;&quot;}
-    }
-
-    var res []string
-    cur := make([]byte, 0, 2*n) // единый буфер для построения
-
-    var backtrack func(open, close int)
-    backtrack = func(open, close int) {
-        if open == n &amp;&amp; close == n {
-            // Сохраняем копию, так как cur будет изменён
-            cp := make([]byte, len(cur))
-            copy(cp, cur)
-            res = append(res, string(cp))
-            return
-        }
-        // Можем добавить '('?
-        if open &lt; n {
-            cur = append(cur, '(')
-            backtrack(open+1, close)
-            cur = cur[:len(cur)-1] // откат
-        }
-        // Можем добавить ')'?
-        if close &lt; open {
-            cur = append(cur, ')')
-            backtrack(open, close+1)
-            cur = cur[:len(cur)-1] // откат
-        }
-    }
-
-    backtrack(0, 0)
-    return res
-}
-</code></pre>
-</div>
-
-<p><strong>Go-идиомы и комментарии:</strong><br />
-- <code>cur := make([]byte, 0, 2*n)</code> — предвыделение вместимости под максимальную длину строки. Это исключает переаллокации при <code>append</code> внутри backtracking.<br />
-- Откат через <code>cur = cur[:len(cur)-1]</code> — стандартный трюк, не выделяющий память.<br />
-- <code>cp := make([]byte, len(cur)); copy(cp, cur)</code> — копирование перед сохранением, обязательно.<br />
-- Замыкание <code>backtrack</code> захватывает <code>res</code> и <code>cur</code>, что делает сигнатуру лёгкой.<br />
-- Порядок ветвей: сначала пытаемся добавить <code>'('</code>, потом <code>')'</code> — это даёт лексикографический порядок (открывающая раньше), но может быть любым.</p>
+<p>Вместо наивной генерации всех $2^{2n}$ строк с последующей валидацией через стек, мы строим строку посимвольно, допуская к добавлению только те символы, которые <strong>гарантированно не нарушают инвариант</strong>:<br />
+- <strong>Символ <code>'('</code> разрешено добавить,</strong> если число уже поставленных открывающих скобок <code>open &lt; n</code>.<br />
+- <strong>Символ <code>')'</code> разрешено добавить,</strong> если число закрывающих скобок строго меньше открывающих: <code>close &lt; open</code>.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2276,77 +2207,157 @@
     </button>
   </div>
   <pre class="mermaid">
-flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;backtrack(0,0):::warning&quot;] --&gt; B{&quot;open &lt; n?&quot;}
-B --&gt;|&quot;Да&quot;| C[&quot;cur = append(cur, &#x27;(&#x27;)&quot;]
-C --&gt; D[&quot;backtrack(open+1, close)&quot;]
-D --&gt; E[&quot;cur = cur[:len-1]&quot;]
-B --&gt;|&quot;Нет&quot;| F{&quot;close &lt; open?&quot;}
-E --&gt; F
-F --&gt;|&quot;Да&quot;| G[&quot;cur = append(cur, &#x27;)&#x27;)&quot;]
-G --&gt; H[&quot;backtrack(open, close+1)&quot;]
-H --&gt; I[&quot;cur = cur[:len-1]&quot;]
-I --&gt; F
-F --&gt;|&quot;Нет&quot;| J{&quot;open==n &amp;&amp; close==n?&quot;}
-J --&gt;|&quot;Да&quot;| K[&quot;Сохранить копию cur&quot;]
-J --&gt;|&quot;Нет&quot;| L[&quot;Конец ветви&quot;]
+flowchart TD
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+
+Root[&quot;Корень: \&quot;\&quot; (open=0, close=0)&quot;]:::entry --&gt; O1[&quot;\&quot;(\&quot; (1, 0)&quot;]:::process
+
+O1 --&gt; O2[&quot;\&quot;((\&quot; (2, 0)&quot;]:::process
+O1 --&gt; C1[&quot;\&quot;()\&quot; (1, 1)&quot;]:::process
+
+O2 --&gt; O3[&quot;\&quot;(((\&quot; (3, 0)&quot;]:::process
+O2 --&gt; C2[&quot;\&quot;(()\&quot; (2, 1)&quot;]:::process
+
+O3 --&gt; L1[&quot;\&quot;((()))\&quot;&quot;]:::success
+
+C2 --&gt; O21[&quot;\&quot;(()(\&quot; (3, 1)&quot;]:::process
+C2 --&gt; C22[&quot;\&quot;(())\&quot; (2, 2)&quot;]:::process
+O21 --&gt; L2[&quot;\&quot;(()())\&quot;&quot;]:::success
+C22 --&gt; L3[&quot;\&quot;(())()\&quot;&quot;]:::success
+
+C1 --&gt; O12[&quot;\&quot;()(\&quot; (2, 1)&quot;]:::process
+O12 --&gt; O123[&quot;\&quot;()((\&quot; (3, 1)&quot;]:::process
+O12 --&gt; C123[&quot;\&quot;()()\&quot; (2, 2)&quot;]:::process
+O123 --&gt; L4[&quot;\&quot;()(())\&quot;&quot;]:::success
+C123 --&gt; L5[&quot;\&quot;()()()\&quot;&quot;]:::success
   </pre>
 </div>
 
 
-<h3 id="pochemu-eto-rabotaet-svyaz-s-katalanovymi-chislami">Почему это работает: связь с Каталановыми числами</h3>
+<p>Количество валидных комбинаций для $n$ пар строго задается $n$-м <strong>числом Каталана</strong>:<br />
+$$C_n = \frac{1}{n+1}\binom{2n}{n}$$<br />
+Для $n = 3$: $C_3 = \frac{1}{4}\binom{6}{3} = \frac{20}{4} = 5$ комбинаций.<br />
+Наш алгоритм обходит ровно эти 5 путей, не совершая ни единого ошибочного шага!</p>
+<hr />
+<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
 
-<p>Количество правильных скобочных последовательностей из <code>n</code> пар равно <code>C_n</code> — числу Каталана. Наш алгоритм генерирует каждую из них ровно один раз, потому что каждая последовательность однозначно строится пошагово: на каждом префиксе мы принимаем решение «открыть» или «закрыть» при соблюдении баланса. Дерево решений — это дерево путей в сетке от <code>(0,0)</code> до <code>(n,n)</code>, не пересекающих диагональ <code>open = close + 1</code>. Отсечения гарантируют, что мы не переходим запрещённые границы. Таким образом, алгоритм посещает ровно <code>C_n</code> листьев и некоторое количество внутренних узлов, которое пропорционально числу листьев.</p>
-<h3 id="edge-cases">Edge Cases</h3>
 
-<ul>
-<li><strong>n = 0:</strong> возвращаем <code>[""]</code>. В нашем коде добавили специальную проверку, чтобы не делать <code>make([]byte, 0, 0)</code> и не заходить в backtracking.</li>
-<li><strong>n = 1:</strong> <code>["()"]</code>. Цикл: добавляем <code>'('</code> → добавляем <code>')'</code> → сохраняем. Попытка добавить вторую <code>'('</code> невозможна (<code>open &lt; n</code> ложно), попытка добавить <code>')'</code> первой невозможна (<code>close &lt; open</code> ложно). Корректно.</li>
-<li><strong>n = 3:</strong> 5 комбинаций, алгоритм сгенерирует их все.</li>
-<li><strong>Большие n (8):</strong> 1430 комбинаций, ~0.5 млн вызовов <code>backtrack</code>. Быстро.</li>
-</ul>
-<h3 id="analiz-slozhnosti">Анализ сложности</h3>
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package main
 
-<ul>
-<li><strong>Время:</strong> O(N * C_n), где C_n — n-е число Каталана (≈ 4^n / (n^(3/2) * sqrt(pi))). Каждый лист (комбинация) копируется за O(N). Внутренние узлы пропорциональны числу листьев.</li>
-<li><strong>Память:</strong> O(N * C_n) для хранения всех строк (результат). Глубина стека рекурсии O(2N). Дополнительный буфер <code>cur</code> — O(2N) байт, переиспользуется.</li>
-</ul>
-<h3 id="mechanical-sympathy-allokatsii-i-pereispolzovanie-byte">Mechanical Sympathy: аллокации и переиспользование `[]byte`</h3>
+// generateParenthesis возвращает все валидные скобочные комбинации из n пар.
+// Временная сложность: O(4^n / sqrt(n)) — асимптотика чисел Каталана
+// Пространственная сложность: O(n) глубина стека и буфера cur
+func generateParenthesis(n int) []string {
+    if n &lt;= 0 {
+        return []string{&quot;&quot;}
+    }
 
-<ul>
-<li><strong>Единый буфер <code>cur</code></strong> ёмкостью <code>2n</code> аллоцируется один раз. В процессе backtracking <code>append</code> добавляет байты, заполняя этот буфер; откат лишь уменьшает длину, не освобождая память. После завершения буфер собирается GC.</li>
-<li><strong>Копирование в результат</strong> <code>cp := make([]byte, len(cur))</code> — это единственная аллокация на каждую найденную комбинацию. Она неизбежна, так как мы должны сохранить строку, не зависящую от дальнейших мутаций <code>cur</code>.</li>
-<li><strong>Альтернатива <code>string(cur)</code> без копирования?</strong> Если бы мы использовали <code>string(cur)</code>, а затем продолжали мутировать <code>cur</code>, сохранённые строки испортились бы, потому что <code>string</code> в Go иммутабельна, но ссылается на тот же массив байтов. Чтобы избежать этого, мы обязаны копировать.</li>
-<li><strong>Использование <code>strings.Builder</code></strong> вместо <code>[]byte</code> также возможно, но <code>Builder</code> не предоставляет удобного отката (нельзя просто уменьшить длину). <code>[]byte</code> с операциями среза — самый гибкий и лёгкий инструмент для backtracking в Go.</li>
-<li><strong>Стек рекурсии</strong> глубина до 2*8 = 16, всё на стеке, никаких проблем.</li>
-</ul>
-<div class="callout callout-info">
+    var result []string
+    // Предвыделяем емкость под точную длину скобочной строки 2*n
+    cur := make([]byte, 0, 2*n)
+
+    var backtrack func(open int, close int)
+    backtrack = func(open int, close int) {
+        // Базовый случай: набрано ровно 2*n символов
+        if len(cur) == 2*n {
+            // Преобразование []byte в string создает иммутабельную копию строки
+            result = append(result, string(cur))
+            return
+        }
+
+        // Ветвь 1: Можем открыть новую скобку
+        if open &lt; n {
+            cur = append(cur, '(')
+            backtrack(open+1, close)
+            cur = cur[:len(cur)-1] // Откат
+        }
+
+        // Ветвь 2: Можем закрыть открытую скобку
+        if close &lt; open {
+            cur = append(cur, ')')
+            backtrack(open, close+1)
+            cur = cur[:len(cur)-1] // Откат
+        }
+    }
+
+    backtrack(0, 0)
+    return result
+}
+</code></pre>
+</div>
+
+<hr />
+<h2 id="vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</h2>
+
+<h3 id="1-pereispolzovanie-byte-protiv-konkatenatsii-strok">1. Переиспользование `[]byte` против конкатенации строк</h3>
+<p>В наивных реализациях часто пишут:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">// Антипаттерн:
+backtrack(s + &quot;(&quot;, open+1, close)
+</code></pre>
+</div>
+
+<p>Конкатенация строк <code>s + "("</code> на каждом шаге рекурсии аллоцирует в куче новый заголовок строки и новый массив байт. Для $n = 8$ при глубине 16 это создаст десятки тысяч мелких объектов в куче и вызовет остановку рантайма сборщиком мусора (Stop-The-World GC).<br />
+Использование предвыделенного среза <code>cur := make([]byte, 0, 2*n)</code>:<br />
+- Выделяет память <strong>ровно один раз</strong> при старте.<br />
+- Операции <code>append</code> и <code>cur[:len(cur)-1]</code> происходят в пределах одного кэш-блока L1d.<br />
+- Аллокация происходит исключительно в момент <code>result = append(result, string(cur))</code> при фиксации валидного ответа.</p>
+<h3 id="2-spekulyativnoe-ispolnenie-protsessora-branch-prediction">2. Спекулятивное исполнение процессора (Branch Prediction)</h3>
+<p>В цикле <code>backtrack</code> два условия <code>if open &lt; n</code> и <code>if close &lt; open</code> абсолютно независимы (не объединены через <code>else</code>). Это позволяет конвейеру процессора спекулятивно вычислять обе ветви, минимизируя задержки предсказателя переходов.</p>
+<hr />
+<h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
+
+<div class="callout callout-warning">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Ловушка: Преобразование `string(cur)`</span>
   </div>
   <div class="callout-body">
-    <p>Escape analysis помещает <code>cur</code> в кучу, потому что он передаётся по указателю? Нет, <code>cur</code> — слайс, его заголовок копируется, но нижележащий массив был выделен через <code>make</code> и, следовательно, уже в куче. Замыкание <code>backtrack</code> захватывает <code>cur</code> по ссылке, но заголовок слайса (Data, Len, Cap) хранится на стеке внешней функции, а данные в куче. Это эффективно и безопасно.</p>
+    <p>В Go приведение <code>string(cur)</code> создает <strong>глубокую копию байтов</strong> из слайса в новую неизменяемую строку.<br />
+Если бы мы написали кастомную unsafe-конвертацию <code>*(*string)(unsafe.Pointer(&amp;cur))</code>, чтобы сэкономить аллокацию, все строки в массиве <code>result</code> указывали бы на один и тот же мутабельный буфер <code>cur</code>, и в итоге весь список результатов оказался бы испорчен последним откатом! Стандартное приведение <code>string(cur)</code> безопасно и необходимо.</p>
   </div>
 </div>
 
-<h3 id="alternativa-dinamicheskoe-programmirovanie">Альтернатива: динамическое программирование</h3>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования: Связь с путями Дика и парсерами</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Где в реальных компиляторах (включая компилятор Go <code>cmd/compile</code>) используется этот инвариант?<br />
+<strong>Ответ:</strong> В лексических и синтаксических анализаторах при парсинге выражений с вложенными скобками, блоками <code>{ ... }</code> и вызовами функций. Баланс скобок отслеживается ровно счетчиком <code>depth</code>: инкремент на <code>'('</code> и декремент на <code>')'</code>. Если в любой момент <code>depth &lt; 0</code>, парсер немедленно диагностирует синтаксическую ошибку без необходимости строить полное AST-дерево.</p>
+  </div>
+</div>
 
-<p>Можно строить множество строк для каждого n рекуррентно: <code>dp[n] = set("(" + a + ")" + b for i in 0..n-1, a in dp[i], b in dp[n-1-i])</code>. Это тоже даст все комбинации, но потребует генерации промежуточных множеств и большего объёма аллокаций (копирование строк при конкатенации). Backtracking с общим буфером значительно экономнее по памяти и времени на этапе построения. На собеседовании Senior упомянет DP-подход для сравнения.</p>
-<h3 id="itog">Итог</h3>
+<hr />
+<h2 id="rezyume-klastera-10-backtracking">Резюме Кластера 10 (Backtracking)</h2>
 
-<p>Generate Parentheses завершает кластер Backtracking, объединяя перебор с простыми локальными отсечениями. В Go задача решается с одним буфером <code>[]byte</code> и двумя счётчиками, без единой лишней аллокации в горячем пути. Мы прошли путь от подмножеств и перестановок до сеток и скобок — теперь вы готовы к любым задачам, требующим обхода пространства состояний с возвратом.</p>
-<p>Следующий кластер — <strong>Поиск в глубину (DFS)</strong>, где backtracking-мышление будет применено к графам и деревьям, а состояния станут вершинами. Мы начнём с фундаментальной теории, связывающей рекурсивный обход с явным стеком, и разберём, как избежать переполнения стека горутины в глубоких графах. <a href="../11-poisk-v-glubinu-dfs/1-teoriya-dfs.html" class="wikilink">1. Теория. DFS</a></p>
+<p>Мы полностью завершили фундаментальный модуль алгоритмов поиска с возвратом:<br />
+1. <strong>Теория:</strong> Трехфазный инвариант <em>Choose $\rightarrow$ Explore $\rightarrow$ Unchoose</em>, работа со стеком горутины и безаллокационный откат через <code>path[:len(path)-1]</code>.<br />
+2. <strong>Комбинаторные каркасы:</strong> Подмножества ($C(n,k)$ со сдвигом <code>start+1</code>), перестановки ($N!$ с <code>visited</code> и битовыми масками), неограниченные сочетания (<code>start</code> без сдвига).<br />
+3. <strong>Борьба с дубликатами:</strong> Сортировка и фильтрация ветвей на одном горизонтальном уровне дерева (<code>i &gt; start &amp;&amp; nums[i] == nums[i-1]</code>).<br />
+4. <strong>Пространственный поиск:</strong> Обход 2D-матриц с маскированием клеток in-place (<code>board[r][c] = '#'</code>).<br />
+5. <strong>Глобальные ограничения:</strong> Быстрые проекции диагоналей в $N$-Queens и локальный баланс счетчиков в ПСП.</p>
+<p>В следующем кластере мы применим навыки обхода дерева состояний к графовым структурам данных — переходим к <strong>Поиску в глубину (DFS)</strong>: <a href="../11-poisk-v-glubinu-dfs/1-teoriya-dfs.html" class="wikilink">1. Теория. DFS</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2374,7 +2385,7 @@ J --&gt;|&quot;Нет&quot;| L[&quot;Конец ветви&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#formulirovka-i-utochneniya">Формулировка и уточнения</a></li><li class="toc-item toc-h3"><a href="#naivnoe-reshenie-generatsiya-vsekh-strok-s-posleduyushchey-proverkoy">Наивное решение: генерация всех строк с последующей проверкой</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-backtracking-s-dvumya-schyotchikami">Оптимальное решение: backtracking с двумя счётчиками</a></li><li class="toc-item toc-h3"><a href="#pochemu-eto-rabotaet-svyaz-s-katalanovymi-chislami">Почему это работает: связь с Каталановыми числами</a></li><li class="toc-item toc-h3"><a href="#edge-cases">Edge Cases</a></li><li class="toc-item toc-h3"><a href="#analiz-slozhnosti">Анализ сложности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-allokatsii-i-pereispolzovanie-byte">Mechanical Sympathy: аллокации и переиспользование []byte</a></li><li class="toc-item toc-h3"><a href="#alternativa-dinamicheskoe-programmirovanie">Альтернатива: динамическое программирование</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-derevo-pravilnykh-prefiksov-dlya-n-3">Архитектура: Дерево правильных префиксов для $n = 3$</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#1-pereispolzovanie-byte-protiv-konkatenatsii-strok">1. Переиспользование []byte против конкатенации строк</a></li><li class="toc-item toc-h3"><a href="#2-spekulyativnoe-ispolnenie-protsessora-branch-prediction">2. Спекулятивное исполнение процессора (Branch Prediction)</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#rezyume-klastera-10-backtracking">Резюме Кластера 10 (Backtracking)</a></li>
   </ul>
 </aside>
 

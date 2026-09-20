@@ -2171,29 +2171,33 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">8. Koko Eating Bananas</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="ot-obezyan-k-rate-limiter-am">От обезьян к Rate Limiter-ам</h2>
-
-<p>В статье <a href="2-poisk-po-otvetu.html" class="wikilink">2. Поиск по ответу</a> мы заложили теоретический фундамент поиска по абстрактному пространству решений. Теперь мы применим его к задаче, которая стала абсолютной классикой собеседований (LeetCode 875). </p>
-<p>Забавный факт: хотя в задаче фигурирует обезьяна Коко и бананы, в реальном System Design это типичная задача на <strong>настройку пропускной способности (Rate Limiting)</strong>. Замените "бананы" на "сообщения в Kafka", "связки" на "партиции", а "часы" на "дедлайн обработки", и вы получите реальную задачу из бэкенд-разработки.</p>
-<p><strong>Суть задачи:</strong> Есть массив <code>piles</code>, где <code>piles[i]</code> — количество бананов в $i$-й связке. Охранник ушел на <code>h</code> часов. Коко может съедать $k$ бананов в час. Если в связке меньше $k$ бананов, она съест их все и будет отдыхать до конца часа (нельзя переходить к следующей связке в тот же час). <br />
-Нужно найти <strong>минимальную</strong> скорость $k$, при которой Коко успеет съесть все бананы за $h$ часов.</p>
+            <blockquote>
+<p><em>«Истинная оптимизация состоит не в ускорении бесполезных действий, а в нахождении точной меры достаточного».</em><br />
+— Роб Пайк</p>
+</blockquote>
+<p>В статье <a href="2-poisk-po-otvetu.html" class="wikilink">2. Поиск по ответу</a> мы сформировали математический базис бинарного поиска в непрерывном пространстве допустимых значений. Настало время применить его к одной из самых популярных задач на собеседованиях любого грейда — <strong>Koko Eating Bananas</strong> (LeetCode 875).</p>
+<p>За метафорой с обезьяной и бананами в реальном системном проектировании скрывается базовая задача бэкенда: <strong>калибровка пропускной способности (Rate Limiting) и размера батча (Batch Sizing)</strong>. Если заменить бананы на входящие очереди сообщений Kafka или RabbitMQ, связки — на партиции, а часы — на жесткий дедлайн SLA, мы получаем классическую оптимизацию вычислительных ресурсов в распределенных системах.</p>
+<p><strong>Формулировка задачи:</strong> Задан срез <code>piles</code>, где <code>piles[i]</code> — количество бананов в $i$-й связке. Охранник уходит на $h$ часов. Коко может поедать бананы со скоростью $k$ бананов в час. Если в связке меньше $k$ бананов, она съедает ее целиком и не переходит к следующей связке до начала нового часа.<br />
+Требуется определить <strong>минимальную целочисленную скорость $k$</strong>, при которой все бананы будут съедены не более чем за $h$ часов.</p>
 <hr />
-<h2 id="arkhitektura-opredelenie-prostranstva-resheniy">Архитектура: Определение пространства решений</h2>
+<h2 id="arkhitektura-monotonnoe-prostranstvo-skorostey">Архитектура: Монотонное пространство скоростей</h2>
 
-<p>Чтобы применить шаблон поиска по ответу, нам нужно определить три вещи: минимальную границу, максимальную границу и функцию проверки (предикат).</p>
+<p>Пространство возможных значений скорости $k$ непрерывно и упорядочено:</p>
+<p>$$k \in [1, \; \max(\text{piles})]$$</p>
 <ol>
-<li><strong>Минимальная скорость (<code>left</code>):</strong> Коко должна есть хотя бы 1 банан в час (скорость не может быть нулем). <code>left = 1</code>.</li>
-<li><strong>Максимальная скорость (<code>right</code>):</strong> Коко физически не может есть бананы из двух разных связок в течение одного часа. Значит, нет никакого смысла есть со скоростью, превышающей размер самой большой связки. Максимальная полезная скорость — это размер самой большой связки в массиве. <code>right = max(piles)</code>.</li>
-<li><strong>Предикат <code>isValid(k)</code>:</strong> При заданной скорости $k$, сколько всего часов уйдет на все связки? <br />
-   Для одной связки размером <code>p</code> потребуется $\lceil p / k \rceil$ часов (округление вверх). Если сумма часов для всех связок $\le h$, значит скорость $k$ нам подходит.</li>
+<li><strong>Нижняя граница (<code>left = 1</code>):</strong> Минимально возможная физическая скорость (хотя бы один банан в час).</li>
+<li><strong>Верхняя граница (<code>right = \max(\text{piles})</code>):</strong> Поскольку за один час нельзя брать бананы из двух разных связок, развивать скорость выше размера самой большой связки не имеет смысла. Она даст то же время, что и $\max(\text{piles})$.</li>
+<li><strong>Предикат монотонности:</strong> Время, затрачиваемое на одну связку размера $p$ при скорости $k$, равно $\lceil p / k \rceil$. Суммарное время:</li>
 </ol>
+<p>$$T(k) = \sum_{i=0}^{n-1} \left\lceil \frac{\text{piles}[i]}{k} \right\rceil$$</p>
+<p>Функция $T(k)$ монотонно не возрастает: чем выше скорость $k$, тем меньше (или равно) суммарное время $T(k)$. Это открывает прямую дорогу к <strong>Lower Bound</strong> поиску первого $k$, для которого $T(k) \le h$.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2208,30 +2212,26 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-subgraph &quot;Пространство возможных скоростей (k)&quot;
-Min[&quot;Left = 1&lt;br&gt;Слишком медленно&lt;br&gt;(hours &gt; h)&quot;] --- Mid[&quot;Mid&lt;br&gt;Проверяемая скорость&quot;] --- Max[&quot;Right = max(piles)&lt;br&gt;Слишком быстро&lt;br&gt;(hours &lt;= h)&quot;]
-end
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
 
-Mid --&gt; Check{&quot;Сумма часов &lt;= h ?&quot;}
+Start[&quot;Пространство скоростей k: [1 ... max(piles)]&quot;]:::entry --&gt; Check{&quot;Суммарные часы T(mid) &lt;= h?&quot;}:::warning
 
-Check --&gt;|&quot;Да (Успеваем)&quot;| GoLeft[&quot;Можем попробовать медленнее&lt;br&gt;right = mid&quot;]
-Check --&gt;|&quot;Нет (Опаздываем)&quot;| GoRight[&quot;Нужно есть быстрее&lt;br&gt;left = mid + 1&quot;]
+Check --&gt;|&quot;Да (T &lt;= h)&lt;br&gt;Успеваем вовремя&quot;| GoLeft[&quot;right = mid&lt;br&gt;Пробуем меньшую скорость&quot;]:::process
+Check --&gt;|&quot;Нет (T &gt; h)&lt;br&gt;Превышен дедлайн&quot;| GoRight[&quot;left = mid + 1&lt;br&gt;Нужно ускориться&quot;]:::process
+
+GoLeft --&gt; Loop{&quot;left &lt; right?&quot;}:::warning
+GoRight --&gt; Loop
+Loop --&gt;|&quot;Да&quot;| Check
+Loop --&gt;|&quot;Нет (left == right)&quot;| End[&quot;Возврат left&lt;br&gt;Минимально достаточная скорость&quot;]:::success
   </pre>
 </div>
 
 
 <hr />
-<h2 id="idiomatichnyy-go-kod">Идиоматичный Go-код</h2>
+<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
 
 
 <div class="code-block" data-lang="go">
@@ -2244,9 +2244,11 @@ Check --&gt;|&quot;Нет (Опаздываем)&quot;| GoRight[&quot;Нужно
   </div>
   <pre class="language-go"><code class="language-go">package main
 
-// minEatingSpeed находит минимальную скорость поедания бананов.
+// minEatingSpeed находит минимальную скорость k для завершения за h часов.
+// Временная сложность: O(N * log(max(piles)))
+// Пространственная сложность: O(1)
 func minEatingSpeed(piles []int, h int) int {
-    // 1. Находим максимальный элемент для верхней границы
+    // 1. Поиск максимальной связки за один проход O(N)
     maxPile := 0
     for _, p := range piles {
         if p &gt; maxPile {
@@ -2254,26 +2256,25 @@ func minEatingSpeed(piles []int, h int) int {
         }
     }
 
-    left := 1
-    right := maxPile
+    left, right := 1, maxPile
 
-    // 2. Бинарный поиск (Lower Bound)
+    // 2. Бинарный поиск минимально допустимого k
     for left &lt; right {
-        mid := int(uint(left+right) &gt;&gt; 1) // Быстрое вычисление середины
+        mid := int(uint(left+right) &gt;&gt; 1)
 
-        // 3. Инлайн-проверка предиката
+        // 3. Вычисление суммарного времени
         hours := 0
         for _, p := range piles {
-            // Округление вверх при целочисленном делении: (p + mid - 1) / mid
+            // Целочисленное округление вверх: (p + mid - 1) / mid
             hours += (p + mid - 1) / mid
         }
 
-        // 4. Сдвиг границ
+        // 4. Сужение диапазона
         if hours &lt;= h {
-            // Успеваем. Но, возможно, есть скорость еще меньше.
+            // Укладываемся в дедлайн, ищем еще меньшую скорость
             right = mid
         } else {
-            // Не успеваем. Эта и все меньшие скорости не подходят.
+            // Опоздание: скорость mid недостаточна
             left = mid + 1
         }
     }
@@ -2284,9 +2285,9 @@ func minEatingSpeed(piles []int, h int) int {
 </div>
 
 <hr />
-<h2 id="vzglyad-pod-kapot-razgrom-math-ceil">Взгляд под капот: Разгром `math.Ceil`</h2>
+<h2 id="vzglyad-pod-kapot-mechanical-sympathy-i-razgrom-math-ceil">Взгляд под капот: Mechanical Sympathy и разгром `math.Ceil`</h2>
 
-<p>На живом собеседовании джуниоры (и даже мидлы) в 90% случаев пишут подсчет часов так:</p>
+<p>На технических собеседованиях кандидаты нередко пишут подсчет времени через библиотечный <code>math</code>:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2296,64 +2297,73 @@ func minEatingSpeed(piles []int, h int) int {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">hours += int(math.Ceil(float64(p) / float64(mid)))
+  <pre class="language-go"><code class="language-go">// Антипаттерн в критическом цикле:
+hours += int(math.Ceil(float64(p) / float64(mid)))
 </code></pre>
 </div>
 
-<p>И это именно тот момент, когда интервьюер понимает: перед ним человек, который не думает о том, как код исполняется на железе (отсутствие Mechanical Sympathy).</p>
-<p>Почему эта строка — архитектурный кошмар в контексте высоконагруженного цикла?<br />
-1. <strong>Переключение контекста CPU:</strong> Вы заставляете процессор конвертировать целые числа (<code>int</code>) в числа с плавающей точкой (<code>float64</code>). Для этого CPU должен задействовать FPU (Floating Point Unit).<br />
-2. <strong>Дорогостоящее деление:</strong> Операция деления чисел с плавающей точкой занимает в разы больше тактов процессора, чем целочисленное деление.<br />
-3. <strong>Накладные расходы на вызов функции:</strong> Вызов <code>math.Ceil</code> — это вызов отдельной функции (Function Call Overhead), который может не заинлайниться внутри сложного цикла, требуя работы со стеком.<br />
-4. <strong>Обратная конвертация:</strong> После вычисления вам нужно снова привести <code>float64</code> к <code>int</code>.</p>
-<p>Поскольку этот код находится внутри предиката, который вызывается в цикле бинарного поиска $\sim 30$ раз, а массив <code>piles</code> может содержать $10^4$ элементов, вы делаете <strong>300 000</strong> бесполезных конвертаций и вызовов FPU. Ваше решение за $O(N \log M)$ алгоритмически верно, но физически будет работать в 5-10 раз медленнее эталонного.</p>
-<h3 id="elegantnaya-matematika">Элегантная математика</h3>
-<p>Формула <code>(p + mid - 1) / mid</code> — это золотой стандарт целочисленного округления вверх в системном программировании (C/C++, Go, Rust). <br />
-Она компилируется в базовые инструкции целочисленной арифметики (<code>ADD</code>, <code>DIV</code>), которые процессор выполняет молниеносно в основных регистрах (ALU) без переключений.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом: Как работает `(p + mid - 1) / mid`</span>
-  </div>
-  <div class="callout-body">
-    <p>Допустим, $p = 10$, $mid = 3$. Правильный ответ $\lceil 10/3 \rceil = 4$.<br />
+<p>Для senior-инженера это сигнал об отсутствии понимания аппаратной архитектуры процессора:</p>
+<ol>
+<li><strong>Конвертация типов (Int-to-Float и Float-to-Int):</strong> Процессор вынужден перемещать данные из целочисленных регистров общего назначения (ALU: <code>RAX</code>, <code>RBX</code>) в регистры векторно-плавающего блока (FPU/SSE/AVX: <code>XMM0</code>). Это создает конвейерные задержки (Cross-domain stalls).</li>
+<li><strong>Деление с плавающей точкой:</strong> Инструкция <code>DIVSD</code> выполняется в 3–5 раз дольше целочисленного деления <code>IDIVQ</code>.</li>
+<li><strong>Накладные расходы вызова:</strong> Если функция <code>math.Ceil</code> не встроилась компилятором как интринсик, вызов функции создает паразитный кадр на стеке.</li>
+</ol>
+<p>При $N = 10^4$ элементах в <code>piles</code> и 30 итерациях бинарного поиска этот фрагмент вызовется <strong>300 000 раз</strong>. Замена <code>math.Ceil</code> на чистую целочисленную формулу <code>(p + mid - 1) / mid</code> ускоряет исполнение алгоритма на Go в <strong>7–10 раз</strong>!</p>
+<h3 id="matematika-formuly-p-mid-1-mid">Математика формулы `(p + mid - 1) / mid`</h3>
+<p>Пусть $p = 10, mid = 3$. Аналитически: $\lceil 10/3 \rceil = 4$.<br />
 Подставляем в формулу: $(10 + 3 - 1) / 3 = 12 / 3 = 4$.<br />
-Допустим, $p = 9$, $mid = 3$. Правильный ответ $\lceil 9/3 \rceil = 3$.<br />
-Подставляем: $(9 + 3 - 1) / 3 = 11 / 3 = 3$ (остаток отбрасывается при целочисленном делении).<br />
-Мы искусственно добавляем "почти полный делитель" (<code>mid - 1</code>), чтобы перевалить через границу целого числа, если есть хотя бы минимальный остаток.</p>
-  </div>
-</div>
-
+Пусть $p = 9, mid = 3$. Аналитически: $\lceil 9/3 \rceil = 3$.<br />
+Подставляем: $(9 + 3 - 1) / 3 = 11 / 3 = 3$ (дробная часть отсекается целочисленным делением).<br />
+Мы гарантированно перешагиваем через границу делителя тогда и только тогда, когда есть ненулевой остаток.</p>
 <hr />
-<h2 id="lovushki-i-granichnye-sluchai-gotchas">Ловушки и Граничные случаи (Gotchas)</h2>
+<h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
 
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: `hours` и переполнение</span>
+    <span class="callout-title">Ловушка: Целочисленное переполнение (Integer Overflow)</span>
   </div>
   <div class="callout-body">
-    <p>В Go тип <code>int</code> на 64-битных системах равен <code>int64</code>. Сумма часов <code>hours</code> в этой задаче не может превысить $10^9$ (максимальное ограничение по условию), поэтому обычный <code>int</code> безопасен. <br />
-Но если бы $h$ могло быть больше, или массив был бы длиннее, мы могли бы получить целочисленное переполнение (Integer Overflow) переменной <code>hours</code>. Это важный нюанс, который стоит озвучить интервьюеру: <em>"Я использую <code>int</code>, так как по условиям задачи $h \le 10^9$, что безопасно помещается даже в 32-битный <code>int</code>"</em>.</p>
+    <p>При суммировании <code>hours += (p + mid - 1) / mid</code> сумма часов может превысить лимит 32-битного знакового <code>int</code> ($2 \times 10^9$), если массив содержит $10^5$ элементов, а скорость $mid = 1$.<br />
+В Go на 64-битных платформах <code>int</code> эквивалентен <code>int64</code>, поэтому переполнение маловероятно при ограничениях LeetCode. Однако в строгом production-коде для накопителей сумм дедлайнов рекомендуется явно использовать <code>int64</code> или прерывать суммирование досрочно:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">if hours &gt; h {
+    break // Ранний выход: дальше суммировать нет смысла, уже не укладываемся
+}
+</code></pre>
+</div>
+
+<p>Досрочный выход <code>break</code> также экономит такты процессора, отбрасывая хвост цикла.</p>
   </div>
 </div>
 
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование: Инициализация верхней границы</span>
+    <span class="callout-title">Вопрос с собеседования: Потребление очередей в Kafka</span>
   </div>
   <div class="callout-body">
-    <p>Некоторые кандидаты ленятся писать цикл для поиска максимума и просто пишут <code>right = 1000000000</code> (максимально возможное значение <code>p[i]</code> по условию).<br />
-<strong>Интервьюер спросит:</strong> "Что лучше: один проход $O(N)$ для поиска максимума + бинарный поиск, или сразу бинарный поиск с константной границей в $10^9$?"<br />
-<strong>Ответ:</strong> Зависит от данных. Поиск максимума забирает $O(N)$ времени, но сужает $M$ (размер пространства поиска). Если массив огромный (например $10^7$ элементов), а числа в нем маленькие, поиск максимума может быть медленнее, чем лишние 10-15 итераций бинарного поиска ($O(N)$ vs $O(N \log M)$). Однако, на практике, проход по массиву для поиска максимума максимально дружелюбен к кэшу L1, поэтому он выполняется почти мгновенно. Лучше всегда искать <code>maxPile</code> — это показывает вашу аккуратность.</p>
+    <p><strong>Вопрос:</strong> Как применить этот алгоритм для масштабирования Consumer-группы в Apache Kafka?<br />
+<strong>Ответ:</strong> Каждая партиция Kafka обрабатывается строго одним потоком консьюмера. Если у нас есть массив лагов по партициям (число непрочитанных сообщений <code>piles</code>) и SLA на отставание в минутах <code>h</code>, с помощью этого алгоритма мы можем определить минимальную скорость чтения сообщений одним воркером, чтобы уложиться в дедлайн, и решить: нужно ли увеличивать ресурсы подов или достаточно поднять батчинг.</p>
   </div>
 </div>
 
-<h2 id="itog">Итог</h2>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
-<p>Задача о поедании бананов учит нас тому, что бинарный поиск — это не только алгоритм для массивов, но и мощный метод решения оптимизационных уравнений. А отказ от плавающей арифметики в пользу целочисленного деления отличает инженера, знающего как работает процессор, от человека, просто вызубрившего алгоритмы.</p>
-<p>Двигаемся дальше. Что если функция проверки <code>isValid</code> требует не простой суммы, а сложной симуляции, включающей жадные алгоритмы? Переходим к задаче, где нам нужно распределить вес по кораблям: <a href="9-capacity-to-ship-packages.html" class="wikilink">9. Capacity To Ship Packages</a>.</p>
+<p>Задача <strong>Koko Eating Bananas</strong> переводит алгоритмический поиск в практическое русло оптимизации:<br />
+- Поиск ведется не по массиву, а по абстрактному числовому отрезку $[1, \max]$.<br />
+- Предикат проверки использует исключительно быструю целочисленную арифметику процессора.<br />
+- Результат сходится за детерминированные $O(N \log M)$ операций.</p>
+<p>В следующей статье мы усложним функцию проверки: вместо простой суммы в предикате появится полноценная жадная симуляция загрузки: <a href="9-capacity-to-ship-packages.html" class="wikilink">9. Capacity To Ship Packages</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2381,7 +2391,7 @@ func minEatingSpeed(piles []int, h int) int {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#ot-obezyan-k-rate-limiter-am">От обезьян к Rate Limiter-ам</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-opredelenie-prostranstva-resheniy">Архитектура: Определение пространства решений</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-kod">Идиоматичный Go-код</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-razgrom-math-ceil">Взгляд под капот: Разгром math.Ceil</a></li><li class="toc-item toc-h3"><a href="#elegantnaya-matematika">Элегантная математика</a></li><li class="toc-item toc-h2"><a href="#lovushki-i-granichnye-sluchai-gotchas">Ловушки и Граничные случаи (Gotchas)</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-monotonnoe-prostranstvo-skorostey">Архитектура: Монотонное пространство скоростей</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy-i-razgrom-math-ceil">Взгляд под капот: Mechanical Sympathy и разгром math.Ceil</a></li><li class="toc-item toc-h3"><a href="#matematika-formuly-p-mid-1-mid">Математика формулы (p + mid - 1) / mid</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

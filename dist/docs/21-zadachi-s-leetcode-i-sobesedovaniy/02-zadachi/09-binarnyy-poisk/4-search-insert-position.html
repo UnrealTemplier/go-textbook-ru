@@ -2171,25 +2171,28 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~12 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">4. Search Insert Position</h1>
           </header>
 
           <div class="article-markdown">
-            <p>В предыдущей статье мы разобрали классический бинарный поиск (Exact Match), который отвечает на вопрос: <em>"Есть ли это число в массиве?"</em>. </p>
-<p>Но в системном программировании, особенно при разработке баз данных (вставка в B-Tree индексы) или поддержании отсортированных in-memory структур, нас чаще интересует другой вопрос: <em>"Если числа нет, то </em><em>куда</em><em> его нужно вставить, чтобы не нарушить сортировку?"</em>.</p>
-<p>Задача <strong>Search Insert Position</strong> (LeetCode 35) — это идеальная иллюстрация паттерна <strong>Lower Bound</strong> (Нижняя граница). Это тот самый фундамент, на котором строятся более сложные алгоритмы поиска по ответу.</p>
+            <blockquote>
+<p><em>«Вставка элемента в упорядоченную структуру — это поиск места, где он должен был находиться с самого начала».</em><br />
+— Никлаус Вирт</p>
+</blockquote>
+<p>В предыдущей статье <a href="3-binary-search.html" class="wikilink">3. Binary Search</a> мы разобрали классический бинарный поиск (Exact Match), который отвечает на строгий вопрос: <em>«Присутствует ли заданное число в массиве?»</em>. </p>
+<p>Но в системном программировании, при разработке B-Tree индексов в СУБД (PostgreSQL, SQLite), при поддержке упорядоченных in-memory структур (Log-Structured Merge-trees в RocksDB/Pebble) или в стандартной библиотеке Go (<code>slices.BinarySearch</code>), инженера чаще интересует другой вопрос: <em>«Если элемента нет в массиве, то </em><em>в какую позицию</em><em> его необходимо поместить, чтобы сохранить сортировку?»</em>.</p>
+<p>Задача <strong>Search Insert Position</strong> (LeetCode 35) — это канонический пример фундаментального паттерна <strong>Lower Bound</strong> (поиск нижней границы). Это строгая база, на которой строится поиск по ответу и навигация в структурах данных ядра.</p>
 <hr />
-<h2 id="arkhitektura-otlichie-lower-bound-ot-exact-match">Архитектура: Отличие Lower Bound от Exact Match</h2>
+<h2 id="arkhitektura-invariant-lower-bound-protiv-exact-match">Архитектура: Инвариант Lower Bound против Exact Match</h2>
 
-<p>В классическом поиске (как в задаче 704) мы использовали три ветки: <code>&lt; target</code>, <code>&gt; target</code> и <code>== target</code>. Если находили элемент — сразу выходили из цикла (<code>return mid</code>). <br />
-Границы мы инициализировали как <code>[0, len(nums)-1]</code>.</p>
-<p>В поиске позиции для вставки (Lower Bound) логика меняется:<br />
-1. Мы ищем <strong>первый элемент, который больше или равен</strong> нашему <code>target</code>. <br />
-2. Мы <strong>не выходим из цикла досрочно</strong>, даже если нашли точное совпадение! Почему? Потому что в массиве с дубликатами точных совпадений может быть несколько, а вставлять новый элемент принято перед первым из них (для сохранения стабильности).<br />
-3. <strong>Верхняя граница <code>right</code> инициализируется как <code>len(nums)</code>, а не <code>len(nums)-1</code></strong>. Это критически важно. Если <code>target</code> больше всех элементов в массиве, его нужно вставить в самый конец. Индекс для вставки в конец равен длине массива!</p>
+<p>В классическом поиске точного совпадения (Exact Match) мы использовали закрытый интервал <code>[0, len(nums)-1]</code> и три ветки: <code>&lt; target</code>, <code>&gt; target</code> и <code>== target</code>. При совпадении мы немедленно завершали работу (<code>return mid</code>).</p>
+<p>В поиске позиции вставки (Lower Bound) архитектура меняется:<br />
+1. <strong>Мы ищем первый индекс $i$, для которого <code>nums[i] &gt;= target</code>:</strong> Если точный элемент найден, мы не имеем права выходить досрочно, если массив может содержать дубликаты — вставка обязана происходить перед первым дубликатом (требование стабильности порядка).<br />
+2. <strong>Полуинтервал <code>[0, len(nums))</code>:</strong> Верхняя граница <code>right</code> инициализируется значением <code>len(nums)</code>, а не <code>len(nums) - 1</code>. Если <code>target</code> больше любого элемента в срезе, его законная позиция для вставки — в самый конец, то есть на индекс <code>len(nums)</code>.<br />
+3. <strong>Безусловная сходимость:</strong> Условие цикла <code>left &lt; right</code> гарантирует, что полуинтервал схлопывается в единственную точку <code>left == right</code>, которая и является искомой позицией.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2204,33 +2207,28 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-Start[&quot;Ищем Target = 2&lt;br&gt;в массиве 1, 3, 5, 6&quot;]:::warning --&gt; Check{&quot;nums-mid- &gt;= target?&quot;}
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
 
-Check --&gt;|&quot;Да - 3 &gt;= 2&quot;| GoLeft[&quot;Сдвигаем right = mid&lt;br&gt;Ищем еще левее&quot;]
-Check --&gt;|&quot;Нет - 1 &lt; 2&quot;| GoRight[&quot;Сдвигаем left = mid + 1&lt;br&gt;Ответ строго правее&quot;]
+Start[&quot;Старт: nums = [1, 3, 5, 6], target = 2&lt;br&gt;left = 0, right = 4&quot;]:::entry --&gt; Check{&quot;nums[mid] &gt;= target?&quot;}:::warning
 
-GoLeft --&gt; Loop{&quot;left &lt; right?&quot;}
+Check --&gt;|&quot;Да (3 &gt;= 2)&lt;br&gt;Кандидат найден&quot;| GoLeft[&quot;right = mid&lt;br&gt;Ищем левее, не теряя mid&quot;]:::process
+Check --&gt;|&quot;Нет (1 &lt; 2)&lt;br&gt;Слишком мало&quot;| GoRight[&quot;left = mid + 1&lt;br&gt;Ответ строго правее&quot;]:::process
+
+GoLeft --&gt; Loop{&quot;left &lt; right?&quot;}:::warning
 GoRight --&gt; Loop
 Loop --&gt;|&quot;Да&quot;| Check
-Loop --&gt;|&quot;Нет&quot;| End[&quot;Возвращаем left&lt;br&gt;Это позиция вставки&quot;]
+Loop --&gt;|&quot;Нет (left == right == 1)&quot;| End[&quot;Возврат left = 1&lt;br&gt;Позиция для вставки числа 2&quot;]:::success
   </pre>
 </div>
 
 
 <hr />
-<h2 id="idiomatichnyy-go-kod">Идиоматичный Go-код</h2>
+<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
 
-<p>Этот шаблон — золотой стандарт для задач на бинарный поиск. Выучив его, вы решите 90% задач раздела Binary Search.</p>
+<p>Этот шаблон полуинтервала <code>[left, right)</code> — золотой стандарт конкурентного и системного программирования. Он полностью исключает ошибки выхода за границы среза и неоднозначности выхода из цикла.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2242,30 +2240,33 @@ Loop --&gt;|&quot;Нет&quot;| End[&quot;Возвращаем left&lt;br&gt;Э�
   </div>
   <pre class="language-go"><code class="language-go">package main
 
-// searchInsert возвращает индекс элемента, если он найден.
-// Если нет, возвращает индекс, куда его следовало бы вставить.
+// searchInsert возвращает индекс элемента, если он найден в отсортированном срезе.
+// Если элемент отсутствует, возвращается индекс, куда его следует вставить
+// с сохранением порядка сортировки (паттерн Lower Bound).
+// Временная сложность: O(log N)
+// Пространственная сложность: O(1)
 func searchInsert(nums []int, target int) int {
-    // ВАЖНО: right указывает за пределы массива (длина массива).
-    // Это возможное место для вставки, если target больше всех элементов.
+    // right инициализируется длиной среза: возможная позиция вставки в конец
     left, right := 0, len(nums)
 
-    // Цикл работает, пока полуинтервал [left, right) не схлопнется в одну точку.
+    // Цикл сужает полуинтервал [left, right) до тех пор, пока left != right
     for left &lt; right {
-        // Быстрое вычисление середины с защитой от переполнения
+        // Защищенное от переполнения деление сдвигом в регистре CPU
         mid := int(uint(left+right) &gt;&gt; 1)
 
         if nums[mid] &gt;= target {
-            // Если текущий элемент больше или равен, ответ может быть здесь (mid)
-            // или еще левее. Сужаем правую границу, НЕ исключая mid.
+            // Текущий элемент подходит или больше искомого:
+            // ответ может быть в позиции mid или левее.
+            // Сдвигаем правую границу, сохраняя mid в полуинтервале [left, mid).
             right = mid
         } else {
-            // Если текущий элемент строго меньше, он нам точно не подходит.
-            // Ответ гарантированно правее. Исключаем mid.
+            // Элемент nums[mid] строго меньше target:
+            // позиция вставки гарантированно находится правее.
             left = mid + 1
         }
     }
 
-    // Когда left == right, мы нашли идеальную позицию для вставки.
+    // По выходу из цикла left == right — это точная позиция вставки
     return left
 }
 </code></pre>
@@ -2274,26 +2275,25 @@ func searchInsert(nums []int, target int) int {
 <hr />
 <h2 id="vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</h2>
 
-<h3 id="1-branch-prediction-predskazatel-vetvleniy">1. Branch Prediction (Предсказатель ветвлений)</h3>
-<p>Посмотрите на цикл <code>for</code>. В нем всего <strong>один условный оператор</strong> <code>if ... else ...</code>. <br />
-В классическом поиске с ранним выходом (Exact Match) у нас было два <code>if</code> (три ветки выполнения). <br />
-Для предсказателя ветвлений (Branch Predictor) современного процессора (например, архитектуры Zen или Core) две ветки предсказывать значительно проще, чем три. <br />
-Более того, цикл без раннего выхода <code>return mid</code> будет всегда выполняться строго $\approx \log_2 N$ раз. CPU "любит" циклы с детерминированным (или хотя бы постоянным) количеством итераций, так как это позволяет эффективно планировать конвейер (Pipeline scheduling).</p>
-<h3 id="2-izbezhanie-panik-bounds-check">2. Избежание паник (Bounds Check)</h3>
-<p>Вы можете спросить: <em>"Если <code>right</code> изначально равно <code>len(nums)</code>, не получим ли мы <code>index out of range</code> при обращении к <code>nums[mid]</code>?"</em><br />
-Нет, не получим. <br />
-Математика бинарного поиска гарантирует, что <code>mid</code> вычисляется с округлением вниз (за счет целочисленного деления <code>&gt;&gt; 1</code>). Даже если <code>left = len(nums) - 1</code>, а <code>right = len(nums)</code>, их сумма будет нечетной, и деление на 2 даст <code>mid = len(nums) - 1</code>. <br />
-Мы <strong>никогда</strong> не обратимся к <code>nums[len(nums)]</code> внутри цикла. Это математически безопасно, и компилятор Go способен это доказать (Bounds Check Elimination).</p>
+<h3 id="1-predskazuemost-vetvleniy-branch-prediction">1. Предсказуемость ветвлений (Branch Prediction)</h3>
+<p>В цикле <code>for left &lt; right</code> содержится всего <strong>одно бинарное условие</strong> (<code>if ... else ...</code>), в отличие от классического поиска с тремя исходами (<code>&lt;</code>, <code>&gt;</code>, <code>==</code>).<br />
+- Для аппаратного блока Branch Predictor в процессорах AMD Zen или Intel Core предсказание исхода двух ветвей на монотонных данных требует минимальных ресурсов.<br />
+- Поскольку цикл не содержит досрочного выхода <code>return mid</code>, число итераций детерминировано и составляет строго $\lceil \log_2 (N+1) \rceil$. Это позволяет суперскалярному конвейеру процессора непрерывно спекулятивно вычислять инструкции без сбросов конвейера (Pipeline Flushes).</p>
+<h3 id="2-dokazannaya-bezopasnost-bounds-check-bce">2. Доказанная безопасность Bounds Check (BCE)</h3>
+<p>Возникает резонный вопрос: если <code>right = len(nums)</code>, не вызовет ли обращение <code>nums[mid]</code> панику рантайма <code>runtime.panicIndex</code>?<br />
+- Формула <code>mid := int(uint(left + right) &gt;&gt; 1)</code> математически производит округление вниз.<br />
+- Даже в худшем сценарии, когда <code>left = len(nums) - 1</code> и <code>right = len(nums)</code>, их полусумма дает <code>mid = len(nums) - 1</code>.<br />
+- Значение <code>mid</code> <strong>строго меньше</strong> <code>len(nums)</code> на любой итерации цикла. Компилятор Go (<code>cmd/compile</code>) при включенной оптимизации доказывает данный инвариант и устраняет машинные инструкции проверки выхода за границы (<code>CMPQ</code> + <code>JAE runtime.panicIndexOutBounds</code>).</p>
 <hr />
-<h2 id="lovushki-i-corner-cases-gotchas">Ловушки и Corner Cases (Gotchas)</h2>
+<h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
 
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Шаблон `left &lt;= right`</span>
+    <span class="callout-title">Ловушка: Попытка адаптировать шаблон `left &lt;= right`</span>
   </div>
   <div class="callout-body">
-    <p>Если вы попытаетесь решить эту задачу через шаблон точного поиска (с <code>left &lt;= right</code> и <code>right = len(nums) - 1</code>), код превратится в месиво:</p>
+    <p>Многие кандидаты пытаются решить задачу через шаблон с закрытым интервалом:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2305,34 +2305,62 @@ func searchInsert(nums []int, target int) int {
   </div>
   <pre class="language-go"><code class="language-go">left, right := 0, len(nums)-1
 for left &lt;= right {
-    mid := int(uint(left+right)&gt;&gt;1)
+    mid := left + (right-left)/2
     if nums[mid] == target { return mid }
-    if nums[mid] &lt; target { left = mid + 1 }
-    else { right = mid - 1 }
+    if nums[mid] &lt; target { left = mid + 1 } else { right = mid - 1 }
 }
-return left // &lt;- Магический возврат left
+return left // Почему именно left, а не right или mid?
 </code></pre>
 </div>
 
-<p>Хотя это работает, логика возврата <code>left</code> после цикла неочевидна и требует долгого обдумывания краевых случаев (что если вышли за левую границу? за правую?). <br />
-Использование шаблона <code>left &lt; right</code> с <code>right = len(nums)</code> избавляет от ментальной нагрузки.</p>
+<p>Этот код вернет правильный ответ, но на собеседовании вас попросят математически доказать, почему по выходу из цикла именно <code>left</code> указывает на позицию вставки, а не <code>right</code>. Кандидаты начинают путаться в краевых случаях (когда элемент меньше первого или больше последнего). <br />
+Шаблон полуинтервала <code>[left, right)</code> с <code>right = len(nums)</code> свободен от этой ментальной двусмысленности: по завершении цикла $left = right$, никакого выбора не существует в принципе.</p>
   </div>
 </div>
 
-<div class="callout callout-info">
+<div class="callout callout-note">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом: Базы данных</span>
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Как устроена стандартная библиотека: `slices.BinarySearch`</span>
   </div>
   <div class="callout-body">
-    <p>Алгоритм <code>Lower Bound</code> — это именно то, что происходит под капотом PostgreSQL или MySQL, когда вы вставляете новую строку в таблицу с индексом (B-Tree). Страница памяти (Page) в дереве представляет собой отсортированный массив байт. Движок БД использует бинарный поиск позиции для вставки (сдвигая остальные данные вправо через <code>memmove</code>), чтобы записать новый ключ и сохранить инвариант сортировки.</p>
+    <p>В Go 1.21+ функция <code>slices.BinarySearch(nums, target)</code> реализует именно этот алгоритм. Она возвращает пару <code>(index, found)</code>:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">idx, found := slices.BinarySearch(nums, target)
+</code></pre>
+</div>
+
+<p>Под капотом она ищет lower bound: если <code>found == true</code>, <code>idx</code> — позиция первого вхождения; если <code>found == false</code>, <code>idx</code> — позиция, куда элемент следует вставить (<code>nums = slices.Insert(nums, idx, target)</code>).</p>
   </div>
 </div>
 
-<h2 id="itog">Итог</h2>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования: Вставка в B-Tree страницы СУБД</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Почему при поиске слота для нового ключа внутри страницы B-дерева в Postgres/SQLite используется именно Lower Bound на массиве смещений (slot array)?<br />
+<strong>Ответ:</strong> Страница B-Tree хранит ключи в строго упорядоченном виде. Чтобы вставить новый кортеж, движок должен за $O(\log K)$ найти слот первого ключа, большего или равного новому, сдвинуть хвост массива смещений на 2–4 байта через <code>memmove</code> и записать указатель. Если бы использовался поиск точного совпадения, при отсутствии ключа пришлось бы делать дополнительные ветвления для определения точки разрыва.</p>
+  </div>
+</div>
 
-<p><strong>Search Insert Position</strong> — это мост между абстрактной теорией и реальной инженерией. Поняв принцип полуинтервала <code>[left, right)</code> и то, почему <code>right</code> может указывать за пределы массива, вы навсегда закроете для себя вопрос "какой шаблон бинарного поиска использовать".</p>
-<p>В следующей задаче мы применим этот же паттерн Lower Bound к абстрактному API, где массива нет вообще, а есть только "черный ящик", отвечающий на наши запросы. Переходим к: <a href="5-first-bad-version.html" class="wikilink">5. First Bad Version</a>.</p>
+<hr />
+<h2 id="rezyume">Резюме</h2>
+
+<p><strong>Search Insert Position</strong> демонстрирует мощь полуинтервального подхода <code>[left, right)</code>:<br />
+- <code>right = len(nums)</code> естественным образом включает индекс вставки за пределы массива.<br />
+- <code>nums[mid] &gt;= target</code> сжимает правую границу без потери кандидата.<br />
+- Никаких скрытых аллокаций памяти — вычисления целиком происходят в регистрах процессора.</p>
+<p>В следующей задаче мы абстрагируемся от физического массива в оперативной памяти и применим Lower Bound к динамическому интерфейсу поиска дефектов: <a href="5-first-bad-version.html" class="wikilink">5. First Bad Version</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2360,7 +2388,7 @@ return left // &lt;- Магический возврат left
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#arkhitektura-otlichie-lower-bound-ot-exact-match">Архитектура: Отличие Lower Bound от Exact Match</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-kod">Идиоматичный Go-код</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#1-branch-prediction-predskazatel-vetvleniy">1. Branch Prediction (Предсказатель ветвлений)</a></li><li class="toc-item toc-h3"><a href="#2-izbezhanie-panik-bounds-check">2. Избежание паник (Bounds Check)</a></li><li class="toc-item toc-h2"><a href="#lovushki-i-corner-cases-gotchas">Ловушки и Corner Cases (Gotchas)</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-invariant-lower-bound-protiv-exact-match">Архитектура: Инвариант Lower Bound против Exact Match</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#1-predskazuemost-vetvleniy-branch-prediction">1. Предсказуемость ветвлений (Branch Prediction)</a></li><li class="toc-item toc-h3"><a href="#2-dokazannaya-bezopasnost-bounds-check-bce">2. Доказанная безопасность Bounds Check (BCE)</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

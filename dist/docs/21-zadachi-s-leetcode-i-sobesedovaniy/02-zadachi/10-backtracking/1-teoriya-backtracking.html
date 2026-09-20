@@ -2171,23 +2171,33 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~28 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~17 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">1. Теория. Backtracking</h1>
           </header>
 
           <div class="article-markdown">
-            <p><strong>Backtracking</strong> — это не просто «рекурсивный перебор». Это фундаментальная техника обхода <strong>пространства состояний</strong>, которое имеет экспоненциальный размер, но при этом обладает <strong>естественной древовидной структурой</strong>. В отличие от динамического программирования, где подзадачи перекрываются и мы мемоизируем результаты, в backtracking каждая ветвь уникальна, и мы вынуждены явно <strong>строить</strong> все допустимые комбинации, но можем <strong>отсекать</strong> заведомо тупиковые пути.</p>
-<p>Для Go-разработчика уровня Senior backtracking — это ещё и полигон для демонстрации инженерной культуры: как работать со слайсами без лишних аллокаций, как переиспользовать один и тот же буфер для состояния, как безопасно копировать результаты и как глубина рекурсии взаимодействует со стеком горутины.</p>
-<h3 id="chto-takoe-backtracking-derevo-resheniy-i-otkat">Что такое backtracking: дерево решений и откат</h3>
+            <blockquote>
+<p><em>«Управление сложностью состоит в том, чтобы уметь исследовать путь до конца, а затем аккуратно стереть свои следы, если он оказался тупиком».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p><strong>Backtracking (поиск с возвратом)</strong> — это не просто рекурсивный перебор вариантов. Это строгая математическая техника исследования <strong>дерева пространства состояний (State-Space Tree)</strong>. </p>
+<p>В отличие от динамического программирования, где подзадачи многократно перекрываются и кэшируются в таблицах мемоизации, в поиске с возвратом каждая комбинация уникальна. Наша цель — построить все допустимые конфигурации или найти среди них оптимальную, отсекая (pruning) заведомо бесперспективные поддеревья задолго до того, как мы дойдем до листьев.</p>
+<p>Для инженера на Go backtracking — это высший пилотаж владения рантаймом:<br />
+- как переиспользовать единый буфер среза и удерживать <strong>$0$ паразитных аллокаций</strong> на шагах спуска и отката;<br />
+- почему непрерывный стек горутины (Continuous Stack) делает рекурсию на Go на порядок дешевле классических потоков ОС;<br />
+- как семантика слайс-хидера (<code>SliceHeader</code>: указатель, длина, ёмкость) защищает от порчи данных при возврате из рекурсии;<br />
+- как правильно изолировать результаты через <code>Escape Analysis</code>.</p>
+<hr />
+<h2 id="anatomiya-backtracking-derevo-resheniy-i-tri-fazy-invarianta">Анатомия Backtracking: Дерево решений и три фазы инварианта</h2>
 
-<p>Представьте, что вам нужно сгенерировать все возможные комбинации длины <code>k</code> из <code>n</code> элементов. Полный перебор всех вариантов дал бы C(n, k). Вместо того чтобы строить каждую комбинацию с нуля, backtracking строит её <strong>пошагово</strong>: на каждом уровне рекурсии мы принимаем решение (включить элемент или нет, выбрать следующий символ и т.п.), спускаемся глубже, а затем <strong>отменяем</strong> это решение (откат), чтобы попробовать альтернативный вариант.</p>
-<p>Таким образом, обход пространства состояний образует <strong>дерево</strong>, где:<br />
-- <strong>Корень</strong> — пустое начальное состояние.<br />
-- <strong>Вершина</strong> — некоторое частичное решение.<br />
-- <strong>Рёбра</strong> — допустимые варианты выбора.<br />
-- <strong>Листья</strong> — завершённые решения (или тупики, если нарушены ограничения).</p>
+<p>Любой алгоритм поиска с возвратом моделирует обход дерева в глубину (DFS), где:<br />
+- <strong>Корень</strong> — пустое начальное состояние (нулевой выбор).<br />
+- <strong>Внутренние вершины</strong> — частичные префиксы решений.<br />
+- <strong>Рёбра</strong> — выбор очередного кандидата.<br />
+- <strong>Листья</strong> — завершенные валидные решения либо тупиковые ветви.</p>
+<p>Каждый рекурсивный шаг подчиняется строгому триединству: <strong>Выбор (Choose) $\rightarrow$ Исследование (Explore) $\rightarrow$ Откат (Unchoose)</strong>.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2202,39 +2212,33 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-Root[&quot;Пустое состояние: []:::process&quot;] --&gt; L1_Yes[&quot;Включить A: [A]&quot;]
-Root --&gt; L1_No[&quot;Пропустить A: []&quot;]
-L1_Yes --&gt; L2_Yes[&quot;Включить B: [A,B]&quot;]
-L1_Yes --&gt; L2_No[&quot;Пропустить B: [A]&quot;]
-L1_No --&gt; L2_Yes2[&quot;Включить B: [B]&quot;]
-L1_No --&gt; L2_No2[&quot;Пропустить B: []&quot;]
-L2_Yes --&gt; Leaf1[&quot;Лист: решение [A,B]&quot;]
-L2_No --&gt; Leaf2[&quot;[A]&quot;]
-L2_Yes2 --&gt; Leaf3[&quot;[B]&quot;]
-L2_No2 --&gt; Leaf4[&quot;[]&quot;]
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+
+Root[&quot;Корень: Пустое состояние []&quot;]:::entry --&gt; L1_Yes[&quot;Выбор 1: [1]&quot;]:::process
+Root --&gt; L1_No[&quot;Пропуск 1: []&quot;]:::process
+
+L1_Yes --&gt; L2_Yes[&quot;Выбор 2: [1, 2]&quot;]:::process
+L1_Yes --&gt; L2_No[&quot;Пропуск 2: [1]&quot;]:::process
+
+L1_No --&gt; L2_Yes2[&quot;Выбор 2: [2]&quot;]:::process
+L1_No --&gt; L2_No2[&quot;Пропуск 2: []&quot;]:::process
+
+L2_Yes --&gt; Leaf1[&quot;Лист: [1, 2]&quot;]:::success
+L2_No --&gt; Leaf2[&quot;Лист: [1]&quot;]:::success
+L2_Yes2 --&gt; Leaf3[&quot;Лист: [2]&quot;]:::success
+L2_No2 --&gt; Leaf4[&quot;Лист: []&quot;]:::success
   </pre>
 </div>
 
 
-<p>В процессе обхода мы «спускаемся» вглубь, накапливая состояние в некоторой структуре (слайс, строка), а при возврате из рекурсии <strong>удаляем</strong> последний добавленный элемент. Этот процесс называется <strong>откатом (backtrack)</strong>.</p>
-<h3 id="obshchiy-rekursivnyy-karkas-na-go">Общий рекурсивный каркас на Go</h3>
+<hr />
+<h2 id="kanonicheskiy-rekursivnyy-karkas-na-go">Канонический рекурсивный каркас на Go</h2>
 
-<p>Сердце любого backtracking-решения — рекурсивная функция, принимающая текущее состояние и глубину. В Go идиоматично:</p>
-<ul>
-<li>Хранить состояние в <strong>слайсе</strong>, передаваемом в функцию.</li>
-<li>Изменять состояние путём <code>append</code> перед рекурсивным вызовом и <strong>усекать</strong> его после возврата (<code>state = state[:len(state)-1]</code>). Это позволяет избежать аллокации нового слайса на каждом шагу — мы переиспользуем один и тот же нижележащий массив, пока хватает capacity.</li>
-<li>При добавлении завершённого решения в результат — <strong>явно копировать</strong> слайс, потому что его содержимое будет изменено последующими откатами.</li>
-</ul>
+<p>В языке Go идиоматичным стандартом является использование локальной функции-замыкания (Closure) и переиспользование единственного слайса <code>path</code>:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2244,207 +2248,126 @@ L2_No2 --&gt; Leaf4[&quot;[]&quot;]
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func backtrack(state []int, start int, n int, result *[][]int) {
-    // Добавляем копию текущего состояния в результат
-    // (если оно удовлетворяет условиям, или для задач генерации всех подмножеств)
-    cp := make([]int, len(state))
-    copy(cp, state)
-    *result = append(*result, cp)
+  <pre class="language-go"><code class="language-go">package main
 
-    for i := start; i &lt; n; i++ {
-        // Выбор: включаем элемент i
-        state = append(state, i)
-        backtrack(state, i+1, n, result)
-        // Откат: удаляем последний добавленный элемент
-        state = state[:len(state)-1]
-    }
-}
-</code></pre>
-</div>
+// SubsetsTemplate демонстрирует эталонный каркас поиска с возвратом
+func SubsetsTemplate(nums []int) [][]int {
+    var result [][]int
+    // Предвыделяем буфер под путь, чтобы избежать реаллокаций при спуске
+    path := make([]int, 0, len(nums))
 
-<p><strong>Почему <code>state[:len(state)-1]</code> не вызывает проблем с памятью:</strong><br />
-Эта операция лишь уменьшает поле <code>Len</code> в заголовке слайса, не трогая нижележащий массив. Элемент остаётся в памяти, но будет перезаписан следующим <code>append</code>. Это эффективно и позволяет держать <strong>нулевое количество дополнительных аллокаций</strong> на каждом шагу, кроме тех, что возникают при копировании результата и расширении capacity.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Запись <code>*result = append(*result, state)</code> без копирования приведёт к тому, что все сохранённые решения будут указывать на один и тот же нижележащий массив, и в итоге вы получите множество одинаковых слайсов с последним состоянием. <strong>Всегда делайте копию</strong>: <code>cp := make([]int, len(state)); copy(cp, state)</code>.</p>
-  </div>
-</div>
-
-<h3 id="invarianty-backtracking-i-garantii-korrektnosti">Инварианты backtracking и гарантии корректности</h3>
-
-<p>Senior-разработчик не просто пишет рекурсию, а формулирует <strong>инвариант</strong>:</p>
-<blockquote>
-<p>На каждом уровне рекурсии слайс <code>state</code> представляет собой <strong>валидный префикс</strong> решения для данной глубины. После возврата из рекурсивного вызова <code>state</code> находится в том же состоянии, что и до вызова (благодаря откату).</p>
-</blockquote>
-<p>Это гарантирует, что:<br />
-- Мы не пропускаем ни одной ветви (перебраны все допустимые варианты).<br />
-- Состояние не загрязняется «левыми» данными из параллельных ветвей.<br />
-- Глубина рекурсии не превышает максимального размера решения (и, следовательно, не переполняет стек при разумных ограничениях).</p>
-<h3 id="pruning-otsechenie-kak-ne-delat-lishnyuyu-rabotu">Pruning (отсечение): как не делать лишнюю работу</h3>
-
-<p>Сила backtracking'а не в полном переборе, а в возможности <strong>досрочно прекращать</strong> спуск по ветви, если текущее состояние уже не может привести к допустимому решению. Это называется <strong>pruning</strong>.</p>
-<p>Типичные условия отсечения:<br />
-- <strong>Сумма превысила цель</strong> (Combination Sum, Subset Sum).<br />
-- <strong>Оставшихся элементов не хватит</strong> для набора нужной длины (k &lt; remaining).<br />
-- <strong>Текущий кандидат лексикографически больше уже найденного</strong> (в задачах оптимизации).<br />
-- <strong>Нарушены правила размещения</strong> (N Queens — атака).</p>
-<p>Хорошее правило: «Если можно доказать, что из текущего состояния ни один потомок не даст ответа — выходим немедленно». Это превращает экспоненциальный ад в приемлемые времена.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Пример: Combination Sum с отсечением по сумме
-func combinationSum(candidates []int, target int) [][]int {
-    sort.Ints(candidates) // для корректного отсечения
-    var res [][]int
-    var state []int
-    var backtrack func(start, remain int)
-    backtrack = func(start, remain int) {
-        if remain == 0 {
-            cp := make([]int, len(state))
-            copy(cp, state)
-            res = append(res, cp)
-            return
-        }
-        for i := start; i &lt; len(candidates); i++ {
-            if candidates[i] &gt; remain { // Pruning: оставшиеся кандидаты ещё больше
-                break
-            }
-            state = append(state, candidates[i])
-            backtrack(i, remain-candidates[i]) // можно повторять тот же элемент
-            state = state[:len(state)-1]
-        }
-    }
-    backtrack(0, target)
-    return res
-}
-</code></pre>
-</div>
-
-<h3 id="osnovnye-raznovidnosti-backtracking">Основные разновидности backtracking</h3>
-
-<ol>
-<li>
-<p><strong>Генерация всех подмножеств (Subsets).</strong><br />
-   Каждый элемент либо включается, либо нет. Простейший каркас: для каждого индекса два рекурсивных вызова — с элементом и без.<br />
-   Вариация: битовые маски (но backtracking позволяет легко обрабатывать дубликаты).</p>
-</li>
-<li>
-<p><strong>Генерация перестановок (Permutations).</strong><br />
-   На каждом шагу выбираем, какой из оставшихся элементов поставить на текущую позицию. Нужно отслеживать использованные элементы (через <code>visited []bool</code> или swap in-place). Для уникальных перестановок с дубликатами — сортировка и пропуск одинаковых на одном уровне.</p>
-</li>
-<li>
-<p><strong>Задачи с ограничениями (N Queens, Sudoku).</strong><br />
-   Состояние — частично заполненное поле. Выбор — куда поставить фигуру. Отсечение — проверка атак.</p>
-</li>
-<li>
-<p><strong>Обход лабиринта (Word Search).</strong><br />
-   Состояние — пройденный путь. Отсечение — выход за границы, посещённая ячейка, несовпадение символа.</p>
-</li>
-</ol>
-<p>Каждая разновидность будет детально разобрана в следующих статьях кластера (<a href="2-generatsiya-kombinatsiy.html" class="wikilink">2. Генерация комбинаций</a>, <a href="3-subsets.html" class="wikilink">3. Subsets</a>, <a href="5-permutations.html" class="wikilink">5. Permutations</a>, <a href="8-word-search.html" class="wikilink">8. Word Search</a>, <a href="9-n-queens.html" class="wikilink">9. N Queens</a>).</p>
-<h3 id="mekhanicheskaya-simpatiya-backtracking-i-rantaym-go">Механическая симпатия: backtracking и рантайм Go</h3>
-
-<p><strong>Рекурсия и стек горутины.</strong><br />
-В Go стек горутины динамически растёт (начинается с 2 КБ). Для глубины рекурсии до ~10⁴ это безопасно, хотя может вызвать несколько расширений стека (stack copying) — операция не бесплатная, но пренебрежимая на фоне экспоненциального времени backtracking'а. Если глубина потенциально очень велика (например, дерево вырождено), Senior рассматривает итеративный backtracking с собственным стеком на слайсе, но в большинстве задач рекурсия читаемее и предпочтительнее.</p>
-<p><strong>Аллокации и переиспользование буфера.</strong><br />
-Ключевая оптимизация в Go — передавать один и тот же слайс <code>state</code> по всем вызовам, а не создавать новый <code>append</code> в каждом рекурсивном вызове с копированием. Подход <code>state = append(state, x)</code>; ...; <code>state = state[:len(state)-1]</code> гарантирует:<br />
-- Нулевые аллокации при спуске и откате, пока <code>cap(state)</code> достаточно.<br />
-- Если capacity превышено, <code>append</code> аллоцирует новый массив, но это происходит только при переходе к более глубоким уровням, и старый массив остаётся для более высоких уровней. Такой «многоуровневый» слайс может привести к тому, что на разных уровнях рекурсии <code>state</code> указывает на разные массивы — это <strong>корректно</strong>, потому что откат усекает длину, и вышестоящий уровень видит свой массив.</p>
-<p><strong>Копирование в результат.</strong><br />
-Неизбежная плата — копирование каждого найденного решения. Но это необходимость: без копии все решения будут указывать на один и тот же слайс. Копирование <code>make</code> + <code>copy</code> аллоцирует новый массив. Если решений очень много (например, все перестановки N=10), объём копий значителен, но это output, без которого не обойтись. Senior может предложить использовать <code>append</code> без <code>make</code>, если длина решения фиксирована и мы точно знаем вместимость — но тогда откат влияет на результат.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Когда вы делаете <code>cp := make([]int, len(state))</code>, компилятор Go через escape analysis обнаруживает, что <code>cp</code> «убегает» в результат, и размещает его в куче. Это создаёт работу для GC. Альтернатива — выделить один плоский слайс под все решения и копировать в него с контролем индекса, но такой код значительно сложнее и редко оправдан на собеседовании. Senior упомянет это как возможную микрооптимизацию.</p>
-  </div>
-</div>
-
-<h3 id="go-idiomy-v-backtracking">Go-идиомы в backtracking</h3>
-
-<p><strong>Замыкания (closures).</strong><br />
-Очень удобно определить рекурсивную функцию внутри основной и захватывать результат (<code>res *[][]int</code>), входные данные (<code>nums []int</code>), счётчики. Это избавляет от необходимости передавать множество параметров явно.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func subsets(nums []int) [][]int {
-    var res [][]int
-    var cur []int
     var backtrack func(start int)
     backtrack = func(start int) {
-        cp := make([]int, len(cur))
-        copy(cp, cur)
-        res = append(res, cp)
+        // 1. Фиксация результата: ОБЯЗАТЕЛЬНОЕ копирование!
+        // Срез path мутирует на откатах, поэтому сохраняем независимый снимок
+        snapshot := make([]int, len(path))
+        copy(snapshot, path)
+        result = append(result, snapshot)
 
+        // 2. Перебор доступных вариантов
         for i := start; i &lt; len(nums); i++ {
-            cur = append(cur, nums[i])
+            // Фаза 1: Choose (добавляем элемент в текущий путь)
+            path = append(path, nums[i])
+
+            // Фаза 2: Explore (углубляемся в рекурсию)
             backtrack(i + 1)
-            cur = cur[:len(cur)-1]
+
+            // Фаза 3: Unchoose / Backtrack (откатываем состояние назад)
+            path = path[:len(path)-1]
         }
     }
+
     backtrack(0)
-    return res
+    return result
 }
 </code></pre>
 </div>
 
-<p><strong>Использование указателей на слайс.</strong><br />
-При передаче слайса <code>state</code> по указателю (<code>*[]int</code>) мы можем изменять его длину и ёмкость через оператор разыменования, но это тяжеловесно. Идиоматично передавать слайс по значению (заголовок копируется), а откат делать через переприсваивание внешней переменной (как в замыкании выше) или возвращать новый слайс (но это приведёт к копированию на каждом шагу). Стандартный подход — замыкание + внешняя переменная <code>cur</code>.</p>
-<p><strong>Сортировка для отсечений.</strong><br />
-Если задача требует уникальных комбинаций без повторений или отсечения по сумме, сортировка входного массива — стандартный первый шаг. <code>sort.Ints</code> работает in-place и дёшева.</p>
+<hr />
+<h2 id="vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</h2>
+
+<h3 id="1-kak-pathlenpath-1-rabotaet-na-urovne-pamyati">1. Как `path[:len(path)-1]` работает на уровне памяти</h3>
+<p>Операция усечения среза <code>path = path[:len(path)-1]</code> не трогает физический массив в памяти!<br />
+Срез в Go — это 24-байтовая структура в регистрах/стеке:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">type SliceHeader struct {
+    Data unsafe.Pointer // Указатель на массив в памяти (8 байт)
+    Len  int            // Длина (8 байт)
+    Cap  int            // Емкость (8 байт)
+}
+</code></pre>
+</div>
+
+<p>При операции <code>path[:len(path)-1]</code> компилятор просто декрементирует поле <code>Len</code>. Никакой очистки байтов, никаких вызовов сборщика мусора, никакого копирования памяти. Следующий вызов <code>append</code> на этом уровне или в соседней ветке просто перезапишет старое значение по индексу <code>Len</code>. Это дает <strong>абсолютно нулевые аллокации при откате</strong>.</p>
+<h3 id="2-stek-gorutiny-2-kb-protiv-8-mb-potoka-os">2. Стек горутины: 2 КБ против 8 МБ потока ОС</h3>
+<p>Классический системный поток Linux (pthread) резервирует под стек от 2 до 8 МБ виртуальной памяти. Глубокая рекурсия в языках вроде C или Java создает серьезные риски переполнения стека (StackOverflowError).<br />
+В Go горутина стартует с крошечным непрерывным стеком размером <strong>2 КБ</strong> (в Go 1.4+ используется Continuous Stack вместо Segmented Stack).<br />
+- При углублении рекурсии, когда 2 КБ заполняются, рантайм Go (<code>runtime.morestack</code>) аллоцирует новый блок памяти вдвое большего размера (4 КБ, затем 8 КБ и т.д.), аккуратно копирует все стековые кадры и корректирует указатели.<br />
+- Для задач с глубиной $N \le 30$ глубина рекурсии составляет всего несколько десятков стековых фреймов, что идеально помещается в горячем кэше первого уровня (L1 Data Cache, 32-48 КБ) процессора.</p>
+<h3 id="3-escape-analysis-i-neizbezhnaya-plata-za-rezultat">3. Escape Analysis и неизбежная плата за результат</h3>
+<p>Почему мы обязаны делать <code>snapshot := make([]int, len(path)); copy(snapshot, path)</code>?<br />
+Если мы выполним наивное <code>result = append(result, path)</code>, то в массив результатов попадут множественные копии <strong>заголовка слайса</strong>, указывающие на один и тот же базовый массив памяти. После всех откатов массив <code>path</code> опустеет, и в <code>result</code> окажется набор пустых срезов!<br />
+Анализатор побега компилятора (<code>go build -gcflags="-m"</code>) обнаруживает, что <code>snapshot</code> сохраняется в срез <code>result</code>, который возвращается из внешней функции, и отправляет память под каждый <code>snapshot</code> в кучу (heap). Это единственная неизбежная аллокация в алгоритме.</p>
+<hr />
+<h2 id="pruning-otsechenie-pobeda-nad-eksponentoy">Pruning (Отсечение): Победа над экспонентой</h2>
+
+<p>Теоретическая сложность наивного перебора — факториальная $O(N!)$ или экспоненциальная $O(2^N)$. Без отсечения дерево состояний при $N=30$ содержит $2^{30} \approx 10^9$ вершин, что приведет к превышению лимита времени (Time Limit Exceeded).</p>
+<p><strong>Отсечение (Pruning)</strong> — это проверка инвариантов задачи, позволяющая выбросить целое поддерево еще до рекурсивного спуска:<br />
+1. <strong>Отсечение по сумме:</strong> если текущая сумма превысила <code>target</code>, а массив отсортирован по возрастанию, дальнейший перебор в цикле бессмысленен (<code>break</code>).<br />
+2. <strong>Отсечение по оставшейся длине:</strong> если для сбора комбинации длины $K$ в массиве осталось меньше элементов, чем требуется: <code>len(nums) - i &lt; k - len(path)</code>, цикл немедленно прерывается.<br />
+3. <strong>Отсечение дубликатов:</strong> если входной массив отсортирован, пропуск одинаковых элементов на одном уровне дерева (<code>if i &gt; start &amp;&amp; nums[i] == nums[i-1] continue</code>) исключает генерацию изоморфных ветвей.</p>
+<hr />
+<h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
+
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Ловушка: Передача слайса по указателю `*[]int`</span>
   </div>
   <div class="callout-body">
-    <p>При генерации перестановок с дубликатами (Permutations II) недостаточно просто отсортировать массив — нужно пропускать одинаковые элементы на одном уровне рекурсии, используя <code>if i &gt; 0 &amp;&amp; nums[i] == nums[i-1] &amp;&amp; !visited[i-1] { continue }</code>. Это классическое место, где ошибаются даже опытные кандидаты.</p>
+    <p>Кандидаты иногда пытаются передавать <code>path</code> по указателю: <code>backtrack(path *[]int)</code>.<br />
+Если внутри функции <code>append</code> вызовет реаллокацию массива (превышение <code>cap</code>), все вышестоящие фреймы рекурсии начнут видеть новый массив, что приведет к трудноуловимому искажению порядка отката.<br />
+<strong>Идиоматичное правило:</strong> Передавайте слайс по значению или используйте внешнюю переменную в замыкании с жестко фиксированной предварительной емкостью: <code>path := make([]int, 0, maxDepth)</code>.</p>
   </div>
 </div>
 
-<h3 id="tipichnye-oshibki-i-kak-ikh-izbezhat">Типичные ошибки и как их избежать</h3>
+<div class="callout callout-note">
+  <div class="callout-header">
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Итеративный Backtracking против Рекурсивного</span>
+  </div>
+  <div class="callout-body">
+    <p>В некоторых языках (Python, C++) рекурсивный поиск заменяют явным стеком <code>stack = []Frame</code>, чтобы избежать накладных расходов на вызовы функций. В Go компилятор отлично оптимизирует хвостовые и близкие к ним рекурсивные вызовы, а Continuous Stack минимизирует накладные расходы. Рекурсивный код на Go с замыканием значительно чище, компактнее и легче для чтения и сопровождения.</p>
+  </div>
+</div>
 
-<ol>
-<li>
-<p><strong>Забыли скопировать состояние перед добавлением в результат.</strong><br />
-   Симптом: все решения в результате одинаковые. Решение: <code>cp := make([]int, len(state)); copy(cp, state)</code>.</p>
-</li>
-<li>
-<p><strong>Неправильный откат.</strong><br />
-   Забыли <code>state = state[:len(state)-1]</code> — рекурсия «уходит в бесконечность» или состояние портится.<br />
-   Перепутали порядок: сначала откат, потом обработка — тогда рекурсивный вызов видит неполное состояние.</p>
-</li>
-<li>
-<p><strong>Неконтролируемый рост capacity.</strong><br />
-   Если вы переиспользуете слайс <code>state</code> и на каждом шагу делаете <code>append</code>, а capacity не хватает, происходит аллокация нового массива. Когда рекурсия возвращается на уровень выше, <code>state</code> продолжает указывать на старый массив (так как заголовок был скопирован по значению), а изменения в новом массиве не видны. Это <strong>правильное поведение</strong>: каждый уровень должен иметь свой заголовок. Однако если вы используете явную передачу указателя на слайс (<code>*[]int</code>), то после переаллокации все уровни увидят новый массив, и старые элементы могут быть затерты. Поэтому <strong>не рекомендуется</strong> передавать <code>state</code> по указателю, если вы планируете <code>append</code>; используйте замыкание и переприсваивание внешней переменной (она будет указывать на текущий массив).</p>
-</li>
-<li>
-<p><strong>Переполнение стека.</strong><br />
-   Для задач с глубиной рекурсии &gt; 10⁴ стек горутины растёт, но медленно. Если задача допускает N до 20, глубина 20 безопасна. Если необходимо больше, Senior предлагает итеративный подход с собственным стеком.</p>
-</li>
-</ol>
-<h3 id="zaklyuchenie">Заключение</h3>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования: Алгоритм Девиса — Патнема — Логемана — Лавленда (DPLL)</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Как принципы Backtracking применяются в индустриальных SAT-солверах (Z3, minisat) и компиляторах?<br />
+<strong>Ответ:</strong> SAT-солверы проверяют выполнимость булевых формул с миллионами переменных. Они используют поиск с возвратом с продвинутым отсечением: unit propagation (распространение единичных дизъюнктов), pure literal elimination и non-chronological backtracking (прыжок назад сразу через десятки уровней к причине конфликта — conflict-driven clause learning).</p>
+  </div>
+</div>
 
-<p>Backtracking — это стратегия обхода дерева возможностей с откатом, позволяющая эффективно генерировать комбинации, перестановки и решать ограниченные задачи. В Go она реализуется через рекурсивные замыкания и слайсы с переиспользованием буфера, что даёт минимальные накладные расходы на аллокации и максимальную читаемость. Senior-разработчик не просто помнит шаблон, а понимает инварианты, умеет строить отсечения и осознаёт, как его код взаимодействует со стеком горутины и GC.</p>
-<p>Теперь, вооружившись теорией, мы переходим к следующей статье, где детально разберём, как генерировать комбинации различных типов с помощью этого паттерна. <a href="2-generatsiya-kombinatsiy.html" class="wikilink">2. Генерация комбинаций</a></p>
+<hr />
+<h2 id="rezyume">Резюме</h2>
+
+<p>Backtracking — это искусство контролируемого перебора:<br />
+- <strong>Choose $\rightarrow$ Explore $\rightarrow$ Unchoose:</strong> три фазы, гарантирующие чистоту состояния.<br />
+- <strong>Zero Allocations на откате:</strong> операция <code>path[:len(path)-1]</code> декрементирует <code>Len</code> без затрагивания памяти.<br />
+- <strong>Deep Pruning:</strong> правильное отсечение превращает экспоненциальный перебор в мгновенное решение.</p>
+<p>В следующей статье мы применим этот каркас к классической комбинаторике: <a href="2-generatsiya-kombinatsiy.html" class="wikilink">2. Генерация комбинаций</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2472,7 +2395,7 @@ func combinationSum(candidates []int, target int) [][]int {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#chto-takoe-backtracking-derevo-resheniy-i-otkat">Что такое backtracking: дерево решений и откат</a></li><li class="toc-item toc-h3"><a href="#obshchiy-rekursivnyy-karkas-na-go">Общий рекурсивный каркас на Go</a></li><li class="toc-item toc-h3"><a href="#invarianty-backtracking-i-garantii-korrektnosti">Инварианты backtracking и гарантии корректности</a></li><li class="toc-item toc-h3"><a href="#pruning-otsechenie-kak-ne-delat-lishnyuyu-rabotu">Pruning (отсечение): как не делать лишнюю работу</a></li><li class="toc-item toc-h3"><a href="#osnovnye-raznovidnosti-backtracking">Основные разновидности backtracking</a></li><li class="toc-item toc-h3"><a href="#mekhanicheskaya-simpatiya-backtracking-i-rantaym-go">Механическая симпатия: backtracking и рантайм Go</a></li><li class="toc-item toc-h3"><a href="#go-idiomy-v-backtracking">Go-идиомы в backtracking</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-i-kak-ikh-izbezhat">Типичные ошибки и как их избежать</a></li><li class="toc-item toc-h3"><a href="#zaklyuchenie">Заключение</a></li>
+    <li class="toc-item toc-h2"><a href="#anatomiya-backtracking-derevo-resheniy-i-tri-fazy-invarianta">Анатомия Backtracking: Дерево решений и три фазы инварианта</a></li><li class="toc-item toc-h2"><a href="#kanonicheskiy-rekursivnyy-karkas-na-go">Канонический рекурсивный каркас на Go</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#1-kak-pathlenpath-1-rabotaet-na-urovne-pamyati">1. Как path[:len(path)-1] работает на уровне памяти</a></li><li class="toc-item toc-h3"><a href="#2-stek-gorutiny-2-kb-protiv-8-mb-potoka-os">2. Стек горутины: 2 КБ против 8 МБ потока ОС</a></li><li class="toc-item toc-h3"><a href="#3-escape-analysis-i-neizbezhnaya-plata-za-rezultat">3. Escape Analysis и неизбежная плата за результат</a></li><li class="toc-item toc-h2"><a href="#pruning-otsechenie-pobeda-nad-eksponentoy">Pruning (Отсечение): Победа над экспонентой</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

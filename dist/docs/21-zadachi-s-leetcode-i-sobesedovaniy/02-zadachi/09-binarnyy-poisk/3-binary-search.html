@@ -2171,27 +2171,59 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~11 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">3. Binary Search</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="hello-world-algoritmicheskikh-sektsiy">"Hello World" алгоритмических секций</h2>
+            <blockquote>
+<p><em>«В правильном алгоритме нет ничего лишнего: каждое сравнение уменьшает неизвестность ровно вдвое».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="hello-world-algoritmicheskikh-sektsiy">«Hello World» алгоритмических секций</h2>
 
-<p>Задача <strong>Binary Search</strong> (LeetCode 704) — это отправная точка для любого разработчика. Если вы не можете написать безошибочный бинарный поиск за 2 минуты с закрытыми глазами, секция алгоритмов на Middle+/Senior позиции для вас закончится, не успев начаться.</p>
-<p><strong>Суть задачи:</strong> Дан массив целых чисел <code>nums</code>, отсортированный по возрастанию, и число <code>target</code>. Напишите функцию для поиска <code>target</code> в <code>nums</code>. Если цель найдена, верните её индекс, иначе верните <code>-1</code>. Алгоритм должен работать за время $O(\log N)$.</p>
-<p>В этой статье мы напишем эталонный код и разберем, как компилятор Go оптимизирует его под капотом.</p>
+<p>Задача <strong>Binary Search</strong> (LeetCode 704) — это фундаментальный рубеж любого технического собеседования. Написание безошибочного бинарного поиска за 2 минуты у доски или в онлайн-редакторе — обязательный базовый навык для позиции любого уровня, от Junior до Staff Engineer.</p>
+<p>Кажущаяся простота задачи обманчива: по статистике около половины кандидатов допускают ошибку в граничных условиях (<em>off-by-one errors</em>), зависают в бесконечном цикле или допускают целочисленное переполнение при расчете середины.</p>
+<div class="callout callout-note">
+  <div class="callout-header">
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Условие задачи</span>
+  </div>
+  <div class="callout-body">
+    <p>Дан целочисленный массив <code>nums</code>, строго отсортированный по возрастанию, и целое число <code>target</code>.<br />
+Напишите функцию поиска <code>target</code> в массиве <code>nums</code>. Если число присутствует, верните его индекс; в противном случае верните <code>-1</code>.<br />
+Временная сложность алгоритма обязана быть строго $O(\log N)$.</p>
+
+<div class="code-block" data-lang="text">
+  <div class="code-header">
+    <span class="code-lang-tag">TEXT</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-text"><code class="language-text">Вход:  nums = [-1, 0, 3, 5, 9, 12], target = 9
+Выход: 4 (nums[4] == 9)
+</code></pre>
+</div>
+
+  </div>
+</div>
+
 <hr />
-<h2 id="arkhitektura-klassicheskiy-shablon">Архитектура: Классический шаблон</h2>
+<h2 id="arkhitektura-invariant-zamknutogo-diapazona-left-right">Архитектура: Инвариант замкнутого диапазона `[left, right]`</h2>
 
-<p>В статье <a href="1-teoriya-binarnyy-poisk.html" class="wikilink">1. Теория. Бинарный поиск</a> мы обсуждали шаблон с полуинтервалом (<code>left &lt; right</code>), который идеален для поиска границ (Lower Bound). </p>
-<p>Однако для задачи <strong>точного поиска конкретного элемента</strong> (когда нам не важно первое или последнее это вхождение, а нужен просто факт наличия), классическим и самым читаемым считается шаблон с закрытым интервалом <code>[left, right]</code>.</p>
-<p>Правила закрытого интервала:<br />
-1. <code>right</code> инициализируется как <code>len(nums) - 1</code>.<br />
-2. Цикл работает, пока <code>left &lt;= right</code> (знак равенства обязателен, иначе мы пропустим массив из одного элемента).<br />
-3. При сужении границ мы <strong>исключаем</strong> <code>mid</code>, делая <code>left = mid + 1</code> или <code>right = mid - 1</code>.</p>
+<p>Для задачи <strong>точного совпадения (Exact Match)</strong>, где все элементы уникальны и требуется вернуть индекс конкретного элемента, наиболее чистым и самодокументированным является <strong>шаблон замкнутого интервала <code>[left, right]</code></strong>:</p>
+<h3 id="pravila-invarianta">Правила инварианта:</h3>
+<ol>
+<li><code>right</code> инициализируется индексом последнего элемента: <code>len(nums) - 1</code>.</li>
+<li>Условие цикла — строго <code>left &lt;= right</code>. Знак равенства обязателен: при поиске в массиве из одного элемента (<code>len == 1</code>) указатели <code>left</code> и <code>right</code> равны $0$, и без равенства тело цикла не выполнится вовсе.</li>
+<li>При сужении диапазона текущий проверенный индекс <code>mid</code> <strong>гарантированно исключается</strong>:<br />
+   - Если <code>nums[mid] &lt; target</code>, то <code>left = mid + 1</code>.<br />
+   - Если <code>nums[mid] &gt; target</code>, то <code>right = mid - 1</code>.</li>
+</ol>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2206,29 +2238,25 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-subgraph Итерация поиска
-Start[&quot;Вычисление Mid&quot;]:::warning --&gt; Check{&quot;nums-Mid- равно target?&quot;}
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
 
-Check --&gt;|&quot;Да&quot;| Found[&quot;Возврат Mid&quot;]
-Check --&gt;|&quot;Нет - Меньше target&quot;| GoRight[&quot;Исключаем левую часть&lt;br&gt;Left = Mid + 1&quot;]
-Check --&gt;|&quot;Нет - Больше target&quot;| GoLeft[&quot;Исключаем правую часть&lt;br&gt;Right = Mid - 1&quot;]
+Start[&quot;Старт: left = 0, right = len(nums) - 1&quot;]:::entry --&gt; Loop{&quot;left &lt;= right?&quot;}:::warning
 
-GoRight --&gt; CheckBounds{&quot;Left &lt;= Right?&quot;}
-GoLeft --&gt; CheckBounds
+Loop --&gt;|&quot;Да&quot;| Mid[&quot;mid = int(uint(left + right) &gt;&gt; 1)&quot;]:::process
+Mid --&gt; Check{&quot;nums[mid] против target&quot;}:::warning
 
-CheckBounds --&gt;|&quot;Да&quot;| Start
-CheckBounds --&gt;|&quot;Нет&quot;| NotFound[&quot;Возврат -1&quot;]
-end
+Check --&gt;|&quot;nums[mid] == target&quot;| Found[&quot;Возврат mid&quot;]:::success
+Check --&gt;|&quot;nums[mid] &lt; target&quot;| Right[&quot;Цель справа:&lt;br&gt;left = mid + 1&quot;]:::process
+Check --&gt;|&quot;nums[mid] &gt; target&quot;| Left[&quot;Цель слева:&lt;br&gt;right = mid - 1&quot;]:::process
+
+Right --&gt; Loop
+Left --&gt; Loop
+
+Loop --&gt;|&quot;Нет (исчерпан)&quot;| NotFound[&quot;Возврат -1&quot;]:::error
   </pre>
 </div>
 
@@ -2245,15 +2273,15 @@ end
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">package main
+  <pre class="language-go"><code class="language-go">package binarysearch
 
-// search находит индекс элемента target в отсортированном массиве nums.
+// search выполняет точный поиск target в отсортированном массиве за O(log N) времени и O(1) памяти.
 func search(nums []int, target int) int {
-    left, right := 0, len(nums)-1
+    left := 0
+    right := len(nums) - 1
 
-    // Используем &lt;=, так как границы включительны.
     for left &lt;= right {
-        // Оптимизированное вычисление середины (защита от переполнения)
+        // Защита от переполнения + оптимизация BCE для компилятора Go
         mid := int(uint(left+right) &gt;&gt; 1)
 
         if nums[mid] == target {
@@ -2261,15 +2289,13 @@ func search(nums []int, target int) int {
         }
 
         if nums[mid] &lt; target {
-            // Цель справа, отбрасываем левую половину вместе с mid
             left = mid + 1
         } else {
-            // Цель слева, отбрасываем правую половину вместе с mid
             right = mid - 1
         }
     }
 
-    return -1 // Элемент не найден
+    return -1
 }
 </code></pre>
 </div>
@@ -2277,103 +2303,59 @@ func search(nums []int, target int) int {
 <hr />
 <h2 id="vzglyad-pod-kapot-bounds-check-elimination-bce">Взгляд под капот: Bounds Check Elimination (BCE)</h2>
 
-<p>На собеседовании в Яндекс или VK вас могут спросить: <em>"Зачем ты написал <code>mid := int(uint(left+right) &gt;&gt; 1)</code>? Разве <code>mid := left + (right-left)/2</code> не делает то же самое?"</em></p>
-<p>Вы должны ответить: <em>"Математически — да, но для рантайма Go это две огромные разницы"</em>.</p>
-<p>В Go каждый раз, когда вы обращаетесь к массиву по индексу (например, <code>nums[mid]</code>), компилятор вставляет проверку границ (Bounds Check), чтобы защитить вас от паники <code>index out of range</code>. Если индекс меньше нуля или больше/равен длине, программа падает. Эта проверка занимает такты процессора на каждой итерации цикла.</p>
-<p>Компилятор Go имеет механизм <strong>BCE (Bounds Check Elimination)</strong>. Он пытается статически доказать, что индекс всегда валиден, и если доказывает — вырезает эти проверки из финального бинарного файла, ускоряя код.</p>
-<p>Когда вы пишете <code>mid := left + (right-left)/2</code>, компилятор видит знаковые типы <code>int</code> и не может на 100% гарантировать, что результат не станет отрицательным (например, из-за какой-то сложной арифметики).<br />
-Когда вы приводите сумму к <strong>беззнаковому типу <code>uint</code></strong>, вы сообщаете компилятору: <em>"Это число гарантированно $\ge 0$"</em>. А битовый сдвиг <code>&gt;&gt; 1</code> гарантирует, что число не превысит исходную длину. <br />
-Благодаря этому трюку, компилятор (в большинстве современных версий Go) <strong>вырезает проверки границ для <code>nums[mid]</code></strong>, делая ваш бинарный поиск максимально близким к скорости C/C++.</p>
-<div class="callout callout-info">
+<p>На собеседованиях уровня Senior в высоконагруженные проекты часто звучит вопрос:<br />
+<em>«Зачем вычислять середину через <code>mid := int(uint(left+right) &gt;&gt; 1)</code>, а не через классическое <code>left + (right-left)/2</code>?»</em></p>
+<p>Ответ раскрывает тонкости работы компилятора Go:</p>
+<ol>
+<li><strong>Защита от Integer Overflow:</strong><br />
+   Приведение к беззнаковому типу <code>uint(left+right)</code> устраняет риск переполнения знакового разряда <code>int32</code>, когда сумма индексов превышает $2 \cdot 10^9$.</li>
+<li><strong>Аппаратный битовый сдвиг:</strong><br />
+   Операция <code>&gt;&gt; 1</code> транслируется в одну процессорную инструкцию сдвига <code>SHR</code>, выполняемую процессором за 1 такт, в то время как деление <code>DIV</code> требует до 15–30 тактов.</li>
+<li><strong>Оптимизация BCE (Bounds Check Elimination):</strong><br />
+   В Go каждое обращение по индексу <code>nums[i]</code> по умолчанию сопровождается невидимой ассемблерной проверкой: не вышел ли индекс за границы слайса (чтобы в случае ошибки выбросить <code>panic</code>).<br />
+   Компилятор Go оснащен анализатором <strong>BCE</strong>. Когда компилятор видит, что <code>mid</code> получен через беззнаковый <code>uint</code> сдвигом вправо, он математически доказывает, что <code>mid</code> не может быть отрицательным и не превосходит <code>right</code>. В результате компилятор <strong>полностью удаляет ветвление проверки границ из машинного кода</strong>, делая бинарный поиск предельно близким по скорости к ассемблеру C!</li>
+</ol>
+<div class="callout callout-note">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом: Пустой массив</span>
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Краевой случай: Пустой слайс</span>
   </div>
   <div class="callout-body">
-    <p>Что будет, если на вход подать пустой массив <code>nums = []</code>?<br />
-Переменная <code>right</code> станет <code>0 - 1 = -1</code>. <br />
-Условие цикла <code>left &lt;= right</code> превратится в <code>0 &lt;= -1</code>, что является <code>false</code>. Цикл даже не начнется, и функция безопасно вернет <code>-1</code>. Код пуленепробиваем без дополнительных <code>if len(nums) == 0</code>.</p>
+    <p>Если на вход подан пустой массив <code>nums = []</code>, <code>right</code> станет равным <code>0 - 1 = -1</code>.<br />
+Условие цикла <code>0 &lt;= -1</code> немедленно вернет <code>false</code>, тело цикла не выполнится ни разу, и функция безопасно вернет <code>-1</code> без дополнительных ветвлений <code>if len(nums) == 0</code>.</p>
   </div>
 </div>
 
 <hr />
-<h2 id="lovushki-i-alternativy-gotchas">Ловушки и Альтернативы (Gotchas)</h2>
-
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Дубликаты в массиве</span>
-  </div>
-  <div class="callout-body">
-    <p>В задаче 704 по условию все числа уникальны. <br />
-Но что если вас спросят: <em>"Измени алгоритм так, чтобы он возвращал индекс </em><em>первого</em><em> вхождения, если в массиве есть дубликаты?"</em></p>
-<p>Наш закрытый шаблон с <code>return mid</code> сразу при нахождении больше не сработает! Мы наткнемся на случайный <code>target</code> где-то в середине цепочки дубликатов.<br />
-Здесь мы обязаны переключиться на шаблон полуинтервала (Lower Bound), который мы разбирали в теории:</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">left, right := 0, len(nums)
-for left &lt; right {
-    mid := int(uint(left+right) &gt;&gt; 1)
-    if nums[mid] &gt;= target { // Даже если нашли, продолжаем искать левее!
-        right = mid
-    } else {
-        left = mid + 1
-    }
-}
-// После цикла проверяем, действительно ли мы нашли элемент
-if left &lt; len(nums) &amp;&amp; nums[left] == target {
-    return left
-}
-return -1
-</code></pre>
-</div>
-
-  </div>
-</div>
-
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование: Использование стандартной библиотеки</span>
+    <span class="callout-title">Вопросы для собеседований</span>
   </div>
   <div class="callout-body">
-    <p>Если задача не подразумевает написание поиска с нуля (например, бинарный поиск — это лишь часть большего алгоритма), покажите знание пакета <code>slices</code> (Go 1.21+):</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">import &quot;slices&quot;
-
-func search(nums []int, target int) int {
-    idx, found := slices.BinarySearch(nums, target)
-    if found {
-        return idx
-    }
-    return -1
-}
-</code></pre>
-</div>
-
-<p>Это покажет, что вы следите за развитием языка и не изобретаете велосипед в production-коде.</p>
+    <ol>
+<li><strong>Что делать, если в массиве есть дубликаты и нужно вернуть индекс первого вхождения?</strong><br />
+<em>Ответ:</em> Шаблон замкнутого интервала с мгновенным <code>return mid</code> не подходит, так как мы можем случайно попасть в середину группы дубликатов. Необходимо переключиться на шаблон полуинтервала (Lower Bound): при <code>nums[mid] &gt;= target</code> сдвигать правую границу <code>right = mid</code>, продолжая поиск левее.</li>
+<li><strong>Как записать это с использованием стандартной библиотеки Go 1.21+?</strong><br />
+<em>Ответ:</em> Через дженерик-пакет <code>slices</code>:<br />
+   ```go<br />
+   import "slices"</li>
+</ol>
+<p>func search(nums []int, target int) int {<br />
+       idx, found := slices.BinarySearch(nums, target)<br />
+       if found {<br />
+           return idx<br />
+       }<br />
+       return -1<br />
+   }<br />
+   ```</p>
   </div>
 </div>
 
 <h2 id="itog">Итог</h2>
 
-<p>Классический бинарный поиск — это тест на внимательность. Ошибетесь на плюс-минус единицу в сдвиге границ — получите бесконечный цикл. Забудете про переполнение — получите панику на больших данных.</p>
-<p>Освоив поиск точного значения, мы переходим к более "жизненным" сценариям: что делать, если числа в массиве нет, но нам нужно узнать, <em>куда</em> его вставить, чтобы не нарушить сортировку? Эту задачу решает Lower Bound. Переходим к: <a href="4-search-insert-position.html" class="wikilink">4. Search Insert Position</a>.</p>
+<p>Классический бинарный поиск требует безупречного соблюдения инвариантов замкнутых границ и учета особенностей компилятора.</p>
+<p>Но что, если искомого числа в массиве вообще нет? Как узнать, <strong>куда именно его следовало бы вставить</strong>, чтобы не нарушить порядок сортировки? Переходим к следующей фундаментальной задаче: <a href="4-search-insert-position.html" class="wikilink">4. Search Insert Position</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2401,7 +2383,7 @@ func search(nums []int, target int) int {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#hello-world-algoritmicheskikh-sektsiy">&quot;Hello World&quot; алгоритмических секций</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-klassicheskiy-shablon">Архитектура: Классический шаблон</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-kod">Идиоматичный Go-код</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-bounds-check-elimination-bce">Взгляд под капот: Bounds Check Elimination (BCE)</a></li><li class="toc-item toc-h2"><a href="#lovushki-i-alternativy-gotchas">Ловушки и Альтернативы (Gotchas)</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#hello-world-algoritmicheskikh-sektsiy">«Hello World» алгоритмических секций</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-invariant-zamknutogo-diapazona-left-right">Архитектура: Инвариант замкнутого диапазона [left, right]</a></li><li class="toc-item toc-h3"><a href="#pravila-invarianta">Правила инварианта:</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-kod">Идиоматичный Go-код</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-bounds-check-elimination-bce">Взгляд под капот: Bounds Check Elimination (BCE)</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

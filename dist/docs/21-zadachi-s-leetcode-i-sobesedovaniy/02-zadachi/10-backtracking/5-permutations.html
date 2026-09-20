@@ -2171,80 +2171,25 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~17 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~11 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">5. Permutations</h1>
           </header>
 
           <div class="article-markdown">
-            <p><strong>LeetCode 46. Permutations.</strong> Дан массив различных целых чисел <code>nums</code>. Требуется вернуть все возможные перестановки элементов этого массива. Порядок перестановок в ответе не важен.</p>
-<p>После генерации подмножеств в <a href="3-subsets.html" class="wikilink">3. Subsets</a> и обработки дубликатов в <a href="4-subsets-ii.html" class="wikilink">4. Subsets II</a> мы переходим к следующему фундаментальному комбинаторному объекту — <strong>перестановкам</strong>. Здесь меняется ключевое правило: каждый элемент должен быть использован ровно один раз, а порядок становится значимым. Backtracking-каркас трансформируется: «включать или пропускать» больше не работает, теперь на каждом шагу мы выбираем <strong>любой из ещё не использованных</strong> элементов. Для Senior Go-разработчика это повод продемонстрировать владение <code>visited</code>-массивом, его альтернативами (swap in-place) и понимание того, как переиспользование слайса для построения перестановки взаимодействует с escape analysis и сборщиком мусора.</p>
-<h3 id="formulirovka-i-utochneniya">Формулировка и уточнения</h3>
+            <blockquote>
+<p><em>«Порядок имеет значение только тогда, когда мы способны различить его последствия».</em><br />
+— Чарльз Хоар</p>
+</blockquote>
+<p>В задачах <a href="3-subsets.html" class="wikilink">3. Subsets</a> и <a href="4-subsets-ii.html" class="wikilink">4. Subsets II</a> порядок элементов не имел значения: подмножества <code>{1, 2}</code> и <code>{2, 1}</code> считались эквивалентными, а переход <code>i + 1</code> гарантировал выбор только «вправо».</p>
+<p>Задача <strong>Permutations</strong> (LeetCode 46) открывает принципиально другой комбинаторный класс:<br />
+<strong>Условие:</strong> Дан срез различных целых чисел <code>nums</code>. Требуется вернуть <strong>все возможные перестановки</strong> (всего $N!$ штук).</p>
+<p>В перестановках порядок следования элементов критичен. Каждый элемент обязан войти в результирующий набор ровно один раз, но стоять он может на любой позиции.</p>
+<hr />
+<h2 id="arkhitektura-derevo-prostranstva-sostoyaniy-dlya-nums-1-2-3">Архитектура: Дерево пространства состояний для `nums = [1, 2, 3]`</h2>
 
-<p><strong>Условие:</strong> функция <code>permute(nums []int) [][]int</code>. Все элементы <code>nums</code> уникальны, длина <code>n</code> от 1 до 6 (в классической версии LeetCode, но алгоритм работает и для больших N). Перестановки — это все возможные последовательности длины <code>n</code>, содержащие каждый элемент ровно один раз.</p>
-<p><strong>Вопросы интервьюеру (Senior-стиль):</strong><br />
-- <em>Может ли <code>nums</code> быть пустым?</em> По условию <code>1 &lt;= n</code>, но проверка не помешает — возвращаем <code>nil</code> или <code>[][]int{}</code>.<br />
-- <em>Допустимы ли дубликаты?</em> Нет, все элементы различны (для дубликатов есть <a href="6-permutations-ii.html" class="wikilink">6. Permutations II</a>).<br />
-- <em>Важен ли порядок перестановок?</em> Обычно нет, ожидается любой порядок.<br />
-- <em>Можно ли изменять входной слайс?</em> Мы можем читать, но если используем swap-подход, то модифицируем его временно, восстанавливая позже.</p>
-<h3 id="naivnoe-reshenie-vlozhennye-tsikly-ili-sluchaynaya-generatsiya">Наивное решение: вложенные циклы или случайная генерация</h3>
-
-<p>При N ≤ 6 полный перебор с проверкой уникальности через map был бы O(N! * N log N) — терпимо, но не идиоматично. Строить вложенные циклы для переменной длины N невозможно. Правильный путь — рекурсивный backtracking.</p>
-<h3 id="optimalnoe-reshenie-backtracking-s-visited">Оптимальное решение: backtracking с `visited`</h3>
-
-<p><strong>Идея.</strong> Мы поддерживаем флаги <code>visited []bool</code>, указывающие, использован ли уже элемент. На каждом уровне рекурсии мы перебираем все индексы <code>i</code>, и если <code>!visited[i]</code>, добавляем <code>nums[i]</code> в текущую перестановку <code>cur</code>, помечаем <code>visited[i] = true</code>, рекурсивно спускаемся вглубь, затем откатываем изменения. Когда длина <code>cur</code> достигает <code>n</code>, мы сохраняем копию в результат.</p>
-<p><strong>Инвариант цикла:</strong> на каждом уровне рекурсии слайс <code>cur</code> содержит начальный фрагмент перестановки, а массив <code>visited</code> точно отражает, какие элементы уже заняты. После возврата из рекурсии состояние <code>cur</code> и <code>visited</code> восстанавливается до того же, что было перед итерацией.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func permute(nums []int) [][]int {
-    n := len(nums)
-    if n == 0 {
-        return nil
-    }
-
-    var res [][]int
-    var cur []int
-    visited := make([]bool, n) // одна аллокация под visited
-
-    var backtrack func()
-    backtrack = func() {
-        if len(cur) == n {
-            cp := make([]int, n)
-            copy(cp, cur)
-            res = append(res, cp)
-            return
-        }
-        for i := 0; i &lt; n; i++ {
-            if visited[i] {
-                continue
-            }
-            visited[i] = true
-            cur = append(cur, nums[i])
-            backtrack()
-            cur = cur[:len(cur)-1] // откат
-            visited[i] = false
-        }
-    }
-
-    backtrack()
-    return res
-}
-</code></pre>
-</div>
-
-<p><strong>Go-идиомы и комментарии:</strong><br />
-- <code>visited := make([]bool, n)</code> — слайс булевых значений в куче, одна аллокация. Для N ≤ 64 можно использовать битовую маску <code>int</code>, что дало бы нулевую аллокацию и более быстрые проверки, но для читаемости на собеседовании чаще используют <code>[]bool</code>.<br />
-- <code>cur</code> — мутабельный слайс, переиспользуемый между ветвями. Расширяется до <code>n</code>, откатывается через <code>cur = cur[:len(cur)-1]</code>.<br />
-- Копирование <code>cp := make([]int, n)</code> — обязательная аллокация результата.<br />
-- Замыкание <code>backtrack</code> захватывает <code>res</code>, <code>cur</code>, <code>visited</code> — минимум параметров.</p>
+<p>На каждом шаге мы выбираем любой еще не использованный элемент из исходного множества. Дерево решений для массива <code>[1, 2, 3]</code> содержит ровно $3! = 6$ листьев:</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2258,34 +2203,129 @@
     </button>
   </div>
   <pre class="mermaid">
-flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;backtrack: cur=[]:::warning&quot;] --&gt; B{&quot;len(cur)==n?&quot;}
-B --&gt;|&quot;Нет&quot;| C[&quot;i от 0 до n-1&quot;]
-C --&gt; D{&quot;visited[i]?&quot;}
-D --&gt;|&quot;Нет&quot;| E[&quot;visited[i]=true&lt;br&gt;cur=append(cur, nums[i])&quot;]
-D --&gt;|&quot;Да&quot;| C
-E --&gt; F[&quot;backtrack()&quot;]
-F --&gt; G[&quot;cur = cur[:len-1]&lt;br&gt;visited[i] = false&quot;]
-G --&gt; C
-B --&gt;|&quot;Да&quot;| H[&quot;Сохранить копию cur в res&quot;]
+flowchart TD
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+
+Root[&quot;Корень: []&quot;]:::entry
+
+%% Уровень 1
+Root --&gt;|&quot;выбор 1&quot;| P1[&quot;[1]&quot;]:::process
+Root --&gt;|&quot;выбор 2&quot;| P2[&quot;[2]&quot;]:::process
+Root --&gt;|&quot;выбор 3&quot;| P3[&quot;[3]&quot;]:::process
+
+%% Ветви от [1]
+P1 --&gt;|&quot;выбор 2&quot;| P12[&quot;[1, 2]&quot;]:::process
+P1 --&gt;|&quot;выбор 3&quot;| P13[&quot;[1, 3]&quot;]:::process
+P12 --&gt;|&quot;выбор 3&quot;| L1[&quot;[1, 2, 3]&quot;]:::success
+P13 --&gt;|&quot;выбор 2&quot;| L2[&quot;[1, 3, 2]&quot;]:::success
+
+%% Ветви от [2]
+P2 --&gt;|&quot;выбор 1&quot;| P21[&quot;[2, 1]&quot;]:::process
+P2 --&gt;|&quot;выбор 3&quot;| P23[&quot;[2, 3]&quot;]:::process
+P21 --&gt;|&quot;выбор 3&quot;| L3[&quot;[2, 1, 3]&quot;]:::success
+P23 --&gt;|&quot;выбор 1&quot;| L4[&quot;[2, 3, 1]&quot;]:::success
+
+%% Ветви от [3]
+P3 --&gt;|&quot;выбор 1&quot;| P31[&quot;[3, 1]&quot;]:::process
+P3 --&gt;|&quot;выбор 2&quot;| P32[&quot;[3, 2]&quot;]:::process
+P31 --&gt;|&quot;выбор 2&quot;| L5[&quot;[3, 1, 2]&quot;]:::success
+P32 --&gt;|&quot;выбор 1&quot;| L6[&quot;[3, 2, 1]&quot;]:::success
   </pre>
 </div>
 
 
-<h3 id="alternativnoe-reshenie-swap-in-place-menshe-pamyati">Альтернативное решение: swap in-place (меньше памяти)</h3>
+<hr />
+<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
 
-<p>Вместо <code>visited</code> и отдельного слайса <code>cur</code> можно генерировать перестановки путём обменов элементов в самом слайсе <code>nums</code>. На каждом уровне <code>start</code> мы перебираем <code>i</code> от <code>start</code> до <code>n-1</code>, меняем местами <code>nums[start]</code> и <code>nums[i]</code>, вызываем рекурсию для <code>start+1</code>, а затем меняем обратно (откат). Когда <code>start == n</code>, текущее состояние <code>nums</code> — это очередная перестановка.</p>
-<p>Этот подход не требует дополнительного слайса <code>cur</code> и массива <code>visited</code>, а использует единственный входной массив. Он эффективен по памяти (O(1) дополнительной), но меняет исходные данные, что нужно оговорить. Код компактнее, но менее очевиден.</p>
+<p>Существует два равноправных подхода: классический с трекингом флагов <code>visited</code> и компактный in-place swap. На собеседовании ожидается первый как наиболее расширяемый на задачи с дубликатами.</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package main
+
+// permute генерирует все N! перестановок уникального массива.
+// Временная сложность: O(N * N!)
+// Пространственная сложность: O(N) под стек и буфер path
+func permute(nums []int) [][]int {
+    n := len(nums)
+    if n == 0 {
+        return nil
+    }
+
+    var result [][]int
+    path := make([]int, 0, n)
+    visited := make([]bool, n) // Флаги занятости элементов
+
+    var backtrack func()
+    backtrack = func() {
+        // Базовый случай: собрана полная перестановка длины n
+        if len(path) == n {
+            snapshot := make([]int, n)
+            copy(snapshot, path)
+            result = append(result, snapshot)
+            return
+        }
+
+        // Перебираем ВСЕ элементы, пропуская уже использованные
+        for i := 0; i &lt; n; i++ {
+            if visited[i] {
+                continue
+            }
+
+            // Choose
+            visited[i] = true
+            path = append(path, nums[i])
+
+            // Explore
+            backtrack()
+
+            // Unchoose (откат обоих инвариантов)
+            path = path[:len(path)-1]
+            visited[i] = false
+        }
+    }
+
+    backtrack()
+    return result
+}
+</code></pre>
+</div>
+
+<hr />
+<h2 id="vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</h2>
+
+<h3 id="1-visited-bool-protiv-bitovoy-maski-mask-int">1. `visited []bool` против Битовой маски `mask int`</h3>
+<p>В решении выше <code>visited</code> выделяется в куче один раз (<code>make([]bool, n)</code>). Чтение <code>visited[i]</code> требует загрузки адреса из L1 Data Cache.<br />
+Для $N \le 64$ битовая маска целиком укладывается в регистр процессора:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">// Проверка бита: (mask &amp; (1 &lt;&lt; i)) != 0
+// Установка бита: mask | (1 &lt;&lt; i)
+</code></pre>
+</div>
+
+<ul>
+<li>Инструкция x86-64 <code>BT</code> (Bit Test) или <code>AND</code> выполняется за 1 такт CPU в ALU.</li>
+<li>Не требуется выделять память под массив флагов.</li>
+<li>Откат маски происходит автоматически: значение передается в рекурсивную функцию по значению (на регистре <code>RDX</code>), поэтому при возврате из функции старое значение маски мгновенно восстанавливается без явных операций!</li>
+</ul>
+<h3 id="2-in-place-swap-algoritm-s-o1-vspomogatelnoy-pamyati">2. In-Place Swap: алгоритм с $O(1)$ вспомогательной памяти</h3>
+<p>Если интервьюер просит решение без дополнительного массива <code>visited</code> и среза <code>path</code>:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2296,80 +2336,62 @@ B --&gt;|&quot;Да&quot;| H[&quot;Сохранить копию cur в res&quot
     </button>
   </div>
   <pre class="language-go"><code class="language-go">func permuteSwap(nums []int) [][]int {
-    var res [][]int
+    var result [][]int
     var backtrack func(start int)
     backtrack = func(start int) {
         if start == len(nums) {
-            cp := make([]int, len(nums))
-            copy(cp, nums)
-            res = append(res, cp)
+            snapshot := make([]int, len(nums))
+            copy(snapshot, nums)
+            result = append(result, snapshot)
             return
         }
         for i := start; i &lt; len(nums); i++ {
-            nums[start], nums[i] = nums[i], nums[start]
+            nums[start], nums[i] = nums[i], nums[start] // Swap
             backtrack(start + 1)
-            nums[start], nums[i] = nums[i], nums[start] // откат
+            nums[start], nums[i] = nums[i], nums[start] // Un-swap
         }
     }
     backtrack(0)
-    return res
+    return result
 }
 </code></pre>
 </div>
 
-<p>Этот вариант демонстрирует более глубокое понимание backtracking, но на собеседовании Senior объяснит оба и выберет один с обоснованием.</p>
-<h3 id="edge-cases">Edge Cases</h3>
+<p>Swap-подход элегантен, но имеет недостаток: порядок генерируемых перестановок не является лексикографическим, а адаптация под массивы с дубликатами требует дополнительной дедупликации.</p>
+<hr />
+<h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
 
-<ul>
-<li><strong>Пустой массив:</strong> <code>n = 0</code>. По условию не бывает, но можно вернуть <code>nil</code>.</li>
-<li><strong>Один элемент:</strong> <code>[1]</code> → <code>&lt;span class="wikilink-unresolved" title="Заметка в разработке"&gt;1&lt;/span&gt;</code>. Цикл <code>for i</code> выполнится один раз, <code>backtrack</code> при <code>len(cur) == 1</code> сохранит результат.</li>
-<li><strong>Максимальное N (6):</strong> 720 перестановок, всё быстро.</li>
-<li><strong>Отрицательные числа:</strong> <code>visited</code> трекает индексы, значения не влияют.</li>
-</ul>
-<h3 id="analiz-slozhnosti">Анализ сложности</h3>
-
-<ul>
-<li><strong>Время:</strong> O(N * N!). Количество перестановок — N!. Каждая перестановка длиной N копируется в результат за O(N). Общий объём работы пропорционален N * N!.</li>
-<li><strong>Память:</strong> O(N * N!) для хранения всех перестановок (выходные данные). Дополнительная память: O(N) на стек рекурсии и слайс <code>cur</code> (или O(1) для swap-подхода, без учёта результата).</li>
-</ul>
-<h3 id="mechanical-sympathy-visited-vs-swap-i-kesh">Mechanical Sympathy: `visited` vs swap и кэш</h3>
-
-<ul>
-<li><strong>Подход с <code>visited</code>:</strong> требует слайса <code>[]bool</code> (N байт). Каждая проверка <code>visited[i]</code> — чтение из памяти (L1-кэш после первого обращения). Абсолютно предсказуемо.</li>
-<li><strong>Swap-подход:</strong> не требует <code>visited</code>, но меняет входной слайс. Оперирует на том же непрерывном массиве, что хорошо для кэша. Однако копирование при сохранении результата требует аллокации (как и в visited-подходе).</li>
-<li><strong>Битовая маска (оптимизация):</strong> для N ≤ 64 можно использовать <code>int</code> с битовыми операциями. Это ноль аллокаций на <code>visited</code> и мгновенные проверки. Senior может упомянуть этот вариант: «Если бы N было до 20 и производительность была критична, я бы использовал битовую маску вместо <code>[]bool</code>».</li>
-</ul>
-<div class="callout callout-info">
+<div class="callout callout-warning">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Ловушка: Забытый сброс флага `visited[i] = false`</span>
   </div>
   <div class="callout-body">
-    <p>В visited-подходе <code>cur</code> растёт путём <code>append</code>. На первом проходе capacity увеличивается от 0 до N, что вызывает несколько аллокаций. Но после этого <code>cap(cur) == N</code>, и все последующие операции <code>append</code> и откат не аллоцируют новых массивов (пока длина не превышает N). Escape analysis помещает нижележащий массив <code>cur</code> в кучу, потому что он используется в замыкании и «убегает». Это одна аллокация на весь backtracking.</p>
+    <p>В Subsets откат затрагивал только длину среза <code>path[:len(path)-1]</code>. В Permutations у нас <strong>два связанных состояния</strong>: <code>path</code> и <code>visited</code>. Забытая строка <code>visited[i] = false</code> навсегда исключит элемент $i$ из рассмотрения для всех последующих ветвей, разрушив перебор.</p>
   </div>
 </div>
 
-<h3 id="alternativy-i-trade-off">Альтернативы и trade-off</h3>
-
-<ul>
-<li><strong>Рекурсивный DFS с <code>visited</code></strong> — самый читаемый и универсальный, легко адаптируется под дубликаты (Permutations II).</li>
-<li><strong>Swap-подход</strong> — элегантен и экономит память на <code>visited</code>, но требует модификации входа и менее нагляден.</li>
-<li><strong>Битовые маски</strong> — производительная микрооптимизация.</li>
-</ul>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования: Временная сложность факториала</span>
   </div>
   <div class="callout-body">
-    <p>Вопрос: «Какой из подходов вы выберете и почему?»<br />
-Ответ: «На собеседовании я предпочту <code>visited</code> за читаемость и лёгкость адаптации к дубликатам в Permutations II. Swap-подход я бы выбрал, если бы требовалась минимальная память и допустима модификация входа. Битовая маска — для максимальной производительности, но может ухудшить читаемость, поэтому применяется осознанно».</p>
+    <p><strong>Вопрос:</strong> Почему сложность алгоритма равна $O(N \cdot N!)$?<br />
+<strong>Ответ:</strong> Дерево перестановок содержит ровно $N!$ листьев. Количество внутренних вершин дерева:<br />
+$$1 + N + N(N-1) + \dots + \frac{N!}{1!} \approx e \cdot N! = O(N!)$$<br />
+В каждом листе мы копируем массив длины $N$ в результат, что занимает $O(N)$ времени. Итоговая сложность составляет строго $O(N \cdot N!)$. При $N = 10$ это $36$ миллионов операций, что выполняется за доли секунды, но при $N = 12$ количество операций превышает $5$ миллиардов, требуя перехода к жадным или динамическим эвристикам.</p>
   </div>
 </div>
 
-<h3 id="itog">Итог</h3>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
-<p>Permutations — это ключевая задача на backtracking с отслеживанием использованных элементов. В Go она решается чистым рекурсивным замыканием с <code>visited</code> и переиспользованием слайса <code>cur</code>, либо элегантным in-place swap. Senior-разработчик демонстрирует оба варианта, объясняет их trade-off по памяти и читаемости, а также готов к усложнению — <strong>Permutations II</strong>, где дубликаты потребуют дополнительной логики пропуска на уровне. <a href="6-permutations-ii.html" class="wikilink">6. Permutations II</a></p>
+<p><strong>Permutations</strong> демонстрирует управление порядком следования:<br />
+- Цикл перебирает всех кандидатов от $0$ до $n-1$.<br />
+- Флаги <code>visited</code> гарантируют, что каждый элемент входит в перестановку ровно один раз.<br />
+- Откат восстанавливает как срез <code>path</code>, так и булеву маску <code>visited</code>.</p>
+<p>Что делать, если в исходном наборе чисел присутствуют дубликаты (например, <code>[1, 1, 2]</code>)? Обычный <code>visited</code> сгенерирует одинаковые перестановки. Решение этой задачи мы разберем в следующей статье: <a href="6-permutations-ii.html" class="wikilink">6. Permutations II</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2397,7 +2419,7 @@ B --&gt;|&quot;Да&quot;| H[&quot;Сохранить копию cur в res&quot
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#formulirovka-i-utochneniya">Формулировка и уточнения</a></li><li class="toc-item toc-h3"><a href="#naivnoe-reshenie-vlozhennye-tsikly-ili-sluchaynaya-generatsiya">Наивное решение: вложенные циклы или случайная генерация</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-backtracking-s-visited">Оптимальное решение: backtracking с visited</a></li><li class="toc-item toc-h3"><a href="#alternativnoe-reshenie-swap-in-place-menshe-pamyati">Альтернативное решение: swap in-place (меньше памяти)</a></li><li class="toc-item toc-h3"><a href="#edge-cases">Edge Cases</a></li><li class="toc-item toc-h3"><a href="#analiz-slozhnosti">Анализ сложности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-visited-vs-swap-i-kesh">Mechanical Sympathy: visited vs swap и кэш</a></li><li class="toc-item toc-h3"><a href="#alternativy-i-trade-off">Альтернативы и trade-off</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-derevo-prostranstva-sostoyaniy-dlya-nums-1-2-3">Архитектура: Дерево пространства состояний для nums = [1, 2, 3]</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#1-visited-bool-protiv-bitovoy-maski-mask-int">1. visited []bool против Битовой маски mask int</a></li><li class="toc-item toc-h3"><a href="#2-in-place-swap-algoritm-s-o1-vspomogatelnoy-pamyati">2. In-Place Swap: алгоритм с $O(1)$ вспомогательной памяти</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

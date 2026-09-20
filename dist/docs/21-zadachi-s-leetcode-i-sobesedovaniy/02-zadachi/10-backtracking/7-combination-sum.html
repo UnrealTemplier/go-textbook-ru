@@ -2171,75 +2171,28 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~21 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~11 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">7. Combination Sum</h1>
           </header>
 
           <div class="article-markdown">
-            <p><strong>LeetCode 39. Combination Sum.</strong> Дан массив <strong>уникальных</strong> положительных целых чисел <code>candidates</code> и целевое число <code>target</code>. Требуется найти все уникальные комбинации чисел из <code>candidates</code>, которые в сумме дают <code>target</code>. Одно и то же число можно использовать <strong>неограниченное количество раз</strong>. Каждая комбинация должна быть уникальна по набору чисел (порядок не важен).</p>
-<p>После задач на подмножества и перестановки мы переходим к задаче, в которой backtracking получает новое измерение — <strong>ограничение по сумме</strong>. Это первая задача кластера, где отсечения (pruning) не просто опциональны, а обязательны для прохождения лимитов по времени. Для Senior Go-разработчика Combination Sum становится полигоном демонстрации того, как сортировка и жёсткие ограничения на сумму превращают экспоненциальный перебор в управляемый процесс, а переиспользование слайса для состояния и <code>remain</code>-счётчика сохраняет нулевые аллокации в горячем пути.</p>
-<h3 id="formulirovka-i-utochneniya">Формулировка и уточнения</h3>
+            <blockquote>
+<p><em>«Бесконечные возможности требуют жестких границ; лишь установив предел, мы получаем ответ».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>В предыдущих лекциях мы изучили генерацию подмножеств и перестановок, где каждый элемент использовался не более одного раза.</p>
+<p>Задача <strong>Combination Sum</strong> (LeetCode 39) переводит поиск с возвратом в новую плоскость:<br />
+<strong>Условие:</strong> Дан срез <strong>уникальных</strong> положительных целых чисел <code>candidates</code> и целевое число <code>target</code>. Требуется найти все уникальные наборы чисел, сумма которых равна <code>target</code>. Одно и то же число разрешено использовать <strong>неограниченное число раз</strong>. Порядок чисел в наборе значения не имеет.</p>
+<p>Поскольку элементы можно брать бесконечно, наивный перебор моментально приведет к бесконечной рекурсии. Это первая задача, где <strong>раннее отсечение (Deep Pruning)</strong> выступает не просто оптимизацией, а обязательным условием завершимости алгоритма.</p>
+<hr />
+<h2 id="arkhitektura-invarianty-prostranstva-resheniy">Архитектура: Инварианты пространства решений</h2>
 
-<p><strong>Условие:</strong> функция <code>combinationSum(candidates []int, target int) [][]int</code>. Элементы <code>candidates</code> уникальны, положительны (≥ 1). Длина массива от 1 до 30, значения до 200, <code>target</code> до 500. Комбинации можно возвращать в любом порядке.</p>
-<p><strong>Вопросы интервьюеру (Senior-стиль):</strong><br />
-- <em>Может ли <code>target</code> быть нулём?</em> Нет, <code>target</code> &gt;= 1, но в коде обработка <code>remain == 0</code> обязательна.<br />
-- <em>Может ли <code>candidates</code> содержать отрицательные числа?</em> Нет, все положительные.<br />
-- <em>Можно ли изменять входной массив?</em> Мы его сортируем для оптимизации, но не модифицируем глобально (сортировка in-place — допустимо, если оговорено).<br />
-- <em>Важен ли порядок комбинаций?</em> Нет.</p>
-<h3 id="naivnoe-reshenie-polnyy-perebor-bez-otsecheniy">Наивное решение: полный перебор без отсечений</h3>
-
-<p>Можно было бы генерировать все возможные последовательности элементов, проверяя сумму на каждом шагу, но без ограничений это приведёт к бесконечной рекурсии (так как элементы можно использовать бесконечно). Даже с ограничением глубины, наивный перебор всех комбинаций длины от 1 до <code>target/min(candidate)</code> будет экспоненциально большим. Без отсечения по превышению суммы и без сортировки алгоритм будет делать множество бесполезных ветвей.</p>
-<p>Например, при <code>candidates = [2,3,5]</code> и <code>target = 8</code> без отсечений мы можем зайти в ветку <code>2+2+2+2+2 = 10</code> и только потом понять, что превысили цель, но уже потратили время на рекурсивные спуски. Отсутствие сортировки не позволяет досрочно выйти из цикла при превышении.</p>
-<h3 id="optimalnoe-reshenie-backtracking-s-sortirovkoy-i-otsecheniem-po-summe">Оптимальное решение: backtracking с сортировкой и отсечением по сумме</h3>
-
-<p><strong>Идея.</strong> Мы сортируем <code>candidates</code> по возрастанию. Заводим слайс <code>cur</code> для построения комбинации и параметр <code>remain</code> — остаток до <code>target</code>. На каждом уровне рекурсии мы перебираем кандидатов, начиная с индекса <code>start</code>. Поскольку каждое число можно использовать многократно, следующий рекурсивный вызов получает <strong>тот же</strong> <code>start</code>, а не <code>start+1</code> (в отличие от Subsets). Если <code>candidates[i] &gt; remain</code>, мы немедленно выходим из цикла (<code>break</code>), так как все последующие кандидаты ещё больше, и ни один из них не может быть частью решения.</p>
-<p>Когда <code>remain == 0</code>, мы сохраняем копию <code>cur</code> в результат. Когда <code>remain &lt; 0</code>, мы просто возвращаемся (этот случай предотвращается отсечением, но лишняя проверка не помешает).</p>
-<p><strong>Инвариант цикла:</strong> для текущего <code>start</code> и <code>remain</code> мы ищем все комбинации, использующие элементы из <code>candidates[start:]</code>, сумма которых равна <code>remain</code>. Слайс <code>cur</code> содержит префикс комбинации. После возврата из рекурсивных вызовов <code>cur</code> восстанавливается.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func combinationSum(candidates []int, target int) [][]int {
-    sort.Ints(candidates) // необходимо для отсечения
-    var res [][]int
-    var cur []int
-    var backtrack func(start, remain int)
-    backtrack = func(start, remain int) {
-        if remain == 0 {
-            cp := make([]int, len(cur))
-            copy(cp, cur)
-            res = append(res, cp)
-            return
-        }
-        for i := start; i &lt; len(candidates); i++ {
-            if candidates[i] &gt; remain {
-                // все последующие кандидаты ещё больше
-                break
-            }
-            cur = append(cur, candidates[i])
-            backtrack(i, remain-candidates[i]) // i, а не i+1 — можно повторять
-            cur = cur[:len(cur)-1]
-        }
-    }
-    backtrack(0, target)
-    return res
-}
-</code></pre>
-</div>
-
-<p><strong>Go-идиомы и комментарии:</strong><br />
-- <code>sort.Ints(candidates)</code> — in-place, O(N log N). Это основа эффективности: без сортировки <code>break</code> не имеет смысла.<br />
-- <code>cur</code> — переиспользуемый слайс. Откат через <code>cur = cur[:len(cur)-1]</code>.<br />
-- <code>backtrack(i, remain-candidates[i])</code> — передача <code>i</code> позволяет использовать один и тот же элемент неограниченно.<br />
-- Отсечение <code>if candidates[i] &gt; remain { break }</code> — ранний выход из цикла, радикально сокращает дерево перебора.<br />
-- Копирование <code>cp := make([]int, len(cur)); copy(cp, cur)</code> — обязательна.</p>
+<p>Чтобы гарантировать уникальность комбинаций (не сгенерировать <code>[2, 2, 3]</code> и <code>[3, 2, 2]</code> одновременно) и избежать зацикливания:<br />
+1. <strong>Неубывающий порядок выбора (<code>start = i</code>):</strong> На каждом шаге мы разрешаем брать только элементы с индексом $\ge i$. Это гарантирует, что числа в любой сгенерированной комбинации упорядочены по неубыванию ($2 \le 2 \le 3$).<br />
+2. <strong>Сортировка входного массива:</strong> Мы предварительно сортируем <code>candidates</code> по возрастанию.<br />
+3. <strong>Мгновенное отсечение по сумме (<code>break</code>):</strong> Если для текущего элемента <code>candidates[i] &gt; remain</code>, то в силу отсортированности массива <strong>все последующие кандидаты заведомо больше остатка</strong>. Мы не просто делаем <code>continue</code>, мы немедленно прерываем весь цикл <code>break</code>, срезая огромное поддерево!</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2253,89 +2206,134 @@
     </button>
   </div>
   <pre class="mermaid">
-flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;backtrack(0, target):::warning&quot;] --&gt; B{&quot;remain == 0?&quot;}
-B --&gt;|&quot;Да&quot;| C[&quot;Сохранить копию cur&quot;]
-B --&gt;|&quot;Нет&quot;| D[&quot;i от start до len(candidates)-1&quot;]
-D --&gt; E{&quot;candidates[i] &gt; remain?&quot;}
-E --&gt;|&quot;Да&quot;| F[&quot;break&quot;]
-E --&gt;|&quot;Нет&quot;| G[&quot;cur = append(cur, candidates[i])&quot;]
-G --&gt; H[&quot;backtrack(i, remain-candidates[i])&quot;]
-H --&gt; I[&quot;cur = cur[:len-1]&quot;]
-I --&gt; D
+flowchart TD
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+
+Start[&quot;candidates = [2, 3, 6, 7], target = 7&lt;br&gt;cur = [], remain = 7&quot;]:::entry --&gt; Loop{&quot;i от start до n-1&quot;}:::warning
+
+Loop --&gt;|&quot;i=0 (2): 2 &lt;= 7&quot;| Branch2[&quot;cur = [2], remain = 5&lt;br&gt;backtrack(start=0, remain=5)&quot;]:::process
+Loop --&gt;|&quot;i=1 (3): 3 &lt;= 7&quot;| Branch3[&quot;cur = [3], remain = 4&lt;br&gt;backtrack(start=1, remain=4)&quot;]:::process
+Loop --&gt;|&quot;i=3 (7): 7 == 7&quot;| Found7[&quot;cur = [7], remain = 0&lt;br&gt;РЕЗУЛЬТАТ [7]&quot;]:::success
+
+Branch2 --&gt; Sub2[&quot;cur = [2, 2], remain = 3&lt;br&gt;backtrack(start=0, remain=3)&quot;]:::process
+Sub2 --&gt; Sub23[&quot;cur = [2, 2, 3], remain = 0&lt;br&gt;РЕЗУЛЬТАТ [2, 2, 3]&quot;]:::success
+
+Loop -.-&gt;|&quot;candidates[i] &gt; remain&quot;| Prune[&quot;BREAK: Отсечение ветви&quot;]:::error
   </pre>
 </div>
 
 
-<h3 id="pochemu-eto-rabotaet-invariant-i-otsechenie">Почему это работает: инвариант и отсечение</h3>
+<hr />
+<h2 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h2>
 
-<p>Сортировка гарантирует, что как только <code>candidates[i] &gt; remain</code>, все элементы с индексами <code>&gt;= i</code> также больше <code>remain</code> (так как массив упорядочен). Следовательно, никакая комбинация с этими элементами не может дать ровно <code>remain</code> (все числа положительные). Это позволяет нам безопасно прервать цикл. Без сортировки такое отсечение было бы невозможно, и код вынужден был бы перебирать все кандидаты на каждом уровне, что привело бы к экспоненциальному взрыву даже для небольших <code>target</code>.</p>
-<p>Передача <code>start = i</code> гарантирует, что решение вида <code>[2,3,2]</code> не будет продублировано как <code>[3,2,2]</code> или <code>[2,2,3]</code> — мы всегда строим комбинации в неубывающем порядке индексов (а значит, и значений, после сортировки). Это естественно обеспечивает уникальность без дополнительных проверок, знакомых нам по <a href="4-subsets-ii.html" class="wikilink">4. Subsets II</a>.</p>
-<h3 id="edge-cases">Edge Cases</h3>
 
-<ul>
-<li><strong><code>target</code> меньше любого кандидата:</strong> <code>candidates = [5,10]</code>, <code>target = 3</code>. Сортировка <code>[5,10]</code>, на первой же итерации <code>candidates[0] = 5 &gt; 3</code> → <code>break</code>, цикл по <code>i</code> не выполнится, <code>res</code> останется пустым. Вернётся <code>nil</code> или <code>[]int{}</code>. В нашем коде <code>res</code> не инициализирован, будет <code>nil</code>. Можно вернуть <code>[][]int{}</code> для консистентности, но nil также допустим.</li>
-<li><strong><code>target</code> == 0:</strong> по условию не бывает, но если бы было, <code>remain == 0</code> сработает сразу, сохраним пустой <code>cur</code>. Уточним на собеседовании.</li>
-<li><strong>Все кандидаты больше <code>target</code>:</strong> аналогично первому пункту, пустой результат.</li>
-<li><strong>Отрицательных чисел нет:</strong> код опирается на положительность для отсечения.</li>
-<li><strong>Большое количество комбинаций:</strong> при <code>target=500</code> и <code>candidates=[1,2,5]</code> количество комбинаций огромно, но алгоритм сгенерирует их все. В production-коде Senior может добавить ограничение на максимальное количество комбинаций или перейти к DP (количество способов, а не перечисление), но задача требует именно перечисления.</li>
-</ul>
-<h3 id="analiz-slozhnosti">Анализ сложности</h3>
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package main
 
-<ul>
-<li><strong>Время:</strong> O(K * N), где K — количество сгенерированных комбинаций. Каждая комбинация длиной до <code>target/min(candidate)</code> копируется. Количество комбинаций может быть экспоненциальным относительно <code>target</code> в худшем случае (например, <code>candidates=[1]</code>). Но отсечения делают константу значительно меньше.</li>
-<li><strong>Память:</strong> O(K * L) для хранения всех комбинаций (L — средняя длина). Дополнительная память для <code>cur</code> — O(L), глубина стека рекурсии — O(L).</li>
-</ul>
-<h3 id="mechanical-sympathy-kesh-i-allokatsii">Mechanical Sympathy: кэш и аллокации</h3>
+import &quot;sort&quot;
 
-<ul>
-<li><strong>Сортировка <code>sort.Ints</code></strong> — in-place, без аллокаций.</li>
-<li><strong>Переиспользование <code>cur</code></strong> — как и во всех задачах backtracking, слайс <code>cur</code> растёт до максимальной длины комбинации, затем откатывается усечением. Никаких дополнительных аллокаций в горячем пути, кроме случаев расширения capacity (происходит несколько раз, пока длина не станет достаточно большой).</li>
-<li><strong>Отсечение <code>candidates[i] &gt; remain</code></strong> — это простое сравнение целых чисел, выполняемое за такты. Без него алгоритм бы порождал миллионы лишних узлов, увеличивая давление на кэш инструкций и данных.</li>
-<li><strong>Отсутствие map и динамических структур</strong> — всё линейно и плоско, максимальная локальность.</li>
-</ul>
-<div class="callout callout-info">
+// combinationSum находит все уникальные комбинации с суммой target.
+// Временная сложность: O(N^(T/M)), где T — target, M — минимальный кандидат
+// Пространственная сложность: O(T/M) глубина стека и буфера path
+func combinationSum(candidates []int, target int) [][]int {
+    // 1. Сортировка — основа мгновенного отсечения ветвей
+    sort.Ints(candidates)
+
+    var result [][]int
+    // Буфер максимальной глубины target / min(candidates)
+    path := make([]int, 0, target/candidates[0]+1)
+
+    var backtrack func(start int, remain int)
+    backtrack = func(start int, remain int) {
+        // Базовый случай: цель достигнута в точности
+        if remain == 0 {
+            snapshot := make([]int, len(path))
+            copy(snapshot, path)
+            result = append(result, snapshot)
+            return
+        }
+
+        for i := start; i &lt; len(candidates); i++ {
+            // Отсечение (Pruning): в отсортированном срезе текущий и все последующие
+            // элементы больше остатка — немедленно выходим из цикла!
+            if candidates[i] &gt; remain {
+                break
+            }
+
+            // Choose
+            path = append(path, candidates[i])
+
+            // Explore: передаем тот же индекс i (разрешено брать этот же элемент)
+            backtrack(i, remain-candidates[i])
+
+            // Unchoose
+            path = path[:len(path)-1]
+        }
+    }
+
+    backtrack(0, target)
+    return result
+}
+</code></pre>
+</div>
+
+<hr />
+<h2 id="vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</h2>
+
+<h3 id="tsena-break-protiv-continue-v-tsikle-perebora">Цена `break` против `continue` в цикле перебора</h3>
+<p>Сравним поведение двух вариантов кода:<br />
+1. <strong>Без сортировки:</strong><br />
+<code>go
+   if candidates[i] &gt; remain { continue }</code><br />
+   Процессор вынужден на каждой итерации выполнять проверку условия и итерироваться по всему массиву <code>candidates</code> до конца. Для каждого элемента выполняется jump.<br />
+2. <strong>С сортировкой и <code>break</code>:</strong><br />
+<code>go
+   if candidates[i] &gt; remain { break }</code><br />
+   Как только условие выполнилось, цикл завершается немедленно. При больших <code>candidates</code> (например, <code>[2, 3, 5, 7, 11, 13, ... 97]</code>) при остатке <code>remain = 4</code> цикл сделает всего 2 итерации вместо десятков! Предсказатель ветвлений CPU спекулятивно завершает цикл, экономя такты и разгружая кэш команд L1i.</p>
+<hr />
+<h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
+
+<div class="callout callout-warning">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Ловушка: Передача `start = i + 1`</span>
   </div>
   <div class="callout-body">
-    <p>Escape analysis: <code>cur</code> — локальная переменная замыкания, его нижележащий массив размещается в куче из-за <code>append</code> и возможного переиспользования после возврата из <code>backtrack</code>. Но это одна аллокация, амортизируемая на всё время работы. <code>res</code> и <code>cp</code> также уходят в кучу, что оправдано (результат должен пережить вызов функции). Никаких утечек: <code>cur</code> после завершения <code>combinationSum</code> станет недостижимым и будет собран GC.</p>
+    <p>Если передать в рекурсию <code>backtrack(i + 1, ...)</code>, алгоритм превратится в задачу <strong>Combination Sum II</strong> (LeetCode 40), где каждое число можно использовать не более одного раза.<br />
+Для неограниченного использования числа текущий указатель обязан оставаться на той же позиции: <code>backtrack(i, remain - candidates[i])</code>.</p>
   </div>
 </div>
 
-<h3 id="alternativy-i-trade-off">Альтернативы и trade-off</h3>
-
-<ul>
-<li><strong>Динамическое программирование (количество комбинаций).</strong> Задача "Coin Change 2" (LeetCode 518) просит количество комбинаций, а не сами комбинации. DP даёт O(N * target) время и O(target) память. Для перечисления комбинаций DP менее удобен, так как требует восстановления путей.</li>
-<li><strong>Использование <code>map</code> для дедупликации.</strong> Избыточно, правильный выбор <code>start</code> уже гарантирует уникальность.</li>
-<li><strong>Отказ от сортировки с filter.</strong> Если кандидаты не сортированы, мы не можем прервать цикл досрочно. Вместо этого можно на каждой итерации проверять <code>candidates[i] &lt;= remain</code>, но продолжать перебор — это уберёт отсечение, и производительность упадёт.</li>
-</ul>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования: Backtracking против Dynamic Programming</span>
   </div>
   <div class="callout-body">
-    <p>Вопрос: «Можно ли обойтись без сортировки?»<br />
-Ответ: «Можно, но тогда мы не сможем досрочно выйти из цикла при превышении остатка, и вынуждены будем перебирать всех кандидатов на каждом уровне, что резко замедлит алгоритм. Сортировка даёт гарантию монотонности и является стандартным первым шагом во многих backtracking-задачах».</p>
+    <p><strong>Вопрос:</strong> В задаче Coin Change 2 (LeetCode 518) требуется найти <em>количество</em> способов набрать сумму, и мы используем динамическое программирование за $O(N \cdot \text{target})$. Почему здесь мы используем Backtracking?<br />
+<strong>Ответ:</strong> Когда требуется найти <strong>количество</strong> способов, подзадачи перекрываются, и DP оптимально объединяет их за полиномиальное время. Но когда условие требует <strong>перечислить все конкретные списки комбинаций</strong>, количество этих списков само по себе экспоненциально. Никакое DP не может сгенерировать $K$ списков быстрее, чем за время $O(K \cdot L)$. Backtracking здесь математически оптимален.</p>
   </div>
 </div>
 
-<h3 id="itog">Итог</h3>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
-<p>Combination Sum — это каноническая задача на backtracking с неограниченным использованием элементов и отсечением по сумме. Она завершает блок о базовых комбинаторных генерациях и готовит нас к более сложным сценариям, где отсечения и инварианты становятся ещё более изощрёнными. В Go решение пишется компактно, с использованием <code>sort.Ints</code> и переиспользования слайса, и демонстрирует зрелость инженера, понимающего, как несколько строк кода превращают экспоненциальный взрыв в управляемый перебор.</p>
-<p>Следующая задача — <strong>Word Search</strong> — перенесёт нас из мира комбинаций на двумерные сетки, где backtracking будет применяться для обхода соседей в поисках пути. <a href="8-word-search.html" class="wikilink">8. Word Search</a></p>
+<p><strong>Combination Sum</strong> иллюстрирует силу отсечений в комбинаторике:<br />
+- Предварительная сортировка массива превращает <code>continue</code> в спасительный <code>break</code>.<br />
+- Инвариант <code>start = i</code> обеспечивает уникальность наборов без использования <code>map</code>.<br />
+- Предвыделенный буфер <code>path</code> минимизирует аллокации при рекурсивном спуске.</p>
+<p>В следующей задаче мы покидаем одномерные массивы и переходим к поиску пути на двумерной координатной сетке: <a href="8-word-search.html" class="wikilink">8. Word Search</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2363,7 +2361,7 @@ I --&gt; D
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#formulirovka-i-utochneniya">Формулировка и уточнения</a></li><li class="toc-item toc-h3"><a href="#naivnoe-reshenie-polnyy-perebor-bez-otsecheniy">Наивное решение: полный перебор без отсечений</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-backtracking-s-sortirovkoy-i-otsecheniem-po-summe">Оптимальное решение: backtracking с сортировкой и отсечением по сумме</a></li><li class="toc-item toc-h3"><a href="#pochemu-eto-rabotaet-invariant-i-otsechenie">Почему это работает: инвариант и отсечение</a></li><li class="toc-item toc-h3"><a href="#edge-cases">Edge Cases</a></li><li class="toc-item toc-h3"><a href="#analiz-slozhnosti">Анализ сложности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-kesh-i-allokatsii">Mechanical Sympathy: кэш и аллокации</a></li><li class="toc-item toc-h3"><a href="#alternativy-i-trade-off">Альтернативы и trade-off</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-invarianty-prostranstva-resheniy">Архитектура: Инварианты пространства решений</a></li><li class="toc-item toc-h2"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</a></li><li class="toc-item toc-h3"><a href="#tsena-break-protiv-continue-v-tsikle-perebora">Цена break против continue в цикле перебора</a></li><li class="toc-item toc-h2"><a href="#podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 
