@@ -2171,149 +2171,24 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~23 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~11 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">4. Merge K Sorted Lists</h1>
           </header>
 
           <div class="article-markdown">
-            <p><strong>LeetCode 23. Merge K Sorted Lists.</strong> Дан массив из <code>k</code> связных списков, каждый из которых отсортирован по возрастанию. Требуется объединить все списки в один отсортированный связный список и вернуть его голову. Это классика жанра «сложные задачи»: она не решается применением одного изолированного паттерна, а требует композиции «куча + слияние» либо «разделяй и властвуй + слияние двух списков». После геометрического инсайта <a href="3-trapping-rain-water.html" class="wikilink">3. Trapping Rain Water</a> мы переходим к структурам данных, где правильный выбор контейнера и понимание работы <code>container/heap</code> в Go определяют, будет ли решение Accepted с запасом или упрётся в TLE.</p>
-<p>На собеседовании эта задача проверяет, умеет ли кандидат мыслить в терминах приоритетов и пошагового слияния, а также знает ли он стандартную библиотеку Go настолько, чтобы реализовать кучу без суеты. Senior-разработчик обязан не просто написать <code>heap.Push</code> и <code>heap.Pop</code>, но и объяснить, почему слайс под капотом кучи дружествен кэшу, а использование <code>container/list</code> для очереди было бы ошибкой.</p>
-<h3 id="formulirovka-i-utochneniya">Формулировка и уточнения</h3>
+            <blockquote>
+<p><em>«Разделяй и властвуй — это не просто военная тактика, это единственный способ победить комбинаторный взрыв».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="sliyanie-k-otsortirovannykh-spiskov-merge-k-sorted-lists-prioritetnye-ocheredi-i">Слияние K отсортированных списков (Merge K Sorted Lists): приоритетные очереди и Divide & Conquer</h2>
 
-<p><strong>Условие:</strong> функция <code>mergeKLists(lists []*ListNode) *ListNode</code>. Каждый связный список определён как <code>type ListNode struct { Val int; Next *ListNode }</code>. Все списки отсортированы по неубыванию, количество списков <code>k</code> может быть от 0 до 10⁴, общее число узлов N до 10⁵.</p>
-<p><strong>Вопросы интервьюеру (Senior-стиль):</strong><br />
-- <em>Может ли <code>lists</code> быть пустым или содержать nil-элементы?</em> Да, <code>lists</code> может быть пустым массивом, а также содержать <code>nil</code> вместо головы списка.<br />
-- <em>Какие значения могут быть в узлах?</em> Целые числа, могут быть отрицательные, допускаются дубликаты.<br />
-- <em>Можно ли изменять исходные списки?</em> Да, мы можем переиспользовать узлы, связывая их в новый список. Это предпочтительно по памяти.<br />
-- <em>Какой возврат при отсутствии узлов?</em> Вернуть <code>nil</code>.</p>
-<p>На основе ответов выбираем стратегию: все операции in-place по памяти, без создания новых узлов. Сбор всех значений в слайс и сортировка нарушили бы дух задачи и добавили O(N log N) при наличии более эффективных методов.</p>
-<h3 id="naivnoe-reshenie-posledovatelnoe-sliyanie">Наивное решение: последовательное слияние</h3>
-
-<p>Самое прямолинейное — взять первый список и сливать с ним остальные по очереди, используя функцию слияния двух отсортированных списков (<a href="../08-svyaznye-spiski/4-merge-two-sorted-lists.html" class="wikilink">4. Merge Two Sorted Lists</a> из кластера связных списков). Сложность: каждый узел может участвовать в слиянии до k раз, что даёт O(k * N). При k ≈ N (например, 10⁴ списков по 10 элементов) это O(N²) и может не пройти лимиты.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func mergeKListsNaive(lists []*ListNode) *ListNode {
-    var result *ListNode
-    for _, list := range lists {
-        result = mergeTwoLists(result, list)
-    }
-    return result
-}
-</code></pre>
-</div>
-
-<p>Узкое место — многократное слияние одних и тех же элементов. Нужно либо уменьшить количество проходов (попарное слияние), либо всегда выбирать минимальный элемент из всех k голов (куча).</p>
-<h3 id="optimalnoe-reshenie-min-kucha-prioritetnaya-ochered">Оптимальное решение: min-куча (приоритетная очередь)</h3>
-
-<p><strong>Идея.</strong> Мы поддерживаем min-кучу размером до k, в которой на каждом шагу лежат головы всех ещё не исчерпанных списков. Извлекаем минимальную голову, добавляем её в результирующий список, а затем, если у извлечённого узла есть следующий, помещаем его обратно в кучу. Таким образом, каждый узел ровно один раз попадает в кучу и один раз извлекается — O(log k) на операцию, итоговая сложность O(N log k).</p>
-<p><strong>Инвариант кучи:</strong> на любой итерации куча содержит ровно по одному узлу от каждого непустого списка, причём минимальный элемент кучи является глобально минимальным среди всех оставшихся узлов. Это гарантирует правильность порядка слияния.</p>
-<p>В Go нет встроенного типа «куча», но есть пакет <code>container/heap</code>, который требует реализации интерфейса <code>heap.Interface</code>:</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">type Interface interface {
-    sort.Interface
-    Push(x any) // добавляет x как последний элемент
-    Pop() any   // удаляет и возвращает последний элемент
-}
-</code></pre>
-</div>
-
-<p>Нам нужно определить тип, реализующий <code>Len</code>, <code>Less</code>, <code>Swap</code>, <code>Push</code>, <code>Pop</code>. Обычно это слайс указателей на узлы.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">type NodeHeap []*ListNode
-
-func (h NodeHeap) Len() int           { return len(h) }
-func (h NodeHeap) Less(i, j int) bool  { return h[i].Val &lt; h[j].Val }
-func (h NodeHeap) Swap(i, j int)       { h[i], h[j] = h[j], h[i] }
-
-func (h *NodeHeap) Push(x any) {
-    *h = append(*h, x.(*ListNode))
-}
-
-func (h *NodeHeap) Pop() any {
-    old := *h
-    n := len(old)
-    x := old[n-1]
-    *h = old[:n-1]
-    return x
-}
-</code></pre>
-</div>
-
-<p>Теперь основной алгоритм:</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func mergeKLists(lists []*ListNode) *ListNode {
-    if len(lists) == 0 {
-        return nil
-    }
-
-    // Инициализируем кучу, предварительно выделив capacity для k
-    h := &amp;NodeHeap{}
-    for _, list := range lists {
-        if list != nil {
-            *h = append(*h, list)
-        }
-    }
-    heap.Init(h)
-
-    dummy := &amp;ListNode{} // фиктивный узел для удобства
-    curr := dummy
-
-    for h.Len() &gt; 0 {
-        // Извлекаем минимальный узел
-        minNode := heap.Pop(h).(*ListNode)
-        curr.Next = minNode
-        curr = curr.Next
-
-        // Если у извлечённого узла есть продолжение, кладём его в кучу
-        if minNode.Next != nil {
-            heap.Push(h, minNode.Next)
-        }
-    }
-
-    return dummy.Next
-}
-</code></pre>
-</div>
-
-<p><strong>Go-идиомы и комментарии:</strong><br />
-- Тип <code>NodeHeap</code> — слайс указателей. Методы <code>Push</code> и <code>Pop</code> реализуют интерфейс, работая с указателем на слайс. Это стандартный паттерн.<br />
-- <code>heap.Init(h)</code> строит кучу из неотсортированного слайса за O(k).<br />
-- Фиктивный узел <code>dummy</code> упрощает построение результирующего списка без проверки на <code>nil</code> головы.<br />
-- Мы не создаём новых узлов, только переставляем указатели — память O(k) на кучу.<br />
-- Обратите внимание: <code>heap.Pop</code> возвращает <code>any</code>, необходимо явное приведение типа.</p>
+<p>Задача <strong>Merge K Sorted Lists</strong> (LeetCode 23) — эталонная проверка навыков работы со связными списками и приоритетными очередями.<br />
+Дан массив из $K$ односвязных списков, каждый из которых уже упорядочен по возрастанию. Требуется объединить их в один общий отсортированный связный список.</p>
+<p>Пусть $N$ — общее число узлов во всех $K$ списках.<br />
+- Наивное последовательное слияние (список $1$ со списком $2$, затем результат со списком $3$ и т.д.) дает худшую сложность $O(K \times N)$ — каждый узел участвует в сравнениях до $K$ раз.<br />
+- Оптимальные алгоритмы снижают время до $O(N \log K)$.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2327,32 +2202,34 @@ func (h *NodeHeap) Pop() any {
     </button>
   </div>
   <pre class="mermaid">
-flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Поместить все головы в min-кучу&quot;]:::warning --&gt; B{&quot;Куча не пуста?&quot;}
-B --&gt;|&quot;Да&quot;| C[&quot;Извлечь минимальный узел&quot;]
-C --&gt; D[&quot;Присоединить его к результату&quot;]
-D --&gt; E{&quot;У извлечённого узла есть Next?&quot;}
-E --&gt;|&quot;Да&quot;| F[&quot;Поместить Next в кучу&quot;]
-E --&gt;|&quot;Нет&quot;| B
-F --&gt; B
-B --&gt;|&quot;Нет&quot;| G[&quot;Вернуть результат&quot;]
+flowchart TD
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+A[&quot;Инициализация: поместить головы всех непустых списков в Min-Heap&quot;]:::entry --&gt; B{&quot;Куча пуста?&quot;}:::warning
+B --&gt;|Да| C[&quot;Вернуть голову результирующего списка dummy.Next&quot;]:::success
+B --&gt;|Нет| D[&quot;Извлечь минимальный узел: minNode = heap.Pop()&quot;]:::process
+D --&gt; E[&quot;Присоединить minNode к хвосту результата:&lt;br/&gt;tail.Next = minNode&quot;]:::process
+E --&gt; F{&quot;minNode.Next != nil ?&quot;}:::warning
+F --&gt;|Да| G[&quot;heap.Push(minNode.Next)&quot;]:::process
+F --&gt;|Нет| B
+G --&gt; B
   </pre>
 </div>
 
 
-<h3 id="alternativnoe-reshenie-divide-and-conquer-poparnoe-sliyanie">Альтернативное решение: Divide and Conquer (попарное слияние)</h3>
+<hr />
+<h2 id="1-strategiya-1-prioritetnaya-ochered-min-heap">1. Стратегия 1: Приоритетная очередь (Min-Heap)</h2>
 
-<p>Вместо кучи можно последовательно сливать списки попарно, уменьшая k вдвое на каждом раунде. Первый раунд: слить списки 0 и 1, 2 и 3, …; второй раунд — слить результаты, и так далее. Это напоминает турнирную сетку. Сложность O(N log k), так как каждый узел участвует в O(log k) слияниях. Преимущество — не требуется куча, только базовая функция <code>mergeTwoLists</code>. Недостаток — более высокие накладные расходы на многократные слияния и рекурсивные вызовы.</p>
+<p>Мы заводим минимальную кучу емкостью $K$, в которую помещаем головы всех доступных списков.<br />
+1. Извлекаем из кучи глобально минимальный узел за $O(\log K)$ и прикрепляем его к результирующему списку.<br />
+2. Если у извлеченного узла есть следующий элемент (<code>minNode.Next != nil</code>), помещаем его в кучу за $O(\log K)$.<br />
+3. Повторяем, пока куча не опустеет.</p>
+<p>Итоговое время: ровно $N$ извлечений и $N$ вставок в кучу размера $K$ — сложность строго $O(N \log K)$.<br />
+Память: $O(K)$ для хранения указателей в срезе кучи.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2362,80 +2239,199 @@ B --&gt;|&quot;Нет&quot;| G[&quot;Вернуть результат&quot;]
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func mergeKListsDivideConquer(lists []*ListNode) *ListNode {
+  <pre class="language-go"><code class="language-go">package mergek
+
+import (
+    &quot;container/heap&quot;
+)
+
+// ListNode представляет узел односвязного списка
+type ListNode struct {
+    Val  int
+    Next *ListNode
+}
+
+// nodeHeap реализует интерфейс heap.Interface для среза указателей
+type nodeHeap []*ListNode
+
+func (h nodeHeap) Len() int           { return len(h) }
+func (h nodeHeap) Less(i, j int) bool { return h[i].Val &lt; h[j].Val } // Min-Heap
+func (h nodeHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+
+func (h *nodeHeap) Push(x any) {
+    *h = append(*h, x.(*ListNode))
+}
+
+func (h *nodeHeap) Pop() any {
+    old := *h
+    n := len(old)
+    x := old[n-1]
+    *h = old[0 : n-1]
+    return x
+}
+
+// MergeKLists объединяет K отсортированных списков через Min-Heap
+func MergeKLists(lists []*ListNode) *ListNode {
     if len(lists) == 0 {
         return nil
     }
-    return mergeRange(lists, 0, len(lists)-1)
-}
 
-func mergeRange(lists []*ListNode, lo, hi int) *ListNode {
-    if lo == hi {
-        return lists[lo]
+    h := make(nodeHeap, 0, len(lists))
+    for _, head := range lists {
+        if head != nil {
+            h = append(h, head)
+        }
     }
-    mid := lo + (hi-lo)/2
-    left := mergeRange(lists, lo, mid)
-    right := mergeRange(lists, mid+1, hi)
-    return mergeTwoLists(left, right)
+    heap.Init(&amp;h)
+
+    dummy := &amp;ListNode{}
+    tail := dummy
+
+    for h.Len() &gt; 0 {
+        smallest := heap.Pop(&amp;h).(*ListNode)
+        tail.Next = smallest
+        tail = tail.Next
+
+        if smallest.Next != nil {
+            heap.Push(&amp;h, smallest.Next)
+        }
+    }
+
+    return dummy.Next
 }
 </code></pre>
 </div>
 
-<p>На собеседовании Senior может обсудить оба подхода, объяснив, что куча даёт более плавный поток операций и меньше аллокаций для структур управления, а divide and conquer проще кодируется, если уже есть <code>mergeTwoLists</code>.</p>
-<h3 id="edge-cases">Edge Cases</h3>
+<hr />
+<h2 id="2-strategiya-2-poparnoe-sliyanie-divide-conquer">2. Стратегия 2: Попарное слияние (Divide & Conquer)</h2>
 
-<ul>
-<li><strong>Пустой <code>lists</code>:</strong> <code>len(lists) == 0</code> → возвращаем <code>nil</code>.</li>
-<li><strong>Все списки пусты (nil):</strong> после инициализации куча окажется пустой, цикл не выполнится, вернётся <code>nil</code>.</li>
-<li><strong>Один список:</strong> куча будет содержать один элемент, он будет извлечён и подключён через <code>Next</code>, всё корректно.</li>
-<li><strong>Списки с дубликатами:</strong> <code>Less</code> использует строгое <code>&lt;</code>, что сохраняет стабильность? Стабильность не требуется, порядок элементов с равными значениями не гарантирован, но алгоритм корректен.</li>
-<li><strong>Очень большое k и маленькие списки:</strong> куча размером k может потреблять много памяти (но слайс из k указателей ~ 8k байт, для k=10⁴ это 80 КБ — терпимо).</li>
-</ul>
-<h3 id="analiz-slozhnosti">Анализ сложности</h3>
+<p>Вместо использования кучи можно объединять списки парами по принципу турнирной сетки:<br />
+- На первом раунде сливаем: <code>lists[0]</code> с <code>lists[1]</code>, <code>lists[2]</code> с <code>lists[3]</code> и т.д. Число списков уменьшается вдвое: $K \to \lceil K/2 \rceil$.<br />
+- Повторяем раунды слияния до тех пор, пока не останется ровно один объединенный список.</p>
+<p>Число уровней дерева слияния равно $\lceil \log_2 K \rceil$.<br />
+На каждом уровне каждый из $N$ узлов участвует в слиянии ровно один раз.<br />
+Сложность по времени: $O(N \log K)$.<br />
+Память: $O(1)$ при итеративной реализации (без рекурсивного стека).</p>
 
-<ul>
-<li><strong>Время:</strong> инициализация кучи O(k). На каждый из N узлов выполняются одна операция <code>heap.Pop</code> и до одной <code>heap.Push</code> (если узел не последний). Каждая операция O(log k). Итого O(N log k). Если k ≈ N, то O(N log N).</li>
-<li><strong>Память:</strong> O(k) для кучи (слайс указателей). Плюс O(1) дополнительных переменных. Результирующий список строится переиспользованием существующих узлов — дополнительной памяти под данные не выделяется.</li>
-</ul>
-<h3 id="mechanical-sympathy-pochemu-kucha-na-slayse-effektivna">Mechanical Sympathy: почему куча на слайсе эффективна</h3>
-
-<ul>
-<li><strong>Слайс в основе кучи.</strong> <code>container/heap</code> работает на обычном слайсе <code>[]*ListNode</code>. Указатели хранятся в непрерывном блоке памяти, что обеспечивает отличную локальность данных. Операции <code>sift-up</code> и <code>sift-down</code> обращаются к элементам по индексам <code>2*i+1</code>, <code>2*i+2</code> — всё в пределах одного массива, полностью предсказуемо для кэша.</li>
-<li><strong>Никакого <code>container/list</code>.</strong> Использование связного списка для реализации приоритетной очереди обернулось бы аллокацией на каждый вставленный узел и pointer chasing при обходе, что в разы медленнее.</li>
-<li><strong>Минимум аллокаций внутри цикла.</strong> Новые узлы не создаются, только переставляются указатели. Куча растёт только при инициализации; после этого <code>Push</code> и <code>Pop</code> используют уже выделенный слайс (возможны переаллокации при росте, но мы предвыделили capacity при инициализации? В коде выше мы не задали capacity, но можно улучшить: <code>h := make(NodeHeap, 0, k)</code>. Это уберёт переаллокации при начальном добавлении).</li>
-<li><strong>Простота и читаемость.</strong> Реализация интерфейса кучи — это 10–15 строк, которые один раз написав, можно переиспользовать. Senior-разработчик пишет их без ошибок, зная, что <code>Push</code> и <code>Pop</code> работают с концом слайса.</li>
-</ul>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p>Когда вы вызываете <code>heap.Push(h, node)</code>, Go вставляет элемент в конец слайса и затем вызывает <code>sift-up</code> (проталкивание вверх), пока не восстановится свойство кучи. <code>sift-up</code> обменивает элементы с родителем <code>(i-1)/2</code>, двигаясь к корню. Все эти операции — простые сравнения и перестановки указателей внутри слайса, без вызовов <code>malloc</code>. Только если слайс заполнен, <code>append</code> может выделить новый массив, но мы предвыделили capacity по числу списков, так что этого не случится.</p>
-  </div>
+  <pre class="language-go"><code class="language-go">func MergeKListsDivideConquer(lists []*ListNode) *ListNode {
+    k := len(lists)
+    if k == 0 {
+        return nil
+    }
+
+    interval := 1
+    for interval &lt; k {
+        for i := 0; i+interval &lt; k; i += interval * 2 {
+            lists[i] = mergeTwoLists(lists[i], lists[i+interval])
+        }
+        interval *= 2
+    }
+
+    return lists[0]
+}
+
+func mergeTwoLists(l1, l2 *ListNode) *ListNode {
+    dummy := &amp;ListNode{}
+    tail := dummy
+
+    for l1 != nil &amp;&amp; l2 != nil {
+        if l1.Val &lt;= l2.Val {
+            tail.Next = l1
+            l1 = l1.Next
+        } else {
+            tail.Next = l2
+            l2 = l2.Next
+        }
+        tail = tail.Next
+    }
+
+    if l1 != nil {
+        tail.Next = l1
+    } else {
+        tail.Next = l2
+    }
+
+    return dummy.Next
+}
+</code></pre>
 </div>
 
-<h3 id="alternativy-i-trade-off-chto-eshchyo-mozhno-predlozhit">Альтернативы и trade-off: что ещё можно предложить</h3>
+<hr />
+<h2 id="3-sravnenie-podkhodov-na-praktike">3. Сравнение подходов на практике</h2>
 
-<ul>
-<li><strong>Сбор всех значений в слайс, сортировка, построение списка.</strong> O(N log N) времени, O(N) памяти. Просто, но теряет свойство связных списков и не использует их отсортированность. На собеседовании такое не оценят, но можно упомянуть как baseline.</li>
-<li><strong>Многоканальный слияние?</strong> Не нужно, задача решается эффективнее без конкурентности.</li>
-</ul>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th style="text-align: left;">Параметр</th>
+<th style="text-align: left;">Min-Heap подход</th>
+<th style="text-align: left;">Divide &amp; Conquer подход</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Время выполнения</strong></td>
+<td style="text-align: left;">$O(N \log K)$</td>
+<td style="text-align: left;">$O(N \log K)$</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Дополнительная память</strong></td>
+<td style="text-align: left;">$O(K)$ для среза кучи</td>
+<td style="text-align: left;"><strong>$O(1)$</strong> (чистый in-place указателей)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Потоковая обработка</strong></td>
+<td style="text-align: left;"><strong>Идеален для стримов</strong> (новые элементы добавляются на лету)</td>
+<td style="text-align: left;">Требует наличия всех списков заранее</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Сложность кода</strong></td>
+<td style="text-align: left;">Требует реализации <code>heap.Interface</code></td>
+<td style="text-align: left;">Простой цикл слияния двух списков</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="4-voprosy-dlya-sobesedovaniya">4. Вопросы для собеседования</h2>
+
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Вопрос: «Как изменится подход, если списки подаются в виде потоков (stream), то есть бесконечные?»<br />
-Ответ: «Куча остаётся основным механизмом, но нам потребуется внешний итератор. В Go можно представить каналы, но добавление горутин усложнит код и не даст преимущества в однопоточной среде. Куча всё ещё будет выбирать минимальный элемент из голов потоков. Это демонстрирует, что паттерн универсален».</p>
+    <p><strong>Вопрос:</strong> Зачем мы используем фиктивный узел <code>dummy := &amp;ListNode{}</code>?<br />
+<strong>Ответ:</strong> Фиктивный узел (Sentinel / Dummy Head) исключает проверку граничного условия <code>if head == nil</code> на первой итерации цикла. Указатель <code>tail</code> всегда указывает на валидную структуру памяти, а результирующая голова списка возвращается через <code>dummy.Next</code>.</p>
   </div>
 </div>
 
-<h3 id="itog">Итог</h3>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Почему создание нового узла через <code>new(ListNode)</code> внутри цикла слияния считается ошибкой?<br />
+<strong>Ответ:</strong> Алгоритм обязан переиспользовать уже существующие узлы входных списков, лишь переставляя их поля <code>Next</code> (in-place rearrangement). Создание новых объектов в куче привело бы к $N$ ненужным аллокациям памяти и вызвало тяжелую работу сборщика мусора Go.</p>
+  </div>
+</div>
 
-<p>Merge K Sorted Lists — это демонстрация силы кучи в задаче, где нужно постоянно извлекать глобальный минимум из динамически меняющегося набора. Go-реализация с <code>container/heap</code> и слайсом указателей получается компактной и эффективной, не требующей дополнительных узлов и минимизирующей аллокации. Senior-разработчик не только пишет код, но и объясняет выбор между кучей и divide-and-conquer, а также показывает, как внутреннее устройство слайса помогает кэшу процессора.</p>
-<p>Следующая задача — <strong>Largest Rectangle in Histogram</strong> — перенесёт нас обратно к массивам, но теперь главным инструментом станет монотонный стек, способный за O(N) находить ближайшие меньшие элементы. <a href="5-largest-rectangle-in-histogram.html" class="wikilink">5. Largest Rectangle in Histogram</a></p>
+<hr />
+<h2 id="rezyume">Резюме</h2>
+
+<ol>
+<li>Наивное последовательное слияние неэффективно и дает сложность $O(K \times N)$.</li>
+<li>Алгоритмы на базе Min-Heap и Divide &amp; Conquer сокращают время до строгого $O(N \log K)$.</li>
+<li>Min-Heap является стандартом для потокового онлайн-слияния, а Divide &amp; Conquer обеспечивает наименьший расход памяти $O(1)$.</li>
+</ol>
+<p>В следующей статье мы перейдем к монотонному стеку и задаче поиска максимального прямоугольника в гистограмме: <a href="5-largest-rectangle-in-histogram.html" class="wikilink">5. Largest Rectangle in Histogram</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2463,7 +2459,7 @@ func mergeRange(lists []*ListNode, lo, hi int) *ListNode {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#formulirovka-i-utochneniya">Формулировка и уточнения</a></li><li class="toc-item toc-h3"><a href="#naivnoe-reshenie-posledovatelnoe-sliyanie">Наивное решение: последовательное слияние</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-min-kucha-prioritetnaya-ochered">Оптимальное решение: min-куча (приоритетная очередь)</a></li><li class="toc-item toc-h3"><a href="#alternativnoe-reshenie-divide-and-conquer-poparnoe-sliyanie">Альтернативное решение: Divide and Conquer (попарное слияние)</a></li><li class="toc-item toc-h3"><a href="#edge-cases">Edge Cases</a></li><li class="toc-item toc-h3"><a href="#analiz-slozhnosti">Анализ сложности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-pochemu-kucha-na-slayse-effektivna">Mechanical Sympathy: почему куча на слайсе эффективна</a></li><li class="toc-item toc-h3"><a href="#alternativy-i-trade-off-chto-eshchyo-mozhno-predlozhit">Альтернативы и trade-off: что ещё можно предложить</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#sliyanie-k-otsortirovannykh-spiskov-merge-k-sorted-lists-prioritetnye-ocheredi-i">Слияние K отсортированных списков (Merge K Sorted Lists): приоритетные очереди и Divide &amp; Conquer</a></li><li class="toc-item toc-h2"><a href="#1-strategiya-1-prioritetnaya-ochered-min-heap">1. Стратегия 1: Приоритетная очередь (Min-Heap)</a></li><li class="toc-item toc-h2"><a href="#2-strategiya-2-poparnoe-sliyanie-divide-conquer">2. Стратегия 2: Попарное слияние (Divide &amp; Conquer)</a></li><li class="toc-item toc-h2"><a href="#3-sravnenie-podkhodov-na-praktike">3. Сравнение подходов на практике</a></li><li class="toc-item toc-h2"><a href="#4-voprosy-dlya-sobesedovaniya">4. Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

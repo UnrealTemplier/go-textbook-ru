@@ -2171,16 +2171,21 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~21 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
+              <span class="meta-tag read-time">⏱ ~26 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">4. LFU Cache</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="lfu-cache-arkhitektura-o1-chastotnye-spiski-i-upravlenie-pamyatyu">LFU Cache: архитектура O(1), частотные списки и управление памятью</h2>
+            <blockquote>
+<p><em>«В реальных системах частота использования обманчива: вчерашний фаворит сегодня становится балластом».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="lfu-cache-arkhitektura-o1-chastotnye-spiski-i-upravlenie-pamyatyu">LFU Cache: архитектура O(1), частотные списки и управление памятью</h2>
 
-<p>Least Frequently Used (LFU) кэш решает задачу вытеснения элементов, к которым обращались наименьшее количество раз. В отличие от LRU, который реагирует на временную локальность, LFU ориентирован на частотную локальность. Это делает его идеальным для workloads с стабильным набором «горячих» данных (например, кэширование популярных товаров, часто запрашиваемых конфигураций или метаданных). Реализация LFU с гарантированным <code>O(1)</code> требует более сложной композиции структур, чем LRU, и создаёт уникальные вызовы для планировщика Go и сборщика мусора.</p>
+<p>Least Frequently Used (LFU) кэш решает задачу вытеснения элементов, к которым обращались наименьшее количество раз. В отличие от LRU (<a href="3-lru-cache.html" class="wikilink">3. LRU Cache</a>), который ориентирован исключительно на временную локальность (recency), LFU оптимизирован под частотную локальность (frequency). Это делает его естественным выбором для рабочих нагрузок со стабильным ядром «горячих» данных: кэширование популярных каталогов товаров, часто запрашиваемых конфигураций сервисов, схем валидации или системных метаданных.</p>
+<p>Однако плата за частотный учет высока: реализация LFU с гарантированным временем выполнения операций $O(1)$ требует заметно более сложной композиции структур данных, чем LRU, и создает уникальные вызовы для планировщика Go, кэш-линий процессора и сборщика мусора.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2195,52 +2200,67 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Get(key):::warning или Put(key, value)&quot;] --&gt; B{&quot;Ключ в nodeMap?&quot;}
-B --&gt;|Нет| C[&quot;Создать Node freq=1&lt;br&gt;Вставить в список freqMap[1]&quot;]
-C --&gt; D[&quot;minFreq = 1&quot;]
-B --&gt;|Да| E[&quot;Увеличить freq узла&quot;]
-E --&gt; F[&quot;Переместить в список freqMap[old+1]&quot;]
-E --&gt; G[&quot;Если старый список пуст и minFreq совпадает&lt;br&gt;minFreq++&quot;]
-D --&gt; H{&quot;Размер &gt; capacity?&quot;}
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+A[&quot;Get(key) или Put(key, val)&quot;]:::entry --&gt; B{&quot;Ключ уже в nodeMap?&quot;}
+B --&gt;|Нет| C[&quot;Создать Node(freq=1)&lt;br/&gt;Вставить в freqMap[1]&quot;]:::process
+C --&gt; D[&quot;minFreq = 1&quot;]:::process
+B --&gt;|Да| E[&quot;Инкремент freq узла&quot;]:::process
+E --&gt; F[&quot;Переместить в freqMap[freq+1]&quot;]:::process
+E --&gt; G{&quot;Старый список пуст и&lt;br/&gt;oldFreq == minFreq?&quot;}:::warning
+G --&gt;|Да| G1[&quot;minFreq++&quot;]:::process
+G --&gt;|Нет| H{&quot;Размер &gt; capacity?&quot;}:::warning
+G1 --&gt; H
+D --&gt; H
 F --&gt; H
-G --&gt; H
-H --&gt;|Да| I[&quot;Удалить хвост списка minFreq&lt;br&gt;Удалить из nodeMap&quot;]
-H --&gt;|Нет| J[&quot;Возврат результата&quot;]
+H --&gt;|Да| I[&quot;Удалить Tail из freqMap[minFreq]&lt;br/&gt;Удалить ключ из nodeMap&quot;]:::error
+H --&gt;|Нет| J[&quot;Возврат результата&quot;]:::success
 I --&gt; J
   </pre>
 </div>
 
 
-<p>В этой статье мы разберём, как достичь <code>O(1)</code> при работе с частотами, почему стандартные подходы порождают скрытые аллокации, как LFU взаимодействует с кэш-линиями CPU, и какие архитектурные решения требуются для production-реализации на Go.</p>
-<h2 id="1-algoritmicheskaya-mekhanika-pochemu-o1-trebuet-dvukh-map">1. Алгоритмическая механика: почему O(1) требует двух мап</h2>
+<p>В этой статье мы разберем, как достичь честного $O(1)$ при работе с частотами, почему наивные подходы порождают скрытые аллокации, как LFU взаимодействует с кэш-линиями CPU, как решается проблема «загрязнения кэша» (cache poisoning) через LFU-Aging и TinyLFU, и как написать эталонную потокобезопасную реализацию на Go.</p>
+<hr />
+<h2 id="1-algoritmicheskaya-mekhanika-pochemu-o1-trebuet-dvukh-khesh-tablits">1. Алгоритмическая механика: почему O(1) требует двух хеш-таблиц</h2>
 
-<p>Проблема наивного LFU: при каждом обращении нужно отсортировать или просканировать все элементы по частоте, что даёт <code>O(N log N)</code> или <code>O(N)</code>. Для гарантированного <code>O(1)</code> используется двойная индексация:<br />
-- <code>nodeMap[K]*Node</code> — быстрый поиск узла по ключу.<br />
-- <code>freqMap[int]*DoubleList</code> — группировка узлов по частоте обращений.</p>
-<p>Переменная <code>minFreq</code> хранит текущую минимальную частоту в кэше. Это позволяет мгновенно находить кандидата на эвикцию без обхода всех списков. При вставке нового элемента <code>minFreq</code> сбрасывается в <code>1</code>. При увеличении частоты узла мы перемещаем его из <code>freqMap[f]</code> в <code>freqMap[f+1]</code>. Если <code>freqMap[f]</code> становится пустым и <code>f == minFreq</code>, мы инкрементируем <code>minFreq</code>.</p>
-<div class="callout callout-info">
+<p>Наивный подход к LFU заключается в хранении счетчика частоты внутри элемента и использовании очереди с приоритетом (Min-Heap) или сканировании среза при эвикции. Но очередь с приоритетом дает сложность обновления $O(\log N)$, а сканирование — $O(N)$. </p>
+<p>Чтобы получить гарантированное $O(1)$ для <code>Get</code> и <code>Put</code>, нам требуется двухуровневая координатная сетка:<br />
+1. <code>nodeMap: map[K]*Node</code> — мгновенный поиск узла по ключу за $O(1)$.<br />
+2. <code>freqMap: map[int]*DoubleList</code> — группировка узлов по частоте обращений. Каждая корзина частот представляет собой двусвязный список, упорядоченный по времени добавления/использования (LRU внутри одной частоты).<br />
+3. Переменная <code>minFreq: int</code> — текущая минимальная частота среди всех элементов в кэше.</p>
+<p>Благодаря переменной <code>minFreq</code> мы избавлены от необходимости искать непустой список наименьшей частоты: мы сразу обращаемся к <code>freqMap[minFreq]</code>.</p>
+<h3 id="pravila-perekhoda-sostoyaniy">Правила перехода состояний</h3>
+<ul>
+<li><strong>Вставка нового ключа (<code>Put</code>):</strong> новый элемент всегда получает частоту <code>freq = 1</code>. Следовательно, <code>minFreq</code> гарантированно сбрасывается в <code>1</code>.</li>
+<li><strong>Обращение к существующему ключу (<code>Get</code> или повторный <code>Put</code>):</strong><br />
+  1. Узел извлекается из двусвязного списка с частотой <code>f</code>.<br />
+  2. Если список для частоты <code>f</code> стал пуст, мы удаляем его из <code>freqMap</code>. Если при этом <code>f == minFreq</code>, минимальная частота увеличивается: <code>minFreq++</code>.<br />
+  3. Частота узла инкрементируется: <code>f++</code>.<br />
+  4. Узел помещается в начало (голову) списка для частоты <code>f+1</code>.</li>
+<li><strong>Эвикция при превышении <code>capacity</code>:</strong><br />
+  1. Берется список <code>freqMap[minFreq]</code>.<br />
+  2. Из его хвоста (Tail) удаляется самый старый элемент (least recently used среди наименее часто используемых).<br />
+  3. Ключ удаляется из <code>nodeMap</code>, а счетчик размера уменьшается.</li>
+</ul>
+<div class="callout callout-note">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Заметка</span>
   </div>
   <div class="callout-body">
-    <p>В рантайме Go <code>map[int]*DoubleList</code> — это та же структура <code>hmap</code>, что и для строк, но с целочисленным хешем. Хеширование <code>int</code> тривиально (часто тождественное или с простым перемешиванием битов), что делает доступ к бакету быстрее, чем для строк. Однако каждая новая частота создаёт новый бакет и аллоцирует голову/хвост списка. При разбросе частот это приводит к фрагментации кучи. На интервью обязательно упомяните компромисс: если частоты растут медленно, можно заменить <code>map[int]*DoubleList</code> на слайс <code>[]*DoubleList</code> с динамическим ростом, что улучшит кэш-локальность, но потребует синхронизации при <code>append</code>.</p>
+    <p>В рантайме Go <code>map[int]*DoubleList</code> — это стандартная хеш-таблица <code>hmap</code> (или Swiss Table в Go 1.24+). Хеширование целочисленного ключа чрезвычайно дешево (тождественная функция или простое умножение на константу золотого сечения <code>2654435761</code>), однако создание новых списков для каждой уникальной частоты приводит к аллокациям в куче. Если частоты растут медленно и монотонно, можно использовать динамический срез <code>[]*DoubleList</code>, где индекс равен частоте, что повышает кэш-локальность за счет устранения хеширования.</p>
   </div>
 </div>
 
+<hr />
 <h2 id="2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</h2>
 
-<p>Реализация требует строгой синхронизации состояний двух мап и списка. Любое рассинхронизирование приведёт к утечкам памяти или паникам.</p>
+<p>Для корректной и надежной реализации структуры связного списка применим технику фиктивных граничных узлов (<code>dummy Head</code> и <code>dummy Tail</code>). Это полностью избавляет алгоритм от проверки граничных условий <code>node == nil</code>, <code>node.Prev == nil</code> и защищает от случайных паник при разыменовании указателей.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2252,9 +2272,11 @@ I --&gt; J
   </div>
   <pre class="language-go"><code class="language-go">package lfu
 
-import &quot;sync&quot;
+import (
+    &quot;sync&quot;
+)
 
-// Node хранит данные, частоту и ссылки для двусвязного списка
+// Node представляет элемент данных кэша.
 type Node struct {
     Key   string
     Value any
@@ -2263,159 +2285,234 @@ type Node struct {
     Next  *Node
 }
 
-// DoubleList — типизированный двусвязный список с dummy-узлами
+// DoubleList — строго типизированный двусвязный список с dummy-узлами.
 type DoubleList struct {
-    Size int
-    Head *Node
-    Tail *Node
+    head *Node
+    tail *Node
+    size int
 }
 
-func NewDoubleList() *DoubleList {
-    dl := &amp;DoubleList{}
-    dl.Head = &amp;Node{}
-    dl.Tail = &amp;Node{}
-    dl.Head.Next = dl.Tail
-    dl.Tail.Prev = dl.Head
-    return dl
+func newDoubleList() *DoubleList {
+    head := &amp;Node{}
+    tail := &amp;Node{}
+    head.Next = tail
+    tail.Prev = head
+    return &amp;DoubleList{
+        head: head,
+        tail: tail,
+        size: 0,
+    }
 }
 
-func (dl *DoubleList) Add(node *Node) {
-    node.Next = dl.Head.Next
-    node.Prev = dl.Head
-    dl.Head.Next.Prev = node
-    dl.Head.Next = node
-    dl.Size++
+// AddFirst добавляет узел в начало списка (MRU позиция внутри корзины частоты).
+func (l *DoubleList) AddFirst(node *Node) {
+    node.Prev = l.head
+    node.Next = l.head.Next
+    l.head.Next.Prev = node
+    l.head.Next = node
+    l.size++
 }
 
-func (dl *DoubleList) Remove(node *Node) {
+// Remove извлекает произвольный узел из списка за O(1).
+func (l *DoubleList) Remove(node *Node) {
     node.Prev.Next = node.Next
     node.Next.Prev = node.Prev
-    dl.Size--
+    node.Next = nil
+    node.Prev = nil
+    l.size--
 }
 
-func (dl *DoubleList) RemoveTail() *Node {
-    if dl.Size == 0 {
+// RemoveLast удаляет наименее востребованный узел из хвоста списка (LRU позиция).
+func (l *DoubleList) RemoveLast() *Node {
+    if l.size == 0 {
         return nil
     }
-    res := dl.Tail.Prev
-    dl.Remove(res)
-    return res
+    last := l.tail.Prev
+    l.Remove(last)
+    return last
 }
 
-// LFUCache реализует кэш с политикой LFU
+func (l *DoubleList) IsEmpty() bool {
+    return l.size == 0
+}
+
+// LFUCache реализует LFU кэш с алгоритмической сложностью O(1).
 type LFUCache struct {
-    mu      sync.Mutex
-    cap     int
-    size    int
-    minFreq int
-    cache   map[string]*Node
-    freqMap map[int]*DoubleList
+    mu       sync.Mutex
+    capacity int
+    minFreq  int
+    nodeMap  map[string]*Node
+    freqMap  map[int]*DoubleList
 }
 
+// NewLFUCache создает новый экземпляр кэша заданной емкости.
 func NewLFUCache(capacity int) *LFUCache {
-    if capacity &lt;= 0 {
-        return &amp;LFUCache{}
-    }
     return &amp;LFUCache{
-        cap:     capacity,
-        cache:   make(map[string]*Node, capacity),
-        freqMap: make(map[int]*DoubleList),
+        capacity: capacity,
+        minFreq:  0,
+        nodeMap:  make(map[string]*Node, capacity),
+        freqMap:  make(map[int]*DoubleList),
     }
 }
 
+// Get возвращает значение по ключу и обновляет его частоту.
 func (c *LFUCache) Get(key string) (any, bool) {
     c.mu.Lock()
     defer c.mu.Unlock()
 
-    node, ok := c.cache[key]
+    if c.capacity &lt;= 0 {
+        return nil, false
+    }
+
+    node, ok := c.nodeMap[key]
     if !ok {
         return nil, false
     }
 
-    c.updateFreq(node)
+    c.incrementFreq(node)
     return node.Value, true
 }
 
+// Put вставляет или обновляет значение по ключу.
 func (c *LFUCache) Put(key string, value any) {
     c.mu.Lock()
     defer c.mu.Unlock()
 
-    if c.cap == 0 {
+    if c.capacity &lt;= 0 {
         return
     }
 
-    if node, ok := c.cache[key]; ok {
+    // Случай 1: ключ уже существует — обновляем значение и частоту
+    if node, ok := c.nodeMap[key]; ok {
         node.Value = value
-        c.updateFreq(node)
+        c.incrementFreq(node)
         return
     }
 
-    if c.size &gt;= c.cap {
-        // Эвикция: удаляем наименее часто используемый
-        list := c.freqMap[c.minFreq]
-        removed := list.RemoveTail()
-        delete(c.cache, removed.Key)
-        if list.Size == 0 {
-            delete(c.freqMap, c.minFreq)
+    // Случай 2: кэш переполнен — вытесняем LFU/LRU элемент
+    if len(c.nodeMap) &gt;= c.capacity {
+        minList := c.freqMap[c.minFreq]
+        evicted := minList.RemoveLast()
+        if evicted != nil {
+            delete(c.nodeMap, evicted.Key)
+            if minList.IsEmpty() {
+                delete(c.freqMap, c.minFreq)
+            }
         }
-        c.size--
     }
 
-    newNode := &amp;Node{Key: key, Value: value, Freq: 1}
-    c.cache[key] = newNode
+    // Создаем новый узел с частотой 1
+    newNode := &amp;Node{
+        Key:   key,
+        Value: value,
+        Freq:  1,
+    }
+    c.nodeMap[key] = newNode
     c.minFreq = 1
 
     list, ok := c.freqMap[1]
     if !ok {
-        list = NewDoubleList()
+        list = newDoubleList()
         c.freqMap[1] = list
     }
-    list.Add(newNode)
-    c.size++
+    list.AddFirst(newNode)
 }
 
-func (c *LFUCache) updateFreq(node *Node) {
+// incrementFreq перемещает узел в корзину частоты f + 1.
+func (c *LFUCache) incrementFreq(node *Node) {
     oldFreq := node.Freq
-    list := c.freqMap[oldFreq]
-    list.Remove(node)
-    if list.Size == 0 {
+    oldList := c.freqMap[oldFreq]
+    oldList.Remove(node)
+
+    // Если список опустел, очищаем запись в freqMap
+    if oldList.IsEmpty() {
         delete(c.freqMap, oldFreq)
+        // Если это была минимальная частота, инкрементируем minFreq
         if c.minFreq == oldFreq {
             c.minFreq++
         }
     }
 
     node.Freq++
-    nextList, ok := c.freqMap[node.Freq]
+    newList, ok := c.freqMap[node.Freq]
     if !ok {
-        nextList = NewDoubleList()
-        c.freqMap[node.Freq] = nextList
+        newList = newDoubleList()
+        c.freqMap[node.Freq] = newList
     }
-    nextList.Add(node)
+    newList.AddFirst(node)
 }
 </code></pre>
 </div>
 
-<h2 id="3-pod-kapotom-pamyat-gc-i-pointer-chasing">3. Под капотом: память, GC и pointer chasing</h2>
+<hr />
+<h2 id="3-pod-kapotom-pamyat-gc-i-apparatnye-ogranicheniya">3. Под капотом: память, GC и аппаратные ограничения</h2>
 
-<h3 id="pamyat-i-allokatsii">Память и аллокации</h3>
-<p>Каждый <code>Put</code> нового ключа создаёт 3 объекта в куче: <code>*Node</code>, <code>*DoubleList</code> (если частота новая) и запись в <code>hmap</code>. Escape Analysis помечает их как <code>escapes to heap</code>. При высокой частоте вставок это создаёт давление на Garbage Collector. В отличие от LRU, где частота списков фиксирована, LFU может генерировать новые списки для каждой уникальной частоты, что приводит к <code>memory bloat</code>.</p>
-<h3 id="cpu-kesh-i-predskazanie-vetvleniy">CPU кэш и предсказание ветвлений</h3>
-<p><code>updateFreq</code> выполняет 2 прохода по указателям: удаление из старого списка и вставка в новый. На современных CPU это означает минимум 4 промаха кэш-линии L1. Ветвление <code>if c.minFreq == oldFreq</code> имеет высокую предсказуемость: чаще всего частота увеличивается не от минимальной, поэтому процессор редко ошибается в предсказании, но при работе с «холодными» данными ветвление становится непредсказуемым, вызывая pipeline flush.</p>
+<h3 id="escape-analysis-i-allokatsii">Escape Analysis и аллокации</h3>
+<p>Каждый вызов <code>Put</code> для нового ключа порождает минимум три объекта в динамической памяти:<br />
+1. Структура <code>*Node</code> (56 байт на 64-битной платформе с полями указателей и строкой).<br />
+2. Запись в <code>nodeMap</code>.<br />
+3. Новый <code>*DoubleList</code> (24 байта), если частота <code>1</code> встретилась впервые после очистки.</p>
+<p>Компилятор Go не может аллоцировать <code>*Node</code> на стеке, поскольку ссылки на него сохраняются в <code>nodeMap</code> и <code>DoubleList</code>. В нагруженных системах непрерывный поток <code>Put</code> с вытеснением приводит к высокой скорости генерации мусора (allocation churn).</p>
+<h3 id="pointer-chasing-i-cache-misses">Pointer Chasing и Cache Misses</h3>
+<p>При вызове <code>incrementFreq</code> процессор вынужден выполнить несколько переходов по указателям:<br />
+- Чтение бакета в <code>freqMap</code> по хешу частоты.<br />
+- Разыменование <code>node.Prev</code> и <code>node.Next</code> для связывания соседей.<br />
+- Разыменование головы целевого списка <code>newList.head</code>.</p>
+<p>Поскольку узлы распределяются аллокатором рантайма в произвольные страницы кучи, каждый переход с высокой вероятностью приводит к промаху кэша L1/L2 (Cache Miss, штраф 15–50 нс). По сравнению с плоским кольцевым буфером или массивом с индексом связности, связанный список на указателях тратит до 70% времени CPU на ожидание доставки данных из контроллера памяти.</p>
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
   </div>
   <div class="callout-body">
-    <p>Удаление пустых списков из <code>freqMap</code> (<code>delete(c.freqMap, oldFreq)</code>) критически важно. Если его забыть, <code>freqMap</code> будет накапливать ссылки на <code>DoubleList</code> с <code>Size == 0</code>. GC не соберёт эти структуры, так как на них ссылается <code>map</code>. Это классическая утечка памяти в LFU, которая на больших объёмах данных приводит к OOM через несколько часов работы.</p>
+    <p><strong>Утечка пустых списков в <code>freqMap</code>:</strong><br />
+Если забыть строку <code>delete(c.freqMap, oldFreq)</code> при опустошении списка, <code>freqMap</code> будет бесконечно разрастаться, удерживая в памяти тысячи пустых объектов <code>DoubleList</code>. Это классический пример логической утечки памяти в Go: сборщик мусора бессилен, поскольку на списки указывают ссылки из хеш-таблицы.</p>
   </div>
 </div>
 
-<h2 id="4-potokobezopasnost-i-strategii-konkurentnogo-dostupa">4. Потокобезопасность и стратегии конкурентного доступа</h2>
+<hr />
+<h2 id="4-problema-zagryazneniya-kesha-cache-poisoning-i-sovremennye-resheniya">4. Проблема «загрязнения кэша» (Cache Poisoning) и современные решения</h2>
 
-<p>Как и в LRU, метод <code>Get</code> в LFU <strong>изменяет состояние</strong> (инкрементирует частоту, перемещает узел). Использование <code>sync.RWMutex</code> невозможно без сложных copy-on-write механик, которые удваивают память и нагрузку на GC. Поэтому <code>sync.Mutex</code> остаётся стандартом.</p>
-<p>Для высоконагруженных систем применяется шардирование:</p>
+<p>Классический LFU страдает фундаментальным недостатком, из-за которого в чистом виде его редко используют в продакшене без модификаций: <strong>проблема накопленной частоты (Frequency Starvation / Cache Poisoning)</strong>.</p>
+
+<div class="mermaid-wrapper">
+  <div class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
+    </button>
+  </div>
+  <pre class="mermaid">
+flowchart LR
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+
+A[&quot;Элемент А (популярный вчера)&lt;br/&gt;Freq = 10 000&quot;]:::warning --&gt; B[&quot;Интерес к А исчез&quot;]:::process
+B --&gt; C[&quot;Новый элемент B (актуален сейчас)&lt;br/&gt;Freq = 1, затем 2&quot;]:::process
+C --&gt; D[&quot;При переполнении кэш вытесняет B!&lt;br/&gt;А остается навечно&quot;]:::error
+  </pre>
+</div>
+
+
+<p>Если элемент $A$ был крайне популярен в прошлый час (набрал частоту $10\,000$), а затем интерес к нему угас, он будет заблокирован в кэше. Любые новые элементы с частотой $1, 2, 3$ будут немедленно вытесняться при нехватке места.</p>
+<h3 id="sposoby-resheniya-v-industrii">Способы решения в индустрии</h3>
+<ol>
+<li><strong>LFU-Aging (Периодическое затухание):</strong><br />
+   Периодически (по таймеру или каждые $N$ операций) все счетчики частот делятся на $2$: $\text{freq} = \lfloor\text{freq} / 2\rfloor$. Это снижает вес исторического багажа.</li>
+<li><strong>Count-Min Sketch + TinyLFU (библиотеки Caffeine, Ristretto):</strong><br />
+   Вместо хранения точного счетчика частоты внутри узла используется вероятностная структура данных Count-Min Sketch (4-битные счетчики). При вытеснении сравнивается частота кандидата на вставку и текущего кандидата на вытеснение (Admission Policy). Если новый элемент менее популярен, чем старый, он даже не допускается в кэш!</li>
+</ol>
+<hr />
+<h2 id="5-shardirovanie-i-mnogopotochnost">5. Шардирование и многопоточность</h2>
+
+<p>Поскольку метод <code>Get</code> в LFU обязан модифицировать частоту и перелинковывать узлы в списках, он является <strong>мутирующей операцией</strong>. Применение <code>sync.RWMutex</code> с вызовом <code>RLock()</code> для <code>Get</code> невозможно — требуется полноценный <code>Lock()</code>.</p>
+<p>Чтобы исключить глобальный контеншн на единственном мьютексе, кэш шардируют по ключу:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2425,87 +2522,77 @@ func (c *LFUCache) updateFreq(node *Node) {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">type Shard struct {
-    cache *LFUCache
+  <pre class="language-go"><code class="language-go">type ShardedLFU struct {
+    shards    []*LFUCache
+    numShards uint64
 }
 
-type ShardedLFU struct {
-    shards []Shard
+func NewShardedLFU(numShards int, capacityPerShard int) *ShardedLFU {
+    shards := make([]*LFUCache, numShards)
+    for i := 0; i &lt; numShards; i++ {
+        shards[i] = NewLFUCache(capacityPerShard)
+    }
+    return &amp;ShardedLFU{
+        shards:    shards,
+        numShards: uint64(numShards),
+    }
+}
+
+func (s *ShardedLFU) getShard(key string) *LFUCache {
+    // Быстрый расчет FNV-1a хеша
+    var h uint64 = 14695981039346656037
+    for i := 0; i &lt; len(key); i++ {
+        h ^= uint64(key[i])
+        h *= 1099511628211
+    }
+    return s.shards[h%s.numShards]
 }
 
 func (s *ShardedLFU) Get(key string) (any, bool) {
-    idx := hash(key) % len(s.shards)
-    return s.shards[idx].cache.Get(key)
+    return s.getShard(key).Get(key)
+}
+
+func (s *ShardedLFU) Put(key string, value any) {
+    s.getShard(key).Put(key, value)
 }
 </code></pre>
 </div>
 
-<p>Это распределяет contention по ядрам CPU. Каждый шард имеет свой <code>sync.Mutex</code>, и блокировка затрагивает только <code>1/N</code> запросов.</p>
-<div class="callout callout-info">
+<hr />
+<h2 id="6-voprosy-dlya-sobesedovaniya">6. Вопросы для собеседования</h2>
+
+<div class="callout callout-interview">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Внутри <code>sync.Mutex</code> в Go реализован гибридный алгоритм: сначала несколько попыток захвата через атомарный CAS (<code>compare-and-swap</code>). Если поток блокируется, он переходит в <code>runtime_SemacquireMutex</code>, который делает системный вызов <code>futex</code> и отдаёт тред планировщику. При высокой конкуренции множество горутин будут спать в <code>futex</code>, создавая thundering herd при разблокировке. Шардирование снижает вероятность перехода в syscall, удерживая захват в user-space.</p>
+    <p><strong>Вопрос:</strong> Почему при равенстве минимальных частот в LFU вытесняется именно тот элемент, к которому обращались дольше всего (LRU-order)?<br />
+<strong>Ответ:</strong> Двусвязный список для конкретной частоты поддерживает порядок по времени обращения. Новые или обновленные элементы всегда добавляются в голову (<code>AddFirst</code>), а вытеснение происходит с хвоста (<code>RemoveLast</code>). Это гарантирует детерминированное разрешение коллизий частот по принципу LRU без дополнительных затрат памяти.</p>
   </div>
 </div>
 
-<h2 id="5-lovushki-i-granichnye-sluchai">5. Ловушки и граничные случаи</h2>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Чем отличается поведение LFU и LRU при сканировании большого массива данных (Database Table Scan)?<br />
+<strong>Ответ:</strong> LRU полностью вымывается однократным линейным сканированием большого набора данных (Cache Pollution). LFU более устойчив: новые сканируемые элементы получают частоту 1 и быстро вытесняют друг друга, не затрагивая элементы с частотами $\ge 2$. Однако если сканирование повторяется несколько раз, LFU также засорится без механизма затухания частот (Aging).</p>
+  </div>
+</div>
+
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
 <ol>
-<li><strong>Связка при одинаковой частоте:</strong> Классический LFU не определяет, какой элемент удалять, если у нескольких узлов одинаковый <code>minFreq</code>. В production это решается через fallback на LRU внутри частотного списка (последний добавленный в список удаляется первым).</li>
-<li><strong>Переполнение счётчика частоты:</strong> <code>int</code> на 64-битных системах имеет макс. <code>9*10^18</code>. На практике это недостижимо, но в embedded-системах или 32-битных окружениях стоит использовать <code>uint32</code> или сбрасывать частоты при достижении порога (aging).</li>
-<li><strong>Ёмкость 0:</strong> Конструктор и методы должны явно обрабатывать <code>cap == 0</code>, возвращая сразу без аллокаций и паник.</li>
-<li><strong>Повторная вставка существующего ключа:</strong> Должна обновлять значение и частоту, но <strong>не</strong> увеличивать <code>size</code> и не запускать эвикцию.</li>
+<li>Реализация LFU за $O(1)$ требует двух хеш-таблиц (<code>nodeMap</code> и <code>freqMap</code>) и глобального отслеживания <code>minFreq</code>.</li>
+<li>Внутри каждой корзины частот элементы связываются в двусвязный список для разрешения конфликтов по политике LRU.</li>
+<li>Очистка пустых списков в <code>freqMap</code> строго обязательна для предотвращения утечек памяти.</li>
+<li>В чистом виде классический LFU подвержен проблеме «устаревших фаворитов». В современных высоконагруженных кэшах применяются гибридные схемы W-TinyLFU и деградация частот по времени.</li>
 </ol>
-<h2 id="6-voprosy-s-sobesedovaniy-glubina-ponimaniya">6. Вопросы с собеседований: глубина понимания</h2>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Почему LFU может страдать от «каменных записей» (cache poisoning)?<br />
-<strong>Ответ:</strong> Если в кэш массово вставляются одноразовые ключи с частотой 1, а затем удаляются, они не влияют на <code>minFreq</code>. Но если они быстро набирают частоту 2, они вытесняют старые «горячие» данные. В production это лечится через TTL-эвикцию или weighted LFU, где частота затухает со временем (<code>freq = freq / 2 + 1</code>).</p>
-  </div>
-</div>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как протестировать корректность O(1) эвикции?<br />
-<strong>Ответ:</strong> Написать unit-тест, который заполняет кэш до <code>capacity</code>, затем вызывает <code>Put</code> с новым ключом. Проверить, что удалён именно ключ с минимальной частотой (а при равенстве — самый старый). Дополнительно использовать <code>pprof -trace</code> для верификации, что время выполнения <code>Get/Put</code> не зависит от <code>N</code>.</p>
-  </div>
-</div>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Когда LFU проигрывает LRU в реальной системе?<br />
-<strong>Ответ:</strong> При работе с потоковыми или сезонными данными. LFU «запоминает» старые горячие ключи и медленно адаптируется к смене трендов. LRU быстрее реагирует на изменение паттернов доступа. Выбор зависит от business-домена: кэш новостей → LRU, кэш метаданных товаров → LFU.</p>
-  </div>
-</div>
-
-<h2 id="itog-chek-list-realizatsii-lfu">Итог: чек-лист реализации LFU</h2>
-
-<ol>
-<li><strong>Двойная индексация:</strong> <code>map[K]*Node</code> для поиска + <code>map[int]*List</code> для частотной группировки.</li>
-<li><strong>Минимальная частота:</strong> Хранить <code>minFreq</code> отдельно, обновлять только при опустошении списка и совпадении с минимумом.</li>
-<li><strong>Очистка памяти:</strong> Удалять пустые списки из <code>freqMap</code>, иначе гарантирован memory leak.</li>
-<li><strong>Синхронизация:</strong> Только <code>sync.Mutex</code>, так как <code>Get</code> изменяет состояние. Для high-throughput применять шардирование.</li>
-<li><strong>Кэш-локальность:</strong> Ограничить количество списков или использовать массив-backed структуру, если частоты предсказуемы.</li>
-<li><strong>Edge cases:</strong> Явная обработка <code>cap == 0</code>, корректное обновление значений без изменения <code>size</code>, fallback на LRU при равенстве частот.</li>
-</ol>
-<p>LFU — это пример того, как теоретическая асимптотика <code>O(1)</code> в реальном Go-коде упирается в механику выделения памяти, поведение GC и предсказуемость процессора. Умение балансировать между чистотой алгоритма и аппаратными ограничениями отличает инженерное решение от академического упражнения.</p>
-<p>В следующей статье мы перейдём к проектированию хеш-таблицы с нуля, разберём открытую адресацию, разрешение коллизий и механику рехаширования в рантайме: <a href="5-design-hashmap.html" class="wikilink">5. Design HashMap</a></p>
+<p>В следующей статье мы спроектируем собственную хеш-таблицу с нуля, изучив методы разрешения коллизий, открытую адресацию и механику Swiss Tables: <a href="5-design-hashmap.html" class="wikilink">5. Design HashMap</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2533,7 +2620,7 @@ func (s *ShardedLFU) Get(key string) (any, bool) {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#lfu-cache-arkhitektura-o1-chastotnye-spiski-i-upravlenie-pamyatyu">LFU Cache: архитектура O(1), частотные списки и управление памятью</a></li><li class="toc-item toc-h2"><a href="#1-algoritmicheskaya-mekhanika-pochemu-o1-trebuet-dvukh-map">1. Алгоритмическая механика: почему O(1) требует двух мап</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#3-pod-kapotom-pamyat-gc-i-pointer-chasing">3. Под капотом: память, GC и pointer chasing</a></li><li class="toc-item toc-h3"><a href="#pamyat-i-allokatsii">Память и аллокации</a></li><li class="toc-item toc-h3"><a href="#cpu-kesh-i-predskazanie-vetvleniy">CPU кэш и предсказание ветвлений</a></li><li class="toc-item toc-h2"><a href="#4-potokobezopasnost-i-strategii-konkurentnogo-dostupa">4. Потокобезопасность и стратегии конкурентного доступа</a></li><li class="toc-item toc-h2"><a href="#5-lovushki-i-granichnye-sluchai">5. Ловушки и граничные случаи</a></li><li class="toc-item toc-h2"><a href="#6-voprosy-s-sobesedovaniy-glubina-ponimaniya">6. Вопросы с собеседований: глубина понимания</a></li><li class="toc-item toc-h2"><a href="#itog-chek-list-realizatsii-lfu">Итог: чек-лист реализации LFU</a></li>
+    <li class="toc-item toc-h2"><a href="#lfu-cache-arkhitektura-o1-chastotnye-spiski-i-upravlenie-pamyatyu">LFU Cache: архитектура O(1), частотные списки и управление памятью</a></li><li class="toc-item toc-h2"><a href="#1-algoritmicheskaya-mekhanika-pochemu-o1-trebuet-dvukh-khesh-tablits">1. Алгоритмическая механика: почему O(1) требует двух хеш-таблиц</a></li><li class="toc-item toc-h3"><a href="#pravila-perekhoda-sostoyaniy">Правила перехода состояний</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#3-pod-kapotom-pamyat-gc-i-apparatnye-ogranicheniya">3. Под капотом: память, GC и аппаратные ограничения</a></li><li class="toc-item toc-h3"><a href="#escape-analysis-i-allokatsii">Escape Analysis и аллокации</a></li><li class="toc-item toc-h3"><a href="#pointer-chasing-i-cache-misses">Pointer Chasing и Cache Misses</a></li><li class="toc-item toc-h2"><a href="#4-problema-zagryazneniya-kesha-cache-poisoning-i-sovremennye-resheniya">4. Проблема «загрязнения кэша» (Cache Poisoning) и современные решения</a></li><li class="toc-item toc-h3"><a href="#sposoby-resheniya-v-industrii">Способы решения в индустрии</a></li><li class="toc-item toc-h2"><a href="#5-shardirovanie-i-mnogopotochnost">5. Шардирование и многопоточность</a></li><li class="toc-item toc-h2"><a href="#6-voprosy-dlya-sobesedovaniya">6. Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

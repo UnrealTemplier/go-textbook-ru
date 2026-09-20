@@ -2171,17 +2171,24 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~24 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
+              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. Reservoir sampling</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="problematika-sluchaynaya-vyborka-iz-neizvestnogo-potoka">Проблематика: Случайная выборка из неизвестного потока</h2>
+            <blockquote>
+<p><em>«Когда поток бесконечен, а память ограничена, единственный способ быть справедливым — меняться с убывающей вероятностью».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="rezervuarnaya-vyborka-reservoir-sampling-sluchaynaya-vyborka-iz-beskonechnogo-po">Резервуарная выборка (Reservoir Sampling): случайная выборка из бесконечного потока</h2>
 
-<p>Reservoir Sampling (Выборка из резервуара) — это семейство алгоритмов для равномерной случайной выборки <code>k</code> элементов из потока данных неизвестной или слишком большой длины <code>n</code>, где <code>n &gt;&gt; k</code>. Ключевые требования: один проход по данным, <code>O(k)</code> дополнительной памяти и гарантия того, что каждый элемент будет выбран с вероятностью ровно <code>k/n</code>.</p>
-<p>В бэкенд-инженерии этот алгоритм решает реальные задачи: семплирование логов для аналитики, выборка случайных сессий для A/B-тестов, обработка бесконечных потоков событий из Kafka или WebSocket, а также агрегация метрик в условиях строгих лимитов RAM. Понимание внутренней механики алгоритма, работы с генераторами случайных чисел и кэш-локальности отличает разработчика, который «просто копирует код с StackOverflow», от инженера, способного внедрять надёжные вероятностные структуры в production.</p>
+<p>Задача выбора $K$ случайных элементов из потока данных, размер которого $N$ заранее неизвестен или настолько огромен, что не помещается в оперативную память — одна из фундаментальных проблем потоковой обработки данных. </p>
+<p><strong>Reservoir Sampling (Алгоритм R)</strong> решает эту задачу с математической безупречностью:<br />
+1. За один последовательный проход по потоку.<br />
+2. Используя строго фиксированную память $O(K)$.<br />
+3. Гарантируя, что в любой момент времени каждый прочитанный элемент присутствует в выборке с точностью $\frac{K}{N}$.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2196,36 +2203,57 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Начало обработки потока&quot;]:::process --&gt; B[&quot;Чтение первых k элементов&quot;]
-B --&gt; C[&quot;Заполнение резервуара&lt;br&gt;reservoir = items[0..k-1]&quot;]
-C --&gt; D[&quot;Чтение следующего элемента&lt;br&gt;индекс i &gt;= k&quot;]
-D --&gt; E{&quot;Генерация j = rand.Int64N i + 1&quot;}
-E --&gt; F{&quot;j меньше k ?&quot;}
-F --&gt;|Да| G[&quot;Замена: reservoir[j] = current&quot;]
-F --&gt;|Нет| H[&quot;Игнорирование элемента&quot;]
-G --&gt; D
-H --&gt; D
-D --&gt;|Поток окончен| I[&quot;Возврат резервуара&lt;br&gt;Каждый элемент имел&lt;br&gt;вероятность k разделенное на n&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+A[&quot;Чтение элемента потока i&quot;]:::entry --&gt; B{&quot;Текущий индекс i &lt; K?&quot;}:::warning
+B --&gt;|Да| C[&quot;Поместить элемент в reservoir[i]&quot;]:::process
+B --&gt;|Нет| D[&quot;Сгенерировать случайное целое:&lt;br/&gt;j = rand.Int64N(i + 1)&quot;]:::process
+D --&gt; E{&quot;j &lt; K?&quot;}:::warning
+E --&gt;|Да| F[&quot;Заменить элемент:&lt;br/&gt;reservoir[j] = stream[i]&quot;]:::success
+E --&gt;|Нет| G[&quot;Пропустить элемент&quot;]:::error
+C --&gt; H[&quot;Следующий элемент потока&quot;]:::process
+F --&gt; H
+G --&gt; H
   </pre>
 </div>
 
 
-<h2 id="1-algoritm-r-dokazatelnaya-baza-i-realizatsiya">1. Алгоритм R: Доказательная база и реализация</h2>
+<hr />
+<h2 id="1-matematicheskoe-dokazatelstvo-ravnoveroyatnosti">1. Математическое доказательство равновероятности</h2>
 
-<p>Классический алгоритм <code>R</code> (Algorithm R), предложенный А. Уотерманом, работает по следующему принципу:<br />
-1. Заполняем «резервуар» первыми <code>k</code> элементами потока.<br />
-2. Для каждого последующего элемента с индексом <code>i</code> (нумерация с <code>k</code>), генерируем случайное число <code>j</code> в диапазоне <code>[0, i]</code>.<br />
-3. Если <code>j &lt; k</code>, заменяем <code>reservoir[j]</code> на текущий элемент. Иначе игнорируем его.</p>
+<p>Почему этот простой жадный алгоритм гарантирует идеальную равномерность?</p>
+<p>Пусть $N$ — общее количество элементов в потоке на данный момент. Докажем по индукции, что любой элемент $X$, встретившийся на шаге $i$ ($1 \le i \le N$), окажется в резервуаре размера $K$ с вероятностью $\frac{K}{N}$.</p>
+<ol>
+<li>
+<p><strong>Вероятность попасть в резервуар на шаге $i$:</strong><br />
+   По условию алгоритма, элемент попадает в резервуар, если сгенерированное случайное число $j \in [0, i]$ строго меньше $K$:<br />
+   $$P(\text{попал на шаге } i) = \frac{K}{i}$$</p>
+</li>
+<li>
+<p><strong>Вероятность выжить (не быть вытесненным) на последующих шагах:</strong><br />
+   На каждом следующем шаге $m &gt; i$ новый элемент попадает в резервуар с вероятностью $\frac{K}{m}$ и вытесняет именно наш элемент с вероятностью $\frac{1}{K}$.<br />
+   Следовательно, вероятность быть вытесненным на шаге $m$:<br />
+   $$\frac{K}{m} \times \frac{1}{K} = \frac{1}{m}$$<br />
+   А вероятность <strong>не быть вытесненным</strong> на шаге $m$:<br />
+   $$1 - \frac{1}{m} = \frac{m-1}{m}$$</p>
+</li>
+<li>
+<p><strong>Итоговая вероятность (телескопическое произведение):</strong><br />
+   Чтобы элемент остался в резервуаре к моменту $N$, он должен попасть туда на шаге $i$ и выжить на всех шагах от $i+1$ до $N$:<br />
+   $$P = \frac{K}{i} \times \left(\frac{i}{i+1}\right) \times \left(\frac{i+1}{i+2}\right) \times \dots \times \left(\frac{N-1}{N}\right)$$<br />
+   Все промежуточные числители и знаменатели взаимно сокращаются:<br />
+   $$P = \frac{K}{i} \times \frac{i}{N} = \frac{K}{N}$$</p>
+</li>
+</ol>
+<p>Что и требовалось доказать. Равномерность абсолютна и не зависит от порядка элементов.</p>
+<hr />
+<h2 id="2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</h2>
+
+<p>Реализуем обобщенную функцию семплирования из канала или итератора с защитой от переполнения 32-битных счетчиков:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2238,41 +2266,35 @@ D --&gt;|Поток окончен| I[&quot;Возврат резервуара&
   <pre class="language-go"><code class="language-go">package sampling
 
 import (
-    &quot;fmt&quot;
-    &quot;io&quot;
+    &quot;errors&quot;
     &quot;math/rand/v2&quot;
 )
 
-// ReservoirSampling выбирает k случайных элементов из потока.
-// iterFunc возвращает следующий элемент или io.EOF при завершении.
-func ReservoirSampling[T any](iterFunc func() (T, error), k int) ([]T, error) {
+var ErrInvalidK = errors.New(&quot;sampling: k must be greater than zero&quot;)
+
+// ReservoirSampling выбирает k равновероятных элементов из входного канала.
+func ReservoirSampling[T any](stream &lt;-chan T, k int) ([]T, error) {
     if k &lt;= 0 {
-        return nil, fmt.Errorf(&quot;sampling: k must be positive&quot;)
+        return nil, ErrInvalidK
     }
 
-    // Предвыделение backing array снижает давление на GC
     reservoir := make([]T, 0, k)
-    var count int64 // Используем int64 для защиты от переполнения
+    var count int64 = 0
 
-    for {
-        val, err := iterFunc()
-        if err == io.EOF {
-            break
-        }
-        if err != nil {
-            return nil, fmt.Errorf(&quot;iterator failed at count %d: %w&quot;, count, err)
-        }
-
+    for item := range stream {
         count++
-        if int64(len(reservoir)) &lt; k {
-            reservoir = append(reservoir, val)
+
+        // Шаг 1: Первые k элементов заполняют резервуар целиком
+        if len(reservoir) &lt; k {
+            reservoir = append(reservoir, item)
             continue
         }
 
-        // Алгоритм R: вероятность замены равна k / count
-        // rand.Int64N гарантирует отсутствие модульного смещения
-        if j := rand.Int64N(count); j &lt; int64(k) {
-            reservoir[j] = val
+        // Шаг 2: Для каждого последующего элемента генерируем индекс j в [0, count)
+        // rand.Int64N исключает модульное смещение
+        j := rand.Int64N(count)
+        if j &lt; int64(k) {
+            reservoir[j] = item
         }
     }
 
@@ -2281,196 +2303,67 @@ func ReservoirSampling[T any](iterFunc func() (T, error), k int) ([]T, error) {
 </code></pre>
 </div>
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Математическое обоснование:</strong> Вероятность выбора <code>i</code>-го элемента при обработке равна <code>k/i</code>. Чтобы он остался в резервуаре до конца потока, он не должен быть заменён на шагах <code>i+1, i+2, ..., n</code>. Вероятность «выживания» на шаге <code>m</code> равна <code>1 - k/m</code>. Итоговая вероятность:<br />
-<code>P = (k/i) * (1 - k/(i+1)) * (1 - k/(i+2)) * ... * (1 - k/n)</code><br />
-<code>P = (k/i) * ((i)/(i+1)) * ((i+1)/(i+2)) * ... * ((n-1)/n) = k/n</code><br />
-Телескопическое сокращение гарантирует равномерное распределение независимо от <code>n</code>.</p>
-  </div>
-</div>
+<hr />
+<h2 id="3-mekhanika-pamyati-i-proizvoditelnosti">3. Механика памяти и производительности</h2>
 
-<h2 id="2-mekhanika-rantayma-cpu-kesh-linii-i-vetvlenie">2. Механика рантайма: CPU, кэш-линии и ветвление</h2>
-
-<p>Наивная реализация часто использует <code>rand.Intn(int(count)) % k</code> или <code>int(rand.Float64() * float64(count)) &lt; k</code>. Это фундаментально неверно по трём причинам:<br />
-1. <strong>Модульное смещение (Modulo Bias):</strong> Если <code>count</code> не степень двойки, остаток <code>%</code> распределяется неравномерно. Элементы в начале резервуара будут выбираться чаще.<br />
-2. <strong>Плавающая точка:</strong> <code>rand.Float64()</code> возвращает <code>float64</code> с 53 битами мантиссы. При больших <code>count</code> (&gt; <code>2^53</code>) точность теряется, вероятности искажаются.<br />
-3. <strong>Ветвление CPU:</strong> <code>j &lt; k</code> имеет вероятность <code>k/count</code>. В начале потока она близка к <code>1</code>, затем падает к <code>0</code>. Современный <code>Branch Predictor</code> быстро адаптируется к монотонному изменению вероятности, но использование <code>rand.Int64N</code> оставляет предсказатель в стабильном состоянии.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// ❌ НЕВЕРНО: модульное смещение и потеря точности
-if rand.Intn(int(count))%k == 0 { ... }
-
-// ✅ ВЕРНО: unbiased выборка в целых числах
-if rand.Int64N(count) &lt; int64(k) { ... }
-</code></pre>
-</div>
-
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><code>rand.Int64N</code> в Go 1.22+ использует алгоритм <strong>PCG</strong> с rejection sampling. Он вычисляет верхнюю границу <code>threshold = MaxUint64 - (MaxUint64 % n)</code>. Если сгенерированное число превышает <code>threshold</code>, оно отбрасывается, и генерируется новое. Вероятность отброса &lt; 0.5, поэтому цикл выполняется 1-2 раза. Все операции происходят в регистрах CPU, не вызывая <code>syscall</code> и не создавая <code>escape to heap</code>. Это обеспечивает латентность ~5-10 наносекунд на итерацию, что на порядки быстрее криптографических или floating-point аналогов.</p>
-  </div>
-</div>
-
-<h2 id="3-integratsiya-s-potokami-dannykh-io-reader-i-nulevye-allokatsii">3. Интеграция с потоками данных: `io.Reader` и нулевые аллокации</h2>
-
-<p>В бэкенде потоки редко представлены готовыми слайсами. Обычно это <code>io.Reader</code>, <code>bufio.Scanner</code>, каналы или итераторы над базами данных. Правильная интеграция требует аккуратной работы с буферизацией и типами.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">import &quot;strings&quot;
-
-// Пример: семплирование строк из io.Reader
-func SampleLinesFromReader(r io.Reader, k int) ([]string, error) {
-    scanner := bufio.NewScanner(r)
-    scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024) // Настройка буфера
-
-    iter := func() (string, error) {
-        if !scanner.Scan() {
-            return &quot;&quot;, scanner.Err()
-        }
-        return scanner.Text(), nil
-    }
-
-    // Переиспользуем аллокатор строк через strings.Builder если нужно
-    return ReservoirSampling(iter, k)
-}
-</code></pre>
-</div>
-
-<p><strong>Управление памятью:</strong> Слайс <code>reservoir</code> аллоцируется в куче один раз. При <code>append</code> в пределах <code>cap</code> реаллокаций нет. Однако, если <code>T</code> содержит указатели (например, <code>*User</code> или <code>[]byte</code>), резервуар будет удерживать ссылки на объекты, которые иначе могли бы быть собраны GC. Для высоконагруженных систем рекомендуется хранить <code>[]byte</code> или примитивы в резервуаре, а сложные структуры восстанавливать по ID/хешу.</p>
+<h3 id="snizhenie-davleniya-na-gc">Снижение давления на GC</h3>
+<p>При обработке потока из $10^9$ событий резервуар размера $K = 100$ аллоцируется в куче ровно один раз (<code>make([]T, 0, k)</code>). В процессе работы новые элементы перезаписывают существующие слоты среза, не вызывая дополнительных аллокаций памяти (<code>0 B/op</code>).</p>
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
   </div>
   <div class="callout-body">
-    <p><strong>Переполнение счётчика:</strong> Если поток содержит &gt; <code>2^31</code> элементов, использование <code>int</code> или <code>int32</code> для <code>count</code> приведёт к отрицательным значениям и панике <code>runtime error: index out of range</code>. Всегда используйте <code>int64</code> для индексов в потоковых алгоритмах. На 64-битных системах Go <code>int</code> также 64-битный, но явное указание <code>int64</code> документирует контракт и защищает при компиляции под 32-битные цели (<code>GOARCH=386</code>).</p>
+    <p><strong>Удержание ссылок (Pointer Retention):</strong><br />
+Если тип <code>T</code> является указателем (<code>*Event</code>) или структурой с полями-указателями, перезапись слота <code>reservoir[j] = item</code> разрывает ссылку на старый объект, позволяя сборщику мусора утилизировать его. Однако если вы сохраняете ссылки на элементы резервуара во внешних структурах данных, это приведет к незаметной утечке памяти.</p>
   </div>
 </div>
 
-<h2 id="4-raspredelyonnoe-rezervuarnoe-semplirovanie">4. Распределённое резервуарное сэмплирование</h2>
+<h3 id="vetvlenie-protsessora-branch-prediction">Ветвление процессора (Branch Prediction)</h3>
+<p>В цикле проверки <code>if j &lt; int64(k)</code> вероятность перехода в ветку замены равна $\frac{K}{\text{count}}$. По мере роста <code>count</code> эта вероятность стремится к нулю.<br />
+Аппаратный предсказатель ветвлений современных ядер CPU быстро адаптируется к этой ситуации: практически все итерации предсказываются как «ветка не выполняется» (branch not taken), предотвращая сброс конвейера инструкций.</p>
+<hr />
+<h2 id="4-raspredelennaya-rezervuarnaya-vyborka-mapreduce-pattern">4. Распределенная резервуарная выборка (MapReduce паттерн)</h2>
 
-<p>В кластерных системах один поток часто шардирован по <code>M</code> нодам. Простое объединение локальных резервуаров нарушает равномерность, так как узлы могут обработать разное количество элементов.</p>
-<p>Алгоритм распределённого семплирования:<br />
-1. Каждая нода запускает локальный Reservoir Sampling, получая резервуар <code>R_i</code> и счётчик <code>N_i</code>.<br />
-2. Каждая нода вычисляет вероятность отправки своего резервуара в агрегатор: <code>w_i = N_i / (N_1 + N_2 + ... + N_M)</code>.<br />
-3. Агрегатор собирает все <code>R_i</code> и выполняет финальное взвешенное сэмплирование, где каждый элемент из <code>R_i</code> имеет вес <code>1/N_i</code>.</p>
-<p>Это гарантирует <code>O(k)</code> памяти на ноду и один раунд коммуникации. В Go это реализуется через <code>gRPC</code>-стримы, где каждая нода передаёт свой локальный резервуар + <code>count</code>, а координатор запускает финальный <code>rand.IntN(totalCount)</code>.</p>
-<h2 id="5-lovushki-i-granichnye-sluchai">5. Ловушки и граничные случаи</h2>
+<p>В распределенных системах (Kafka, Spark, ClickHouse) терабайты логов шардированы по $M$ серверам. Невозможно прогнать все логи через одну горутину.</p>
+<p>Решение состоит в двухуровневом сэмплировании:<br />
+1. <strong>Этап Map (Локальный):</strong> Каждый узел $m$ обрабатывает свой локальный поток размером $N_m$ и получает локальный резервуар из $K$ элементов.<br />
+2. <strong>Этап Reduce (Агрегация):</strong> Центральный координатор собирает $M$ локальных резервуаров вместе с метаданными о количестве обработанных строк $N_m$.<br />
+3. Координатор выполняет взвешенную выборку (Weighted Pick), где каждый локальный резервуар имеет вес, пропорциональный $N_m$.</p>
+<hr />
+<h2 id="5-voprosy-dlya-sobesedovaniya">5. Вопросы для собеседования</h2>
 
-
-<div class="mermaid-wrapper">
-  <div class="mermaid-header">
-    <div class="mermaid-title">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-      <span>Архитектурная схема</span>
-    </div>
-    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-      <span>На весь экран</span>
-    </button>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
-  <pre class="mermaid">
-flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Edge cases семплирования&quot;]:::process --&gt; B[&quot;k больше размера потока n&quot;]
-A --&gt; C[&quot;k = 0 или отрицательное&quot;]
-A --&gt; D[&quot;Поток бесконечный&quot;]
-A --&gt; E[&quot;Однородные данные&quot;]
-A --&gt; F[&quot;Высокая частота записей&quot;]
-
-B --&gt; G[&quot;Вернуть все элементы n&quot;]
-C --&gt; H[&quot;Явная валидация, возврат ошибки&quot;]
-D --&gt; I[&quot;Алгоритм работает бесконечно&lt;br&gt;память стабильна O-k&quot;]
-E --&gt; J[&quot;Статистически корректно&lt;br&gt;но результат может дублироваться&quot;]
-F --&gt; K[&quot;Блокировка rand.Int64N в многопоточной среде&quot;]
-  </pre>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Что произойдет, если размер входного потока $N$ окажется меньше, чем запрашиваемый размер резервуара $K$?<br />
+<strong>Ответ:</strong> Условие <code>len(reservoir) &lt; k</code> будет выполняться для каждого входящего элемента. Алгоритм благополучно вернет срез всех $N$ элементов без каких-либо ошибок.</p>
+  </div>
 </div>
 
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Как модифицировать алгоритм, если элементы потока имеют разные веса (Weighted Reservoir Sampling)?<br />
+<strong>Ответ:</strong> Классический алгоритм R неприменим. Используется алгоритм Эфраимидиса-Спиракиса (Algorithm A-Res): для каждого входящего элемента вычисляется псевдослучайный ключ $k_i = u_i^{1/w_i}$, где $u_i \sim \text{Uniform}(0, 1)$, а $w_i$ — вес элемента. В резервуаре поддерживаются $K$ элементов с наибольшими ключами с помощью Min-Heap.</p>
+  </div>
+</div>
+
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
 <ol>
-<li><strong><code>k &gt; n</code>:</strong> Алгоритм автоматически вернёт все <code>n</code> элементов, так как условие <code>j &lt; k</code> будет истинным до конца потока, а <code>append</code> заполнит резервуар. Это валидное поведение, но на собеседовании стоит явно упомянуть: «результат будет содержать все доступные элементы, что соответствует контракту».</li>
-<li><strong>Конкурентность <code>rand</code>:</strong> Глобальный <code>rand</code> в <code>math/rand/v2</code> потокобезопасен, но под высокой нагрузкой создаёт contention. Для многопоточной обработки независимых чанков потока используйте <code>sync.Pool</code> с локальными <code>rand.Rand</code> или атомарные сида.</li>
-<li><strong>Детерминизм в тестах:</strong> Для воспроизводимости заменяйте глобальный <code>rand</code> на <code>rand.New(rand.NewChaCha8(seed1, seed2))</code> и передавайте его в алгоритм.</li>
+<li>Reservoir Sampling позволяет получить равномерную случайную выборку за один проход по потоку с $O(K)$ памяти.</li>
+<li>Телескопическое сокращение вероятностей строго доказывает равновероятность попадания каждого элемента.</li>
+<li>Использование <code>rand.Int64N(count)</code> предотвращает как переполнение счетчиков, так и модульное смещение.</li>
 </ol>
-<h2 id="6-voprosy-s-sobesedovaniy-glubina-ponimaniya">6. Вопросы с собеседований: глубина понимания</h2>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как доказать, что алгоритм действительно возвращает равномерную выборку?<br />
-<strong>Ответ:</strong> Используйте математическую индукцию или телескопическое произведение вероятностей. Базовый случай: для <code>n=k</code> вероятность <code>1</code>. Шаг индукции: вероятность остаться в резервуаре на шаге <code>i</code> равна <code>k/i</code>, вероятность не быть вытесненным до конца <code>∏(1 - k/m)</code>. Произведение сокращается до <code>k/n</code>. Это строгое доказательство, которое ожидает Senior-интервьюер.</p>
-  </div>
-</div>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Что если нужно выбрать элементы с весами (weighted reservoir sampling)?<br />
-<strong>Ответ:</strong> Классический алгоритм R не подходит. Нужно использовать алгоритм <code>A-Res</code> или <code>Efraimidis-Spirakis</code>. Для каждого элемента генерируется ключ <code>k_i = u^(1/w_i)</code>, где <code>u ~ Uniform(0,1)</code>, <code>w_i</code> — вес. В резервуар попадают <code>k</code> элементов с наибольшими ключами. Это требует <code>O(k log k)</code> или <code>O(k)</code> с min-heap. На практике часто используется <code>rand.ExpFloat64() / weight</code>.</p>
-  </div>
-</div>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Почему не просто загрузить всё в <code>map</code> или <code>slice</code> и использовать <code>rand.Shuffle</code>?<br />
-<strong>Ответ:</strong> Требование <code>O(k)</code> памяти против <code>O(n)</code> потока. При <code>n = 10^9</code> и размере элемента 1 КБ, загрузка потребует ~1 ТБ RAM, что вызовет OOM. Кроме того, <code>rand.Shuffle</code> требует двух проходов или полной загрузки, что нарушает условие однопроходности. Reservoir Sampling решает задачу в <code>O(n)</code> времени и <code>O(k)</code> памяти, работая в режиме streaming.</p>
-  </div>
-</div>
-
-<h2 id="7-itog-chek-list-dlya-production-semplirovaniya">7. Итог: чек-лист для production-семплирования</h2>
-
-<ol>
-<li><strong>Один проход, <code>O(k)</code> память:</strong> Алгоритм R идеально подходит для потоков с неизвестным <code>n</code>.</li>
-<li><strong>Без смещения:</strong> Всегда используйте <code>rand.Int64N(count) &lt; int64(k)</code>, избегайте <code>%</code> и <code>float64</code>.</li>
-<li><strong>Типы и переполнение:</strong> <code>count</code> должен быть <code>int64</code>. Храните в резервуаре примитивы или ID, а не тяжёлые объекты, чтобы не блокировать GC.</li>
-<li><strong>Потокобезопасность:</strong> Для параллельной обработки чанков используйте локальные источники рандомизации или <code>sync.Pool</code>.</li>
-<li><strong>Распределённость:</strong> При шардировании потока объединяйте локальные резервуары с учётом весов <code>N_i / N_total</code>.</li>
-<li><strong>Тестирование:</strong> Фиксируйте seed через <code>rand.NewChaCha8</code> для детерминированных прогонов и проверки инвариантов.</li>
-</ol>
-<p>Reservoir Sampling — это элегантный пример того, как строгая вероятностная математика решает инженерные ограничения памяти и latency. Понимание его механики, от телескопических произведений до rejection sampling в PCG, закладывает фундамент для работы с более сложными вероятностными структурами и распределёнными системами.</p>
-<p>В следующей статье мы перейдём к взвешенному выбору элементов, разберём алгоритмы Efraimidis-Spirakis, работу с экспоненциальным распределением и паттерны для балансировки нагрузки: <a href="3-random-pick-with-weight.html" class="wikilink">3. Random Pick with Weight</a></p>
+<p>В следующей статье мы разберем алгоритм взвешенного выбора с логарифмической сложностью на основе префиксных сумм: <a href="3-random-pick-with-weight.html" class="wikilink">3. Random Pick with Weight</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2498,7 +2391,7 @@ F --&gt; K[&quot;Блокировка rand.Int64N в многопоточной 
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#problematika-sluchaynaya-vyborka-iz-neizvestnogo-potoka">Проблематика: Случайная выборка из неизвестного потока</a></li><li class="toc-item toc-h2"><a href="#1-algoritm-r-dokazatelnaya-baza-i-realizatsiya">1. Алгоритм R: Доказательная база и реализация</a></li><li class="toc-item toc-h2"><a href="#2-mekhanika-rantayma-cpu-kesh-linii-i-vetvlenie">2. Механика рантайма: CPU, кэш-линии и ветвление</a></li><li class="toc-item toc-h2"><a href="#3-integratsiya-s-potokami-dannykh-io-reader-i-nulevye-allokatsii">3. Интеграция с потоками данных: io.Reader и нулевые аллокации</a></li><li class="toc-item toc-h2"><a href="#4-raspredelyonnoe-rezervuarnoe-semplirovanie">4. Распределённое резервуарное сэмплирование</a></li><li class="toc-item toc-h2"><a href="#5-lovushki-i-granichnye-sluchai">5. Ловушки и граничные случаи</a></li><li class="toc-item toc-h2"><a href="#6-voprosy-s-sobesedovaniy-glubina-ponimaniya">6. Вопросы с собеседований: глубина понимания</a></li><li class="toc-item toc-h2"><a href="#7-itog-chek-list-dlya-production-semplirovaniya">7. Итог: чек-лист для production-семплирования</a></li>
+    <li class="toc-item toc-h2"><a href="#rezervuarnaya-vyborka-reservoir-sampling-sluchaynaya-vyborka-iz-beskonechnogo-po">Резервуарная выборка (Reservoir Sampling): случайная выборка из бесконечного потока</a></li><li class="toc-item toc-h2"><a href="#1-matematicheskoe-dokazatelstvo-ravnoveroyatnosti">1. Математическое доказательство равновероятности</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#3-mekhanika-pamyati-i-proizvoditelnosti">3. Механика памяти и производительности</a></li><li class="toc-item toc-h3"><a href="#snizhenie-davleniya-na-gc">Снижение давления на GC</a></li><li class="toc-item toc-h3"><a href="#vetvlenie-protsessora-branch-prediction">Ветвление процессора (Branch Prediction)</a></li><li class="toc-item toc-h2"><a href="#4-raspredelennaya-rezervuarnaya-vyborka-mapreduce-pattern">4. Распределенная резервуарная выборка (MapReduce паттерн)</a></li><li class="toc-item toc-h2"><a href="#5-voprosy-dlya-sobesedovaniya">5. Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

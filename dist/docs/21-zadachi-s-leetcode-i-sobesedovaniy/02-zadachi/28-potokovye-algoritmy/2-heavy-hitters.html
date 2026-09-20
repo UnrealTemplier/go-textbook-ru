@@ -2171,16 +2171,27 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~23 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
+              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. Heavy hitters</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="poisk-heavy-hitters-determinirovannye-evristiki-i-veroyatnostnye-struktury">Поиск Heavy Hitters: детерминированные эвристики и вероятностные структуры</h2>
+            <blockquote>
+<p><em>«Большинство явлений в распределенных системах подчиняются закону Парето: ничтожная часть ключей порождает львиную долю нагрузки».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="poisk-chastykh-elementov-heavy-hitters-ot-algoritma-misry-grisa-do-count-min-ske">Поиск частых элементов (Heavy Hitters): от алгоритма Мисры-Гриса до Count-Min Sketch</h2>
 
-<p>Задача поиска «тяжеловесов» (Heavy Hitters) — это ядро потоковой аналитики в бэкенд-системах. Требуется идентифицировать элементы, частота которых превышает заданный порог <code>φ · N</code>, или найти топ-K самых частых ключей в бесконечном потоке. В реальной инженерии это детекция DDoS-атак, rate-limiting по IP, мониторинг трендов в логах, выявление аномалий в сетевом трафике и агрегация метрик. Точное решение через <code>map[string]int</code> требует <code>O(N)</code> памяти, что мгновенно приводит к OOM при <code>N = 10^8</code>. Здесь применяются алгоритмы с сублинейной памятью: Misra-Gries, Space-Saving и Count-Min Sketch.</p>
+<p>Задача поиска «тяжеловесов» (<strong>Heavy Hitters</strong>) — фундаментальная проблема потоковой телеметрии и сетевой безопасности.<br />
+Дана последовательность из $N$ событий. Требуется найти все элементы, частота появления которых превышает заданную долю от общего объема потока:<br />
+$$\text{freq}(X) &gt; \varphi \times N \quad (0 &lt; \varphi &lt; 1)$$</p>
+<p>Примеры в реальной индустрии:<br />
+- <strong>Детекция DDoS и брутфорс-атак:</strong> выявление IP-адресов, генерирующих более $1\%$ входящего сетевого трафика.<br />
+- <strong>Мониторинг микросервисов:</strong> нахождение эндпоинтов, на которые приходится $80\%$ серверных ошибок HTTP 500.<br />
+- <strong>Кэширование:</strong> определение «горячих» ключей для помещения в локальный In-Memory кэш (Hot Keys Detection).</p>
+<p>Поскольку $N$ может достигать миллиардов, хранить точную карту <code>map[string]int</code> невозможно из-за исчерпания RAM. Мы разберем два краеугольных подхода: детерминированный алгоритм <strong>Мисры-Гриса</strong> и вероятностный скетч <strong>Count-Min Sketch</strong>.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2195,36 +2206,40 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Обработка элемента потока&quot;]:::warning --&gt; B{&quot;Элемент уже в мониторе?&quot;}
-B --&gt;|Да| C[&quot;Инкремент счётчика элемента&quot;]
-B --&gt;|Нет| D{&quot;Монитор заполнен?&quot;}
-D --&gt;|Нет| E[&quot;Добавить элемент с count=1&quot;]
-D --&gt;|Да| F[&quot;Декремент всех счётчиков на 1&quot;]
-F --&gt; G[&quot;Удалить элементы с нулевым count&quot;]
-C --&gt; H[&quot;Переход к следующему элементу&quot;]
-E --&gt; H
-G --&gt; H
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+A[&quot;Входящий элемент X&quot;]:::entry --&gt; B{&quot;X уже есть в мониторе?&quot;}:::warning
+B --&gt;|Да| C[&quot;Увеличить счетчик: count[X]++&quot;]:::process
+B --&gt;|Нет| D{&quot;Число отслеживаемых ключей &lt; K - 1?&quot;}:::warning
+D --&gt;|Да| E[&quot;Добавить X в монитор: count[X] = 1&quot;]:::process
+D --&gt;|Нет| F[&quot;Декремент всех счетчиков на 1&lt;br/&gt;Удаление обнулившихся ключей&quot;]:::error
+C --&gt; G[&quot;Следующий элемент потока&quot;]:::success
+E --&gt; G
+F --&gt; G
   </pre>
 </div>
 
 
-<h2 id="1-determinirovannyy-podkhod-misra-gries-i-space-saving">1. Детерминированный подход: Misra-Gries и Space-Saving</h2>
+<hr />
+<h2 id="1-determinirovannyy-podkhod-algoritm-misry-grisa-misra-gries">1. Детерминированный подход: алгоритм Мисры-Гриса (Misra-Gries)</h2>
 
-<p>Алгоритм Misra-Gries (и его улучшенная вариация Space-Saving) использует массив фиксированной ёмкости <code>k</code>. Принцип работы:<br />
-- Если элемент уже отслеживается, увеличиваем его счётчик.<br />
-- Если места нет, вычитаем <code>1</code> из всех счётчиков и удаляем обнулившиеся.<br />
-Гарантия: любой элемент с истинной частотой <code>&gt; N/k</code> гарантированно останется в структуре. Оценка частоты может быть завышена не более чем на <code>N/k</code>.</p>
-<p>Space-Saving оптимизирует этот процесс: вместо декремента всех, мы заменяем элемент с минимальным счётчиком на новый, наследуя <code>count + 1</code>. Это даёт более точные оценки для топ-K элементов.</p>
+<p>Алгоритм Мисры-Гриса — это элегантное обобщение классического алгоритма большинства Бойера-Мура (Boyer-Moore Majority Vote).<br />
+Чтобы гарантированно найти все элементы, встречающиеся с частотой более $\frac{N}{K}$, алгоритм поддерживает карту максимум из $K - 1$ кандидатов.</p>
+<h3 id="printsip-raboty">Принцип работы</h3>
+<ol>
+<li>Если входящий элемент $X$ уже присутствует среди кандидатов, его счетчик увеличивается на $1$.</li>
+<li>Если в карте менее $K - 1$ элементов, $X$ добавляется со счетчиком $1$.</li>
+<li>Если места нет, <strong>счетчики всех кандидатов уменьшаются на $1$</strong>. Элементы со счетчиком $0$ удаляются из карты.</li>
+</ol>
+<h3 id="matematicheskaya-garantiya">Математическая гарантия</h3>
+<p>Каждый раз, когда выполняется массовый декремент, мы отбрасываем $K$ различных элементов (новый входящий плюс $K - 1$ кандидат из карты).<br />
+Поскольку всего в потоке $N$ элементов, операция массового декремента может произойти максимум $\frac{N}{K}$ раз.<br />
+Следовательно, счетчик любого элемента может быть занижен максимум на $\frac{N}{K}$.<br />
+Если истинная частота элемента $X$ строго больше $\frac{N}{K}$, его финальный счетчик гарантированно останется $&gt; 0$. Ни один тяжеловес не будет пропущен!</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2237,177 +2252,75 @@ G --&gt; H
   <pre class="language-go"><code class="language-go">package heavyhitters
 
 import (
-    &quot;hash/maphash&quot;
     &quot;sync&quot;
 )
 
-// MisraGries реализует детерминированный поиск частых элементов
-// Ёмкость k задаёт порог обнаружения: элементы с freq &gt; N/k будут найдены
+// MisraGries отслеживает элементы с частотой &gt; N/k
 type MisraGries struct {
     mu       sync.Mutex
     k        int
-    monitor  map[string]int
-    seed     maphash.Seed
+    counters map[string]int
 }
 
-// NewMisraGries создаёт монитор с заданной ёмкостью
 func NewMisraGries(k int) *MisraGries {
-    if k &lt;= 0 {
-        k = 1000
+    if k &lt; 2 {
+        k = 2
     }
     return &amp;MisraGries{
-        monitor: make(map[string]int, k),
-        k:       k,
-        seed:    maphash.MakeSeed(),
+        k:        k,
+        counters: make(map[string]int, k-1),
     }
 }
 
-// Process обрабатывает один элемент потока
+// Process обрабатывает очередной элемент потока
 func (mg *MisraGries) Process(item string) {
     mg.mu.Lock()
     defer mg.mu.Unlock()
 
-    if count, exists := mg.monitor[item]; exists {
-        mg.monitor[item] = count + 1
+    // 1. Элемент уже отслеживается
+    if count, exists := mg.counters[item]; exists {
+        mg.counters[item] = count + 1
         return
     }
 
-    if len(mg.monitor) &lt; mg.k {
-        mg.monitor[item] = 1
+    // 2. Есть свободный слот среди k-1 кандидатов
+    if len(mg.counters) &lt; mg.k-1 {
+        mg.counters[item] = 1
         return
     }
 
-    // Декремент всех счётчиков
-    toDelete := make([]string, 0, mg.k)
-    for k, v := range mg.monitor {
-        mg.monitor[k] = v - 1
-        if mg.monitor[k] == 0 {
-            toDelete = append(toDelete, k)
+    // 3. Слоты заняты: уменьшаем счетчики всех кандидатов
+    for key, count := range mg.counters {
+        if count &lt;= 1 {
+            delete(mg.counters, key)
+        } else {
+            mg.counters[key] = count - 1
         }
     }
-    for _, k := range toDelete {
-        delete(mg.monitor, k)
-    }
-    mg.monitor[item] = 1
 }
 
-// GetHeavyHitters возвращает текущих кандидатов
-func (mg *MisraGries) GetHeavyHitters() map[string]int {
+// Candidates возвращает текущих претендентов на статус Heavy Hitters
+func (mg *MisraGries) Candidates() map[string]int {
     mg.mu.Lock()
     defer mg.mu.Unlock()
 
-    res := make(map[string]int, len(mg.monitor))
-    for k, v := range mg.monitor {
-        res[k] = v
+    result := make(map[string]int, len(mg.counters))
+    for k, v := range mg.counters {
+        result[k] = v
     }
-    return res
+    return result
 }
 </code></pre>
 </div>
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Цикл декремента в <code>MisraGries</code> имеет сложность <code>O(k)</code>. При <code>k=1000</code> и потоке <code>10^6</code> элементов/сек это создаёт <code>10^9</code> операций. В продакшене это неприемлемо. Решение: использовать <strong>Space-Saving с Min-Heap</strong> или <strong>массив с отложенным декрементом</strong> (Lazy Decrement), где мы храним глобальный <code>offset</code>, вычитаем его только при запросе или при переполнении, а в массиве храним <code>real_count + offset</code>. Это снижает сложность <code>Process</code> до <code>O(1)</code> или <code>O(log k)</code>.</p>
-  </div>
-</div>
-
+<hr />
 <h2 id="2-veroyatnostnyy-podkhod-count-min-sketch">2. Вероятностный подход: Count-Min Sketch</h2>
 
-<p>Count-Min Sketch (CMS) — это вероятностная структура, которая никогда не занижает частоту, но может завышать её из-за коллизий хешей. Память фиксирована: <code>O(w · d)</code>, где <code>w</code> — ширина (определяет точность <code>ε</code>), <code>d</code> — глубина (определяет вероятность ошибки <code>δ</code>).</p>
-<p>Математика: для ошибки <code>ε</code> и вероятности <code>δ</code> выбираем <code>w = ⌈e/ε⌉</code>, <code>d = ⌈ln(1/δ)⌉</code>. При <code>ε=0.01</code>, <code>δ=0.001</code> требуется всего <code>~272 × 7 ≈ 1900</code> ячеек, независимо от <code>N</code>.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">package cms
-
-import (
-    &quot;hash/maphash&quot;
-    &quot;sync/atomic&quot;
-    &quot;unsafe&quot;
-)
-
-// CountMinSketch реализует вероятностную оценку частот
-// Использует flat-массив и атомарные операции для lock-free доступа
-type CountMinSketch struct {
-    width  uint32
-    depth  uint32
-    table  []uint32 // Flat array для кэш-локальности
-    seeds  []maphash.Seed
-}
-
-// NewCountMinSketch создаёт скетч под заданные eps и delta
-// w = ceil(2.718/eps), d = ceil(log(1/delta))
-func NewCountMinSketch(eps, delta float64) *CountMinSketch {
-    // Упрощённый расчёт параметров
-    w := uint32(3) // минимум для демо
-    d := uint32(5)
-
-    return &amp;CountMinSketch{
-        width: w,
-        depth: d,
-        table: make([]uint32, w*d),
-        seeds: make([]maphash.Seed, d),
-    }
-}
-
-// Add инкрементирует частоту элемента
-func (c *CountMinSketch) Add(item string) {
-    for d := uint32(0); d &lt; c.depth; d++ {
-        h := c.hash(item, d)
-        idx := d*c.width + h
-
-        // Атомарный инкремент. False sharing минимизирован padding'ом,
-        // но для максимальной изоляции используют []uint64 с выравниванием
-        atomic.AddUint32(&amp;c.table[idx], 1)
-    }
-}
-
-// Estimate возвращает минимальную оценку частоты
-func (c *CountMinSketch) Estimate(item string) uint32 {
-    var min uint32 = ^uint32(0) // MaxUint32
-
-    for d := uint32(0); d &lt; c.depth; d++ {
-        h := c.hash(item, d)
-        idx := d*c.width + h
-        val := atomic.LoadUint32(&amp;c.table[idx])
-        if val &lt; min {
-            min = val
-        }
-    }
-    return min
-}
-
-func (c *CountMinSketch) hash(item string, d uint32) uint32 {
-    // maphash использует AES-NI / ARM-NEON на современных CPU
-    h := maphash.String(c.seeds[d], item)
-    return uint32(h % uint64(c.width))
-}
-</code></pre>
-</div>
-
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Использование <code>[][]uint32</code> (слайс слайсов) для CMS создаёт <code>pointer chasing</code> и фрагментацию кучи. Каждая строка <code>[]uint32</code> — отдельный аллокатор. <code>flat []uint32</code> с индексом <code>d*width + h</code> гарантирует, что данные лежат в contiguous memory. Одна кэш-линия (64 байта) вмещает 16 <code>uint32</code>. При <code>width=256</code> мы читаем только нужные 7 ячеек, но они распределены по памяти с шагом <code>256*4=1024</code> байта. Для <code>width &gt; 16</code> каждый <code>hash</code> попадает в новую кэш-линию. Оптимизация: транспонировать массив в <code>depth × width</code> и хранить по строкам, чтобы доступ к <code>d</code> был последовательным, или использовать SIMD-хеширование.</p>
-  </div>
-</div>
-
-<h2 id="3-mekhanika-rantayma-kesh-linii-false-sharing-i-atomarnost">3. Механика рантайма: кэш-линии, False Sharing и атомарность</h2>
-
-<p>В высококонкурентных потоковых системах десятки горутин одновременно вызывают <code>Add</code>. <code>sync.Mutex</code> создаёт contention и <code>context switch</code> в ядро ОС (<code>futex</code>). <code>sync/atomic</code> решает это, но порождает проблему <strong>False Sharing</strong>.</p>
+<p>Если требуется оценивать частоту любого произвольного ключа в реальном времени с фиксированным объемом памяти, стандартом индустрии является <strong>Count-Min Sketch (CMS)</strong>.</p>
+<p>CMS представляет собой двумерную матрицу счетчиков размера $d \times w$:<br />
+- $w = \lceil \frac{e}{\varepsilon} \rceil$ — ширина таблицы (определяет предельную погрешность $\varepsilon$).<br />
+- $d = \lceil \ln(\frac{1}{\delta}) \rceil$ — глубина таблицы (определяет вероятность ошибки $\delta$).<br />
+- $d$ независимых хеш-функций: $h_1, h_2, \dots, h_d$.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2422,137 +2335,75 @@ func (c *CountMinSketch) hash(item string, d uint32) uint32 {
   </div>
   <pre class="mermaid">
 flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Горутина 1 пишет в table[10]:::data&quot;] --&gt; B[&quot;Инвалидация кэш-линии 64 байта&quot;]
-A --&gt; C[&quot;Горутина 2 читает table[12]&quot;]
-C --&gt; D[&quot;CPU вынужден перезагрузить линию из RAM&quot;]
-B --&gt; E[&quot;Падение пропускной способности в 10-20 раз&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+
+Item[&quot;Элемент X&quot;]:::accent --&gt; H1[&quot;h1(X) = 3&quot;]:::process
+Item --&gt; H2[&quot;h2(X) = 1&quot;]:::process
+Item --&gt; H3[&quot;h3(X) = 7&quot;]:::process
+
+H1 --&gt; R1[&quot;Row 0: [ . . . +1 . . . ]&quot;]:::success
+H2 --&gt; R2[&quot;Row 1: [ . +1 . . . . . ]&quot;]:::success
+H3 --&gt; R3[&quot;Row 2: [ . . . . . . . +1 ]&quot;]:::success
   </pre>
 </div>
 
 
-<p>Атомарные операции работают на уровне кэш-линий. Если два счётчика лежат в одной линии (64 байта на <code>amd64</code>), обновление одного делает линию <code>INVALID</code> для других ядер. Решение: <strong>padding</strong>.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// CachePaddedCounter изолирует счётчик от соседей
-type CachePaddedCounter struct {
-    val   uint32
-    _     [60]byte // 64 - 4 = 60 байт заполнения
-}
-
-// ThreadSafeCMS использует изолированные счётчики
-type ThreadSafeCMS struct {
-    table []CachePaddedCounter
-    // ... остальное
-}
-</code></pre>
-</div>
-
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><code>atomic.AddUint32</code> компилируется в инструкцию <code>LOCK XADD</code> на x86. Эта инструкция блокирует шину/кэш-линию на время операции, гарантируя линейность. В Go 1.19+ планировщик горутин <code>G-M-P</code> эффективно обрабатывает contention на атомиках: если <code>LOCK</code> задерживается, горутина может быть приостановлена, а тред переключён. Но в hot-path с <code>&gt;100K RPS</code> padding обязателен. Без него throughput падает нелинейно при увеличении <code>GOMAXPROCS</code>.</p>
-  </div>
-</div>
-
-<h2 id="4-lovushki-i-voprosy-s-sobesedovaniy">4. Ловушки и вопросы с собеседований</h2>
-
-
-<div class="mermaid-wrapper">
-  <div class="mermaid-header">
-    <div class="mermaid-title">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-      <span>Архитектурная схема</span>
-    </div>
-    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-      <span>На весь экран</span>
-    </button>
-  </div>
-  <pre class="mermaid">
-flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Типичные ошибки Heavy Hitters&quot;]:::error --&gt; B[&quot;Использование float64 для вероятностей&quot;]
-A --&gt; C[&quot;Отсутствие обработки отрицательных частот&quot;]
-A --&gt; D[&quot;CMS без min-операции при запросе&quot;]
-A --&gt; E[&quot;Misra-Gries без лимита k в production&quot;]
-
-B --&gt; F[&quot;Плавающая точка не даёт детерминированных границ&quot;]
-C --&gt; G[&quot;Декремент до отрицательных чисел ломает гарантию&quot;]
-D --&gt; H[&quot;Коллизии завышают результат&lt;br&gt;min обязателен&quot;]
-E --&gt; I[&quot;O-k операция на каждый элемент&lt;br&gt;вызывает CPU-throttle&quot;]
-  </pre>
-</div>
-
-
+<h3 id="svoystva-count-min-sketch">Свойства Count-Min Sketch:</h3>
 <ol>
-<li><strong>Удаление элементов:</strong> Ни Misra-Gries, ни CMS не поддерживают удаление без модификаций. В потоковых логах это решается через <strong>скользящее окно</strong>: массив фиксированного размера, при сдвиге окна вычитаем уходящие элементы из скетча/монитора.</li>
-<li><strong>Выбор <code>ε</code> и <code>δ</code>:</strong> На интервью всегда спрашивают: «Как подобрать <code>w</code> и <code>d</code>?». Ответ: <code>w = ⌈e/ε⌉</code>, <code>d = ⌈ln(1/δ)⌉</code>. Для <code>ε=1%</code>, <code>δ=0.1%</code> → <code>273 × 7</code> ячеек. Это ~7.6 КБ для <code>uint32</code>, независимо от миллиардов запросов.</li>
-<li><strong>CMS vs Exact Map:</strong> При <code>N &lt; 10^5</code> и уникальных ключах &lt; 10 КБ точная <code>map</code> быстрее и точнее. CMS выигрывает при <code>N &gt; 10^7</code> или когда RAM ограничен (контейнеры, edge-устройства, serverless).</li>
-<li><strong>Объединение скетчей:</strong> CMS поддерживает <code>merge</code> через поэлементный <code>max</code>. Это критично для распределённых систем (Kafka-консьюмеры, шардированные логи). Misra-Gries не мержится тривиально.</li>
+<li><strong>Никогда не занижает частоту:</strong> из-за коллизий хеш-функций счетчики в ячейках могут только накапливаться. Поэтому:<br />
+   $$\text{Estimate}(X) \ge \text{TrueCount}(X)$$</li>
+<li><strong>Оценка через минимум:</strong> при запросе частоты элемента $X$ мы вычисляем его ячейки во всех $d$ строках и берем <strong>минимальное</strong> значение:<br />
+   $$\text{Estimate}(X) = \min_{1 \le i \le d} \text{Table}[i][h_i(X)]$$<br />
+   Взятие минимума отсекает коллизии в остальных строках!</li>
 </ol>
+<hr />
+<h2 id="3-apparatnaya-mekhanika-i-predotvrashchenie-false-sharing">3. Аппаратная механика и предотвращение False Sharing</h2>
+
+<p>В многопоточных бэкенд-серверах десятки горутин параллельно вызывают инкремент счетчиков CMS.<br />
+Если хранить матрицу в виде среза срезов <code>[][]uint32</code>:<br />
+- Возникает разрыв кэш-локальности (двойной переход по указателям).<br />
+- Несколько смежных 32-битных счетчиков попадают в одну и ту же 64-байтную кэш-линию CPU. Когда ядро 1 обновляет счетчик <code>Table[0][1]</code>, а ядро 2 обновляет <code>Table[0][2]</code>, протокол когерентности кэшей (MESI) принудительно инвалидирует кэш-линию, приводя к эффекту <strong>False Sharing</strong> и падению пропускной способности в 10–15 раз.</p>
+<p>Решение:<br />
+1. Использование единого плоского одномерного среза <code>table []uint32</code> размера $w \times d$.<br />
+2. Вычисление индекса ячейки: $\text{idx} = \text{row} \times w + \text{col}$.<br />
+3. Атомарный инкремент через <code>atomic.AddUint32(&amp;table[idx], 1)</code>.</p>
+<hr />
+<h2 id="4-voprosy-dlya-sobesedovaniya">4. Вопросы для собеседования</h2>
+
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Почему CMS берёт <code>min</code> по строкам, а не <code>max</code> или <code>avg</code>?<br />
-<strong>Ответ:</strong> Коллизии хешей только увеличивают счётчики. Истинное значение всегда <code>≤</code> всех ячеек, в которые оно попало. Беря <code>min</code>, мы находим строку, где коллизий было минимум. <code>Max</code> или <code>avg</code> вернут завышенную оценку, нарушая guarantee <code>f(x) ≤ estimate(x) ≤ f(x) + εN</code>.</p>
+    <p><strong>Вопрос:</strong> Почему алгоритм Мисры-Гриса требует второго прохода по данным, если требуется подтвердить точный статус Heavy Hitters?<br />
+<strong>Ответ:</strong> Первый проход Мисры-Гриса отсеивает заведомо редкие элементы и формирует список кандидатов (гарантируя отсутствие False Negatives). Однако из-за специфики декрементов в список кандидатов могут случайно попасть элементы, чья реальная частота ниже порога (возможны False Positives). Второй проход производит точный подсчет частот только среди оставшихся $K - 1$ кандидатов.</p>
   </div>
 </div>
 
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как реализовать Heavy Hitters с поддержкой TTL и удалением старых событий?<br />
-<strong>Ответ:</strong> Использовать <strong>Cuckoo Filter</strong> для проверки уникальности + <strong>Time-Decay CMS</strong> или <strong>Sliding Window CMS</strong>. Альтернатива: кольцевой буфер событий, при вытеснении элемента вычитать <code>1</code> из его хеш-ячеек. Если счётчик <code>0</code>, элемент удаляется. Это даёт <code>O(1)</code> память относительно окна, а не всего потока.</p>
+    <p><strong>Вопрос:</strong> Чем алгоритм Space-Saving отличается от классического Мисры-Гриса?<br />
+<strong>Ответ:</strong> В отличие от Мисры-Гриса, который при отсутствии места вычитает единицу из всех счетчиков и удаляет обнулившиеся, алгоритм Space-Saving находит кандидата с наименьшим текущим счетчиком $\text{minVal}$ и заменяет его на новый элемент, присваивая ему счетчик $\text{minVal} + 1$. Это позволяет избежать дорогостоящего сканирования всей таблицы на каждой итерации.</p>
   </div>
 </div>
 
-<h2 id="5-itog-chek-list-proektirovaniya">5. Итог: чек-лист проектирования</h2>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
 <ol>
-<li><strong>Определите контракт:</strong> нужен точный порог (<code>&gt; N/k</code>) → Misra-Gries/Space-Saving. Нужна оценка частоты или топ-K при жёстком лимите RAM → Count-Min Sketch.</li>
-<li><strong>Контролируйте сложность:</strong> избегайте <code>O(k)</code> операций на каждый элемент. Используйте lazy-decrement или heap-оптимизации.</li>
-<li><strong>Оптимизируйте память:</strong> <code>flat []uint32</code> вместо <code>[][]uint32</code>. Padding для atomic-счётчиков при многопоточной записи.</li>
-<li><strong>Выбирайте хеши:</strong> <code>hash/maphash</code> (AES-NI), <code>xxhash</code> или <code>MurmurHash3</code>. Избегайте <code>crypto/rand</code> или медленных хешей в hot-path.</li>
-<li><strong>Обрабатывайте коллизии:</strong> CMS всегда завышает. Документируйте <code>ε</code> и <code>δ</code>. Для детерминированных систем комбинируйте с точной проверкой (<code>map</code> или БД) после фильтрации скетчем.</li>
-<li><strong>Тестируйте на реалистичных данных:</strong> Zipf-распределение (80/20) vs Uniform. Алгоритмы ведут себя по-разному на skewed data.</li>
+<li>Алгоритм Мисры-Гриса гарантированно находит всех тяжеловесов с частотой $&gt; \frac{N}{K}$ при расходе памяти $O(K)$.</li>
+<li>Count-Min Sketch обеспечивает оценку частоты любого произвольного ключа за $O(d)$ времени без хранения самих ключей.</li>
+<li>Оценка частоты в CMS никогда не бывает ниже истинной, а взятие минимума по строкам минимизирует влияние коллизий.</li>
+<li>В конкурентном коде матрицу скетча следует упаковывать в плоский одномерный срез памяти.</li>
 </ol>
-<p>Heavy Hitters — это не просто «посчитать частоты». Это инженерный trade-off между точностью, памятью, скоростью и параллелизмом. Понимание механики кэш-линий, атомарных инструкций и вероятностных границ отличает код, который «работает локально», от компонента, который держит production под терабайтами трафика.</p>
-<p>В следующей статье мы перейдём к поиску топ-K элементов в непрерывном потоке, разберём оптимизацию Space-Saving, минимальные кучи и стратегии слияния шардированных метрик: <a href="3-top-k-frequent-elements-stream.html" class="wikilink">3. Top K Frequent Elements stream</a></p>
+<p>В следующей статье мы объединим кучи и скетчи для отслеживания Top-K частых элементов в режиме реального времени: <a href="3-top-k-frequent-elements-stream.html" class="wikilink">3. Top K Frequent Elements stream</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2580,7 +2431,7 @@ E --&gt; I[&quot;O-k операция на каждый элемент&lt;br&gt;
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#poisk-heavy-hitters-determinirovannye-evristiki-i-veroyatnostnye-struktury">Поиск Heavy Hitters: детерминированные эвристики и вероятностные структуры</a></li><li class="toc-item toc-h2"><a href="#1-determinirovannyy-podkhod-misra-gries-i-space-saving">1. Детерминированный подход: Misra-Gries и Space-Saving</a></li><li class="toc-item toc-h2"><a href="#2-veroyatnostnyy-podkhod-count-min-sketch">2. Вероятностный подход: Count-Min Sketch</a></li><li class="toc-item toc-h2"><a href="#3-mekhanika-rantayma-kesh-linii-false-sharing-i-atomarnost">3. Механика рантайма: кэш-линии, False Sharing и атомарность</a></li><li class="toc-item toc-h2"><a href="#4-lovushki-i-voprosy-s-sobesedovaniy">4. Ловушки и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#5-itog-chek-list-proektirovaniya">5. Итог: чек-лист проектирования</a></li>
+    <li class="toc-item toc-h2"><a href="#poisk-chastykh-elementov-heavy-hitters-ot-algoritma-misry-grisa-do-count-min-ske">Поиск частых элементов (Heavy Hitters): от алгоритма Мисры-Гриса до Count-Min Sketch</a></li><li class="toc-item toc-h2"><a href="#1-determinirovannyy-podkhod-algoritm-misry-grisa-misra-gries">1. Детерминированный подход: алгоритм Мисры-Гриса (Misra-Gries)</a></li><li class="toc-item toc-h3"><a href="#printsip-raboty">Принцип работы</a></li><li class="toc-item toc-h3"><a href="#matematicheskaya-garantiya">Математическая гарантия</a></li><li class="toc-item toc-h2"><a href="#2-veroyatnostnyy-podkhod-count-min-sketch">2. Вероятностный подход: Count-Min Sketch</a></li><li class="toc-item toc-h3"><a href="#svoystva-count-min-sketch">Свойства Count-Min Sketch:</a></li><li class="toc-item toc-h2"><a href="#3-apparatnaya-mekhanika-i-predotvrashchenie-false-sharing">3. Аппаратная механика и предотвращение False Sharing</a></li><li class="toc-item toc-h2"><a href="#4-voprosy-dlya-sobesedovaniya">4. Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

@@ -2171,16 +2171,21 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~26 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~19 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">6. Design Twitter</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="arkhitektura-twitter-lenty-merge-k-sorted-lists-keshirovanie-i-trade-offs-pushpu">Архитектура Twitter-ленты: Merge K Sorted Lists, кэширование и trade-offs Push/Pull</h2>
+            <blockquote>
+<p><em>«Архитектура системы раскрывается не тогда, когда всё работает, а когда миллионы пользователей одновременно хотят одного и того же».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="arkhitektura-twitter-lenty-sliyanie-k-uporyadochennykh-spiskov-push-vs-pull-i-ce">Архитектура Twitter-ленты: слияние K упорядоченных списков, Push vs Pull и celebrity-проблема</h2>
 
-<p>Задача <code>Design Twitter</code> (LeetCode 355) — это не просто упражнение на структуры данных, а классический тест на системное мышление. Она моделирует ядро любой социальной платформы: генерацию ленты новостей на основе динамического графа подписок. На собеседованиях эта задача проверяет умение балансировать между сложностью записи и чтения, выбирать правильные примитивы синхронизации, управлять памятью при высокой нагрузке и объяснять архитектурные компромиссы (Push vs Pull модели).</p>
+<p>Задача <strong>Design Twitter</strong> (LeetCode 355) — классический мост между алгоритмическими структурами данных и архитектурой распределенных систем (System Design). Она моделирует ядро социальной сети: динамический граф подписок и формирование персонализированной новостной ленты в реальном времени.</p>
+<p>На собеседованиях эта задача выявляет инженеров уровня Senior: умеете ли вы не просто сложить твиты в массив и вызвать <code>sort.Slice</code>, а применить потоковое слияние через кучу ($K$-Way Merge), оценить влияние кэш-линий процессора и аргументированно объяснить переход от Pull-модели (Fan-in on Read) к Push-модели (Fan-out on Write).</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2195,37 +2200,50 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Получение ленты: getNewsFeed(userId):::entry&quot;] --&gt; B[&quot;Сбор списка следящих&lt;br&gt;followeeIds + сам user&quot;]
-B --&gt; C[&quot;Итерация по каждому followee&quot;]
-C --&gt; D[&quot;Извлечение последних твитов&quot;]
-D --&gt; E{&quot;Используем Max-Heap?&quot;}
-E --&gt;|Да| F[&quot;Слияние K упорядоченных потоков&lt;br&gt;извлечение top-10&quot;]
-E --&gt;|Нет| G[&quot;Сбор всех в slice&lt;br&gt;сортировка по времени&quot;]
-F --&gt; H[&quot;Возврат 10 самых свежих&quot;]
-G --&gt; H
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+A[&quot;GetNewsFeed(userId)&quot;]:::entry --&gt; B[&quot;Собрать список авторов:&lt;br/&gt;userId + подписки&quot;]:::process
+B --&gt; C[&quot;Инициализировать Max-Heap&lt;br/&gt;последними твитами авторов&quot;]:::process
+C --&gt; D{&quot;Куча пуста или&lt;br/&gt;собрано 10 твитов?&quot;}:::warning
+D --&gt;|Да| E[&quot;Вернуть ленту твитов&quot;]:::success
+D --&gt;|Нет| F[&quot;Извлечь самый свежий твит (Max)&quot;]:::process
+F --&gt; G[&quot;Добавить ID твита в ленту&quot;]:::process
+G --&gt; H{&quot;У автора есть&lt;br/&gt;более старый твит?&quot;}:::warning
+H --&gt;|Да| I[&quot;Добавить предыдущий твит автора в кучу&quot;]:::process
+H --&gt;|Нет| D
+I --&gt; D
   </pre>
 </div>
 
 
-<p>В этом материале мы разберём, почему наивное решение проваливается под нагрузкой, как реализовать ленту с <code>O(K log 10)</code> вместо <code>O(N log N)</code>, как механика CPU влияет на выбор хранилища твитов, и когда на продакшене нужно переходить от Pull к Push модели.</p>
-<h2 id="1-algoritmicheskiy-karkas-pull-model-i-sliyanie-potokov">1. Алгоритмический каркас: Pull-модель и слияние потоков</h2>
+<hr />
+<h2 id="1-algoritmicheskiy-bazis-sliyanie-k-uporyadochennykh-spiskov">1. Алгоритмический базис: слияние K упорядоченных списков</h2>
 
-<p>Ключевое ограничение задачи: лента должна содержать не более 10 самых свежих твитов от пользователя и его подписок. У каждого пользователя твиты хранятся в хронологическом порядке. Задача сводится к слиянию <code>K</code> упорядоченных списков (где <code>K</code> — количество подписок + 1) и выборке первых 10 элементов.</p>
-<p>Наивный подход: собрать все твиты всех подписок в один <code>slice</code>, отсортировать по времени, взять первые 10. Сложность: <code>O(M log M)</code>, где <code>M</code> — суммарное число твитов. При <code>K=1000</code> и <code>M=100000</code> это неприемлемо для hot-path.</p>
-<p>Оптимальный подход: использовать <strong>Max-Heap</strong> (кучу с максимальным элементом в корне). Инициализируем кучу последними твитами каждого из <code>K</code> пользователей. Извлекаем корень (самый свежий), добавляем в результат, и если у этого пользователя остались предыдущие твиты, пушим следующий твит из его списка в кучу. Повторяем 10 раз. Сложность: <code>O(10 * log K)</code>.</p>
+<p>Каждый пользователь публикует твиты последовательно. Если твиты каждого пользователя уже упорядочены по монотонно растущему таймстампу, задача формирования ленты из $10$ самых свежих записей эквивалентна задаче <strong>Merge K Sorted Lists</strong> (<a href="../29-slozhnye-zadachi/4-merge-k-sorted-lists.html" class="wikilink">4. Merge K Sorted Lists</a>).</p>
+<h3 id="sravnenie-podkhodov">Сравнение подходов</h3>
+
+<ol>
+<li>
+<p><strong>Наивный сбор и сортировка:</strong><br />
+   Собрать все твиты от всех авторов, на которых подписан пользователь, в единый срез и отсортировать:<br />
+   $$O(M \log M)$$<br />
+   где $M$ — суммарное количество твитов всех подписок. Если у пользователя $500$ подписок и у каждого по $200$ твитов, $M = 100\,000$. Сортировать сто тысяч элементов ради выборки первых десяти — катастрофический расход тактов CPU.</p>
+</li>
+<li>
+<p><strong>Слияние через Max-Heap (Очередь с приоритетом):</strong><br />
+   В кучу кладутся только самые свежие твиты от каждого из $K$ авторов (размер кучи не превышает $K$). Мы извлекаем максимум $10$ раз. На каждом шаге в кучу добавляется следующий по старшинству твит от автора только что извлеченного твита.<br />
+   $$O(K + 10 \log K)$$<br />
+   При любых объемах архивов твитов сложность зависит только от числа подписок $K$.</p>
+</li>
+</ol>
+<hr />
 <h2 id="2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</h2>
 
-<p>Для production-ready решения используем композицию структур, явное управление синхронизацией и предвыделение памяти. Вместо <code>container/heap</code> реализуем компактную min-heap (сохраняем отрицательные таймстампы или инвертируем порядок), так как стандартный <code>heap</code> требует реализации 5 методов интерфейса, что избыточно для интервью.</p>
+<p>Для максимальной производительности твиты автора хранятся в плоском срезе значений <code>[]Tweet</code>, а не указателей <code>[]*Tweet</code>. Для работы с кучей используется стандартный пакет <code>container/heap</code>.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2237,194 +2255,212 @@ G --&gt; H
   </div>
   <pre class="language-go"><code class="language-go">package twitter
 
-import &quot;sync&quot;
+import (
+    &quot;container/heap&quot;
+    &quot;sync&quot;
+    &quot;sync/atomic&quot;
+)
 
+// Tweet представляет опубликованное сообщение.
 type Tweet struct {
-    ID        int
-    UserID    int
-    Timestamp int // монотонно растущий счётчик
+    ID   int
+    Time int64
 }
 
-// User хранит данные пользователя, твиты и граф подписок
+// User инкапсулирует твиты пользователя и граф его подписок.
 type User struct {
-    id       int
-    tweets   []Tweet // хранятся в порядке добавления (новые в конце)
-    follows  map[int]struct{}
-    mu       sync.RWMutex
+    mu        sync.RWMutex
+    id        int
+    following map[int]struct{}
+    tweets    []Tweet // плоский срез, новые твиты в конце
 }
 
-func NewUser(id int) *User {
+func newUser(id int) *User {
     return &amp;User{
-        id:      id,
-        follows: make(map[int]struct{}),
-        tweets:  make([]Tweet, 0, 64), // предвыделение под типичный объём
+        id:        id,
+        following: make(map[int]struct{}),
+        tweets:    make([]Tweet, 0, 32),
     }
 }
 
-type Twitter struct {
-    users     map[int]*User
-    mu        sync.RWMutex
-    timestamp int
+// heapNode хранит состояние обхода ленты конкретного автора.
+type heapNode struct {
+    tweet Tweet
+    uid   int
+    index int // индекс следующего твита для просмотра в tweets автора
 }
 
-func Constructor() *Twitter {
-    return &amp;Twitter{
+// maxTweetHeap реализует интерфейс heap.Interface для поиска самых свежих твитов.
+type maxTweetHeap []heapNode
+
+func (h maxTweetHeap) Len() int           { return len(h) }
+func (h maxTweetHeap) Less(i, j int) bool { return h[i].tweet.Time &gt; h[j].tweet.Time } // Max-Heap
+func (h maxTweetHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *maxTweetHeap) Push(x any)        { *h = append(*h, x.(heapNode)) }
+func (h *maxTweetHeap) Pop() any {
+    old := *h
+    n := len(old)
+    item := old[n-1]
+    *h = old[0 : n-1]
+    return item
+}
+
+// Twitter координирует пользователей и глобальное время.
+type Twitter struct {
+    mu      sync.RWMutex
+    users   map[int]*User
+    clock   atomic.Int64 // монотонный генератор логического времени
+}
+
+func Constructor() Twitter {
+    return Twitter{
         users: make(map[int]*User),
     }
 }
 
-func (t *Twitter) getUser(id int) *User {
-    if u, ok := t.users[id]; ok {
-        return u
-    }
-    u := NewUser(id)
-    t.users[id] = u
-    return u
-}
-
-func (t *Twitter) PostTweet(userId int, tweetId int) {
-    t.mu.Lock()
-    t.timestamp++
-    ts := t.timestamp
-    t.mu.Unlock()
-
-    u := t.getUser(userId)
-    u.mu.Lock()
-    defer u.mu.Unlock()
-    u.tweets = append(u.tweets, Tweet{ID: tweetId, UserID: userId, Timestamp: ts})
-}
-
-// GetNewsFeed возвращает 10 самых свежих твитов
-func (t *Twitter) GetNewsFeed(userId int) []int {
+func (t *Twitter) getOrCreateUser(userId int) *User {
     t.mu.RLock()
     u, ok := t.users[userId]
     t.mu.RUnlock()
-    if !ok {
-        return nil
+    if ok {
+        return u
     }
 
-    // Собираем ID подписок + самого пользователя
-    targets := []int{userId}
+    t.mu.Lock()
+    defer t.mu.Unlock()
+    // Double-check locking
+    if u, ok = t.users[userId]; ok {
+        return u
+    }
+    u = newUser(userId)
+    t.users[userId] = u
+    return u
+}
+
+// PostTweet публикует твит от имени пользователя.
+func (t *Twitter) PostTweet(userId int, tweetId int) {
+    u := t.getOrCreateUser(userId)
+    timestamp := t.clock.Add(1)
+
+    u.mu.Lock()
+    u.tweets = append(u.tweets, Tweet{ID: tweetId, Time: timestamp})
+    u.mu.Unlock()
+}
+
+// GetNewsFeed формирует ленту из 10 самых свежих твитов.
+func (t *Twitter) GetNewsFeed(userId int) []int {
+    u := t.getOrCreateUser(userId)
+
+    // Собираем снимок списка авторов: сам пользователь + подписки
     u.mu.RLock()
-    for fid := range u.follows {
-        targets = append(targets, fid)
+    authors := make([]int, 0, len(u.following)+1)
+    authors = append(authors, userId)
+    for fid := range u.following {
+        authors = append(authors, fid)
     }
     u.mu.RUnlock()
 
-    // Max-Heap: храним {timestamp, tweetIdx, userID}
-    // Реализуем как slice для кэш-локальности
-    type heapItem struct {
-        ts      int
-        tweetID int
-        uIdx    int // индекс в targets
-        pos     int // позиция в tweets
-    }
+    // Инициализируем кучу
+    h := make(maxTweetHeap, 0, len(authors))
 
-    var heap []heapItem
-    // Инициализация кучи последними твитами
-    for i, uid := range targets {
-        t.mu.RLock()
-        targetUser := t.users[uid]
-        t.mu.RUnlock()
-
-        targetUser.mu.RLock()
-        if len(targetUser.tweets) &gt; 0 {
-            tw := targetUser.tweets[len(targetUser.tweets)-1]
-            heap = append(heap, heapItem{tw.Timestamp, tw.ID, i, len(targetUser.tweets) - 1})
-        }
-        targetUser.mu.RUnlock()
-    }
-
-    // Превращаем в max-heap
-    buildMaxHeap(heap)
-
-    feed := make([]int, 0, 10)
-    for len(heap) &gt; 0 &amp;&amp; len(feed) &lt; 10 {
-        top := heap[0]
-        feed = append(feed, top.tweetID)
-
-        // Извлекаем корень, восстанавливаем кучу
-        popMaxHeap(&amp;heap)
-
-        // Если у пользователя есть предыдущий твит, добавляем в кучу
-        if top.pos &gt; 0 {
-            t.mu.RLock()
-            targetUser := t.users[targets[top.uIdx]]
-            t.mu.RUnlock()
-            targetUser.mu.RLock()
-            prevTw := targetUser.tweets[top.pos-1]
-            targetUser.mu.RUnlock()
-
-            heap = append(heap, heapItem{
-                ts: prevTw.Timestamp, 
-                tweetID: prevTw.ID, 
-                uIdx: top.uIdx, 
-                pos: top.pos - 1,
+    for _, aid := range authors {
+        author := t.getOrCreateUser(aid)
+        author.mu.RLock()
+        n := len(author.tweets)
+        if n &gt; 0 {
+            // Берем самый последний (самый свежий) твит
+            lastTweet := author.tweets[n-1]
+            h = append(h, heapNode{
+                tweet: lastTweet,
+                uid:   aid,
+                index: n - 2, // указатель на предыдущий твит
             })
-            heapPushUp(heap, len(heap)-1)
+        }
+        author.mu.RUnlock()
+    }
+
+    heap.Init(&amp;h)
+
+    result := make([]int, 0, 10)
+
+    // Извлекаем до 10 твитов
+    for h.Len() &gt; 0 &amp;&amp; len(result) &lt; 10 {
+        top := heap.Pop(&amp;h).(heapNode)
+        result = append(result, top.tweet.ID)
+
+        if top.index &gt;= 0 {
+            author := t.getOrCreateUser(top.uid)
+            author.mu.RLock()
+            if top.index &lt; len(author.tweets) {
+                prevTweet := author.tweets[top.index]
+                heap.Push(&amp;h, heapNode{
+                    tweet: prevTweet,
+                    uid:   top.uid,
+                    index: top.index - 1,
+                })
+            }
+            author.mu.RUnlock()
         }
     }
 
-    return feed
+    return result
 }
 
-// follow/unfollow реализуются тривиально через map-манипуляции с блокировками
+// Follow подписывает followerId на followeeId.
 func (t *Twitter) Follow(followerId int, followeeId int) {
-    if followerId == followeeId { return }
-    u := t.getUser(followerId)
+    if followerId == followeeId {
+        return
+    }
+    u := t.getOrCreateUser(followerId)
+    t.getOrCreateUser(followeeId) // гарантируем существование цели
+
     u.mu.Lock()
-    u.follows[followeeId] = struct{}{}
+    u.following[followeeId] = struct{}{}
     u.mu.Unlock()
 }
 
+// Unfollow отписывает followerId от followeeId.
 func (t *Twitter) Unfollow(followerId int, followeeId int) {
-    u := t.getUser(followerId)
+    if followerId == followeeId {
+        return
+    }
+    u := t.getOrCreateUser(followerId)
+
     u.mu.Lock()
-    delete(u.follows, followeeId)
+    delete(u.following, followeeId)
     u.mu.Unlock()
 }
-
-// Вспомогательные функции кучи (упрощённые для статьи)
-func buildMaxHeap(h []heapItem) { ... }
-func popMaxHeap(h *[]heapItem) { ... }
-func heapPushUp(h []heapItem, i int) { ... }
 </code></pre>
 </div>
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+<hr />
+<h2 id="3-mekhanika-apparatury-i-kesh-pamyati-pochemu-tweet-a-ne-tweet">3. Механика аппаратуры и кэш-памяти: почему `[]Tweet`, а не `[]*Tweet`</h2>
+
+<p>Структура <code>Tweet</code> занимает всего $16$ байт ($8$ байт <code>int</code> ID + $8$ байт <code>int64</code> Time).<br />
+Стандартная кэш-линия процессора (x86-64 и ARM64) равна <strong>64 байтам</strong>.</p>
+
+<div class="code-block" data-lang="text">
+  <div class="code-header">
+    <span class="code-lang-tag">TEXT</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p>Почему раздельные мьютексы на <code>Twitter</code> и <code>User</code>? Глобальная блокировка на всю структуру (<code>sync.Mutex</code> в <code>Twitter</code>) создаёт bottleneck: один <code>PostTweet</code> блокирует чтение ленты у миллионов пользователей. Гранулярные <code>RWMutex</code> на уровне пользователя позволяют конкурентно читать твиты разных авторов. <code>t.mu</code> защищает только карту <code>users</code>, <code>u.mu</code> — содержимое профиля. Это классический паттерн <strong>Fine-grained locking</strong>.</p>
-  </div>
+  <pre class="language-text"><code class="language-text">[ Кэш-линия L1: 64 байта ]
+| Tweet 0 (16B) | Tweet 1 (16B) | Tweet 2 (16B) | Tweet 3 (16B) |
+</code></pre>
 </div>
 
-<h2 id="3-pod-kapotom-pamyat-cpu-i-mekhanika-sortirovki">3. Под капотом: память, CPU и механика сортировки</h2>
+<p>Когда мы обращаемся к <code>author.tweets[n-1]</code>, контроллер памяти загружает в L1-кэш сразу <strong>четыре последних твита</strong> за один такт шины. Переход к <code>top.index - 1</code> происходит мгновенно — данные уже находятся в регистре или кэше L1.</p>
+<p>Если бы мы хранили срез указателей <code>[]*Tweet</code>:<br />
+- Каждый элемент среза — это указатель $8$ байт, ведущий в случайную область кучи.<br />
+- Каждое разыменование указателя — это потенциальный L3/RAM Cache Miss (задержка до 60–100 наносекунд).<br />
+- Сборщик мусора Go вынужден был бы сканировать миллионы отдельных объектов в куче.</p>
+<hr />
+<h2 id="4-arkhitekturnyy-masshtab-push-vs-pull-i-problema-dzhastina-bibera">4. Архитектурный масштаб: Push vs Pull и проблема «Джастина Бибера»</h2>
 
-<h3 id="kesh-lokalnost-tvitov">Кэш-локальность твитов</h3>
-<p>Хранение твитов в <code>[]Tweet</code> (слайс значений) значительно лучше, чем <code>[]*Tweet</code>. Каждый <code>Tweet</code> занимает 24 байта на 64-битной системе (<code>int</code> + <code>int</code> + <code>int</code> + выравнивание). В одной кэш-линии (64 байта) помещается 2-3 твита. При итерации <code>u.tweets</code> процессор эффективно использует аппаратный prefetcher. Если бы мы использовали <code>[]*Tweet</code>, каждый элемент — указатель на случайный адрес в куче. Это гарантировало бы промахи L1/L2 на каждом шаге и падение пропускной способности в 5-10 раз.</p>
-<h3 id="pamyat-kuchi-i-gc">Память кучи и GC</h3>
-<p><code>heapItem</code> создаётся в цикле <code>GetNewsFeed</code>. Компилятор Go помещает слайс <code>heap</code> в кучу (<code>escapes to heap</code>), так как его размер динамичен. При 10 извлечениях мы создаём минимум аллокаций. Если пользователь имеет 1000 подписок, инициализация кучи выделит ~1000 элементов. Это <code>O(K)</code> памяти на один запрос. В высоконагруженных системах это неприемлемо, поэтому применяются ограничения на <code>K</code> или кэширование ленты.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Частая ошибка: хранить <code>follows</code> как <code>[]int</code> и проверять вхождения линейно. Это превращает <code>Follow</code> в <code>O(F)</code>, а <code>GetNewsFeed</code> в <code>O(F²)</code> при поиске дубликатов. Всегда используйте <code>map[int]struct{}</code>. В Go <code>struct{}{}</code> не занимает места в памяти (zero-sized type), а хеширование целых чисел тривиально и выполняется за 1-2 инструкции CPU.</p>
-  </div>
-</div>
-
-<h2 id="4-arkhitekturnyy-trade-off-push-fan-out-vs-pull-fan-in">4. Архитектурный trade-off: Push (Fan-out) vs Pull (Fan-in)</h2>
-
-<p>Реализация выше — это <strong>Pull-модель (Fan-in on Read)</strong>. Лента формируется в момент запроса. Это экономит память, но нагружает CPU при большом количестве подписок.</p>
-<p>В реальном Twitter/X используется гибридная архитектура, склоняющаяся к <strong>Push-модели (Fan-out on Write)</strong> для обычных пользователей:<br />
-- При <code>PostTweet</code> асинхронно рассылаем твит в ленты всех подписчиков (precomputed feeds).<br />
-- Чтение становится <code>O(1)</code> — просто достать готовые 10 записей из кэша/БД.<br />
-- <strong>Проблема:</strong> "Звёзды" с миллионами подписок (celebrity accounts). Fan-out при каждом их твите убьёт write-throughput и создаст write amplification.<br />
-- <strong>Решение:</strong> Для звёзд переключаться на Pull-модель или ленивое слияние (lazy merge). Лента читателя = кэшированные твиты обычных подписок + on-the-fly мерж твитов от звёзд.</p>
+<p>При переносе алгоритма в реальную распределенную систему возникает дилемма двух моделей:</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2439,96 +2475,67 @@ func heapPushUp(h []heapItem, i int) { ... }
   </div>
   <pre class="mermaid">
 flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Обычный пользователь&quot;]:::entry --&gt; B[&quot;Fan-out on Write&lt;br&gt;Push в кэш подписчиков&quot;]
-A --&gt; C[&quot;Чтение: O-1 из кэша&quot;]
-D[&quot;Звезда с 10M фанатов&quot;]:::process --&gt; E[&quot;Fan-out невозможен&lt;br&gt;Write amplification&quot;]
-D --&gt; F[&quot;Pull on Read&lt;br&gt;Мерж по запросу или lazy cache&quot;]
-B --&gt; G[&quot;Гибридная система&lt;br&gt;Twitter/X production&quot;]
-F --&gt; G
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+
+subgraph PullModel[&quot;1. Pull-модель (Fan-in on Read)&quot;]
+A1[&quot;Публикация: запись в 1 список&quot;]:::success
+A1 -.-&gt; B1[&quot;Чтение: слияние K списков через кучу&quot;]:::warning
+end
+
+subgraph PushModel[&quot;2. Push-модель (Fan-out on Write)&quot;]
+A2[&quot;Публикация: запись в ленты N подписчиков&quot;]:::error
+A2 -.-&gt; B2[&quot;Чтение: O(1) чтение готовой ленты&quot;]:::success
+end
   </pre>
 </div>
 
 
+<h3 id="problema-superzvezd-celebrity-problem">Проблема суперзвезд (Celebrity Problem)</h3>
+<p>Представьте пользователя (например, Илона Маска или Джастина Бибера), у которого $100\,000\,000$ подписчиков.<br />
+В чистой <strong>Push-модели</strong> одна публикация такого аккаунта потребует:<br />
+- $100$ миллионов операций записи в очереди и кэши подписчиков.<br />
+- Огромный write amplification и всплеск нагрузки на сеть и диски.</p>
+<p>В продакшене Twitter (X) использует <strong>гибридную модель</strong>:<br />
+1. Для $99.9\%$ обычных пользователей действует <strong>Push-модель</strong>: твит раскладывается по предрассчитанным таймлайнам подписчиков в Redis. Чтение ленты выполняется за $O(1)$.<br />
+2. Для аккаунтов со статусом <strong>Celebrity</strong> (более $20\,000$ фолловеров) Push отключается.<br />
+3. При открытии ленты клиентом сервис читает готовый кэш подписчика ($O(1)$) и на лету подмешивает твиты суперзвезд через описанный выше алгоритм слияния потоков.</p>
+<hr />
+<h2 id="5-voprosy-dlya-sobesedovaniya">5. Вопросы для собеседования</h2>
+
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как масштабировать Pull-модель, если <code>GetNewsFeed</code> занимает 50 мс?<br />
-<strong>Ответ:</strong> <br />
-1. Кэшировать результат ленты на 1-5 секунд.<br />
-2. Асинхронно пресчитать ленту для активных пользователей в фоне.<br />
-3. Ограничить глубину поиска: брать только последние 50 твитов от каждого подписчика.<br />
-4. Шардировать пользователей по серверам. Граф подписок размазать по кластеру. Запросы маршрутизировать к шарду владельца ленты.</p>
+    <p><strong>Вопрос:</strong> Почему для монотонного времени в коде использован <code>atomic.Int64</code>, а не <code>time.Now().UnixNano()</code>?<br />
+<strong>Ответ:</strong> Физические системные часы операционной системы (<code>time.Now()</code>) не гарантируют строгой монотонности при конкурентных вызовах на разных ядрах CPU (возможен дрифт или синхронизация по NTP назад во времени). Атомарный счетчик <code>atomic.AddInt64</code> обеспечивает строгую линеаризуемость: если операция $B$ началась после завершения $A$, ее метка времени гарантированно больше.</p>
   </div>
 </div>
 
-<h2 id="5-lovushki-i-granichnye-sluchai">5. Ловушки и граничные случаи</h2>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Как организовать пагинацию ленты, если пользователь листает глубже 10 твитов?<br />
+<strong>Ответ:</strong> Использовать Cursor-based пагинацию. Клиенту возвращается маркер (cursor), содержащий <code>Time</code> и <code>TweetID</code> последнего отображенного элемента. Следующий запрос <code>GetNewsFeed(cursor)</code> передает этот маркер в кучу, отсекая все твиты с меткой времени моложе переданной.</p>
+  </div>
+</div>
+
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
 <ol>
-<li><strong>Самоподписка:</strong> <code>Follow(userId, userId)</code> должна игнорироваться или обрабатываться без дублирования твитов.</li>
-<li><strong>Отписка от несуществующего:</strong> <code>Unfollow</code> на несуществующего <code>followee</code> не должна паниковать. <code>delete</code> из мапы безопасен для отсутствующих ключей.</li>
-<li><strong>Удаление твитов:</strong> В LC задача обычно не требует удаления, но в продакшене используется <code>Soft Delete</code> (флаг <code>IsDeleted</code>). При <code>GetNewsFeed</code> такие твиты фильтруются, но не удаляются из массива для сохранения индексов.</li>
-<li><strong>Конкурентная модификация графа:</strong> Если во время <code>GetNewsFeed</code> пользователь отписался от кого-то, <code>Pull</code>-модель просто не найдёт его в <code>targets</code>, так как мы сделали snapshot мапы <code>follows</code> под <code>RLock</code>. Это eventual consistency, приемлемое для лент.</li>
+<li>Алгоритм слияния $K$ списков через Max-Heap позволяет получить 10 самых свежих твитов за время $O(K + 10 \log K)$, исключая необходимость сортировки всей массы сообщений.</li>
+<li>Хранение плоских структур <code>Tweet</code> по значению использует 64-байтные кэш-линии процессора на $100\%$, исключая Cache Misses.</li>
+<li>В распределенных системах выбор между Push и Pull сводится к гибридной схеме, изолирующей суперзвезд от массового fan-out.</li>
 </ol>
-<h2 id="6-voprosy-s-sobesedovaniy-glubina-ponimaniya">6. Вопросы с собеседований: глубина понимания</h2>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Почему в <code>GetNewsFeed</code> мы используем <code>sync.RWMutex</code>, а в <code>PostTweet</code> — <code>Lock</code>?<br />
-<strong>Ответ:</strong> <code>GetNewsFeed</code> только читает <code>tweets</code> и <code>follows</code>. Множество горутин могут параллельно читать ленту одного пользователя. <code>PostTweet</code> и <code>Follow</code> изменяют состояние, поэтому требуют эксклюзивной блокировки. Однако в реализации выше <code>PostTweet</code> сначала инкрементирует глобальный <code>timestamp</code>, а потом локальный <code>Lock</code>. Это гарантирует монотонность времени даже при высокой конкурентности, но создаёт contention на <code>t.mu</code>. Оптимизация: использовать <code>sync/atomic.AddInt64</code> для timestamp, убрав <code>t.mu.Lock()</code> из write-path.</p>
-  </div>
-</div>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как избежать аллокаций кучи в <code>GetNewsFeed</code>?<br />
-<strong>Ответ:</strong> Переиспользовать пул слайсов через <code>sync.Pool</code> для <code>heap</code>. Использовать <code>unsafe.Slice</code> или фиксированные массивы <code>[1000]heapItem</code> на стеке, если <code>GOMAXPROCS</code> известен. Но главное: кэшировать результат ленты. Если кэш命中率 &gt; 80%, давление на GC падает экспоненциально.</p>
-  </div>
-</div>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Что будет, если пользователь подпишется на 5000 аккаунтов?<br />
-<strong>Ответ:</strong> <code>GetNewsFeed</code> станет тяжёлой операцией: инициализация кучи займёт память, а 10 итераций потребуют 5000 проверок. В продакшене вводят лимит на активные подписки для формирования ленты, либо используют асинхронный фоновый процесс, который поддерживает precomputed timeline в Redis (Sorted Set по timestamp).</p>
-  </div>
-</div>
-
-<h2 id="itog-chek-list-proektirovaniya-lenty">Итог: чек-лист проектирования ленты</h2>
-
-<ol>
-<li><strong>Алгоритм:</strong> Merge K Sorted Lists через Max-Heap даёт <code>O(T log K)</code>, где T=10, K=подписки.</li>
-<li><strong>Память:</strong> Храните твиты как <code>[]struct</code>, а не <code>[]*struct</code>, для кэш-локальности и снижения GC-pressure.</li>
-<li><strong>Синхронизация:</strong> Granular <code>RWMutex</code> на уровне пользователя. Атомарные счётчики для монотонного времени.</li>
-<li><strong>Архитектура:</strong> Pull для простоты и экономии памяти, Push для скорости чтения. Гибрид для звёзд.</li>
-<li><strong>Кэширование:</strong> Обязательный слой Redis/Memcached для готовых лент. Invalidated on <code>PostTweet</code>.</li>
-<li><strong>Edge cases:</strong> Самоподписка, удаление, пустые ленты, лимиты на глубину сканирования.</li>
-</ol>
-<p><code>Design Twitter</code> — это микрокосм системного дизайна. Умение перейти от in-memory алгоритма к распределённой архитектуре, объяснив компромиссы между latency, throughput и consistency, отличает инженера, готового к проектированию высоконагруженных систем.</p>
-<p>В следующей статье мы разберём структуру данных для быстрого поиска минимума в динамическом потоке, оптимизацию стека и паттерны монотонного стека: <a href="7-min-stack.html" class="wikilink">7. Min Stack</a></p>
+<p>В следующей статье мы разберем оптимизацию базового стека для поиска минимума за константное время: <a href="7-min-stack.html" class="wikilink">7. Min Stack</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2556,7 +2563,7 @@ F --&gt; G
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#arkhitektura-twitter-lenty-merge-k-sorted-lists-keshirovanie-i-trade-offs-pushpu">Архитектура Twitter-ленты: Merge K Sorted Lists, кэширование и trade-offs Push/Pull</a></li><li class="toc-item toc-h2"><a href="#1-algoritmicheskiy-karkas-pull-model-i-sliyanie-potokov">1. Алгоритмический каркас: Pull-модель и слияние потоков</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#3-pod-kapotom-pamyat-cpu-i-mekhanika-sortirovki">3. Под капотом: память, CPU и механика сортировки</a></li><li class="toc-item toc-h3"><a href="#kesh-lokalnost-tvitov">Кэш-локальность твитов</a></li><li class="toc-item toc-h3"><a href="#pamyat-kuchi-i-gc">Память кучи и GC</a></li><li class="toc-item toc-h2"><a href="#4-arkhitekturnyy-trade-off-push-fan-out-vs-pull-fan-in">4. Архитектурный trade-off: Push (Fan-out) vs Pull (Fan-in)</a></li><li class="toc-item toc-h2"><a href="#5-lovushki-i-granichnye-sluchai">5. Ловушки и граничные случаи</a></li><li class="toc-item toc-h2"><a href="#6-voprosy-s-sobesedovaniy-glubina-ponimaniya">6. Вопросы с собеседований: глубина понимания</a></li><li class="toc-item toc-h2"><a href="#itog-chek-list-proektirovaniya-lenty">Итог: чек-лист проектирования ленты</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-twitter-lenty-sliyanie-k-uporyadochennykh-spiskov-push-vs-pull-i-ce">Архитектура Twitter-ленты: слияние K упорядоченных списков, Push vs Pull и celebrity-проблема</a></li><li class="toc-item toc-h2"><a href="#1-algoritmicheskiy-bazis-sliyanie-k-uporyadochennykh-spiskov">1. Алгоритмический базис: слияние K упорядоченных списков</a></li><li class="toc-item toc-h3"><a href="#sravnenie-podkhodov">Сравнение подходов</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#3-mekhanika-apparatury-i-kesh-pamyati-pochemu-tweet-a-ne-tweet">3. Механика аппаратуры и кэш-памяти: почему []Tweet, а не []Tweet</a></li><li class="toc-item toc-h2"><a href="#4-arkhitekturnyy-masshtab-push-vs-pull-i-problema-dzhastina-bibera">4. Архитектурный масштаб: Push vs Pull и проблема «Джастина Бибера»</a></li><li class="toc-item toc-h3"><a href="#problema-superzvezd-celebrity-problem">Проблема суперзвезд (Celebrity Problem)</a></li><li class="toc-item toc-h2"><a href="#5-voprosy-dlya-sobesedovaniya">5. Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

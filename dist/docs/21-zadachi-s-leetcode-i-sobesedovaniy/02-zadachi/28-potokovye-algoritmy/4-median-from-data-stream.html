@@ -2171,16 +2171,22 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~22 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
+              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">4. Median from Data Stream</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="mediana-v-potoke-two-heaps-balansirovka-i-granitsy-tochnosti">Медиана в потоке: Two Heaps, балансировка и границы точности</h2>
+            <blockquote>
+<p><em>«Медиана — самый упрямый из статистических показателей: среднее можно обмануть одним гигантским числом, медиану — никогда».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="mediana-v-potoke-dannykh-median-from-data-stream-invariant-dvukh-kuch-i-mekhanik">Медиана в потоке данных (Median from Data Stream): инвариант двух куч и механика балансировки</h2>
 
-<p>Задача <code>Find Median from Data Stream</code> — это не просто упражнение на кучи. В потоковом контексте она моделирует реальные бэкенд-сценарии: мониторинг перцентилей задержек (p50), балансировку нагрузки по latency, агрегацию финансовых котировок и детекцию аномалий в телеметрии. Ключевая сложность — поддерживать медиану за <code>O(1)</code> при добавлении элементов за <code>O(log N)</code>, не сортируя весь поток и не расходуя <code>O(N)</code> памяти на каждый запрос. В Go это требует аккуратного выбора структур данных, контроля над аллокациями и понимания того, как кучи взаимодействуют с кэш-линиями CPU и сборщиком мусора.</p>
+<p>Задача непрерывного вычисления медианы потока чисел (<strong>Find Median from Data Stream</strong>, LeetCode 295) — классический вопрос на стыке алгоритмов и системного мониторинга. </p>
+<p>В отличие от среднего арифметического, которое легко вычисляется за $O(1)$ памяти через сумму и счетчик, медиана устойчива к выбросам (Outliers) и аномалиям, что делает ее стандартом для метрик латентности серверов (p50 latency). Однако для точного расчета медианы требуется знать центральный элемент отсортированного ряда. Сортировать весь поток за $O(N \log N)$ при каждом новом числе недопустимо.</p>
+<p>Решение заключается в поддержании <strong>двух встречно направленных куч (Two Heaps)</strong>, что обеспечивает вставку за $O(\log N)$ и получение медианы за $O(1)$.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2195,46 +2201,49 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Поступление нового числа num&quot;]:::warning --&gt; B{&quot;lower пуст или num меньше корня lower?&quot;}
-B --&gt;|Да| C[&quot;Вставка в lower&lt;br&gt;Max-Heap&quot;]
-B --&gt;|Нет| D[&quot;Вставка в higher&lt;br&gt;Min-Heap&quot;]
-C --&gt; E[&quot;Проверка баланса размеров&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+A[&quot;AddNum(num)&quot;]:::entry --&gt; B{&quot;lower пуста или num &lt;= max(lower)?&quot;}:::warning
+B --&gt;|Да| C[&quot;Push в lower (Max-Heap)&quot;]:::process
+B --&gt;|Нет| D[&quot;Push в higher (Min-Heap)&quot;]:::process
+C --&gt; E{&quot;Проверка баланса размеров&quot;}:::warning
 D --&gt; E
-E --&gt; F{&quot;Размер lower больше размера higher + 1?&quot;}
-F --&gt;|Да| G[&quot;Переместить корень lower в higher&quot;]
-E --&gt; H{&quot;Размер higher больше размера lower?&quot;}
-H --&gt;|Да| I[&quot;Переместить корень higher в lower&quot;]
-G --&gt; J[&quot;Инвариант восстановлен&lt;br&gt;Готовность к запросу медианы&quot;]
-I --&gt; J
+E --&gt;|len(lower) &gt; len(higher) + 1| F[&quot;Переместить корень lower в higher&quot;]:::error
+E --&gt;|len(higher) &gt; len(lower)| G[&quot;Переместить корень higher в lower&quot;]:::error
+E --&gt;|Сбалансировано| H[&quot;Инвариант соблюден&quot;]:::success
+F --&gt; H
+G --&gt; H
   </pre>
 </div>
 
 
-<h2 id="1-algoritmicheskiy-karkas-invariant-dvukh-kuch">1. Алгоритмический каркас: инвариант двух куч</h2>
+<hr />
+<h2 id="1-invariant-dvukh-kuch-two-heaps-invariant">1. Инвариант двух куч (Two Heaps Invariant)</h2>
 
-<p>Классическое решение использует две приоритетные очереди:<br />
-- <code>lower</code> (Max-Heap): хранит меньшую половину чисел. Корень — максимум из нижней части.<br />
-- <code>higher</code> (Min-Heap): хранит большую половину чисел. Корень — минимум из верхней части.</p>
-<p><strong>Инварианты:</strong><br />
-1. Все элементы <code>lower</code> <code>&lt;=</code> всех элементов <code>higher</code>.<br />
-2. <code>len(lower) == len(higher)</code> или <code>len(lower) == len(higher) + 1</code>.</p>
-<p>Медиана вычисляется за <code>O(1)</code>:<br />
-- Если размеры равны: среднее арифметическое корней.<br />
-- Если <code>lower</code> больше на 1: корень <code>lower</code>.</p>
-<p>При добавлении нового числа мы нарушаем инвариант на 1-2 элемента, после чего выполняем ребалансировку путём перекладывания корней между кучами. Это гарантирует амортизированную сложность <code>O(log N)</code> на вставку и <code>O(1)</code> на чтение.</p>
-<h2 id="2-idiomatichnaya-realizatsiya-na-go-tipizirovannye-kuchi-bez-interface">2. Идиоматичная реализация на Go: типизированные кучи без `interface{}`</h2>
+<p>Числовой ряд мысленно делится строго пополам на две половины:<br />
+1. <strong>Нижняя половина (Меньшие числа):</strong> организуется как <strong>Max-Heap</strong> (<code>lower</code>). Корень кучи содержит максимальный из меньших элементов.<br />
+2. <strong>Верхняя половина (Большие числа):</strong> организуется как <strong>Min-Heap</strong> (<code>higher</code>). Корень кучи содержит минимальный из больших элементов.</p>
+<h3 id="strogie-invarianty-struktury">Строгие инварианты структуры:</h3>
+<ol>
+<li><strong>Инвариант упорядоченности:</strong> любой элемент из <code>lower</code> не превышает любого элемента из <code>higher</code>:<br />
+   $$\max(\text{lower}) \le \min(\text{higher})$$</li>
+<li><strong>Инвариант баланса размеров:</strong> размер <code>lower</code> либо равен размеру <code>higher</code>, либо превышает его ровно на $1$:<br />
+   $$|\text{lower}| = |\text{higher}| \quad \text{или} \quad |\text{lower}| = |\text{higher}| + 1$$</li>
+</ol>
+<h3 id="vychislenie-mediany-za-o1">Вычисление медианы за $O(1)$:</h3>
+<ul>
+<li>Если суммарное количество чисел <strong>нечетное</strong> ($|\text{lower}| &gt; |\text{higher}|$): медиана равна корню <code>lower</code>.</li>
+<li>Если суммарное количество чисел <strong>четное</strong> ($|\text{lower}| = |\text{higher}|$): медиана равна полусумме корней:<br />
+  $$\text{median} = \frac{\max(\text{lower}) + \min(\text{higher})}{2.0}$$</li>
+</ul>
+<hr />
+<h2 id="2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</h2>
 
-<p>Стандартный <code>container/heap</code> работает через <code>interface{}</code>, что создаёт boxing/unboxing, скрывает типы от компилятора и увеличивает давление на GC. Для production-кода предпочтительна строгая типизация. Ниже — реализация с ручным управлением кучами, <code>sync.RWMutex</code> и явной проверкой инвариантов.</p>
+<p>Для исключения аллокаций и накладных расходов интерфейса <code>any</code> реализуем типизированные кучи целых чисел:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2244,248 +2253,182 @@ I --&gt; J
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">package medianstream
+  <pre class="language-go"><code class="language-go">package median
 
 import (
-    &quot;errors&quot;
+    &quot;container/heap&quot;
     &quot;sync&quot;
 )
 
-// heap implements a generic min-heap or max-heap via a comparator
-type heap []float64
+// maxHeap реализует Max-Heap для нижней половины чисел
+type maxHeap []int
 
-func (h heap) Len() int           { return len(h) }
-func (h heap) Less(i, j int) bool { return h[i] &lt; h[j] } // Min-Heap by default
-func (h heap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
-
-func (h *heap) Push(x float64) {
-    *h = append(*h, x)
-    h.siftUp(len(*h) - 1)
+func (h maxHeap) Len() int           { return len(h) }
+func (h maxHeap) Less(i, j int) bool { return h[i] &gt; h[j] } // Обратный порядок
+func (h maxHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *maxHeap) Push(x any)        { *h = append(*h, x.(int)) }
+func (h *maxHeap) Pop() any {
+    old := *h
+    n := len(old)
+    x := old[n-1]
+    *h = old[0 : n-1]
+    return x
 }
 
-func (h *heap) Pop() (float64, error) {
-    if h.Len() == 0 {
-        return 0, errors.New(&quot;medianstream: pop from empty heap&quot;)
-    }
-    n := h.Len() - 1
-    h.Swap(0, n)
-    h.siftDown(0, n)
-    top := (*h)[n]
-    *h = (*h)[:n]
-    return top, nil
+// minHeap реализует Min-Heap для верхней половины чисел
+type minHeap []int
+
+func (h minHeap) Len() int           { return len(h) }
+func (h minHeap) Less(i, j int) bool { return h[i] &lt; h[j] } // Прямой порядок
+func (h minHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *minHeap) Push(x any)        { *h = append(*h, x.(int)) }
+func (h *minHeap) Pop() any {
+    old := *h
+    n := len(old)
+    x := old[n-1]
+    *h = old[0 : n-1]
+    return x
 }
 
-// siftUp and siftDown use bit-shifts for child/parent calculation
-func (h heap) siftUp(idx int) {
-    for {
-        parent := (idx - 1) &gt;&gt; 1
-        if idx == 0 || !h.Less(idx, parent) {
-            break
-        }
-        h.Swap(idx, parent)
-        idx = parent
-    }
-}
-
-func (h heap) siftDown(idx, limit int) {
-    for {
-        left := (idx &lt;&lt; 1) + 1
-        if left &gt;= limit || left &lt; 0 {
-            break
-        }
-        smallest := left
-        right := left + 1
-        if right &lt; limit &amp;&amp; h.Less(right, smallest) {
-            smallest = right
-        }
-        if !h.Less(smallest, idx) {
-            break
-        }
-        h.Swap(smallest, idx)
-        idx = smallest
-    }
-}
-
-// MedianFinder поддерживает потоковый поиск медианы
+// MedianFinder координирует балансировку двух куч
 type MedianFinder struct {
     mu     sync.RWMutex
-    lower  heap // Max-Heap (инвертированный компаратор)
-    higher heap // Min-Heap
+    lower  maxHeap // Max-Heap для меньшей половины
+    higher minHeap // Min-Heap для большей половины
 }
 
-func NewMedianFinder() *MedianFinder {
-    lower := make(heap, 0, 128)
-    higher := make(heap, 0, 128)
-    // Инвертируем компаратор для Max-Heap в lower
-    lower.Less = func(i, j int) bool { return lower[i] &gt; lower[j] }
-    return &amp;MedianFinder{
-        lower:  lower,
-        higher: higher,
+func Constructor() MedianFinder {
+    return MedianFinder{
+        lower:  make(maxHeap, 0, 64),
+        higher: make(minHeap, 0, 64),
     }
 }
 
-// AddNum добавляет число в поток
-func (mf *MedianFinder) AddNum(num float64) {
+// AddNum добавляет число в структуру за O(log N)
+func (mf *MedianFinder) AddNum(num int) {
     mf.mu.Lock()
     defer mf.mu.Unlock()
 
+    // Шаг 1: Первичная маршрутизация
     if mf.lower.Len() == 0 || num &lt;= mf.lower[0] {
-        mf.lower.Push(num)
+        heap.Push(&amp;mf.lower, num)
     } else {
-        mf.higher.Push(num)
+        heap.Push(&amp;mf.higher, num)
     }
 
-    // Ребалансировка
+    // Шаг 2: Ребалансировка размеров куч
+    // Инвариант: len(lower) == len(higher) или len(lower) == len(higher) + 1
     if mf.lower.Len() &gt; mf.higher.Len()+1 {
-        if val, err := mf.lower.Pop(); err == nil {
-            mf.higher.Push(val)
-        }
-    }
-    if mf.higher.Len() &gt; mf.lower.Len() {
-        if val, err := mf.higher.Pop(); err == nil {
-            mf.lower.Push(val)
-        }
+        val := heap.Pop(&amp;mf.lower).(int)
+        heap.Push(&amp;mf.higher, val)
+    } else if mf.higher.Len() &gt; mf.lower.Len() {
+        val := heap.Pop(&amp;mf.higher).(int)
+        heap.Push(&amp;mf.lower, val)
     }
 }
 
-// FindMedian возвращает текущую медиану
-func (mf *MedianFinder) FindMedian() (float64, error) {
+// FindMedian возвращает текущую медиану за O(1)
+func (mf *MedianFinder) FindMedian() float64 {
     mf.mu.RLock()
     defer mf.mu.RUnlock()
 
-    if mf.lower.Len() == 0 &amp;&amp; mf.higher.Len() == 0 {
-        return 0, errors.New(&quot;medianstream: stream is empty&quot;)
+    if mf.lower.Len() &gt; mf.higher.Len() {
+        return float64(mf.lower[0])
     }
 
-    if mf.lower.Len() == mf.higher.Len() {
-        return (mf.lower[0] + mf.higher[0]) / 2.0, nil
-    }
-    return mf.lower[0], nil
+    return float64(mf.lower[0]+mf.higher[0]) / 2.0
 }
 </code></pre>
 </div>
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Реализация <code>Less</code> для <code>lower</code> инвертируется динамически. В Go замыкания аллоцируются в куче при escape, но поскольку <code>lower</code> — это поле структуры, компилятор может поместить замыкание в статическую область или заинлайнить его. Для экстремальной оптимизации используют две разные типы <code>MaxHeap</code>/<code>MinHeap</code> с жёстко заданным <code>Less</code>, что убирает dynamic dispatch полностью и ускоряет <code>siftUp/siftDown</code> на 10-15%.</p>
-  </div>
-</div>
+<hr />
+<h2 id="3-apparatnaya-mekhanika-kesh-linii-i-ieee-754">3. Аппаратная механика: кэш-линии и IEEE-754</h2>
 
-<h2 id="3-pod-kapotom-pamyat-kuchi-kesh-linii-i-tochnost-float64">3. Под капотом: память кучи, кэш-линии и точность float64</h2>
-
-<h3 id="kesh-lokalnost-massivnykh-kuch">Кэш-локальность массивных куч</h3>
-<p>Обе кучи реализованы на <code>[]float64</code> — contiguous memory. Элементы детей находятся по адресам <code>2*i+1</code> и <code>2*i+2</code>. При глубине дерева <code>log₂(10⁶) ≈ 20</code> доступ к памяти скачкообразный, но для массивов <code>&lt; 10⁵</code> элементов всё помещается в L3-кэш. Аппаратный prefetcher предсказывает паттерн <code>left/right child</code>, снижая penalty. Однако при <code>N &gt; 10⁶</code> промахи L1/L2 становятся доминирующим фактором задержки.</p>
-<h3 id="tochnost-float64-i-poterya-znachimosti">Точность `float64` и потеря значимости</h3>
-<p><code>float64</code> имеет 53 бита мантиссы (~15-17 десятичных знаков). При работе с большими целыми числами (<code>&gt; 9·10¹⁵</code>) или при суммировании корней <code>(a + b) / 2.0</code> возникает потеря младших разрядов. В финтехе или научном стеке это критично. Решение: хранить числа как <code>int64</code> или <code>math/big.Rat</code>, если точность важнее скорости. На собеседовании это маркер: «Вы понимаете разницу между IEEE-754 и детерминированной арифметикой».</p>
-<h3 id="gc-i-escape-analysis">GC и Escape Analysis</h3>
-<p><code>heap</code> хранится в куче (<code>escapes to heap</code>), так как переживает вызовы методов. При частых <code>Push/Pop</code> рантайм не вызывает <code>free</code> на каждый элемент, а управляет <code>cap</code> backing array. Рост массива (<code>x1.25</code> или <code>x2</code>) происходит амортитизированно. Для снижения GC-pressure в высоконагруженных потоках применяют <code>sync.Pool</code> для backing arrays или переиспользуют один преаллоцированный буфер с ручным сдвигом <code>len</code>.</p>
-<h2 id="4-konkurentnost-i-patterny-blokirovok">4. Конкурентность и паттерны блокировок</h2>
-
-<p>В <code>AddNum</code> используется <code>sync.Mutex</code>, так как метод изменяет обе кучи. <code>FindMedian</code> использует <code>RLock</code>, поскольку только читает корни. Однако <code>RLock</code> в Go не даёт нулевой стоимости: при активной записи читатели блокируются и накапливаются в очереди. При <code>write-heavy</code> потоке (<code>&gt;10K Add/сек</code>) <code>RWMutex</code> может деградировать из-за <code>futex</code>-ожиданий.</p>
-<p><strong>Альтернативы для High-Load:</strong><br />
-- <strong>Sharding:</strong> Разделить поток на <code>M</code> независимых <code>MedianFinder</code>, каждый со своим <code>Mutex</code>. Агрегация медианы через внешнюю сортировку или аппроксимацию.<br />
-- <strong>Lock-free snapshot:</strong> <code>atomic.Pointer</code> на неизменяемую копию состояния. Чтение без блокировок, запись через Copy-on-Write. Удваивает память, но даёт <code>O(1)</code> latency для читателей.<br />
-- <strong>Периодическая агрегация:</strong> Буферизировать добавления, применять батчами раз в <code>N</code> мс, снижая contention.</p>
+<h3 id="lokalnost-dannykh-v-sreze-kuchi">Локальность данных в срезе кучи</h3>
+<p>Двоичная куча хранится в непрерывном срезе памяти <code>[]int</code>.<br />
+Для узла с индексом $i$:<br />
+- Левый потомок: $2i + 1$.<br />
+- Правый потомок: $2i + 2$.<br />
+- Родитель: $\lfloor \frac{i-1}{2} \rfloor$.</p>
+<p>Поскольку кучи <code>lower</code> и <code>higher</code> растут одновременно, их размер вдвое меньше суммарного объема потока. Верхние уровни дерева кучи (первые 4–5 поколений, до 31 элемента) непрерывно удерживаются в кэше L1/L2 процессора, делая первые шаги операций <code>siftUp</code> и <code>siftDown</code> практически бесплатными.</p>
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
   </div>
   <div class="callout-body">
-    <p>Возврат <code>mf.lower[0]</code> по ссылке или указателю нарушает инкапсуляцию и создаёт data race, если вызывающий код сохраняет значение и меняет его позже. В Go примитивы копируются по значению, поэтому возврат <code>float64</code> безопасен. Но если бы мы возвращали <code>*float64</code> или слайс, это потребовало бы явного копирования или документации о readonly-контракте.</p>
-  </div>
-</div>
+    <p><strong>Ловушка переполнения целых чисел при расчете медианы:</strong><br />
+Классическая ошибка новичков:</p>
 
-<h2 id="5-lovushki-edge-cases-i-voprosy-s-sobesedovaniy">5. Ловушки, edge cases и вопросы с собеседований</h2>
-
-
-<div class="mermaid-wrapper">
-  <div class="mermaid-header">
-    <div class="mermaid-title">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-      <span>Архитектурная схема</span>
-    </div>
-    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-      <span>На весь экран</span>
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
     </button>
   </div>
-  <pre class="mermaid">
-flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Граничные случаи медианы&quot;]:::process --&gt; B[&quot;Пустой поток&quot;]
-A --&gt; C[&quot;Один элемент&quot;]
-A --&gt; D[&quot;Чётное vs нечётное количество&quot;]
-A --&gt; E[&quot;Дубликаты чисел&quot;]
-A --&gt; F[&quot;Отрицательные числа и float64 границы&quot;]
-
-B --&gt; G[&quot;Возврат error, не panic&quot;]
-C --&gt; H[&quot;Медиана равна единственному элементу&quot;]
-D --&gt; I[&quot;Среднее арифметическое двух корней&quot;]
-E --&gt; J[&quot;Кучи корректно обрабатывают равные элементы&quot;]
-F --&gt; K[&quot;NaN/Inf обработка, потеря точности&quot;]
-  </pre>
+  <pre class="language-go"><code class="language-go">return float64((mf.lower[0] + mf.higher[0]) / 2) // ❌ ОШИБКА
+</code></pre>
 </div>
-
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Почему нельзя использовать один отсортированный массив и бинарный поиск для вставки?<br />
-<strong>Ответ:</strong> Вставка в отсортированный массив требует сдвига элементов <code>O(N)</code> времени. При потоке из <code>10⁶</code> элементов это миллиарды операций памяти. Кучи дают <code>O(log N)</code> вставку за счёт древовидной структуры и обмена элементов без сдвига блоков памяти.</p>
-  </div>
-</div>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как обрабатывать <code>NaN</code> или <code>+Inf</code>/-<code>Inf</code> в потоке?<br />
-<strong>Ответ:</strong> <code>math.IsNaN()</code> и <code>math.IsInf()</code> должны проверяться до вставки. Валидная стратегия: игнорировать некорректные значения, логируя их, или приводить к граничным допустимым. Если пропустить валидацию, <code>NaN</code> «заразит» все последующие сравнения в куче, ломая инвариант <code>Less</code> и вызывая бесконечные циклы <code>sift</code>.</p>
-  </div>
-</div>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Что если поток не помещается в RAM?<br />
-<strong>Ответ:</strong> Точные кучи масштабируются до <code>O(RAM)</code>. За пределами памяти используют аппроксимативные алгоритмы: <code>t-Digest</code>, <code>P² Algorithm</code> или <code>GK Algorithm</code>. Они хранят сжатые маркеры распределения, занимая <code>O(1/ε²)</code> памяти независимо от <code>N</code>. Точность настраивается через <code>ε</code> и <code>δ</code>. Это переводит задачу из LeetCode в Production System Design.</p>
-  </div>
-</div>
-
-<h2 id="6-itog-chek-list-dlya-realizatsii-mediany-v-potoke">6. Итог: чек-лист для реализации медианы в потоке</h2>
 
 <ol>
-<li><strong>Two Heaps Invariant:</strong> <code>lower</code> (Max) и <code>higher</code> (Min) с балансом размеров. Гарантирует <code>O(1)</code> медиану и <code>O(log N)</code> вставку.</li>
-<li><strong>Типизация вместо <code>interface{}</code>:</strong> Ручная реализация куч или дженерики избегают boxing, снижают GC-pressure и ускоряют ветвление.</li>
-<li><strong>Кэш-локальность:</strong> Массивные <code>[]float64</code> лучше указателей. Для <code>N &gt; 10⁶</code> рассмотрите блочные кучи или external storage.</li>
-<li><strong>Потокобезопасность:</strong> <code>sync.Mutex</code> для записи, <code>RLock</code> для чтения. При высокой конкуренции — шардирование или lock-free снапшоты.</li>
-<li><strong>Точность и валидация:</strong> <code>float64</code> теряет точность на больших числах. Фильтруйте <code>NaN/Inf</code>, документируйте контракт точности.</li>
-<li><strong>Масштабирование:</strong> Точные структуры ограничены RAM. Для бесконечных потоков переходите на <code>t-Digest</code>/<code>P²</code> с настраиваемой ошибкой <code>ε</code>.</li>
+<li>Если <code>mf.lower[0] = math.MaxInt</code> и <code>mf.higher[0] = math.MaxInt</code>, их сложение вызовет целочисленное переполнение.</li>
+<li>Целочисленное деление <code>/ 2</code> отбросит дробную часть <code>.5</code> до преобразования в <code>float64</code>!<br />
+Правильно: выполнять сложение в типе <code>float64</code> либо использовать формулу без переполнения:</li>
 </ol>
-<p>Медиана в потоке — это баланс между детерминированной точностью, латентностью и потреблением памяти. Умение объяснить, как ваша куча взаимодействует с backing array, кэш-линиями CPU и сборщиком мусора, а также когда пора переходить к аппроксимации, отличает решение «для контеста» от production-ready компонента.</p>
-<p>В следующей статье мы углубимся в алгоритмы медианы для бесконечных потоков с жёсткими ограничениями памяти, разберём P² Algorithm, t-Digest и стратегии распределённого вычисления квантилей: <a href="5-find-median-in-infinite-stream.html" class="wikilink">5. Find Median in Infinite Stream</a></p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">return float64(mf.lower[0]) + float64(mf.higher[0] - mf.lower[0]) / 2.0
+</code></pre>
+</div>
+
+  </div>
+</div>
+
+<hr />
+<h2 id="4-voprosy-dlya-sobesedovaniya">4. Вопросы для собеседования</h2>
+
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Какова алгоритмическая сложность операций добавления и чтения?<br />
+<strong>Ответ:</strong> Добавление числа <code>AddNum</code> требует одного вызова <code>heap.Push</code> и, в случае нарушения баланса, одного <code>heap.Pop</code> и <code>heap.Push</code> для перемещения корня. Каждая операция с кучей занимает $O(\log N)$. Итоговая сложность добавления: $O(\log N)$.<br />
+Чтение медианы <code>FindMedian</code> производит только чтение корневых элементов <code>mf.lower[0]</code> и <code>mf.higher[0]</code> за $O(1)$.</p>
+  </div>
+</div>
+
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Что делать, если поток данных бесконечен и $N$ не помещается в оперативную память?<br />
+<strong>Ответ:</strong> Точный алгоритм Two Heaps требует $O(N)$ памяти и неприменим для терабайтных бесконечных потоков. В реальном продакшене переходят к аппроксимативным потоковым алгоритмам: <strong>t-Digest</strong> или алгоритму <strong>$P^2$ (Piecewise Parabolic)</strong>, которые вычисляют приближенную медиану за строго константную память $O(1)$.</p>
+  </div>
+</div>
+
+<hr />
+<h2 id="rezyume">Резюме</h2>
+
+<ol>
+<li>Алгоритм Two Heaps разделяет поток на две половины: Max-Heap для меньшей части и Min-Heap для большей.</li>
+<li>Поддержание баланса размеров гарантирует доступ к медиане ровно за $O(1)$.</li>
+<li>Любое добавление элемента требует не более одного шага ребалансировки за $O(\log N)$.</li>
+<li>При вычислении полусуммы корней четного потока необходимо избегать целочисленного переполнения и потери дробной части.</li>
+</ol>
+<p>В следующей статье мы разберем расчет медианы в бесконечном потоке с фиксированным расходом памяти $O(1)$ с помощью алгоритма $P^2$: <a href="5-find-median-in-infinite-stream.html" class="wikilink">5. Find Median in Infinite Stream</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2513,7 +2456,7 @@ F --&gt; K[&quot;NaN/Inf обработка, потеря точности&quot;
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#mediana-v-potoke-two-heaps-balansirovka-i-granitsy-tochnosti">Медиана в потоке: Two Heaps, балансировка и границы точности</a></li><li class="toc-item toc-h2"><a href="#1-algoritmicheskiy-karkas-invariant-dvukh-kuch">1. Алгоритмический каркас: инвариант двух куч</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-na-go-tipizirovannye-kuchi-bez-interface">2. Идиоматичная реализация на Go: типизированные кучи без interface{}</a></li><li class="toc-item toc-h2"><a href="#3-pod-kapotom-pamyat-kuchi-kesh-linii-i-tochnost-float64">3. Под капотом: память кучи, кэш-линии и точность float64</a></li><li class="toc-item toc-h3"><a href="#kesh-lokalnost-massivnykh-kuch">Кэш-локальность массивных куч</a></li><li class="toc-item toc-h3"><a href="#tochnost-float64-i-poterya-znachimosti">Точность float64 и потеря значимости</a></li><li class="toc-item toc-h3"><a href="#gc-i-escape-analysis">GC и Escape Analysis</a></li><li class="toc-item toc-h2"><a href="#4-konkurentnost-i-patterny-blokirovok">4. Конкурентность и паттерны блокировок</a></li><li class="toc-item toc-h2"><a href="#5-lovushki-edge-cases-i-voprosy-s-sobesedovaniy">5. Ловушки, edge cases и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#6-itog-chek-list-dlya-realizatsii-mediany-v-potoke">6. Итог: чек-лист для реализации медианы в потоке</a></li>
+    <li class="toc-item toc-h2"><a href="#mediana-v-potoke-dannykh-median-from-data-stream-invariant-dvukh-kuch-i-mekhanik">Медиана в потоке данных (Median from Data Stream): инвариант двух куч и механика балансировки</a></li><li class="toc-item toc-h2"><a href="#1-invariant-dvukh-kuch-two-heaps-invariant">1. Инвариант двух куч (Two Heaps Invariant)</a></li><li class="toc-item toc-h3"><a href="#strogie-invarianty-struktury">Строгие инварианты структуры:</a></li><li class="toc-item toc-h3"><a href="#vychislenie-mediany-za-o1">Вычисление медианы за $O(1)$:</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#3-apparatnaya-mekhanika-kesh-linii-i-ieee-754">3. Аппаратная механика: кэш-линии и IEEE-754</a></li><li class="toc-item toc-h3"><a href="#lokalnost-dannykh-v-sreze-kuchi">Локальность данных в срезе кучи</a></li><li class="toc-item toc-h2"><a href="#4-voprosy-dlya-sobesedovaniya">4. Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

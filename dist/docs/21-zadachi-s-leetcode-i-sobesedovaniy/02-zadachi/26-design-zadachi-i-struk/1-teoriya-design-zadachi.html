@@ -2171,16 +2171,21 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~25 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~23 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">1. Теория. Design задачи</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="teoriya-design-zadach-ot-api-do-vnutrenney-mekhaniki-v-go">Теория Design-задач: от API до внутренней механики в Go</h2>
+            <blockquote>
+<p><em>«Проектирование структур данных — это вечный поиск баланса между временем, памятью и простотой; ни одно из этих качеств нельзя максимизировать в ущерб остальным».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="teoriya-design-zadach-ot-api-do-vnutrenney-mekhaniki-v-go">Теория Design-задач: От API до внутренней механики в Go</h2>
 
-<p>Design-задачи (Design &amp; Implement) — это не поиск алгоритмического паттерна, а проверка инженерной зрелости. Здесь интервьюер оценивает способность кандидата проектировать компоненты, выбирать правильные примитивы, гарантировать потокобезопасность и предвидеть компромиссы между скоростью, памятью и сложностью поддержки. В Go такие задачи требуют чёткого понимания работы со структурами, указателями, синхронизацией и сборщиком мусора.</p>
+<p>Design-задачи (Design &amp; Implement) — это не просто поиск алгоритмического трюка, а проверка глубокой инженерной зрелости. Здесь интервьюер оценивает способность кандидата проектировать законченные программные компоненты, выбирать правильные структуры данных под заданный профиль нагрузки, гарантировать потокобезопасность и предвидеть скрытые компромиссы между скоростью, памятью и сложностью поддержки в продакшене.</p>
+<p>В языке Go такие задачи требуют кристального понимания работы со структурами, указателями, примитивами синхронизации пакета <code>sync</code>, планировщиком горутин и сборщиком мусора (Garbage Collector).</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2195,47 +2200,54 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Начало проектирования&quot;]:::process --&gt; B[&quot;Анализ требований&quot;]
-B --&gt; C[&quot;Соотношение чтения и записи?&quot;]
-C --&gt;|Чтение преобладает| D[&quot;sync RWMutex или lock-free&quot;]
-C --&gt;|Запись преобладает| E[&quot;sync Mutex или шардирование&quot;]
-B --&gt; F[&quot;Гарантии времени выполнения?&quot;]
-F --&gt;|Амортиз O-1| G[&quot;Хеш-таблицы, кольцевые буферы&quot;]
-F --&gt;|Логарифмические| H[&quot;Деревья, кучи, списки&quot;]
-B --&gt; I[&quot;Жёсткие ограничения памяти?&quot;]
-I --&gt;|Да| J[&quot;Фиксированные массивы, object pooling&quot;]
-I --&gt;|Нет| K[&quot;Динамические слайсы, map&quot;]
-D --&gt; L[&quot;Реализация API&quot;]
-E --&gt; L
-G --&gt; L
-H --&gt; L
-J --&gt; L
-K --&gt; L
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef warn    fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+
+Start[&quot;Старт проектирования&quot;]:::entry --&gt; Requirements[&quot;1. Анализ профиля нагрузки&quot;]:::process
+
+Requirements --&gt; RW{&quot;Соотношение Read / Write?&quot;}:::process
+RW -- &quot;Read-heavy (Чтение &gt; 90%)&quot; --&gt; RWMutex[&quot;sync.RWMutex или Sharding&quot;]:::accent
+RW -- &quot;Write-heavy / Баланс&quot; --&gt; Mutex[&quot;sync.Mutex или Шардирование&quot;]:::warn
+
+Requirements --&gt; Latency{&quot;Требования к латентности?&quot;}:::process
+Latency -- &quot;Строго O(1)&quot; --&gt; HashList[&quot;Хеш-таблицы + Двусвязные списки&quot;]:::success
+Latency -- &quot;Логарифмические O(log N)&quot; --&gt; HeapTree[&quot;Кучи (Heap), Сбалансированные деревья&quot;]:::process
+
+Requirements --&gt; MemLimits{&quot;Ограничения по памяти?&quot;}:::process
+MemLimits -- &quot;Строгие квоты (Bounded)&quot; --&gt; Eviction[&quot;Политики вытеснения: LRU, LFU, FIFO&quot;]:::warn
+MemLimits -- &quot;Безлимитный рост&quot; --&gt; Dynamic[&quot;Динамические слайсы и map&quot;]:::process
+
+RWMutex --&gt; API[&quot;2. Проектирование контракта API&quot;]:::success
+Mutex --&gt; API
+HashList --&gt; API
+HeapTree --&gt; API
+Eviction --&gt; API
+Dynamic --&gt; API
   </pre>
 </div>
 
 
-<h2 id="1-filosofiya-design-zadach-chto-proveryaet-intervyuer">1. Философия Design-задач: что проверяет интервьюер</h2>
+<hr />
+<h2 id="1-filosofiya-design-zadach-chto-proveryaet-intervyuer">1. Философия Design-задач: Что проверяет интервьюер</h2>
 
-<p>В отличие от чистых алгоритмов, где фокус на асимптотике и обходе графов, Design-задачи требуют баланса между:<br />
-- <strong>Чистотой интерфейса:</strong> методы должны иметь понятные сигнатуры, использовать идиоматичные для Go паттерны (например, <code>ok</code> idiom, возврат ошибок, а не паники).<br />
-- <strong>Выбором структур:</strong> обоснование, почему <code>map</code> лучше <code>slice</code>, почему <code>sync.Mutex</code> предпочтительнее <code>channel</code> для защиты состояния.<br />
-- <strong>Потокобезопасностью:</strong> большинство задач явно или неявно требуют <code>concurrent-safe</code> реализации.<br />
-- <strong>Управлением памятью:</strong> предсказуемость аллокаций, отсутствие скрытых утечек, минимизация давления на Garbage Collector.</p>
-<p>На позициях Middle+/Senior от вас ждут не просто рабочего кода, а способности аргументировать каждое архитектурное решение и предложить оптимизации под конкретные ограничения.</p>
-<h2 id="2-arkhitektura-struktury-dannykh-v-go">2. Архитектура структуры данных в Go</h2>
+<p>В отличие от стандартных олимпиадных задач, где фокус направлен на асимптотику $O(N)$ и обход графов, Design-задачи оценивают комплексные инженерные навыки:</p>
+<ol>
+<li><strong>Чистота и идиоматичность интерфейса:</strong><br />
+   Сигнатуры методов обязаны быть лаконичными и следовать идиомам Go (<code>ok-idiom</code>, возврат ошибок <code>error</code> вместо вызова <code>panic</code>, использование контекстов при необходимости).</li>
+<li><strong>Осознанный выбор структур данных:</strong><br />
+   Умение четко аргументировать: почему здесь выбран <code>map + list</code>, а не слайс? Почему <code>sync.Mutex</code> эффективнее каналов для защиты локального состояния?</li>
+<li><strong>Потокобезопасность (Concurrency Safety):</strong><br />
+   Любой production-сервис в Go многопоточен по умолчанию (горутины на каждый HTTP/gRPC запрос). Способность защитить инварианты структуры данных без состояния гонки (data race) — обязательное требование.</li>
+<li><strong>Управление памятью и давление на GC:</strong><br />
+   Предсказуемость аллокаций, отсутствие утечек памяти (memory retention), минимизация количества указателей в куче для облегчения фазы разметки сборщика мусора.</li>
+</ol>
+<hr />
+<h2 id="2-arkhitektura-struktury-dannykh-v-go-pointer-vs-value-receiver">2. Архитектура структуры данных в Go: Pointer vs Value Receiver</h2>
 
-<p>Go не поддерживает классы, конструкторы или наследование. Вместо этого используется композиция структур, явные конструкторы-фабрики и методы с pointer-receiver.</p>
+<p>В Go отсутствуют классы и наследование. Структуры данных проектируются через <strong>композицию типов</strong>, инкапсуляцию полей и методы с получателем-указателем (pointer receiver).</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2245,17 +2257,26 @@ K --&gt; L
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">type MyCache struct {
+  <pre class="language-go"><code class="language-go">package design
+
+import &quot;sync&quot;
+
+// Item представляет полезную нагрузку элемента кэша
+type Item struct {
+    Value any
+}
+
+// MyCache инкапсулирует состояние кэша и примитив синхронизации
+type MyCache struct {
     mu   sync.RWMutex
     data map[string]*Item
     cap  int
-    // дополнительные поля политики вытеснения
 }
 
-// NewMyCache — фабричная функция, стандартный паттерн в Go
+// NewMyCache — конструктор-фабрика, стандартный идиоматичный паттерн Go
 func NewMyCache(capacity int) *MyCache {
     if capacity &lt;= 0 {
-        capacity = 1 // или return nil с ошибкой, зависит от контракта
+        capacity = 16
     }
     return &amp;MyCache{
         data: make(map[string]*Item, capacity),
@@ -2263,108 +2284,90 @@ func NewMyCache(capacity int) *MyCache {
     }
 }
 
-// Методы используют pointer-receiver, так как изменяют состояние
+// Get использует pointer receiver (*MyCache), так как RLock защищает общие данные
 func (c *MyCache) Get(key string) (*Item, bool) {
-    // реализация
-}
-</code></pre>
-</div>
-
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Примитивы синхронизации (<code>sync.Mutex</code>, <code>sync.RWMutex</code>) <strong>категорически нельзя копировать</strong>. Если передать структуру по значению, внутренний счётчик состояния <code>state</code> будет дублирован, что приведёт к неопределённому поведению или панике <code>fatal error: sync: misuse of Mutex</code>. Поэтому все методы, работающие с состоянием, должны принимать <code>*T</code>. Компилятор Go (<code>go vet</code>) автоматически отлавливает такие ошибки, но на интервью это частая причина дисквалификации.</p>
-  </div>
-</div>
-
-<h2 id="3-vybor-primitivov-karta-slays-ili-kastomnaya-struktura">3. Выбор примитивов: карта, слайс или кастомная структура</h2>
-
-<h3 id="mapstringt-vs-t-vs-custom-hash-table">`map[string]T` vs `[]T` vs Custom Hash Table</h3>
-<ul>
-<li><strong><code>map</code></strong>: амортизированное <code>O(1)</code> для поиска/вставки/удаления. Встроенная реализация рантайма (<code>hmap</code>) оптимизирована, но не является потокобезопасной для записи. Идеальна для 95% кэшей и индексаторов.</li>
-<li><strong>Слайс <code>[]T</code></strong>: <code>O(n)</code> поиск, но <code>O(1)</code> доступ по индексу и отличная кэш-локальность. Подходит для кольцевых буферов, стеков, очередей, где размер известен или растёт предсказуемо.</li>
-<li><strong>Кастомная хеш-таблица</strong>: используется только когда требуется детерминированное время без амортизации, точный контроль над аллокациями или lock-free доступ. На собеседованиях реализуется редко, но понимание её принципов (открытая адресация, рехаширование) обязательно.</li>
-</ul>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Никогда не используйте <code>sync.Map</code> для кэшей с частыми обновлениями.</strong> <code>sync.Map</code> оптимизирован под сценарии «write-once, read-many» (например, конфигурации, загруженные при старте). Его внутренняя структура состоит из <code>read</code> (оптимистичный путь без блокировок) и <code>dirty</code> (для новых ключей). При частых <code>Load</code>/<code>Store</code>/<code>Delete</code> происходит постоянная миграция между ними, что создаёт значительный оверхед. Для динамических данных используйте <code>map + sync.RWMutex</code> или шардирование.</p>
-  </div>
-</div>
-
-<h2 id="4-potokobezopasnost-i-strategiya-blokirovok">4. Потокобезопасность и стратегия блокировок</h2>
-
-<h3 id="granulyarnost-myuteksov">Гранулярность мьютексов</h3>
-<ul>
-<li><strong>Coarse-grained (<code>sync.Mutex</code>)</strong>: один мьютекс на всю структуру. Просто, надёжно, но создаёт contention при высокой конкурентности.</li>
-<li><strong>Read/Write (<code>sync.RWMutex</code>)</strong>: позволяет множественным читателям работать параллельно, но записи блокируют всех. Идеально для read-heavy кэшей.</li>
-<li><strong>Fine-grained / Sharding</strong>: разделение данных на N сегментов, каждый со своим мьютексом. Снижает contention до <code>1/N</code>. Используется в <code>singleflight</code>, <code>freecache</code>, <code>ristretto</code>.</li>
-</ul>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Пример: RWMutex в действии
-func (c *Cache) Get(key string) (*Item, bool) {
     c.mu.RLock()
     defer c.mu.RUnlock()
 
-    val, ok := c.data[key]
-    return val, ok
+    item, ok := c.data[key]
+    return item, ok
 }
 </code></pre>
 </div>
 
-<div class="callout callout-info">
+<div class="callout callout-note">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Заметка</span>
   </div>
   <div class="callout-body">
-    <p><code>defer</code> добавляет небольшой оверхед (сохранение контекста, вызов функции при выходе). В горячих путях с миллионами запросов иногда используют ручное <code>c.mu.RUnlock()</code> сразу после чтения. Однако на собеседовании <code>defer</code> предпочтительнее: он гарантирует разблокировку при <code>panic</code> или раннем <code>return</code>, что критично для предотвращения deadlock. Инженерный trade-off между производительностью и безопасностью всегда обсуждается с интервьюером.</p>
+    <p><strong>Примитивы синхронизации Go (<code>sync.Mutex</code>, <code>sync.RWMutex</code>) категорически нельзя копировать!</strong><br />
+Мьютекс содержит внутренние поля состояния (счетчик блокировок, семафор ожидания). Если передать структуру <code>MyCache</code> по значению (<code>func (c MyCache) Get()</code>), мьютекс скопируется вместе со всем состоянием. Это приведет к тому, что разные горутины будут блокировать разные копии мьютекса, порождая гонки данных или фатальный крах рантайма.<br />
+Все методы, оперирующие синхронизацией, обязаны принимать <strong>указатель</strong> <code>*MyCache</code>. Утилита <code>go vet</code> автоматически отслеживает копирование структур с мьютексами.</p>
   </div>
 </div>
 
-<h2 id="5-upravlenie-pamyatyu-i-escape-analysis">5. Управление памятью и Escape Analysis</h2>
+<hr />
+<h2 id="3-vybor-bazovykh-struktur-map-slice-ili-kastomnaya-khesh-tablitsa">3. Выбор базовых структур: Map, Slice или кастомная хеш-таблица</h2>
 
-<p>Design-задачи часто оперируют объектами, которые живут дольше вызова метода. Компилятор Go анализирует, «убегает» ли переменная в кучу. Это напрямую влияет на GC.</p>
-<ol>
-<li><strong>Предвыделение (<code>make(map, hint)</code>, <code>make([]T, 0, cap)</code>)</strong>: избегает множественных реаллокаций при росте структур.</li>
-<li><strong><code>sync.Pool</code></strong>: для кратковременных объектов (буферы, сессии, временные структуры). Снижает частоту выделений в куче, но не гарантирует, что объект не будет собран GC между пулами.</li>
-<li><strong>Композиция указателей vs значений</strong>: хранение <code>*Item</code> в <code>map</code> снижает размер записи карты (всегда 8 байт указателя), но создаёт больше мелких объектов в куче. Хранение <code>Item</code> (значение) увеличивает размер бакета <code>map</code>, но улучшает locality и снижает GC-pressure.</li>
-</ol>
-<div class="callout callout-interview">
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Структура</th>
+<th style="text-align: center;">Доступ</th>
+<th style="text-align: center;">Вставка / Удаление</th>
+<th style="text-align: center;">Кэш-локальность</th>
+<th>Когда применять</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Встроенный <code>map</code></strong></td>
+<td style="text-align: center;">$O(1)$ аморт.</td>
+<td style="text-align: center;">$O(1)$ аморт.</td>
+<td style="text-align: center;">Средняя (бакеты по 8 элементов)</td>
+<td>Стандарт для 95% задач. Быстрый поиск по ключу. Не потокобезопасен на запись.</td>
+</tr>
+<tr>
+<td><strong>Слайс <code>[]T</code></strong></td>
+<td style="text-align: center;">$O(1)$ по индексу</td>
+<td style="text-align: center;">$O(N)$ в середине, $O(1)$ в конце</td>
+<td style="text-align: center;">Идеальная (непрерывная память L1/L2)</td>
+<td>Стеки, очереди, кольцевые буферы, фиксированные пулы.</td>
+</tr>
+<tr>
+<td><strong>Двусвязный список</strong></td>
+<td style="text-align: center;">$O(N)$ поиск</td>
+<td style="text-align: center;">$O(1)$ при наличии указателя</td>
+<td style="text-align: center;">Низкая (pointer chasing, разрозненные узлы)</td>
+<td>Очереди вытеснения LRU/LFU при совмещении с <code>map</code>.</td>
+</tr>
+<tr>
+<td><strong>Кастомная таблица</strong></td>
+<td style="text-align: center;">$O(1)$</td>
+<td style="text-align: center;">$O(1)$</td>
+<td style="text-align: center;">Отличная (открытая адресация)</td>
+<td>Zero-allocation архитектуры, устранение пауз на рехаширование.</td>
+</tr>
+</tbody>
+</table></div>
+<div class="callout callout-warning">
   <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Почему в реализации LRU-кэша часто используют двусвязный список, а не slice?<br />
-<strong>Ответ:</strong> Слайс требует <code>O(n)</code> для удаления или вставки в середине из-за сдвига элементов. Двусвязный список обеспечивает <code>O(1)</code> удаление/вставку при наличии указателя на узел. В Go это реализуется через структуру <code>Node { key, value, prev, next *Node }</code>. Компромисс: список создаёт множество мелких аллокаций в куче, что увеличивает фрагментацию и нагрузку на GC. Для кэшей до ~100k элементов список выигрывает по скорости операций, но для высоконагруженных систем часто используют массивные слайсы с индексами или object pooling.</p>
+    <p><strong>Ловушка <code>sync.Map</code>:</strong><br />
+Никогда не используйте <code>sync.Map</code> для структур с частыми записями и обновлениями ключей!<br />
+<code>sync.Map</code> спроектирован рантаймом Go строго для двух сценариев:<br />
+1. Ключ записывается один раз, а читается миллионы раз (read-only конфигурации).<br />
+2. Множество горутин читают, записывают и обновляют непересекающиеся множества ключей.<br />
+При частых операциях <code>Store</code>/<code>Delete</code> происходит непрерывная миграция данных между внутренними таблицами <code>read</code> и <code>dirty</code>, что создает огромную нагрузку на атомики и проигрывает связке <code>map + sync.RWMutex</code> в разы.</p>
   </div>
 </div>
 
-<h2 id="6-strategiya-resheniya-na-intervyu-poshagovyy-algoritm">6. Стратегия решения на интервью: пошаговый алгоритм</h2>
-
-<ol>
-<li><strong>Уточнение требований</strong>: операции (<code>Get</code>, <code>Put</code>, <code>Delete</code>, <code>Peek</code>), асимптотика, потокобезопасность, лимиты памяти, политика вытеснения (LRU, LFU, TTL).</li>
-<li><strong>Проектирование API</strong>: сигнатуры методов, использование <code>bool</code> для <code>ok idiom</code> или возврат <code>error</code>, избегание паник в публичных методах.</li>
-<li><strong>Выбор структур</strong>: обоснование <code>map</code> vs <code>slice</code>, выбор мьютекса, оценка потребления памяти.</li>
-<li><strong>Реализация</strong>: идиоматичный Go, проверка на <code>nil</code>, обработка граничных условий, комментарии к сложным инвариантам.</li>
-<li><strong>Дискуссия об ограничениях</strong>: готовность предложить шардирование, lock-free очереди, <code>sync.Pool</code>, атомарные операции или переход к распределённой версии (Redis/Memcached).</li>
-</ol>
-<h2 id="7-edge-cases-i-tipichnye-oshibki-kandidatov">7. Edge Cases и типичные ошибки кандидатов</h2>
+<hr />
+<h2 id="4-potokobezopasnost-strategii-sinkhronizatsii">4. Потокобезопасность: Стратегии синхронизации</h2>
 
 
 <div class="mermaid-wrapper">
@@ -2379,87 +2382,97 @@ func (c *Cache) Get(key string) (*Item, bool) {
     </button>
   </div>
   <pre class="mermaid">
-flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Типичные ошибки Design-задач&quot;]:::error --&gt; B[&quot;Копирование sync примитивов по значению&quot;]
-A --&gt; C[&quot;Использование sync.Map для частых записей&quot;]
-A --&gt; D[&quot;Отсутствие проверки nil или пустого ввода&quot;]
-A --&gt; E[&quot;Паника вместо возврата ошибки или bool&quot;]
-A --&gt; F[&quot;Игнорирование потокобезопасности&quot;]
-A --&gt; G[&quot;Сложные интерфейсы без необходимости&quot;]
+flowchart LR
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef warn    fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
 
-B --&gt; H[&quot;Паника runtime при запуске&quot;]
-C --&gt; I[&quot;Просадка RPS из-за contention&quot;]
-D --&gt; J[&quot;Неожиданное поведение при edge-данных&quot;]
-E --&gt; K[&quot;Сложность тестирования и интеграции&quot;]
-F --&gt; L[&quot;Race conditions в продакшене&quot;]
-G --&gt; M[&quot;Over-engineering, низкая читаемость&quot;]
+Request[&quot;Параллельные запросы&quot;]:::process --&gt; LockType{&quot;Выбор стратегии блокировки&quot;}:::process
+
+LockType --&gt; Coarse[&quot;1. Coarse-Grained (sync.Mutex)&lt;br/&gt;Один мьютекс на весь кэш&quot;]:::warn
+LockType --&gt; RWLock[&quot;2. Read-Write (sync.RWMutex)&lt;br/&gt;Параллельные читатели&quot;]:::accent
+LockType --&gt; Sharded[&quot;3. Fine-Grained (Sharding)&lt;br/&gt;N независимых шардов&quot;]:::success
+
+Coarse --&gt; Bottleneck[&quot;Высокий Contention при росте ядер&quot;]:::warn
+RWLock --&gt; RWMutexContention[&quot;Эффективно ТОЛЬКО при чистом чтении&quot;]:::accent
+Sharded --&gt; HighThroughput[&quot;Масштабирование на все ядра CPU (1/N contention)&quot;]:::success
   </pre>
 </div>
 
 
+<h3 id="1-edinyy-myuteks-sync-mutex">1. Единый мьютекс (`sync.Mutex`)</h3>
+<p>Простота и отсутствие deadlock'ов. Однако при десятках тысяч RPS на многоядерном процессоре горутины выстраиваются в очередь, рантайм переводит их в системные вызовы ядра <code>futex</code>, и латентность стремительно растет.</p>
+<h3 id="2-razdelyaemyy-myuteks-sync-rwmutex">2. Разделяемый мьютекс (`sync.RWMutex`)</h3>
+<p>Разрешает параллельное чтение сотням горутин. Но помните: в структурах вроде LRU-кэша метод <code>Get</code> <strong>мутирует</strong> порядок элементов в списке (перемещает в голову). Следовательно, <code>Get</code> в LRU является операцией записи и требует эксклюзивного <code>Lock()</code>, сводя на нет преимущества <code>RWMutex</code>!</p>
+<h3 id="3-shardirovanie-striped-locking">3. Шардирование (Striped Locking)</h3>
+<p>Данные разбиваются на $N$ независимых сегментов (обычно $N$ равно степени двойки, например 32 или 64). Каждый сегмент защищен своим собственным мьютексом:<br />
+$$\text{shardIndex} = \text{hash}(\text{key}) \pmod N$$<br />
+Конкуренция за блокировку падает ровно в $N$ раз. Именно так устроены боевые библиотеки Go-кэширования (<code>bigcache</code>, <code>freecache</code>, <code>ristretto</code>).</p>
+<hr />
+<h2 id="5-upravlenie-pamyatyu-i-escape-analysis">5. Управление памятью и Escape Analysis</h2>
+
+<p>При проектировании долгоживущих структур данных разработчик обязан учитывать сборщик мусора Go:</p>
 <ol>
-<li><strong>Пустая ёмкость</strong>: <code>NewCache(0)</code> не должна падать. Обычно устанавливают дефолт или возвращают ошибку.</li>
-<li><strong>Дубликаты ключей</strong>: поведение <code>Put</code> при уже существующем ключе (обновление значения, обновление таймаута, игнорирование).</li>
-<li><strong>Указатели и мутации</strong>: если <code>Get</code> возвращает <code>*Item</code>, вызывающий код может изменить данные без блокировки кэша. Решение: возвращать копию или <code>readonly</code> интерфейс, либо явно документировать контракт.</li>
-<li><strong>Интерфейсы без нужды</strong>: создание <code>type Cache interface</code> для единственной реализации — антипаттерн. В Go интерфейсы определяются потребителем, а не создателем структуры.</li>
+<li><strong>Предвыделение емкости (<code>Capacity Hint</code>):</strong><br />
+<code>make(map[string]*Item, expectedSize)</code> предотвращает непрерывный рост внутреннего массива бакетов <code>hmap</code> и исключает паузы на инкрементальное рехаширование.</li>
+<li><strong>Указатели против значений в <code>map</code>:</strong><br />
+   * <code>map[string]*Item</code>: В бакете хранятся 8-байтовые указатели. Меньше размер бакета, но в куче создается множество мелких объектов <code>Item</code>, которые сборщик мусора обязан проверять на каждом цикле фазы Mark.<br />
+   * <code>map[string]Item</code>: Данные хранятся непосредственно внутри бакетов. Если структура <code>Item</code> мала (до 64–128 байт), сборщик мусора сканирует память значительно быстрее, так как указателей на внешние объекты кучи нет.</li>
+<li><strong>Паттерн переиспользования (<code>sync.Pool</code>):</strong><br />
+   Для временных буферов, нод или структур запросов используйте пул объектов, исключая циклические выделения памяти в горячем пути.</li>
 </ol>
-<h2 id="8-voprosy-s-sobesedovaniy-glubina-ponimaniya">8. Вопросы с собеседований: глубина понимания</h2>
+<hr />
+<h2 id="voprosy-dlya-sobesedovaniya">Вопросы для собеседования</h2>
 
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Когда стоит использовать <code>channel</code> вместо <code>Mutex</code> для защиты состояния?<br />
-<strong>Ответ:</strong> <code>channel</code> подходит для передачи данных между горутинами, организации очередей или реализации паттерна fan-in/fan-out. Для защиты простой структуры данных (кэш, счётчик, карта) <code>Mutex</code> всегда эффективнее: меньше аллокаций, ниже латентность, проще отладка. Правило Rob Pike остаётся актуальным: «Share memory by communicating» — но только когда архитектура требует координации потоков данных, а не просто защиты критической секции.</p>
+    <p><strong>Вопрос 1:</strong> Когда для защиты структуры данных следует предпочесть каналы (<code>chan</code>), а когда мьютексы (<code>sync.Mutex</code>)?<br />
+<strong>Ответ:</strong><br />
+Каналы предназначены для <strong>передачи владения данными</strong> и координации потоков выполнения (Fan-Out/Fan-In, пайплайны, graceful shutdown).<br />
+Мьютексы предназначены для <strong>защиты общего разделяемого состояния</strong> (счетчики, кэши, словари, очереди). Использование каналов для тривиальной синхронизации доступа к <code>map</code> порождает скрытые аллокации буферов каналов, контекстные переключения планировщика и работает в 3–5 раз медленнее прямого мьютекса.</p>
   </div>
 </div>
 
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как реализовать lock-free кэш на Go?<br />
-<strong>Ответ:</strong> Чистый lock-free кэш в Go сложен из-за GC и модели памяти. Обычно используют атомарные операции (<code>sync/atomic</code>) для указателей на неизменяемые снапшоты состояния (copy-on-write). При чтении загружается текущий указатель атомарно, при записи создаётся новая версия карты, и указатель обновляется <code>atomic.StorePointer</code>. Это даёт неблокирующее чтение, но удваивает расход памяти и нагрузку на GC. На практике проще и быстрее использовать <code>RWMutex</code> с <code>defer</code>.</p>
+    <p><strong>Вопрос 2:</strong> Что такое «False Sharing» и как его избежать в шардированных структурах на Go?<br />
+<strong>Ответ:</strong><br />
+Кэш-память процессора обменивается данными блоками по 64 байта (Cache Line). Если мьютексы двух независимых шардов расположены в памяти рядом (внутри одного массива <code>[]sync.Mutex</code>), то изменение состояния мьютекса первой горутиной на Core 1 инвалидирует всю 64-байтную кэш-линию на Core 2, где вторая горутина пытается захватить свой мьютекс.<br />
+Для устранения False Sharing структуры выравнивают по границе кэш-линии с помощью пустого заполнения: <code>type Shard struct { mu sync.Mutex; _ [56]byte; ... }</code>.</p>
   </div>
 </div>
 
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как протестировать потокобезопасную структуру данных?<br />
-<strong>Ответ:</strong> Встроенный <code>go test -race</code> запускает анализатор data races, но он не гарантирует покрытие всех сценариев. Дополняйте тестами с <code>sync.WaitGroup</code> и множеством горутин, выполняющих случайные <code>Get/Put/Delete</code>. Используйте <code>testing.F</code> для фаззинга или инструменты вроде <code>goleak</code> для проверки на утечки горутин.</p>
+    <p><strong>Вопрос 3:</strong> Почему возврат указателя <code>*Item</code> из метода <code>Get</code> потокобезопасного кэша нарушает инкапсуляцию?<br />
+<strong>Ответ:</strong><br />
+Возврат прямого указателя позволяет вызывающей горутине мутировать поля структуры <code>Item</code> вне критической секции кэша в то время, как другая горутина может читать эти же поля. Для обеспечения строгой потокобезопасности кэш обязан возвращать либо копию значения, либо иммутабельный интерфейс, либо сериализованный срез байт.</p>
   </div>
 </div>
 
-<h2 id="9-itog-chek-list-dlya-design-zadach">9. Итог: чек-лист для Design-задач</h2>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
-<ol>
-<li><strong>Уточните контракт до кода</strong>: операции, асимптотика, concurrency, memory limits.</li>
-<li><strong>Проектируйте API идиоматично</strong>: <code>ok idiom</code>, ошибки вместо паник, pointer-receiver для мутаций.</li>
-<li><strong>Выбирайте примитивы осознанно</strong>: <code>map + RWMutex</code> для кэшей, <code>sync.Mutex</code> для простых структур, шардирование для высокой нагрузки.</li>
-<li><strong>Контролируйте аллокации</strong>: <code>make</code> с hint, переиспользование буферов, <code>sync.Pool</code> для горячих путей.</li>
-<li><strong>Избегайте копирования sync</strong>: все методы с мьютексами — по указателю, структуры не копируются.</li>
-<li><strong>Будьте готовы к оптимизациям</strong>: lock-free снапшоты, атомарные счётчики, кастомные хеш-таблицы.</li>
-</ol>
-<p>Design-задачи — это мост между алгоритмическим мышлением и системной инженерией. Умение проектировать предсказуемые, безопасные и производительные компоненты в Go напрямую коррелирует с готовностью к роли Senior/Lead.</p>
-<p>В следующей статье мы детально разберём архитектуру кэш-структур, политики вытеснения и реализацию LRU/LFU с учётом механики рантайма: <a href="2-kesh-struktury.html" class="wikilink">2. Кэш структуры</a></p>
+<ul>
+<li>Design-задачи в Go требуют гармонии чистого API, осознанного выбора структур данных и глубокого понимания модели памяти.</li>
+<li>Примитивы синхронизации (<code>sync.Mutex</code>, <code>sync.RWMutex</code>) <strong>нельзя копировать по значению</strong> — методы структур обязаны использовать pointer receiver.</li>
+<li><code>sync.Map</code> эффективен только при преобладании чтения неизменяемых данных; для высоконагруженных кэшей стандартом является шардированный <code>map</code> с локальными мьютексами.</li>
+<li>Сборщик мусора чувствителен к количеству указателей: хранение компактных структур по значению снижает время фазы Mark GC.</li>
+</ul>
+<p>В следующей лекции мы детально разберем проектирование кэш-структур: <a href="2-kesh-struktury.html" class="wikilink">2. Кэш структуры</a>, где сопоставим политики вытеснения, борьбу со штормом запросов (Cache Stampede) и оптимизацию кэш-линий CPU.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2487,7 +2500,7 @@ G --&gt; M[&quot;Over-engineering, низкая читаемость&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#teoriya-design-zadach-ot-api-do-vnutrenney-mekhaniki-v-go">Теория Design-задач: от API до внутренней механики в Go</a></li><li class="toc-item toc-h2"><a href="#1-filosofiya-design-zadach-chto-proveryaet-intervyuer">1. Философия Design-задач: что проверяет интервьюер</a></li><li class="toc-item toc-h2"><a href="#2-arkhitektura-struktury-dannykh-v-go">2. Архитектура структуры данных в Go</a></li><li class="toc-item toc-h2"><a href="#3-vybor-primitivov-karta-slays-ili-kastomnaya-struktura">3. Выбор примитивов: карта, слайс или кастомная структура</a></li><li class="toc-item toc-h3"><a href="#mapstringt-vs-t-vs-custom-hash-table">map[string]T vs []T vs Custom Hash Table</a></li><li class="toc-item toc-h2"><a href="#4-potokobezopasnost-i-strategiya-blokirovok">4. Потокобезопасность и стратегия блокировок</a></li><li class="toc-item toc-h3"><a href="#granulyarnost-myuteksov">Гранулярность мьютексов</a></li><li class="toc-item toc-h2"><a href="#5-upravlenie-pamyatyu-i-escape-analysis">5. Управление памятью и Escape Analysis</a></li><li class="toc-item toc-h2"><a href="#6-strategiya-resheniya-na-intervyu-poshagovyy-algoritm">6. Стратегия решения на интервью: пошаговый алгоритм</a></li><li class="toc-item toc-h2"><a href="#7-edge-cases-i-tipichnye-oshibki-kandidatov">7. Edge Cases и типичные ошибки кандидатов</a></li><li class="toc-item toc-h2"><a href="#8-voprosy-s-sobesedovaniy-glubina-ponimaniya">8. Вопросы с собеседований: глубина понимания</a></li><li class="toc-item toc-h2"><a href="#9-itog-chek-list-dlya-design-zadach">9. Итог: чек-лист для Design-задач</a></li>
+    <li class="toc-item toc-h2"><a href="#teoriya-design-zadach-ot-api-do-vnutrenney-mekhaniki-v-go">Теория Design-задач: От API до внутренней механики в Go</a></li><li class="toc-item toc-h2"><a href="#1-filosofiya-design-zadach-chto-proveryaet-intervyuer">1. Философия Design-задач: Что проверяет интервьюер</a></li><li class="toc-item toc-h2"><a href="#2-arkhitektura-struktury-dannykh-v-go-pointer-vs-value-receiver">2. Архитектура структуры данных в Go: Pointer vs Value Receiver</a></li><li class="toc-item toc-h2"><a href="#3-vybor-bazovykh-struktur-map-slice-ili-kastomnaya-khesh-tablitsa">3. Выбор базовых структур: Map, Slice или кастомная хеш-таблица</a></li><li class="toc-item toc-h2"><a href="#4-potokobezopasnost-strategii-sinkhronizatsii">4. Потокобезопасность: Стратегии синхронизации</a></li><li class="toc-item toc-h3"><a href="#1-edinyy-myuteks-sync-mutex">1. Единый мьютекс (sync.Mutex)</a></li><li class="toc-item toc-h3"><a href="#2-razdelyaemyy-myuteks-sync-rwmutex">2. Разделяемый мьютекс (sync.RWMutex)</a></li><li class="toc-item toc-h3"><a href="#3-shardirovanie-striped-locking">3. Шардирование (Striped Locking)</a></li><li class="toc-item toc-h2"><a href="#5-upravlenie-pamyatyu-i-escape-analysis">5. Управление памятью и Escape Analysis</a></li><li class="toc-item toc-h2"><a href="#voprosy-dlya-sobesedovaniya">Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

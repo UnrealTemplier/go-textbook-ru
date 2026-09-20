@@ -2171,23 +2171,24 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~26 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. Нестандартные решения</h1>
           </header>
 
           <div class="article-markdown">
-            <p>В предыдущей статье <a href="1-teoriya-podkhod-k-slozhnym-zadacham.html" class="wikilink">1. Теория. Подход к сложным задачам</a> мы вооружились системной методологией штурма Hard-задач: декомпозиция, смена перспективы, поиск скрытого инварианта. Но есть класс задач, где даже эта методология буксует — или, точнее, приводит к решению, которое работает, но не оптимально, или выглядит громоздко. Именно здесь в игру вступают <strong>нестандартные решения</strong> — те самые ходы, которые на code review вызывают возглас «как ты до этого додумался?».</p>
-<p>Нестандартное решение — это не магия и не врождённая гениальность. Это <strong>умение выйти за пределы изученных паттернов</strong>, применив математический инсайт, неожиданную структуру данных или специфичную возможность языка. На собеседовании Senior-уровня такое решение отделяет кандидата, который «натаскан на задачи», от инженера, который действительно понимает, как работает код на всех уровнях — от Big O до кэш-линий процессора.</p>
-<p>В этой статье мы разберём, что делает решение нестандартным, какие универсальные техники помогают их находить, как Go-специфика открывает возможности, недоступные в других языках, и как тренировать этот навык, не превращаясь в коллекционера трюков.</p>
-<h3 id="chto-takoe-nestandartnoe-reshenie-i-pochemu-ono-nuzhno">Что такое «нестандартное решение» и почему оно нужно</h3>
+            <blockquote>
+<p><em>«Нестандартное решение — это не нарушение правил, а открытие правил более глубокого уровня».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="nestandartnye-algoritmicheskie-resheniya-matematicheskie-insayty-inversiya-i-try">Нестандартные алгоритмические решения: математические инсайты, инверсия и трюки рантайма Go</h2>
 
-<p><strong>Нестандартное решение</strong> — это такой подход к задаче, который:<br />
-1. Не укладывается в один из 15 базовых алгоритмических паттернов (<a href="../../01-teoriya/3-patterny-vmesto-zapominaniya-resheniy.html" class="wikilink">3. Паттерны вместо запоминания решений</a>);<br />
-2. Использует неочевидное свойство данных, математическую теорему или низкоуровневую оптимизацию;<br />
-3. Часто работает за асимптотически оптимальное время, но с неожиданно малой константой или памятью.</p>
-<p>Зачем они нужны на собеседовании? Интервьюер, задавая Hard-задачу, часто ожидает не просто «работающий Accepted», а <strong>демонстрацию глубины</strong>. Если вы решаете Trapping Rain Water через предподсчёт максимумов O(N) с O(N) памяти — это Middle. Если вы предлагаете решение с двумя указателями и O(1) памяти, объясняя геометрический инвариант — это Senior. Если вы вдобавок упоминаете, как работает branch predictor в этом цикле — это Staff.</p>
+<p>Стандартные алгоритмические шаблоны (Два указателя, Скользящее окно, BFS/DFS, Бинарный поиск) покрывают подавляющее большинство задач уровня Easy и Medium. Однако в задачах категории Hard механическое прикладывание шаблонов часто приводит либо к комбинаторному взрыву $O(2^N)$, либо к тяжеловесным конструкциям, требующим сотни строк кода.</p>
+<p><strong>Нестандартное решение</strong> — это инженерный прорыв, позволяющий обойти лобовую сложность за счет:<br />
+1. Алгебраического или теоретико-числового свойства задачи.<br />
+2. Инверсии направления мысли (от ответа к началу, разрушение вместо построения).<br />
+3. Использования низкоуровневых аппаратных инструкций процессора и особенностей рантайма Go.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2201,35 +2202,37 @@
     </button>
   </div>
   <pre class="mermaid">
-flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-subgraph Standard
-S1[&quot;Стандартные паттерны&lt;br&gt;Два указателя&lt;br&gt;Скользящее окно&lt;br&gt;BFS / DFS&quot;]:::process
-end
-subgraph NonStandard
-N1[&quot;Математический инсайт&lt;br&gt;XOR, теорема Пика&lt;br&gt;ДП через битовые маски&quot;]:::process
-N2[&quot;Нестандартная структура&lt;br&gt;Битовый массив&lt;br&gt;Кольцевой буфер&lt;br&gt;Дерево Фенвика&quot;]:::process
-N3[&quot;Инвертирование задачи&lt;br&gt;Из ответа к входу&lt;br&gt;Разрушение вместо построения&quot;]:::process
-N4[&quot;Языковые трюки Go&lt;br&gt;unsafe.String&lt;br&gt;math/bits&lt;br&gt;пулы объектов&quot;]:::process
-end
-Standard --&gt; NonStandard
+flowchart TD
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+A[&quot;Нестандартные приемы&quot;]:::entry --&gt; B[&quot;1. Математический инсайт&lt;br/&gt;Свойства XOR, арифметика остатков, инварианты&quot;]:::process
+A --&gt; C[&quot;2. Инверсия задачи&lt;br/&gt;Сборка с конца, движение от ответа&quot;]:::process
+A --&gt; D[&quot;3. Нестандартные структуры&lt;br/&gt;Монотонный стек, плоский фенвик, кольцевой буфер&quot;]:::process
+A --&gt; E[&quot;4. Механика Go&lt;br/&gt;math/bits, zero-copy срезы, стек против кучи&quot;]:::success
+
+B --&gt; Ex1[&quot;Single Number за O(1) памяти&quot;]:::process
+C --&gt; Ex2[&quot;Merge Sorted Array с конца&quot;]:::process
+D --&gt; Ex3[&quot;Largest Rectangle через стек индексов&quot;]:::process
+E --&gt; Ex4[&quot;POPCOUNT / bits.OnesCount за 1 такт CPU&quot;]:::success
   </pre>
 </div>
 
 
-<h3 id="tip-1-matematicheskiy-insayt-kogda-formula-zamenyaet-algoritm">Тип 1: Математический инсайт — когда формула заменяет алгоритм</h3>
+<hr />
+<h2 id="1-kategoriya-1-matematicheskiy-insayt-formula-vmesto-perebora">1. Категория 1: Математический инсайт (Формула вместо перебора)</h2>
 
-<p>Иногда задача, выглядящая как переборная, сводится к математической формуле, известной теореме или алгебраическому свойству.</p>
-<p><strong>Пример 1: Single Number (LeetCode 136).</strong> Задача: найти единственный элемент в массиве, встречающийся один раз, когда все остальные встречаются дважды. Стандартное решение — map за O(N) памяти. Нестандартное — XOR. Свойство <code>a ^ a = 0</code>, <code>a ^ 0 = a</code>, коммутативность и ассоциативность XOR позволяют за O(N) времени и O(1) памяти получить ответ.</p>
+<p>Часто сложнейшая переборная задача мгновенно схлопывается в константную формулу при взгляде через призму алгебры или дискретной математики.</p>
+<h3 id="svoystva-pobitovogo-xor-oplus">Свойства побитового XOR ($\oplus$)</h3>
+<p>Операция XOR обладает фундаментальными свойствами:<br />
+1. $x \oplus x = 0$ (самоуничтожение одинаковых битов).<br />
+2. $x \oplus 0 = x$ (нейтральный элемент).<br />
+3. Коммутативность и ассоциативность ($a \oplus b \oplus c = c \oplus a \oplus b$).</p>
+<p><strong>Пример (LeetCode 136. Single Number):</strong> Найти единственный уникальный элемент в массиве, где все остальные повторяются дважды.<br />
+Вместо хеш-таблицы с памятью $O(N)$ мы применяем последовательный XOR всех элементов за $O(1)$ памяти:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2240,22 +2243,24 @@ Standard --&gt; NonStandard
     </button>
   </div>
   <pre class="language-go"><code class="language-go">func singleNumber(nums []int) int {
-    result := 0
+    res := 0
     for _, v := range nums {
-        result ^= v
+        res ^= v
     }
-    return result
+    return res
 }
 </code></pre>
 </div>
 
-<p><strong>Пример 2: Missing Number (LeetCode 268).</strong> Найти пропущенное число в диапазоне 0..N. Стандартно — сумма арифметической прогрессии минус сумма массива (O(N), O(1)). Нестандартно — XOR всех индексов и всех элементов: <code>0..N ^ nums[0] ^ nums[1]...</code>. Двойное применение свойства XOR.</p>
-<p><strong>Пример 3: Trapping Rain Water.</strong> Геометрический инсайт: «уровень воды над столбцом равен <code>min(maxLeft, maxRight) - height[i]</code>» не очевиден, если вы не нарисовали картинку. Без этого инсайта задача не решается оптимально.</p>
-<p>Математические инсайты тренируются чтением разборов и самостоятельным выведением формул. Senior-разработчик, столкнувшись с задачей, спрашивает себя: «Есть ли здесь алгебраическое свойство, которое я могу эксплуатировать?» и проверяет на маленьких примерах.</p>
-<h3 id="tip-2-nestandartnaya-struktura-dannykh-kogda-standartnoy-biblioteki-nedostatochn">Тип 2: Нестандартная структура данных — когда стандартной библиотеки недостаточно</h3>
+<p>Все парные дубликаты взаимоуничтожаются в $0$, оставляя единственное уникальное число в регистре процессора.</p>
+<hr />
+<h2 id="2-kategoriya-2-inversiya-zadachi-dvizhenie-ot-otveta-k-vkhodu">2. Категория 2: Инверсия задачи (Движение от ответа к входу)</h2>
 
-<p>В стандартной библиотеке Go нет красно-чёрных деревьев, нет встроенной PriorityQueue (только <code>container/heap</code>), нет битовых массивов. Но иногда именно такая структура даёт оптимальное решение, и Senior способен её спроектировать за 10 минут.</p>
-<p><strong>Пример: LRU Cache (LeetCode 146).</strong> Стандартный подход — <code>container/list</code> + <code>map</code>. Нестандартный — собственный двусвязный список на <code>*Node</code>, избегающий <code>interface{}</code> и аллокаций боксинга.</p>
+<p>Когда прямое моделирование процесса вызывает необходимость постоянных сдвигов массива за $O(N)$, инвертирование направления обработки снижает сложность до строгого $O(1)$ дополнительной памяти.</p>
+<h3 id="sliyanie-s-kontsa-merge-sorted-array-leetcode-88">Слияние с конца (Merge Sorted Array, LeetCode 88)</h3>
+<p>Даны два отсортированных массива, первый имеет запас памяти в конце.<br />
+Если сливать элементы с начала, каждый перенос потребует сдвига элементов вправо ($O(N^2)$).<br />
+<strong>Инверсия:</strong> начинаем заполнять массив <strong>с самого конца</strong>, сравнивая максимальные элементы обоих массивов:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2265,28 +2270,40 @@ Standard --&gt; NonStandard
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">type Node struct {
-    key, value int
-    prev, next *Node
+  <pre class="language-go"><code class="language-go">func merge(nums1 []int, m int, nums2 []int, n int) {
+    p1 := m - 1
+    p2 := n - 1
+    p := m + n - 1
+
+    for p1 &gt;= 0 &amp;&amp; p2 &gt;= 0 {
+        if nums1[p1] &gt; nums2[p2] {
+            nums1[p] = nums1[p1]
+            p1--
+        } else {
+            nums1[p] = nums2[p2]
+            p2--
+        }
+        p--
+    }
+
+    // Копируем остаток nums2, если он остался
+    for p2 &gt;= 0 {
+        nums1[p] = nums2[p2]
+        p2--
+        p--
+    }
 }
 </code></pre>
 </div>
 
-<p>Такой подход не просто быстрее — он демонстрирует понимание того, как работает память и GC в Go.</p>
-<p><strong>Пример: Median Finder (LeetCode 295).</strong> Стандартно — две кучи (<code>container/heap</code>). Нестандартно — можно поддерживать отсортированный слайс и вставлять бинарным поиском (O(log N) на поиск + O(N) на вставку). Но Senior предложит сбалансированное дерево поиска, если бы оно было в stdlib, и объяснит trade-off.</p>
-<p><strong>Пример: Sliding Window Maximum.</strong> Монотонная очередь на слайсе — фактически ручная реализация дека с инвариантом. Использование слайса для этого — нестандартный для новичков, но стандартный для Senior ход, потому что он обеспечивает непрерывность памяти и отсутствие аллокаций.</p>
-<h3 id="tip-3-invertirovanie-zadachi-ot-otveta-k-vkhodu">Тип 3: Инвертирование задачи — «от ответа к входу»</h3>
+<p>Ни один еще не прочитанный элемент <code>nums1</code> не будет перезаписан, так как свободного места в конце всегда строго достаточно!</p>
+<hr />
+<h2 id="3-kategoriya-3-nizkourovnevye-vozmozhnosti-go">3. Категория 3: Низкоуровневые возможности Go</h2>
 
-<p>Некоторые задачи становятся проще, если попытаться идти не от входа к выходу, а наоборот.</p>
-<p><strong>Пример: Merge Sorted Array (LeetCode 88).</strong> Вместо слияния с начала (требующего сдвигов) — слияние <strong>с конца</strong>. Это инвертирование порядка заполнения позволяет выполнить слияние in-place без дополнительной памяти.</p>
-<p><strong>Пример: Serialize and Deserialize Binary Tree (LeetCode 297).</strong> Вместо того чтобы пытаться восстановить дерево по неоднозначному inorder-обходу, используют preorder с маркерами null, что делает десериализацию рекурсивной и однозначной. Инвертирование: не «как хранить структуру», а «как передать достаточно информации для однозначного восстановления».</p>
-<p><strong>Пример: 3Sum.</strong> Вместо поиска троек «в лоб» — фиксируем один элемент и сводим к 2Sum с двумя указателями. Это инвертирование размерности задачи: из трёхмерного пространства в два прохода по одномерному.</p>
-<p>Техника инвертирования универсальна: спросите себя, «могу ли я построить ответ, начиная с конца?», «могу ли я свести задачу поиска X к задаче проверки X на валидность?» (бинарый поиск по ответу).</p>
-<h3 id="tip-4-yazykovye-tryuki-go-kogda-znanie-rantayma-dayot-preimushchestvo">Тип 4: Языковые трюки Go — когда знание рантайма даёт преимущество</h3>
-
-<p>В отличие от Python или Java, Go предоставляет уникальные низкоуровневые возможности, которые в умелых руках превращают O(N) в O(N) с микроскопической константой.</p>
-<p><strong>1. <code>math/bits</code> для битовых операций.</strong><br />
-Пакет <code>math/bits</code> предоставляет аппаратно-ускоренные операции: <code>bits.OnesCount</code>, <code>bits.TrailingZeros</code>, <code>bits.Len</code>. В задачах на битовые маски, подсчёт единичных битов, операции с флагами — их использование не только сокращает код, но и делает его быстрее самописных циклов.</p>
+<p>Go предоставляет уникальный баланс высокой выразительности и прямого контроля над аппаратурой.</p>
+<h3 id="paket-mathbits-i-apparatnye-instruktsii">Пакет `math/bits` и аппаратные инструкции</h3>
+<p>Подсчет установленных битов (<code>POPCOUNT</code>) или поиск лидирующих нулей (<code>CLZ</code>) в ручном цикле требует десятков инструкций и ветвлений.<br />
+Функции <code>math/bits.OnesCount64</code>, <code>math/bits.LeadingZeros64</code> компилятор Go заменяет <strong>одной аппаратной машинной инструкцией</strong> процессора (<code>POPCNT</code>, <code>LZCNT</code> на x86-64):</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2297,80 +2314,81 @@ Standard --&gt; NonStandard
     </button>
   </div>
   <pre class="language-go"><code class="language-go">import &quot;math/bits&quot;
-count := bits.OnesCount(uint(x))
+
+// Выполняется за ровно 1 такт CPU без сбросов конвейера
+count := bits.OnesCount64(mask)
 </code></pre>
 </div>
 
-<p><strong>2. <code>unsafe.String</code> и <code>unsafe.Slice</code> для zero-copy операций.</strong><br />
-В задачах на строки, где требуется максимальная производительность, Senior может упомянуть (и применить с осторожностью) <code>unsafe.String</code> для создания строки из <code>[]byte</code> без копирования, или <code>unsafe.Slice</code> для получения слайса из указателя. На собеседовании это нужно делать с явным обоснованием: «Здесь я избегаю аллокации, потому что исходный буфер гарантированно не изменится».</p>
-<p><strong>3. Пулы объектов (<code>sync.Pool</code>).</strong><br />
-В задачах с интенсивным созданием и удалением временных объектов (например, при построении дерева разбора, сериализации) можно использовать <code>sync.Pool</code> для переиспользования буферов, снижая давление на GC. На LeetCode это редко нужно, но упоминание показывает Senior-уровень.</p>
-<p><strong>4. Массивы фиксированного размера вместо map.</strong><br />
-Этот трюк мы неоднократно разбирали (<a href="../../01-teoriya/10-svyaz-struktur-dannykh-i-algoritmov.html" class="wikilink">10. Связь структур данных и алгоритмов</a>), но он остаётся краеугольным камнем Go-оптимизации. <code>[26]int</code> или <code>[128]int</code> на стеке — это не просто «чуть быстрее», а на порядки быстрее map в горячих циклах.</p>
-<p><strong>5. Срезы с ёмкостью для избежания аллокаций.</strong><br />
-<code>deque := make([]int, 0, k)</code> в Sliding Window Maximum — это не просто идиома, а осознанное проектирование: мы знаем максимальную вместимость, исключаем переаллокации и получаем предсказуемую производительность.</p>
+<h3 id="zero-copy-preobrazovaniya-srezov">Zero-Copy преобразования срезов</h3>
+<p>При парсинге больших объемов данных вызов <code>string(b)</code> выделяет новую память в куче и копирует байты.<br />
+В Go 1.20+ доступен пакет <code>unsafe</code> с функциями <code>unsafe.String</code> и <code>unsafe.Slice</code>, позволяющими конструировать строковые заголовки над существующими буферами без единой аллокации:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">import &quot;unsafe&quot;
+
+// Zero-copy создание строки над байтовым буфером
+func BytesToString(b []byte) string {
+    if len(b) == 0 {
+        return &quot;&quot;
+    }
+    return unsafe.String(&amp;b[0], len(b))
+}
+</code></pre>
+</div>
+
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
   </div>
   <div class="callout-body">
-    <p>Использование <code>unsafe</code> на собеседовании без запроса интервьюера может быть воспринято как overkill. Senior подаст это так: «В production-коде я бы рассмотрел <code>unsafe.String</code> для исключения копирования, но здесь, для читаемости, оставлю стандартное преобразование». Это показывает знание без фанатизма.</p>
+    <p>Используйте <code>unsafe</code> на собеседованиях только с явным комментарием о контракте иммутабельности: базовый массив байтов не должен изменяться во время жизни полученной строки.</p>
   </div>
 </div>
 
-<h3 id="sistema-poiska-nestandartnogo-resheniya">Система поиска нестандартного решения</h3>
+<hr />
+<h2 id="4-voprosy-dlya-sobesedovaniya">4. Вопросы для собеседования</h2>
 
-<p>Когда стандартные паттерны исчерпаны, а задача не поддаётся, запустите этот процесс:</p>
-<ol>
-<li>
-<p><strong>Сформулируйте узкое место.</strong> Что именно медленно или занимает много памяти? «Я слишком много раз пробегаю по массиву для поиска максимумов», «Я аллоцирую новый слайс на каждой итерации».</p>
-</li>
-<li>
-<p><strong>Спросите: «Можно ли это посчитать за O(1) или O(log N)?»</strong> Часто ответ — предподсчитать, использовать другую структуру или математический трюк.</p>
-</li>
-<li>
-<p><strong>Проверьте «коллекцию нестандартных идей».</strong> Держите в голове список: XOR для чётности, бинарный поиск по ответу, два указателя с конца, монотонный стек, переиспользование слайса (<code>s = s[:0]</code>), замена map на массив, кольцевой буфер, битовые маски вместо множества.</p>
-</li>
-<li>
-<p><strong>Нарисуйте данные.</strong> Визуализация массива, дерева или графа на доске часто открывает геометрические или структурные свойства, невидные в коде.</p>
-</li>
-<li>
-<p><strong>Попробуйте решить задачу для N=5 вручную.</strong> Выписывая промежуточные значения, можно заметить закономерность, которая станет ключом к алгоритму.</p>
-</li>
-<li>
-<p><strong>Спросите: «А что если я буду строить ответ неправильно, а потом исправлю?»</strong> Иногда жадный алгоритм с последующей корректировкой даёт нестандартное, но работающее решение.</p>
-</li>
-</ol>
-<h3 id="nestandartnoe-reshenie-kak-signal-senior-urovnya">Нестандартное решение как сигнал Senior-уровня</h3>
-
-<p>На собеседовании нестандартное решение должно быть подано правильно. Алгоритм:<br />
-1. Предложите стандартное решение, покажите, что вы его знаете.<br />
-2. Укажите его ограничения (память, время, константа).<br />
-3. Предложите нестандартную оптимизацию, объяснив, <strong>почему</strong> она работает (инвариант, математическое свойство).<br />
-4. Обсудите trade-off: часто нестандартное решение менее читаемо, и Senior обязан взвесить производительность против поддерживаемости.</p>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Вопрос: «Можно ли решить задачу поиска дубликатов за O(N) без дополнительной памяти, если разрешено изменять массив?»<br />
-Ответ: «Да, используя знак элемента как флаг: для каждого <code>x</code> я перехожу по индексу <code>abs(x)</code> и меняю знак. Это нестандартно, экономит память, но разрушает исходные данные. В production я бы обсудил с командой допустимость модификации входа».</p>
+    <p><strong>Вопрос:</strong> Как найти дубликат в массиве чисел от $1$ до $N$ размера $N+1$ за время $O(N)$ и память $O(1)$, если массив запрещено модифицировать?<br />
+<strong>Ответ:</strong> Применить <strong>алгоритм черепахи и зайца Флойда (Floyd's Tortoise and Hare)</strong> для поиска цикла.<br />
+Поскольку каждое число лежит в диапазоне $[1, N]$, массив можно интерпретировать как функцию перехода в связном списке: <code>next = nums[curr]</code>. Наличие дубликата означает, что в один узел ведут две стрелки, то есть в графе гарантированно существует цикл. Медленный и быстрый указатели найдут точку входа в цикл (дубликат) за $O(N)$ времени без выделения памяти.</p>
   </div>
 </div>
 
-<h3 id="trenirovka-nestandartnogo-myshleniya">Тренировка нестандартного мышления</h3>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Как реализовать хранение множества чисел из диапазона $[0, 63]$ с максимальной скоростью проверки наличия и минимальной памятью?<br />
+<strong>Ответ:</strong> Использовать битовую маску <code>uint64</code>. Добавление элемента: <code>mask |= (1 &lt;&lt; x)</code>. Проверка наличия: <code>(mask &amp; (1 &lt;&lt; x)) != 0</code>. Память: ровно 8 байт. Все операции выполняются в регистрах процессора за 1 такт CPU.</p>
+  </div>
+</div>
 
-<p>Невозможно выучить все трюки. Но можно развить чутьё:<br />
-- <strong>Решайте задачи без тегов.</strong> Отключите темы на LeetCode, чтобы не знать, какой паттерн применить.<br />
-- <strong>Ищите несколько решений для одной задачи.</strong> Для каждой задачи, которую вы решили, найдите ещё минимум два подхода (в том числе неоптимальных).<br />
-- <strong>Читайте разборы, обращая внимание на «почему».</strong> Не копируйте код, а пересказывайте идею своими словами.<br />
-- <strong>Экспериментируйте с Go.</strong> Попробуйте заменить map на массив, слайс на кольцевой буфер, рекурсию на итерацию — и замерьте время бенчмарком.</p>
-<h3 id="zaklyuchenie">Заключение</h3>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
-<p>Нестандартные решения — это вершина инженерного мастерства, где алгоритмы встречаются с математикой, структурами данных и знанием рантайма. Они не возникают из ниоткуда; они — результат системного анализа, коллекции идей и готовности выйти за рамки заученного. В Go-экосистеме, с её минимализмом и производительностью, нестандартные ходы часто оказываются наиболее элегантными и естественными.</p>
-<p>Теперь мы готовы к штурму самих задач. Первая — <strong>Trapping Rain Water</strong> — яркий пример того, как геометрический инсайт и два указателя превращают O(N²) в O(N) с O(1) памяти. <a href="3-trapping-rain-water.html" class="wikilink">3. Trapping Rain Water</a></p>
+<ol>
+<li>Нестандартные решения рождаются из понимания скрытых алгебраических свойств (XOR, битовые маски, теория графов).</li>
+<li>Инверсия порядка обхода (например, слияние с конца) позволяет преобразовать $O(N^2)$ алгоритм в $O(N)$ in-place решение.</li>
+<li>Пакет <code>math/bits</code> использует аппаратные инструкции процессора для битовой арифметики с нулевыми накладными расходами.</li>
+</ol>
+<p>Теперь мы переходим к подробному разбору сложнейших задач, начиная с классики: <a href="3-trapping-rain-water.html" class="wikilink">3. Trapping Rain Water</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2398,7 +2416,7 @@ count := bits.OnesCount(uint(x))
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#chto-takoe-nestandartnoe-reshenie-i-pochemu-ono-nuzhno">Что такое «нестандартное решение» и почему оно нужно</a></li><li class="toc-item toc-h3"><a href="#tip-1-matematicheskiy-insayt-kogda-formula-zamenyaet-algoritm">Тип 1: Математический инсайт — когда формула заменяет алгоритм</a></li><li class="toc-item toc-h3"><a href="#tip-2-nestandartnaya-struktura-dannykh-kogda-standartnoy-biblioteki-nedostatochn">Тип 2: Нестандартная структура данных — когда стандартной библиотеки недостаточно</a></li><li class="toc-item toc-h3"><a href="#tip-3-invertirovanie-zadachi-ot-otveta-k-vkhodu">Тип 3: Инвертирование задачи — «от ответа к входу»</a></li><li class="toc-item toc-h3"><a href="#tip-4-yazykovye-tryuki-go-kogda-znanie-rantayma-dayot-preimushchestvo">Тип 4: Языковые трюки Go — когда знание рантайма даёт преимущество</a></li><li class="toc-item toc-h3"><a href="#sistema-poiska-nestandartnogo-resheniya">Система поиска нестандартного решения</a></li><li class="toc-item toc-h3"><a href="#nestandartnoe-reshenie-kak-signal-senior-urovnya">Нестандартное решение как сигнал Senior-уровня</a></li><li class="toc-item toc-h3"><a href="#trenirovka-nestandartnogo-myshleniya">Тренировка нестандартного мышления</a></li><li class="toc-item toc-h3"><a href="#zaklyuchenie">Заключение</a></li>
+    <li class="toc-item toc-h2"><a href="#nestandartnye-algoritmicheskie-resheniya-matematicheskie-insayty-inversiya-i-try">Нестандартные алгоритмические решения: математические инсайты, инверсия и трюки рантайма Go</a></li><li class="toc-item toc-h2"><a href="#1-kategoriya-1-matematicheskiy-insayt-formula-vmesto-perebora">1. Категория 1: Математический инсайт (Формула вместо перебора)</a></li><li class="toc-item toc-h3"><a href="#svoystva-pobitovogo-xor-oplus">Свойства побитового XOR ($\oplus$)</a></li><li class="toc-item toc-h2"><a href="#2-kategoriya-2-inversiya-zadachi-dvizhenie-ot-otveta-k-vkhodu">2. Категория 2: Инверсия задачи (Движение от ответа к входу)</a></li><li class="toc-item toc-h3"><a href="#sliyanie-s-kontsa-merge-sorted-array-leetcode-88">Слияние с конца (Merge Sorted Array, LeetCode 88)</a></li><li class="toc-item toc-h2"><a href="#3-kategoriya-3-nizkourovnevye-vozmozhnosti-go">3. Категория 3: Низкоуровневые возможности Go</a></li><li class="toc-item toc-h3"><a href="#paket-mathbits-i-apparatnye-instruktsii">Пакет math/bits и аппаратные инструкции</a></li><li class="toc-item toc-h3"><a href="#zero-copy-preobrazovaniya-srezov">Zero-Copy преобразования срезов</a></li><li class="toc-item toc-h2"><a href="#4-voprosy-dlya-sobesedovaniya">4. Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

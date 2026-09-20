@@ -2171,16 +2171,21 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~26 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
+              <span class="meta-tag read-time">⏱ ~22 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">5. Design HashMap</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="proektirovanie-khesh-tablitsy-ot-otkrytoy-adresatsii-do-mekhaniki-rantayma">Проектирование хеш-таблицы: от открытой адресации до механики рантайма</h2>
+            <blockquote>
+<p><em>«Хеш-таблицы — это компромисс между пространством и временем, возведенный в ранг абсолюта».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="proektirovanie-khesh-tablitsy-ot-otkrytoy-adresatsii-do-mekhaniki-swiss-tables">Проектирование хеш-таблицы: от открытой адресации до механики Swiss Tables</h2>
 
-<p>Хеш-таблица — фундаментальная структура, на которой строится большинство высоконагруженных систем: кэши, индексы баз данных, маршрутизаторы запросов, компиляторы и системы конфигурации. На собеседованиях задача <code>Design HashMap</code> проверяет не умение скопировать стандартный <code>map</code>, а глубокое понимание компромиссов между памятью, скоростью доступа, конкурентностью и поведением сборщика мусора. В Go эта тема особенно остра, так как встроенная реализация оптимизирована под специфичные паттерны, а кастомные решения требуют явного управления кэш-линиями CPU и аллокациями.</p>
+<p>Хеш-таблица — ключевой строительный блок современных программных систем. Внутренние кэши, индексы баз данных, маршрутизаторы HTTP-запросов, таблицы символов компилятора — все они опираются на амортизированный доступ за $O(1)$. </p>
+<p>На технических собеседованиях задача <strong>Design HashMap</strong> (LeetCode 706) является лакмусовой бумажкой: она проверяет не знание синтаксиса <code>map[K]V</code>, а глубокое инженерное понимание аппаратных компромиссов: локальности кэша L1/L2/L3, штрафов за ветвления (branch misprediction), фрагментации кучи и стоимости рехаширования под нагрузкой.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2195,41 +2200,73 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Операция Put&quot;]:::process --&gt; B[&quot;Вычисление хеша&quot;]
-B --&gt; C[&quot;Индекс idx = h mod cap&quot;]
-C --&gt; D[&quot;Слот пуст или помечен удалённым?&quot;]
-D --&gt;|Да| E[&quot;Запись ключа и значения&lt;br&gt;State = occupied&quot;]
-D --&gt;|Нет| F[&quot;Слот занят&lt;br&gt;Сравнение ключей?&quot;]
-F --&gt;|Да| G[&quot;Обновление значения&quot;]
-F --&gt;|Нет| H[&quot;Линейное зондирование idx++&quot;]
-H --&gt; D
-E --&gt; I[&quot;Проверка load factor&quot;]
-I --&gt;|Превышен| J[&quot;Рехаширование&lt;br&gt;Новый массив 2x cap&lt;br&gt;Перемещение элементов&quot;]
-I --&gt;|Норма| K[&quot;Успешная вставка&quot;]
-J --&gt; K
-G --&gt; K
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+A[&quot;Операция Put(key, val)&quot;]:::entry --&gt; B[&quot;Вычисление хеша: h = hash(key)&quot;]:::process
+B --&gt; C[&quot;Индекс слота: idx = h &amp; (cap - 1)&quot;]:::process
+C --&gt; D{&quot;Состояние слота?&quot;}:::warning
+D --&gt;|Empty или Tombstone| E[&quot;Записать ключ и значение&lt;br/&gt;Пометить Occupied&quot;]:::success
+D --&gt;|Occupied, тот же ключ| F[&quot;Переписать значение&quot;]:::process
+D --&gt;|Occupied, другой ключ| G[&quot;Линейное зондирование:&lt;br/&gt;idx = (idx + 1) &amp; (cap - 1)&quot;]:::error
+G --&gt; D
+E --&gt; H{&quot;Коэффициент заполнения&lt;br/&gt;size / cap &gt; loadFactor?&quot;}:::warning
+H --&gt;|Да| I[&quot;Рехаширование:&lt;br/&gt;cap = cap * 2, миграция элементов&quot;]:::process
+H --&gt;|Нет| J[&quot;Завершение операции&quot;]:::success
+I --&gt; J
+F --&gt; J
   </pre>
 </div>
 
 
-<p>В этом материале мы разберём, почему Go использует цепочки переполнения, как реализовать хеш-таблицу с открытой адресацией для интервью, почему рехаширование убивает latency, и как механика CPU и рантайма влияет на выбор структуры данных.</p>
-<h2 id="1-arkhitekturnye-patterny-tsepochki-vs-otkrytaya-adresatsiya">1. Архитектурные паттерны: цепочки vs открытая адресация</h2>
+<hr />
+<h2 id="1-arkhitekturnye-paradigmy-tsepochki-vs-otkrytaya-adresatsiya-vs-swiss-tables">1. Архитектурные парадигмы: цепочки vs открытая адресация vs Swiss Tables</h2>
 
-<p>При проектировании хеш-таблицы первичный выбор — стратегия разрешения коллизий.</p>
-<ul>
-<li><strong>Открытая адресация (Open Addressing):</strong> Все элементы хранятся в едином массиве. При коллизии алгоритм зондирует следующие ячейки (линейно, квадратично или через двойное хеширование). Удаление требует маркеров <code>tombstone</code>, так как физическое удаление сломает зондирование для последующих элементов.</li>
-<li><strong>Замыкание цепочек (Separate Chaining):</strong> В каждой ячейке массива хранится ссылка на список (или слайс) элементов с одинаковым хешем. Удаление тривиально, но требует указателей и дополнительных аллокаций.</li>
-</ul>
+<p>Разрешение коллизий хеш-функции — фундаментальная развилка в дизайне ассоциативных массивов:</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th style="text-align: left;">Подход</th>
+<th style="text-align: left;">Суть механизма</th>
+<th style="text-align: left;">Плюсы</th>
+<th style="text-align: left;">Минусы</th>
+<th style="text-align: left;">Где применяется</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Метод цепочек (Separate Chaining)</strong></td>
+<td style="text-align: left;">В бакетах хранятся связные списки или динамические массивы.</td>
+<td style="text-align: left;">Простота реализации; удаление тривиально.</td>
+<td style="text-align: left;">Множество мелких аллокаций; ужасная кэш-локальность (pointer chasing).</td>
+<td style="text-align: left;">Java <code>HashMap</code> (до перестроения в дерево), C++ <code>std::unordered_map</code>.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Открытая адресация (Open Addressing)</strong></td>
+<td style="text-align: left;">Все элементы хранятся в непрерывном массиве. Коллизия = зондирование следующих ячеек.</td>
+<td style="text-align: left;">Максимальная плотность упаковки; превосходная кэш-локальность.</td>
+<td style="text-align: left;">Проблема кластеризации; удаление требует маркеров <code>tombstone</code>; чувствительность к высокому Load Factor.</td>
+<td style="text-align: left;">Python <code>dict</code>, Rust <code>hashbrown</code>, многие high-performance кэши.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Бакеты Go (до Go 1.23)</strong></td>
+<td style="text-align: left;">Массив <code>bmap</code> по 8 слотов + <code>tophash</code> + <code>overflow buckets</code>.</td>
+<td style="text-align: left;">Компромисс: плоские 8 элементов в бакете + цепочка переполнения.</td>
+<td style="text-align: left;">Дополнительные переходы по указателям при затяжных коллизиях.</td>
+<td style="text-align: left;">Go runtime (<code>runtime/map.go</code>).</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Swiss Tables (Go 1.24+)</strong></td>
+<td style="text-align: left;">Группы по 16 слотов с контрольными байтами (Ctrl bytes) и SIMD/SWAR поиском.</td>
+<td style="text-align: left;">Параллельный опрос 16 слотов за 1-2 инструкции CPU; минимальные накладные расходы памяти.</td>
+<td style="text-align: left;">Сложность низкоуровневой логики зондирования.</td>
+<td style="text-align: left;">Go 1.24+, Abseil C++, Rust <code>std::collections::HashMap</code>.</td>
+</tr>
+</tbody>
+</table></div>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2244,39 +2281,38 @@ G --&gt; K
   </div>
   <pre class="mermaid">
 flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Открытая адресация&quot;]:::process --&gt; B[&quot;Локальность кэша: отлично&quot;]
-A --&gt; C[&quot;Удаление: сложно tombstone&quot;]
-A --&gt; D[&quot;Память: предсказуемо&quot;]
-E[&quot;Цепочки&quot;]:::process --&gt; F[&quot;Локальность кэша: хуже&quot;]
-E --&gt; G[&quot;Удаление: тривиально&quot;]
-E --&gt; H[&quot;Память: фрагментация&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+
+subgraph Chaining[&quot;1. Метод цепочек&quot;]
+A1[&quot;Bucket Array&quot;]:::process --&gt; B1[&quot;Node 1&quot;]:::accent
+B1 --&gt; C1[&quot;Node 2 (в куче)&quot;]:::error
+end
+
+subgraph OpenAddressing[&quot;2. Открытая адресация&quot;]
+A2[&quot;Непрерывный плоский массив [E1, E2, E3, Tombstone, E5]&quot;]:::success
+end
   </pre>
 </div>
 
 
-<div class="callout callout-info">
+<div class="callout callout-note">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Заметка</span>
   </div>
   <div class="callout-body">
-    <p>В рантайме Go (<code>src/runtime/map.go</code>) используется <strong>гибридная открытая адресация по бакетам</strong>: массив бакетов <code>bmap</code> размером 8 элементов. Если в бакете нет места, создаётся <code>overflow bucket</code> и привязывается через указатель. Это даёт локальность первых 8 элементов + гибкость при коллизиях. Поле <code>tophash</code> хранит старший байт хеша для быстрого отсева без сравнения ключей, что критично для производительности.</p>
+    <p><strong>Революция Swiss Tables в Go 1.24:</strong><br />
+Исторически рантайм Go использовал бакеты по 8 элементов. В Go 1.24 внедрена архитектура Swiss Tables (на базе алгоритма SwissMap от Google). Она хранит метаданные (старшие 7 бит хеша каждого слота) в отдельном плоском 16-байтном массиве. С помощью векторных инструкций SIMD (или побитовой SWAR-магии) процессор за 1 такт определяет, есть ли искомый ключ в группе из 16 элементов, полностью исключая лишние чтения из оперативной памяти.</p>
   </div>
 </div>
 
-<h2 id="2-kastomnaya-realizatsiya-na-go-otkrytaya-adresatsiya-s-lineynym-zondirovaniem">2. Кастомная реализация на Go: открытая адресация с линейным зондированием</h2>
+<hr />
+<h2 id="2-idiomatichnaya-realizatsiya-na-go-otkrytaya-adresatsiya-s-lineynym-zondirovani">2. Идиоматичная реализация на Go: открытая адресация с линейным зондированием</h2>
 
-<p>Для интервью часто просят реализовать хеш-таблицу с нуля. Ниже — production-готовый вариант с поддержкой удаления через <code>tombstone</code>, динамическим рехешированием и строгим соблюдением <code>ok idiom</code>.</p>
+<p>Для интервью и системного программирования эталоном прозрачности и скорости является реализация с открытой адресацией, битовой маской степени двойки и поддержкой <code>tombstone</code> (маркеров удаления).</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2289,201 +2325,208 @@ E --&gt; H[&quot;Память: фрагментация&quot;]
   <pre class="language-go"><code class="language-go">package hashmap
 
 const (
-    empty     = iota
-    occupied
-    tombstone
+    stateEmpty uint8 = iota
+    stateOccupied
+    stateTombstone
 )
 
-type Entry struct {
-    Key   int
-    Value int
-    State uint8
+// entry представляет ячейку таблицы.
+type entry struct {
+    key   int
+    value int
+    state uint8
 }
 
-// CustomMap реализует хеш-таблицу с открытой адресацией
-type CustomMap struct {
-    data       []Entry
-    size       int     // количество валидных элементов
-    cap        int     // размер массива
-    loadFactor float64 // порог рехаширования
+// HashMap реализует хеш-таблицу с открытой адресацией и линейным зондированием.
+type HashMap struct {
+    buckets    []entry
+    size       int     // количество активных элементов
+    capacity   int     // размер массива buckets (всегда степень 2)
+    mask       int     // capacity - 1 для быстрого взятия модуля
+    loadFactor float64 // порог рехаширования (обычно 0.70)
 }
 
-// New создаёт таблицу с начальной ёмкостью
-func New(initCap int, loadFactor float64) *CustomMap {
-    if loadFactor &lt;= 0 || loadFactor &gt;= 1 {
-        loadFactor = 0.75
+// NewHashMap создает новую таблицу с заданной начальной емкостью.
+func NewHashMap(initialCap int, loadFactor float64) *HashMap {
+    if initialCap &lt; 8 {
+        initialCap = 8
     }
-    // Округление до степени двойки для быстрого вычисления индекса
+    if loadFactor &lt;= 0.1 || loadFactor &gt;= 0.9 {
+        loadFactor = 0.70
+    }
+
+    // Округляем емкость до ближайшей степени двойки
     cap := 1
-    for cap &lt; initCap {
+    for cap &lt; initialCap {
         cap &lt;&lt;= 1
     }
-    return &amp;CustomMap{
-        data:       make([]Entry, cap),
-        cap:        cap,
+
+    return &amp;HashMap{
+        buckets:    make([]entry, cap),
+        size:       0,
+        capacity:   cap,
+        mask:       cap - 1,
         loadFactor: loadFactor,
     }
 }
 
-// Get возвращает значение и статус наличия
-func (m *CustomMap) Get(key int) (int, bool) {
-    idx := m.hashIndex(key)
-    for i := 0; i &lt; m.cap; i++ {
-        pos := (idx + i) % m.cap
-        entry := &amp;m.data[pos]
-        if entry.State == empty {
-            return 0, false // Дальше искать бессмысленно
-        }
-        if entry.State == occupied &amp;&amp; entry.Key == key {
-            return entry.Value, true
-        }
+// hash возвращает перемешанный 32-битный хеш целого числа (хэш Томаса Ванга).
+func (m *HashMap) hash(key int) int {
+    k := uint64(key)
+    k = (^k) + (k &lt;&lt; 21) // k = (k &lt;&lt; 21) - k - 1
+    k = k ^ (k &gt;&gt; 24)
+    k = (k + (k &lt;&lt; 3)) + (k &lt;&lt; 8) // k * 265
+    k = k ^ (k &gt;&gt; 14)
+    k = (k + (k &lt;&lt; 2)) + (k &lt;&lt; 4) // k * 21
+    k = k ^ (k &gt;&gt; 28)
+    k = k + (k &lt;&lt; 31)
+    return int(k)
+}
+
+// Put вставляет или перезаписывает значение ключа.
+func (m *HashMap) Put(key, val int) {
+    // Проверка коэффициента заполнения перед вставкой
+    if float64(m.size+1) &gt; float64(m.capacity)*m.loadFactor {
+        m.resize(m.capacity * 2)
     }
+
+    idx := m.hash(key) &amp; m.mask
+    firstTombstone := -1
+
+    for i := 0; i &lt; m.capacity; i++ {
+        slot := (idx + i) &amp; m.mask
+        curr := &amp;m.buckets[slot]
+
+        if curr.state == stateOccupied {
+            if curr.key == key {
+                curr.value = val // Ключ найден — обновляем значение
+                return
+            }
+            continue
+        }
+
+        if curr.state == stateTombstone {
+            if firstTombstone == -1 {
+                firstTombstone = slot
+            }
+            continue
+        }
+
+        // Достигли пустого слота (stateEmpty)
+        targetSlot := slot
+        if firstTombstone != -1 {
+            targetSlot = firstTombstone // Переиспользуем могильный маркер
+        }
+
+        m.buckets[targetSlot] = entry{
+            key:   key,
+            value: val,
+            state: stateOccupied,
+        }
+        m.size++
+        return
+    }
+
+    // Если дошли сюда — все слоты заняты tombstones
+    if firstTombstone != -1 {
+        m.buckets[firstTombstone] = entry{
+            key:   key,
+            value: val,
+            state: stateOccupied,
+        }
+        m.size++
+    }
+}
+
+// Get ищет значение по ключу, возвращая значение и флаг наличия.
+func (m *HashMap) Get(key int) (int, bool) {
+    idx := m.hash(key) &amp; m.mask
+
+    for i := 0; i &lt; m.capacity; i++ {
+        slot := (idx + i) &amp; m.mask
+        curr := &amp;m.buckets[slot]
+
+        if curr.state == stateEmpty {
+            // Цепочка зондирования прервалась — ключ гарантированно отсутствует
+            return 0, false
+        }
+
+        if curr.state == stateOccupied &amp;&amp; curr.key == key {
+            return curr.value, true
+        }
+        // При встрече stateTombstone продолжаем поиск дальше
+    }
+
     return 0, false
 }
 
-// Put вставляет или обновляет пару
-func (m *CustomMap) Put(key, value int) {
-    if float64(m.size+1) &gt; float64(m.cap)*m.loadFactor {
-        m.resize()
-    }
-    idx := m.hashIndex(key)
-    var insertPos = -1
-    for i := 0; i &lt; m.cap; i++ {
-        pos := (idx + i) % m.cap
-        entry := &amp;m.data[pos]
-        if entry.State == empty {
-            if insertPos == -1 {
-                insertPos = pos // Запоминаем первый tombstone
-            }
-            break
-        }
-        if entry.State == tombstone &amp;&amp; insertPos == -1 {
-            insertPos = pos
-        }
-        if entry.State == occupied &amp;&amp; entry.Key == key {
-            entry.Value = value
-            return
-        }
-    }
-    if insertPos == -1 {
-        // Таблица переполнена (должно быть покрыто resize, но на всякий случай)
-        m.resize()
-        idx = m.hashIndex(key)
-        insertPos = idx
-    }
-    m.data[insertPos] = Entry{Key: key, Value: value, State: occupied}
-    m.size++
-}
+// Delete помечает ячейку маркером удаления (Tombstone).
+func (m *HashMap) Delete(key int) bool {
+    idx := m.hash(key) &amp; m.mask
 
-// Delete помечает элемент tombstone
-func (m *CustomMap) Delete(key int) {
-    idx := m.hashIndex(key)
-    for i := 0; i &lt; m.cap; i++ {
-        pos := (idx + i) % m.cap
-        entry := &amp;m.data[pos]
-        if entry.State == empty {
-            return
+    for i := 0; i &lt; m.capacity; i++ {
+        slot := (idx + i) &amp; m.mask
+        curr := &amp;m.buckets[slot]
+
+        if curr.state == stateEmpty {
+            return false
         }
-        if entry.State == occupied &amp;&amp; entry.Key == key {
-            entry.State = tombstone
+
+        if curr.state == stateOccupied &amp;&amp; curr.key == key {
+            curr.state = stateTombstone
             m.size--
-            return
+            return true
         }
     }
+
+    return false
 }
 
-// Внутренние методы
-func (m *CustomMap) hashIndex(key int) int {
-    // FNV-1a или простой битовый сдвиг для целых
-    h := uint32(key) * 2654435761
-    return int(h) &amp; (m.cap - 1)
-}
+// resize переаллоцирует массив и переносит только активные элементы.
+func (m *HashMap) resize(newCap int) {
+    oldBuckets := m.buckets
 
-func (m *CustomMap) resize() {
-    oldData := m.data
-    m.cap &lt;&lt;= 1
-    m.data = make([]Entry, m.cap)
-    m.size = 0 // Пересчитывается при переписывании
-    for _, entry := range oldData {
-        if entry.State == occupied {
-            m.Put(entry.Key, entry.Value)
+    m.buckets = make([]entry, newCap)
+    m.capacity = newCap
+    m.mask = newCap - 1
+    m.size = 0 // Пересчитается в Put
+
+    for _, e := range oldBuckets {
+        if e.state == stateOccupied {
+            m.Put(e.key, e.value)
         }
     }
 }
 </code></pre>
 </div>
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Почему <code>cap</code> всегда степень двойки? Это позволяет заменить дорогую операцию взятия остатка <code>%</code> на быстрое побитовое И <code>&amp; (cap - 1)</code>. Компилятор Go автоматически оптимизирует <code>x % n</code>, если <code>n</code> — константа степени двойки, но при динамическом росте лучше вычислять индекс явно через битовую маску. Это экономит ~2-4 такта CPU на каждую операцию.</p>
-  </div>
-</div>
+<hr />
+<h2 id="3-mekhanika-pamyati-bitovaya-maska-tombstones-i-inkrementalnyy-resayz">3. Механика памяти: битовая маска, Tombstones и инкрементальный ресайз</h2>
 
-<h2 id="3-mekhanika-rekhashirovaniya-i-gc-davlenie">3. Механика рехаширования и GC-давление</h2>
-
-<p>Синхронное рехаширование, показанное выше, создаёт <code>latency spike</code>: при достижении <code>loadFactor</code> выделяется новый массив <code>2x cap</code>, и все элементы копируются. Это <code>O(N)</code> операция, которая блокирует горутину.</p>
-<p>В рантайме Go используется <strong>инкрементальное рехаширование</strong>:<br />
-1. При срабатывании триггера выделяется <code>oldbuckets</code> (старый массив) и новый <code>buckets</code>.<br />
-2. При каждой операции <code>Get</code>/<code>Put</code> переносится только один бакет.<br />
-3. Чтение проверяет оба массива: сначала новый, потом старый.<br />
-4. Память освобождается постепенно, когда все старые бакеты мигрировали.</p>
-
-<div class="mermaid-wrapper">
-  <div class="mermaid-header">
-    <div class="mermaid-title">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-      <span>Архитектурная схема</span>
-    </div>
-    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-      <span>На весь экран</span>
-    </button>
-  </div>
-  <pre class="mermaid">
-flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Запись в растущую map&quot;]:::warning --&gt; B[&quot;Проверка oldbuckets&quot;]
-B --&gt; C{&quot;Бакет уже перемещён?&quot;}
-C --&gt;|Да| D[&quot;Запись в new buckets&quot;]
-C --&gt;|Нет| E[&quot;Копирование 1 бакета&lt;br&gt;Запись в new buckets&quot;]
-E --&gt; F[&quot;Если oldbuckets пуст&lt;br&gt;Освобождение памяти&quot;]
-D --&gt; G[&quot;Завершение операции&quot;]
-F --&gt; G
-  </pre>
-</div>
-
-
+<h3 id="stepen-dvoyki-vs-ostatok-ot-deleniya">Степень двойки vs остаток от деления</h3>
+<p>Операция деления <code>key % capacity</code> в микроархитектуре процессора требует порядка 15–40 тактов (инструкция <code>IDIV</code>).<br />
+Если размер массива всегда является степенью двойки ($2^k$), операция вычисления остатка заменяется на битовое <code>AND</code>:<br />
+$$\text{slot} = h \ \&amp; \ (\text{capacity} - 1)$$<br />
+Битовая маска выполняется ровно за <strong>1 такт CPU</strong>.</p>
+<h3 id="zachem-nuzhen-tombstone">Зачем нужен Tombstone?</h3>
+<p>При открытой адресации удаление элемента не может просто очистить слот в <code>stateEmpty</code>. Если при зондировании элемент $B$ был помещен после элемента $A$ из-за коллизии, физическая очистка ячейки $A$ разорвет цепочку поиска: метод <code>Get(B)</code> наткнется на <code>stateEmpty</code> и ошибочно решит, что $B$ в таблице нет!<br />
+Поэтому ячейка помечается как <code>stateTombstone</code>. Поиск продолжает зондирование сквозь tombstones, а новая вставка <code>Put</code> имеет право переиспользовать ячейку с tombstone.</p>
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
   </div>
   <div class="callout-body">
-    <p>В кастомной реализации удаление через <code>tombstone</code> не уменьшает физический размер массива. Если workload состоит из <code>Put</code> → <code>Delete</code> → <code>Put</code>, таблица постепенно превращается в массив <code>tombstone</code>, а зондирование деградирует до <code>O(N)</code>. В продакшене это решается фоновым компактированием или переключением на цепочки при высокой плотности удалений.</p>
+    <p><strong>Tombstone Saturation (Засорение могильниками):</strong><br />
+Если в таблице происходит интенсивный поток чередующихся вставок и удалений (<code>Put</code> → <code>Delete</code>), массив быстро заполнится маркерами <code>stateTombstone</code>. Число активных элементов мало (<code>size</code> невелик), но длина зондирования при <code>Get</code> для отсутствующих ключей вырастает до $O(N)$. Решение — триггерить рехаширование (компактификацию) не только при росте <code>size</code>, но и когда сумма $\text{size} + \text{tombstones} &gt; \text{capacity} \times 0.85$.</p>
   </div>
 </div>
 
-<h2 id="4-potokobezopasnost-i-shardirovanie">4. Потокобезопасность и шардирование</h2>
+<hr />
+<h2 id="4-konkurentnost-i-shardirovanie">4. Конкурентность и шардирование</h2>
 
-<p>Встроенный <code>map</code> в Go <strong>не потокобезопасен</strong>. Попытка конкурентной записи вызывает панику <code>concurrent map writes</code>. Для кастомных хеш-таблиц применимы те же стратегии:</p>
-<ul>
-<li><code>sync.Mutex</code> / <code>sync.RWMutex</code> вокруг всей структуры. Просто, но contention растёт линейно.</li>
-<li><strong>Шардирование (Striped Locking):</strong> Массив из <code>N</code> независимых хеш-таблиц, каждая со своим мьютексом. Хеш ключа выбирает шард: <code>idx := hash(key) % N</code>. Contention снижается в <code>N</code> раз.</li>
-<li><strong>Lock-free快照 (RCU):</strong> Атомарный указатель на неизменяемую версию таблицы. Чтение без блокировок, запись через <code>Copy-on-Write</code>. Высокий overhead памяти, идеально для read-heavy конфигов.</li>
-</ul>
+<p>Встроенный <code>map</code> в Go защищен от гонок на уровне рантайма: при обнаружении параллельной записи и чтения процесс немедленно аварийно завершается с паникой <code>fatal error: concurrent map writes</code>.</p>
+<p>В кастомных реализациях для высоконагруженных систем применяют <strong>Striped Locking (Шардирование)</strong>:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2493,119 +2536,56 @@ F --&gt; G
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// Пример шардированной обёртки
-type ShardedMap struct {
-    shards []*CustomMap
-    mu     []sync.Mutex
-    shardCount int
+  <pre class="language-go"><code class="language-go">type ShardedHashMap struct {
+    shards    []*ConcurrentShard
+    numShards int
+    mask      int
 }
 
-func NewSharded(count int) *ShardedMap {
-    s := &amp;ShardedMap{
-        shards:     make([]*CustomMap, count),
-        mu:         make([]sync.Mutex, count),
-        shardCount: count,
-    }
-    for i := 0; i &lt; count; i++ {
-        s.shards[i] = New(64, 0.75)
-    }
-    return s
-}
-
-func (s *ShardedMap) Put(key, value int) {
-    idx := uint32(key) % uint32(s.shardCount)
-    s.mu[idx].Lock()
-    defer s.mu[idx].Unlock()
-    s.shards[idx].Put(key, value)
+type ConcurrentShard struct {
+    mu sync.RWMutex
+    m  *HashMap
 }
 </code></pre>
 </div>
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Шардирование уменьшает contention, но увеличивает расход памяти: каждый шард имеет свой массив <code>data</code>, заголовки слайсов и мьютексы. На <code>GOMAXPROCS=32</code> и <code>N=32</code> оверхед может достигать 15-20% RSS. Для высоконагруженных систем часто используют <code>GOMEMLIMIT</code> и профилирование <code>pprof -allocs</code>, чтобы найти баланс между latency и memory footprint.</p>
-  </div>
-</div>
+<p>Шардирование распределяет запросы к разным мьютексам по хешу ключа, уменьшая время ожидания горутин в очереди на блокировку до пренебрежимо малых величин.</p>
+<hr />
+<h2 id="5-voprosy-dlya-sobesedovaniya">5. Вопросы для собеседования</h2>
 
-<h2 id="5-lovushki-proektirovaniya-i-zashchita-ot-hashdos">5. Ловушки проектирования и защита от HashDoS</h2>
-
-<ol>
-<li><strong>Предсказуемый хеш:</strong> Если хеш-функция детерминирована, злоумышленник может подобрать ключи, вызывающие максимальное число коллизий, превратив <code>O(1)</code> в <code>O(N)</code>. В Go это решается рандомизацией <code>hash0</code> при старте программы. В кастомных решениях добавляйте <code>xor</code> с случайным сидам.</li>
-<li><strong>False Sharing в шардах:</strong> Если мьютексы и данные шардов лежат в одной кэш-линии (64 байта), обновление одного шарда инвалидирует кэш у других ядер. Решение: выравнивание через <code>_ [64]byte</code> padding.</li>
-<li><strong>Нулевые значения:</strong> В Go <code>0</code> — валидное значение. Никогда не используйте <code>if m.Get(key) == 0</code> для проверки наличия. Всегда используйте <code>value, ok := m.Get(key)</code>.</li>
-<li><strong>Утечка <code>tombstone</code>:</strong> Если не пересобирать таблицу после массовых удалений, производительность падает экспоненциально.</li>
-</ol>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Почему <code>sync.Map</code> не заменяет шардированную хеш-таблицу?<br />
-<strong>Ответ:</strong> <code>sync.Map</code> оптимизирован под <code>write-once, read-many</code>. Внутри два слоя: <code>read</code> (атомарный указатель) и <code>dirty</code> (полная копия для новых/изменённых ключей). При частых <code>Store</code>/<code>Delete</code> происходит постоянная миграция между слоями, что создаёт <code>atomic</code> contention и аллокации. Шардированная <code>map + Mutex</code> стабильнее при <code>read/write ≈ 1:1</code> или <code>write-heavy</code>.</p>
+    <p><strong>Вопрос:</strong> Что такое HashDoS атака и как стандартная библиотека Go защищается от нее?<br />
+<strong>Ответ:</strong> Если злоумышленник знает алгоритм хеш-функции, он может передать специально подобранный набор ключей с одинаковым хешем. Это вырождает хеш-таблицу в связный список или длинную цепочку коллизий ($O(N)$ на операцию), что вызывает 100% утилизацию CPU и отказ в обслуживании (DoS).<br />
+В Go при запуске каждого процесса генерируется случайный криптографический сид (<code>hashkey</code>), который примешивается ко всем операциям хеширования в рантайме. Поэтому порядок обхода <code>map</code> не детерминирован, а предсказать коллизии извне невозможно.</p>
   </div>
 </div>
 
-<h2 id="6-sravnenie-s-drugimi-ekosistemami">6. Сравнение с другими экосистемами</h2>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Почему Go runtime реализует инкрементальное (эвакуационное) рехаширование?<br />
+<strong>Ответ:</strong> При синхронном удвоении таблицы на миллионы записей операция <code>Put</code> заблокирует выполнение горутины на десятки миллисекунд (Stop-The-World для таблицы), вызвав резкий скачок латентности (P99 latency spike). Рантайм Go выделяет <code>oldbuckets</code> и переносит бакеты постепенно: ровно по два бакета при каждой последующей операции записи или удаления.</p>
+  </div>
+</div>
 
-<div class="table-container"><table>
-<thead>
-<tr>
-<th>Аспект</th>
-<th>Go <code>map</code></th>
-<th>C++ <code>std::unordered_map</code></th>
-<th>Java <code>HashMap</code></th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>Коллизии</strong></td>
-<td>Чейнинг (overflow buckets)</td>
-<td>Чейнинг или открытая адресация (зависит от реализации)</td>
-<td>Чейнинг (списки/дерево после JDK 8)</td>
-</tr>
-<tr>
-<td><strong>Роста</strong></td>
-<td>Инкрементальный</td>
-<td>Синхронный</td>
-<td>Синхронный</td>
-</tr>
-<tr>
-<td><strong>Безопасность</strong></td>
-<td>Паника при race</td>
-<td>Undefined behavior</td>
-<td>Исключения / undefined</td>
-</tr>
-<tr>
-<td><strong>Кэш-локальность</strong></td>
-<td>Средняя (указатели overflow)</td>
-<td>Низкая (указатели на узлы)</td>
-<td>Низкая (Node-объекты)</td>
-</tr>
-<tr>
-<td><strong>Память</strong></td>
-<td>Компактные бакеты</td>
-<td>Значительный оверхед per-entry</td>
-<td>Высокий (object headers)</td>
-</tr>
-</tbody>
-</table></div>
-<h2 id="7-itog-chek-list-proektirovaniya-khesh-tablitsy">7. Итог: чек-лист проектирования хеш-таблицы</h2>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
 <ol>
-<li><strong>Выбор стратегии:</strong> Открытая адресация для кэш-локальности и малых структур, цепочки для динамических данных с частыми удалениями.</li>
-<li><strong>Индексация:</strong> Степень двойки + битовая маска для <code>O(1)</code> индекса без деления.</li>
-<li><strong>Рехаширование:</strong> Инкрементальное для предсказуемой latency, синхронное для простоты реализации на интервью.</li>
-<li><strong>Конкуренция:</strong> Шардирование для write-heavy, <code>sync.Map</code> для read-heavy статики, <code>RWMutex</code> для умеренной нагрузки.</li>
-<li><strong>Защита от атак:</strong> Рандомизация начального хеш-сида, лимит на длину цепочек или зондирования.</li>
-<li><strong>Память и GC:</strong> Предвыделение <code>make([]Entry, cap)</code>, padding для false sharing, учёт <code>tombstone</code> деградации.</li>
+<li>Метод цепочек проще в реализации, но открытая адресация обеспечивает непревзойденную кэш-локальность благодаря непрерывному массиву памяти.</li>
+<li>Использование степеней двойки в качестве емкости заменяет медленное деление на битовую маску <code>cap - 1</code> ($1$ такт CPU).</li>
+<li>Маркеры <code>tombstone</code> необходимы для сохранения целостности цепочки линейного зондирования при удалениях.</li>
+<li>В Go 1.24+ архитектура ассоциативных массивов перешла на Swiss Tables, сочетающие 16-слотовые группы с SIMD/SWAR фильтрацией по контрольным байтам.</li>
 </ol>
-<p>Хеш-таблица — это не просто «ключ → значение». Это инженерный баланс между асимптотикой, аппаратными ограничениями CPU и механикой управления памятью в рантайме. Умение объяснить эти компромиссы на собеседовании переводит вас из категории «кодер» в «архитектор».</p>
-<p>В следующей статье мы перейдём к проектированию высоконагруженной социальной ленты, разберём шардирование таймлайнов, кэширование и паттерны fan-out: <a href="6-design-twitter.html" class="wikilink">6. Design Twitter</a></p>
+<p>В следующей статье мы применим изученные структуры для проектирования распределенной социальной ленты твитов: <a href="6-design-twitter.html" class="wikilink">6. Design Twitter</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2633,7 +2613,7 @@ func (s *ShardedMap) Put(key, value int) {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#proektirovanie-khesh-tablitsy-ot-otkrytoy-adresatsii-do-mekhaniki-rantayma">Проектирование хеш-таблицы: от открытой адресации до механики рантайма</a></li><li class="toc-item toc-h2"><a href="#1-arkhitekturnye-patterny-tsepochki-vs-otkrytaya-adresatsiya">1. Архитектурные паттерны: цепочки vs открытая адресация</a></li><li class="toc-item toc-h2"><a href="#2-kastomnaya-realizatsiya-na-go-otkrytaya-adresatsiya-s-lineynym-zondirovaniem">2. Кастомная реализация на Go: открытая адресация с линейным зондированием</a></li><li class="toc-item toc-h2"><a href="#3-mekhanika-rekhashirovaniya-i-gc-davlenie">3. Механика рехаширования и GC-давление</a></li><li class="toc-item toc-h2"><a href="#4-potokobezopasnost-i-shardirovanie">4. Потокобезопасность и шардирование</a></li><li class="toc-item toc-h2"><a href="#5-lovushki-proektirovaniya-i-zashchita-ot-hashdos">5. Ловушки проектирования и защита от HashDoS</a></li><li class="toc-item toc-h2"><a href="#6-sravnenie-s-drugimi-ekosistemami">6. Сравнение с другими экосистемами</a></li><li class="toc-item toc-h2"><a href="#7-itog-chek-list-proektirovaniya-khesh-tablitsy">7. Итог: чек-лист проектирования хеш-таблицы</a></li>
+    <li class="toc-item toc-h2"><a href="#proektirovanie-khesh-tablitsy-ot-otkrytoy-adresatsii-do-mekhaniki-swiss-tables">Проектирование хеш-таблицы: от открытой адресации до механики Swiss Tables</a></li><li class="toc-item toc-h2"><a href="#1-arkhitekturnye-paradigmy-tsepochki-vs-otkrytaya-adresatsiya-vs-swiss-tables">1. Архитектурные парадигмы: цепочки vs открытая адресация vs Swiss Tables</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-na-go-otkrytaya-adresatsiya-s-lineynym-zondirovani">2. Идиоматичная реализация на Go: открытая адресация с линейным зондированием</a></li><li class="toc-item toc-h2"><a href="#3-mekhanika-pamyati-bitovaya-maska-tombstones-i-inkrementalnyy-resayz">3. Механика памяти: битовая маска, Tombstones и инкрементальный ресайз</a></li><li class="toc-item toc-h3"><a href="#stepen-dvoyki-vs-ostatok-ot-deleniya">Степень двойки vs остаток от деления</a></li><li class="toc-item toc-h3"><a href="#zachem-nuzhen-tombstone">Зачем нужен Tombstone?</a></li><li class="toc-item toc-h2"><a href="#4-konkurentnost-i-shardirovanie">4. Конкурентность и шардирование</a></li><li class="toc-item toc-h2"><a href="#5-voprosy-dlya-sobesedovaniya">5. Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

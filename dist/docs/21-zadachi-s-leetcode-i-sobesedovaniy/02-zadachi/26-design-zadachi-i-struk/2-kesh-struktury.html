@@ -2171,16 +2171,25 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~24 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~20 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. Кэш структуры</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="kesh-struktury-arkhitektura-politiki-vytesneniya-i-mekhanika-pamyati">Кэш структуры: архитектура, политики вытеснения и механика памяти</h2>
+            <blockquote>
+<p><em>«Кэширование подобно заготовке дров на зиму: в доме будет тепло лишь тогда, когда вовремя выносишь золу и освобождаешь место для свежих поленьев».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="kesh-struktury-arkhitektura-politiki-vytesneniya-i-mekhanika-pamyati">Кэш-структуры: Архитектура, политики вытеснения и механика памяти</h2>
 
-<p>In-memory кэш — это не просто обёртка над <code>map</code>. Это высококонкурентная структура данных с жёсткими ограничениями по памяти, предсказуемой латентностью и детерминированным поведением при утечках или переполнениях. В Go проектирование кэша требует глубокого понимания работы сборщика мусора, распределения памяти, примитивов синхронизации и взаимодействия с планировщиком горутин.</p>
+<p>In-memory кэш — это не просто примитивная обертка над хэш-таблицей <code>map</code>. Это высоконагруженная, конкурентная система хранения данных с жесткими лимитами по памяти, детерминированной латентностью и гарантированной защитой от утечек ресурсов.</p>
+<p>В распределенной бэкенд-инженерии на Go проектирование кэша требует глубокого понимания:<br />
+* Как предотвратить шторм запросов к основной базе данных (<strong>Cache Stampede / Thundering Herd</strong>)?<br />
+* Как структура двусвязного списка влияет на промахи процессорного кэша (<strong>Pointer Chasing vs Array-backed buffers</strong>)?<br />
+* Почему удаление ключей из стандартного <code>map</code> в Go не возвращает оперативную память операционной системе (<strong>Memory Bloat</strong>)?<br />
+* Как мягкий лимит памяти <code>GOMEMLIMIT</code> защищает сервис от аварийного завершения по Linux OOM Killer?</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2195,159 +2204,43 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Запрос Get(key):::entry&quot;] --&gt; B{&quot;Ключ в map?&quot;}
-B --&gt;|Да| C[&quot;Hit&lt;br&gt;Возврат значения&lt;br&gt;Обновление порядка доступа&quot;]
-B --&gt;|Нет| D[&quot;Miss&lt;br&gt;Загрузка из источника&quot;]
-D --&gt; E{&quot;Кэш полон?&quot;}
-E --&gt;|Да| F[&quot;Eviction&lt;br&gt;Удаление по политике LRU/LFU/TTL&quot;]
-E --&gt;|Нет| G[&quot;Прямая вставка&quot;]
-F --&gt; G
-G --&gt; H[&quot;Сохранение в map&lt;br&gt;Обновление метрик&quot;]
-H --&gt; I[&quot;Возврат значения&quot;]
-C --&gt; I
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef warn    fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+
+Req[&quot;Запрос: Get(key)&quot;]:::entry --&gt; Lookup{&quot;Поиск ключа в Map&quot;}:::process
+
+Lookup -- &quot;Cache Hit (Найден)&quot; --&gt; UpdateOrder[&quot;Обновление порядка вытеснения&lt;br/&gt;(LRU/LFU инвариант)&quot;]:::accent
+UpdateOrder --&gt; ReturnHit[&quot;Возврат значения из RAM&quot;]:::success
+
+Lookup -- &quot;Cache Miss (Промах)&quot; --&gt; Load[&quot;Загрузка из БД / Источника&lt;br/&gt;(Защита через singleflight)&quot;]:::warn
+Load --&gt; CapCheck{&quot;Достигнут ли лимит емкости?&quot;}:::process
+
+CapCheck -- &quot;Да (Кэш переполнен)&quot; --&gt; Evict[&quot;Вытеснение по политике:&lt;br/&gt;Удаление жертвы (Victim)&quot;]:::warn
+CapCheck -- &quot;Нет&quot; --&gt; Insert[&quot;Вставка нового значения&quot;]:::process
+
+Evict --&gt; Insert
+Insert --&gt; ReturnMiss[&quot;Возврат свежих данных&quot;]:::success
   </pre>
 </div>
 
 
-<p>В этой статье мы разберём, как строить production-ready кэш на Go, почему стандартные подходы часто проваливаются под нагрузкой, и как механика CPU и рантайма влияет на выбор структур.</p>
-<h2 id="1-fundamentalnaya-arkhitektura-kesha-v-go">1. Фундаментальная архитектура кэша в Go</h2>
+<hr />
+<h2 id="1-fundamentalnaya-triada-arkhitektury-kesha">1. Фундаментальная триада архитектуры кэша</h2>
 
-<p>Кэш состоит из трёх обязательных компонентов:<br />
-1. <strong>Индекс</strong> — быстрая структура для поиска по ключу (<code>map[K]V</code> или кастомная хеш-таблица).<br />
-2. <strong>Хранилище</strong> — данные и метаданные (время создания, TTL, частота доступа).<br />
-3. <strong>Политика вытеснения (Eviction Policy)</strong> — алгоритм удаления элементов при достижении лимита.</p>
-<p>В отличие от C++ или Java, где кэши часто строятся на основе стандартных контейнеров (<code>std::unordered_map</code> + <code>std::list</code>, <code>LinkedHashMap</code>), в Go <code>map</code> является несортированной хеш-таблицей без встроенной информации о порядке доступа. Поэтому кэш всегда реализуется как композиция нескольких структур.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Внутреннее представление <code>map</code> в рантайме Go (<code>hmap</code>) — это массив бакетов (<code>buckets</code>), каждый из которых хранит до 8 ключей и значений. При вставке Go вычисляет хеш, выбирает бакет и сравнивает ключи. <strong>Важно:</strong> <code>map</code> не гарантирует порядок итерации, а при достижении <code>loadFactor</code> ~6.5 происходит <code>grow</code> — аллокация нового массива в 2 раза больше и фоновая миграция элементов. Для кэша это неприемлемо: миграция создаёт непредсказуемые паузы и нарушает детерминизм латентности.</p>
-  </div>
-</div>
-
-<h2 id="2-struktury-dlya-politik-vytesneniya">2. Структуры для политик вытеснения</h2>
-
-<h3 id="dvusvyaznyy-spisok-dlya-lru">Двусвязный список для LRU</h3>
-<p>Классический подход для Least Recently Used: <code>map[key]*Node</code> + двусвязный список. <code>Node</code> содержит <code>key</code>, <code>value</code>, <code>prev</code>, <code>next</code>. При <code>Get</code> узел перемещается в голову списка. При <code>Put</code> с переполнением удаляется хвост.</p>
-<p><strong>Проблема locality:</strong> Каждый узел — отдельная аллокация в куче. При обходе списка CPU совершает случайные переходы по памяти, промахиваясь через кэш-линии L1/L2. На современных процессорах это снижает пропускную способность в 3-5 раз по сравнению с массивными структурами.</p>
-<p><strong>Оптимизация:</strong> Вместо указателей использовать индексы в предварительно выделенном массиве (<code>[]Node</code>). Это превращает <code>pointer chasing</code> в предсказуемый доступ к смежной памяти, что идеально ложится на аппаратный prefetcher.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Оптимизированный узел для массивного LRU
-type Node struct {
-    Key   string
-    Value any
-    Prev  int // индекс в массиве, а не указатель
-    Next  int
-}
-
-// Аллокация пула узлов на старте кэша
-pool := make([]Node, capacity)
-for i := 0; i &lt; capacity; i++ {
-    pool[i].Prev = -1
-    pool[i].Next = -1
-}
-</code></pre>
-</div>
-
-<h3 id="chastotnye-spiski-dlya-lfu">Частотные списки для LFU</h3>
-<p>Least Frequently Used требует отслеживания счётчиков обращений. Наивная реализация с <code>map[key]int</code> + сортировка при каждом <code>Get</code> имеет сложность <code>O(log N)</code> или <code>O(N)</code>.</p>
-<p>Продвинутый подход — <strong>Double-LinkedList Buckets</strong>: массив списков, где индекс массива соответствует частоте. При каждом обращении узел перемещается в следующий бакет. Это даёт амортизированное <code>O(1)</code>, но требует сложного управления памятью и синхронизацией.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Никогда не используйте <code>time.After</code> в цикле для очистки TTL-кэша! Каждый вызов <code>time.After</code> создаёт новый таймер и горутину, которые не освобождаются до истечения срока. Это приводит к утечкам горутин и взрывному потреблению памяти. Используйте один <code>time.Ticker</code> в отдельной горутине или <code>time.AfterFunc</code> с переиспользованием пула таймеров.</p>
-  </div>
-</div>
-
-<h2 id="3-potokobezopasnost-i-granulyarnost-blokirovok">3. Потокобезопасность и гранулярность блокировок</h2>
-
-<p>Большинство кэшей read-heavy. Выбор примитива синхронизации напрямую влияет на throughput под конкурентной нагрузкой.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">type Cache struct {
-    mu      sync.RWMutex
-    items   map[string]*Item
-    maxSize int
-    // ...
-}
-
-func (c *Cache) Get(key string) (*Item, bool) {
-    c.mu.RLock()
-    defer c.mu.RUnlock()
-    item, ok := c.items[key]
-    return item, ok
-}
-</code></pre>
-</div>
-
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p><code>sync.RWMutex</code> реализован через атомарные счётчики читателей и ожидание через <code>futex</code> в Linux. При захвате на запись (<code>Lock()</code>) все текущие читатели завершают работу, а новые блокируются. Если записи происходят чаще, чем каждые ~10 микросекунд, <code>RWMutex</code> деградирует до обычного <code>Mutex</code> из-за постоянного ожидания снятия блокировки чтения. В таких сценариях лучше использовать <code>sync.Mutex</code> или <strong>шардирование</strong>.</p>
-  </div>
-</div>
-
-<h3 id="shardirovanie-sharding">Шардирование (Sharding)</h3>
-<p>Разделение <code>map</code> на <code>N</code> независимых сегментов, каждый со своим мьютексом. Хеш ключа определяет сегмент: <code>idx := hash(key) % shards</code>.<br />
-- Снижает contention до <code>1/N</code>.<br />
-- Позволяет распараллелить чтение/запись на разные ядра CPU.<br />
-- Увеличивает потребление памяти (N мьютексов + N мап + служебные структуры).</p>
-<p>Именно так работают <code>ristretto</code>, <code>freecache</code> и <code>groupcache</code>. Для интервью достаточно описать принцип: <code>hash(key) → segment → lock → operation</code>.</p>
-<h2 id="4-upravlenie-pamyatyu-i-vliyanie-na-gc">4. Управление памятью и влияние на GC</h2>
-
-<p>Кэш — главный источник давления на Garbage Collector. Каждая вставка — это аллокация. Каждое удаление — кандидат на сборку.</p>
-<h3 id="strategii-snizheniya-gc-pressure">Стратегии снижения GC-pressure</h3>
+<p>Любой промышленный кэш состоит из трех взаимосвязанных подсистем:</p>
 <ol>
-<li><strong><code>sync.Pool</code> для временных объектов:</strong> Переиспользование структур <code>*Item</code> или буферов. Pool не гарантирует сохранность между циклами GC, но значительно снижает частоту аллокаций в hot-path.</li>
-<li><strong>Предвыделение (<code>make(map, cap)</code>, <code>make([]T, cap)</code>):</strong> Резервирование памяти на старте. Избегает фрагментации и множественных системных вызовов <code>brk</code>/<code>mmap</code>.</li>
-<li><strong>Хранение значений vs указателей:</strong> <code>map[string]Item</code> увеличивает размер бакета <code>hmap</code>, но упаковывает данные в куче компактнее. <code>map[string]*Item</code> экономит место в бакете, но создаёт множество мелких объектов. Для структур <code>&lt; 64 байт</code> предпочтительнее хранение по значению (меньше указателей, лучше locality). Для <code>&gt; 128 байт</code> — указатель.</li>
-<li><strong><code>GOMEMLIMIT</code>:</strong> В Go 1.19+ можно ограничить RSS процессора. При достижении лимита GC переходит в агрессивный режим (<code>GOGC</code> динамически снижается). Для кэшей это означает более частые паузы, но предотвращает OOM.</li>
+<li><strong>Индекс (Fast Lookup):</strong><br />
+   Обеспечивает доступ к значению по ключу за $O(1)$. В Go это либо встроенный <code>map[K]V</code>, либо открыто-адресованная хэш-таблица.</li>
+<li><strong>Хранилище значений и метаданных (Storage):</strong><br />
+   Полезная нагрузка (<code>payload</code>), метки времени создания, счетчики обращений, TTL (Time-To-Live).</li>
+<li><strong>Очередь вытеснения (Eviction Policy):</strong><br />
+   Детерминированный алгоритм, определяющий, какой именно элемент должен быть уничтожен, когда память кэша исчерпана.</li>
 </ol>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Почему возврат <code>*Item</code> из кэша опасен для конкурентного кода?<br />
-<strong>Ответ:</strong> Возвращаемый указатель ссылается на внутреннее состояние кэша. Если вызывающая сторона изменит поле <code>item.Value = "new"</code>, это создаёт race condition с другими горутинами, читающими кэш. Правильный контракт: либо возвращать глубокую копию, либо документировать, что данные иммутабельны, либо использовать <code>copy-on-write</code> при обновлении. В production-кэшах часто возвращают слайс-обёртку или используют <code>unsafe</code> для быстрого копирования байтов без рефлексии.</p>
-  </div>
-</div>
-
-<h2 id="5-lovushki-prodakshena-i-edge-cases">5. Ловушки продакшена и edge cases</h2>
+<hr />
+<h2 id="2-sravnenie-politik-vytesneniya-eviction-policies">2. Сравнение политик вытеснения (Eviction Policies)</h2>
 
 
 <div class="mermaid-wrapper">
@@ -2363,81 +2256,222 @@ func (c *Cache) Get(key string) (*Item, bool) {
   </div>
   <pre class="mermaid">
 flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Проблемы кэшей в Go&quot;]:::data --&gt; B[&quot;Cache Stampede&lt;br&gt;Шторм запросов к одному ключу&quot;]
-A --&gt; C[&quot;Pointer Aliasing&lt;br&gt;Изменение данных вне блокировки&quot;]
-A --&gt; D[&quot;TTL Drift&lt;br&gt;Рассинхронизация времени очистки&quot;]
-A --&gt; E[&quot;Memory Bloat&lt;br&gt;Раздувание map после удаления&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef warn    fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
 
-B --&gt; F[&quot;Решение: singleflight&lt;br&gt;или мьютекс на ключ&quot;]
-C --&gt; G[&quot;Решение: возврат копии&lt;br&gt;или readonly-интерфейс&quot;]
-D --&gt; H[&quot;Решение: logical clock&lt;br&gt;или единый goroutine-очистка&quot;]
-E --&gt; I[&quot;Решение: periodic map rebuild&lt;br&gt;или кастомная хеш-таблица&quot;]
+Policies[&quot;Политики вытеснения&quot;]:::accent --&gt; LRU[&quot;1. LRU (Least Recently Used)&lt;br/&gt;Вытесняет то, к чему дольше не обращались&quot;]:::process
+Policies --&gt; LFU[&quot;2. LFU (Least Frequently Used)&lt;br/&gt;Вытесняет наименее популярное&quot;]:::process
+Policies --&gt; FIFO[&quot;3. FIFO (First In, First Out)&lt;br/&gt;Простая циклическая очередь&quot;]:::warn
+Policies --&gt; TTL[&quot;4. TTL / Expiration&lt;br/&gt;Удаление по истечении таймера&quot;]:::success
+
+LRU --&gt; LRUImpl[&quot;Map + Двусвязный список&quot;]:::process
+LFU --&gt; LFUImpl[&quot;Map + Частотные бакеты&quot;]:::process
+FIFO --&gt; FIFOImpl[&quot;Кольцевой буфер (Ring Buffer)&quot;]:::warn
+TTL --&gt; TTLImpl[&quot;Priority Queue или Time Wheel&quot;]:::success
   </pre>
 </div>
 
 
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Политика</th>
+<th style="text-align: center;">Сложность Get / Put</th>
+<th>Структура данных</th>
+<th>Преимущества</th>
+<th>Недостатки / Границы применимости</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>LRU (Least Recently Used)</strong></td>
+<td style="text-align: center;">$O(1)$ / $O(1)$</td>
+<td><code>map</code> + Двусвязный список</td>
+<td>Быстрая реакция на смену интересов пользователей; универсален.</td>
+<td>Уязвим к однократным массовым сканированиям (Scan Resistance Problem).</td>
+</tr>
+<tr>
+<td><strong>LFU (Least Frequently Used)</strong></td>
+<td style="text-align: center;">$O(1)$ / $O(1)$</td>
+<td><code>map</code> + Список частотных бакетов</td>
+<td>Идеален для стабильных «горячих» данных (метаданные, каталоги).</td>
+<td>Накапливает «исторический мусор»; медленно адаптируется к новым трендам.</td>
+</tr>
+<tr>
+<td><strong>FIFO (First In First Out)</strong></td>
+<td style="text-align: center;">$O(1)$ / $O(1)$</td>
+<td>Очередь / Кольцевой буфер</td>
+<td>Минимальный оверхед по памяти; нулевые модификации при <code>Get</code>.</td>
+<td>Низкий Cache Hit Rate: может вытеснить супер-популярный элемент.</td>
+</tr>
+<tr>
+<td><strong>TTL (Time To Live)</strong></td>
+<td style="text-align: center;">$O(1)$ / $O(\log N)$</td>
+<td>Min-Heap таймстампов / Timerwheel</td>
+<td>Гарантирует свежесть данных; автоматическая инвалидация.</td>
+<td>Не спасает от мгновенного переполнения памяти всплеском новых ключей.</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="3-mekhanicheskaya-simpatiya-pamyat-kesh-linii-i-sborshchik-musora">3. Механическая симпатия: Память, кэш-линии и сборщик мусора</h2>
+
+<h3 id="1-problema-pointer-chasing-v-dvusvyaznykh-spiskakh">1. Проблема Pointer Chasing в двусвязных списках</h3>
+<p>Классический LRU использует узлы <code>type Node struct { key, val string; prev, next *Node }</code>.<br />
+Каждый узел выделяется в куче отдельно. Адреса разбросаны хаотично.<br />
+При обходе списка процессор вынужден непрерывно загружать новые несвязанные 64-байтные кэш-линии из DRAM, теряя до 150 тактов на каждый промах кэша.</p>
+<p><strong>Решение High-Performance систем (Array-backed LRU):</strong><br />
+Все узлы размещаются в едином непрерывном срезе <code>nodes := make([]Node, capacity)</code>. Ссылки <code>prev</code> и <code>next</code> становятся не указателями, а целочисленными индексами <code>int32</code> в срезе.<br />
+Это обеспечивает идеальную локальность данных (Spatial Locality) и позволяет аппаратному префетчеру процессора работать на полной скорости шины памяти.</p>
+<h3 id="2-lovushka-delete-v-go-map-memory-bloat">2. Ловушка `delete()` в Go map: Memory Bloat</h3>
+<p>Когда вы удаляете ключ из стандартного <code>map</code> с помощью функции <code>delete(c.items, key)</code>, рантайм Go <strong>не возвращает память операционной системе</strong>. Он лишь помечает слот в бакете как пустой.<br />
+Если кэш непрерывно вставляет и удаляет миллионы ключей, размер карты в памяти (RSS процесса) никогда не уменьшится!</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">// Паттерн периодического компактирования карты (Rebuild)
+func (c *Cache) CompactIfNecessary() {
+    if len(c.items) &lt; c.maxCapacity/4 {
+        newMap := make(map[string]*Item, len(c.items))
+        for k, v := range c.items {
+            newMap[k] = v
+        }
+        c.items = newMap // Старая раздутая карта будет утилизирована GC
+    }
+}
+</code></pre>
+</div>
+
+<hr />
+<h2 id="4-patterny-nadezhnosti-borba-so-shtormom-zaprosov-cache-stampede">4. Паттерны надежности: Борьба со штормом запросов (Cache Stampede)</h2>
+
+<p>В высоконагруженном API сброс популярного ключа (например, главной страницы каталога) приводит к тому, что тысячи параллельных горутин одновременно получают <code>Cache Miss</code> и синхронно обрушиваются с тяжелыми запросами на базу данных. Это явление называют <strong>Cache Stampede</strong> или <strong>Thundering Herd</strong>.</p>
+<h3 id="zashchita-cherez-paket-golang-orgxsyncsingleflight">Защита через пакет `golang.org/x/sync/singleflight`</h3>
+
+<p>Паттерн Singleflight подавляет дублирующие параллельные вызовы, объединяя их в один единственный запрос к источнику:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package cache
+
+import (
+    &quot;sync&quot;
+    &quot;golang.org/x/sync/singleflight&quot;
+)
+
+type RobustCache struct {
+    mu    sync.RWMutex
+    items map[string]string
+    group singleflight.Group
+}
+
+// GetOrFetch возвращает значение из кэша либо вызывает fetcher строго один раз
+func (c *RobustCache) GetOrFetch(key string, fetcher func() (string, error)) (string, error) {
+    // 1. Быстрый путь: проверка в кэше под RLock
+    c.mu.RLock()
+    val, ok := c.items[key]
+    c.mu.RUnlock()
+    if ok {
+        return val, nil
+    }
+
+    // 2. Защита от Cache Stampede: только 1 горутина идет в БД, остальные ждут ее результат
+    v, err, _ := c.group.Do(key, func() (any, error) {
+        data, fetchErr := fetcher()
+        if fetchErr != nil {
+            return nil, fetchErr
+        }
+
+        c.mu.Lock()
+        c.items[key] = data
+        c.mu.Unlock()
+        return data, nil
+    })
+
+    if err != nil {
+        return &quot;&quot;, err
+    }
+    return v.(string), nil
+}
+</code></pre>
+</div>
+
+<hr />
+<h2 id="5-granichnye-sluchai-i-lovushki-prodakshena">5. Граничные случаи и ловушки продакшена</h2>
+
 <ol>
-<li><strong>Cache Stampede (Thundering Herd):</strong> При сбросе популярного ключа сотни горутин одновременно идут в базу. Решение: <code>golang.org/x/sync/singleflight</code> или <code>sync.Map</code> с блокировкой на уровне ключа (<code>mu := getLock(key); mu.Lock()</code>).</li>
-<li><strong>Memory Bloat после удаления:</strong> Удаление ключа из <code>map</code> не возвращает память ОС. Рантайм помечает бакет как пустой, но он остаётся зарезервированным. При постоянной ротации данных кэш растёт в RSS. Решение: периодически пересоздавать <code>map</code> (<code>newMap := make(...); for k,v := range old { newMap[k]=v }</code>), либо использовать кастомную хеш-таблицу с открытой адресацией и <code>free</code> списком.</li>
-<li><strong>Сериализация значений:</strong> Если значение кэша — интерфейс или ссылка на внешние ресурсы, <code>Gob</code>/<code>JSON</code> сериализация при <code>Get</code> убивает производительность. Храните уже сериализованные <code>[]byte</code> или используйте <code>unsafe</code> для прямого копирования памяти, если архитектура позволяет.</li>
+<li><strong>Утечки горутин при использовании <code>time.After</code>:</strong><br />
+   Никогда не очищайте TTL-кэш конструкцией <code>select { case &lt;-time.After(ttl): }</code> внутри цикла запросов! Функция <code>time.After</code> выделяет новый таймер в рантайме, который не освобождается до истечения времени. При миллионе запросов сервис падает по OOM.<br />
+   Используйте <strong>единую фоновую горутину-уборщик</strong> с <code>time.NewTicker(interval)</code>.</li>
+<li><strong>Pointer Aliasing:</strong><br />
+   Если кэш хранит изменяемые структуры по указателю <code>map[string]*User</code>, возврат <code>*User</code> клиенту позволяет клиенту изменить внутреннее состояние кэша без мьютекса. Всегда возвращайте глубокую копию либо сериализованный срез <code>[]byte</code>.</li>
+<li><strong>Ограничение RSS через <code>debug.SetMemoryLimit</code> (GOMEMLIMIT):</strong><br />
+   В Go 1.19+ мягкий лимит памяти позволяет сборщику мусора агрессивно очищать неиспользуемые блоки кэша до того, как контейнер в Kubernetes будет убит OOMKilled.</li>
 </ol>
-<h2 id="6-voprosy-s-sobesedovaniy-glubina-ponimaniya">6. Вопросы с собеседований: глубина понимания</h2>
+<hr />
+<h2 id="voprosy-dlya-sobesedovaniya">Вопросы для собеседования</h2>
 
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как реализовать кэш с жёстким лимитом в байтах, а не в количестве элементов?<br />
-<strong>Ответ:</strong> Хранить метрику <code>currentSize int</code> и обновлять её при каждой <code>Put</code>/<code>Delete</code>. При <code>Put</code> проверять <code>currentSize + newSize &gt; maxSize</code>. Если превышение — запускать цикл eviction, удаляя элементы по политике (LRU/LFU) до тех пор, пока <code>currentSize</code> не станет допустимым. Важно: учитывать оверхед рантайма Go (заголовки объектов, выравнивание, структура <code>hmap</code>), добавляя коэффициент <code>1.2-1.5</code> к расчётному размеру.</p>
+    <p><strong>Вопрос 1:</strong> Чем отличается кэш с лимитом по количеству записей (Max Count) от кэша с лимитом по объему памяти (Max Bytes)?<br />
+<strong>Ответ:</strong><br />
+Кэш по количеству записей наивен: 1000 строк по 10 байт занимают 10 КБ, а 1000 картинок по 10 МБ займут 10 ГБ, вызвав падение системы.<br />
+Промышленный кэш (например, <code>groupcache</code>, <code>bigcache</code>) отслеживает суммарный размер в байтах: <code>currentBytes += len(key) + len(val) + structOverhead</code>. При превышении <code>maxBytes</code> алгоритм вытесняет элементы пачками, пока размер не вернется в безопасный коридор.</p>
   </div>
 </div>
 
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Почему <code>sync.Map</code> не подходит для динамического кэша с частыми записями?<br />
-<strong>Ответ:</strong> <code>sync.Map</code> оптимизирован под паттерн <code>write-once, read-many</code>. Внутри два слоя: <code>read</code> (атомарный указатель на <code>readOnly</code>, оптимистичный путь) и <code>dirty</code> (полный набор ключей). При частых <code>Store</code>/<code>Delete</code> элементы постоянно мигрируют между слоями, вызывая аллокации и <code>atomic</code> операции. Это создаёт contention и деградацию throughput. Для read/write кэшей <code>map + sync.RWMutex</code> или шардирование всегда выигрывают.</p>
+    <p><strong>Вопрос 2:</strong> Почему в кэш-структурах с политикой LRU разделяемый <code>sync.RWMutex</code> часто работает медленнее, чем обычный <code>sync.Mutex</code>?<br />
+<strong>Ответ:</strong><br />
+При вызове <code>Get(key)</code> в LRU найденный узел перемещается в голову двусвязного списка (<code>moveToHead</code>). Это <strong>операция записи</strong>, изменяющая указатели <code>prev</code> и <code>next</code> списка. Следовательно, <code>Get</code> требует эксклюзивной блокировки <code>Lock()</code>, а не <code>RLock()</code>. Использование <code>RWMutex</code> в таком случае добавляет накладные расходы на работу с атомарными счетчиками читателей, не давая никакого параллелизма.</p>
   </div>
 </div>
 
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как протестировать кэш на корректность вытеснения и конкурентную безопасность?<br />
-<strong>Ответ:</strong> 1. Unit-тесты с <code>testing.T.Parallel()</code> на политики eviction. 2. Конкурентный тест: <code>sync.WaitGroup</code> с N горутин, выполняющих случайные <code>Get/Put/Delete</code>. 3. Запуск с <code>go test -race -count=10</code>. 4. Проверка памяти через <code>pprof -alloc_objects</code> и <code>goleak</code> для поиска утечек горутин/таймеров. 5. Бенчмарк <code>BenchmarkCache</code> с разными <code>GOMAXPROCS</code>.</p>
+    <p><strong>Вопрос 3:</strong> Как устроена инвалидация кэша по механизму Time Wheel (Колесо таймеров)?<br />
+<strong>Ответ:</strong><br />
+Вместо поддержания тяжелой кучи таймеров (Min-Heap со сложностью $O(\log N)$ на добавление), память разбивается на циклический массив слотов (бакетов), где каждый слот представляет квант времени (например, 1 секунда). Указатель текущей секунды шагает по кругу за $O(1)$, очищая весь бакет просроченных ключей без сортировок и блокировок всей базы кэша.</p>
   </div>
 </div>
 
-<h2 id="itog-chek-list-proektirovaniya-kesh-struktur">Итог: чек-лист проектирования кэш-структур</h2>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
-<ol>
-<li><strong>Определите паттерн доступа:</strong> read-heavy → <code>RWMutex</code>, write-heavy → <code>Mutex</code>/шардирование.</li>
-<li><strong>Выберите структуру вытеснения:</strong> LRU → массивный список с индексами, LFU → частотные бакеты, TTL → единый cleaner-горутин.</li>
-<li><strong>Контролируйте память:</strong> предвыделение, <code>sync.Pool</code> для узлов, лимиты в байтах, учёт <code>GOMEMLIMIT</code>.</li>
-<li><strong>Изолируйте данные:</strong> возвращайте копии, избегайте pointer aliasing, документируйте контракт мутации.</li>
-<li><strong>Защищайтесь от штормов:</strong> <code>singleflight</code> или per-key locks для предотвращения cache stampede.</li>
-<li><strong>Профилируйте:</strong> <code>-race</code>, <code>pprof</code>, <code>goleak</code>, бенчмарки на разных <code>GOMAXPROCS</code>.</li>
-</ol>
-<p>Кэш — это микросистема внутри процесса. Его проектирование требует баланса между алгоритмической чистотой, аппаратными ограничениями CPU и механикой рантайма Go. Понимание этих компромиссов отличает код, который «работает», от кода, который выдерживает продакшен-нагрузку.</p>
-<p>В следующей статье мы детально разберём реализацию LRU-кэша с нуля, оптимизацию под кэш-линии CPU и идиоматичные паттерны конкурентного доступа: <a href="3-lru-cache.html" class="wikilink">3. LRU Cache</a></p>
+<ul>
+<li>Кэш строится на союзе быстрого индекса (<code>map</code>), хранилища и политики вытеснения (Eviction Policy).</li>
+<li>LRU эффективен для большинства сценариев; LFU защищает долгоживущие популярные ключи; FIFO минимизирует оверхед синхронизации.</li>
+<li><code>delete()</code> в Go map не освобождает выделенную память; для долгоживущих кэшей требуется периодическое пересоздание карты или использование открытой адресации.</li>
+<li>Паттерн <code>singleflight.Group</code> — индустриальный стандарт защиты базы данных от шторма запросов (Cache Stampede).</li>
+</ul>
+<p>В следующей лекции мы детально разберем практическую реализацию классического кэша: <a href="3-lru-cache.html" class="wikilink">3. LRU Cache</a>, где с нуля построим потокобезопасный двусвязный список с dummy-узлами и протестируем его поведение под высокой нагрузкой.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2465,7 +2499,7 @@ E --&gt; I[&quot;Решение: periodic map rebuild&lt;br&gt;или касто
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#kesh-struktury-arkhitektura-politiki-vytesneniya-i-mekhanika-pamyati">Кэш структуры: архитектура, политики вытеснения и механика памяти</a></li><li class="toc-item toc-h2"><a href="#1-fundamentalnaya-arkhitektura-kesha-v-go">1. Фундаментальная архитектура кэша в Go</a></li><li class="toc-item toc-h2"><a href="#2-struktury-dlya-politik-vytesneniya">2. Структуры для политик вытеснения</a></li><li class="toc-item toc-h3"><a href="#dvusvyaznyy-spisok-dlya-lru">Двусвязный список для LRU</a></li><li class="toc-item toc-h3"><a href="#chastotnye-spiski-dlya-lfu">Частотные списки для LFU</a></li><li class="toc-item toc-h2"><a href="#3-potokobezopasnost-i-granulyarnost-blokirovok">3. Потокобезопасность и гранулярность блокировок</a></li><li class="toc-item toc-h3"><a href="#shardirovanie-sharding">Шардирование (Sharding)</a></li><li class="toc-item toc-h2"><a href="#4-upravlenie-pamyatyu-i-vliyanie-na-gc">4. Управление памятью и влияние на GC</a></li><li class="toc-item toc-h3"><a href="#strategii-snizheniya-gc-pressure">Стратегии снижения GC-pressure</a></li><li class="toc-item toc-h2"><a href="#5-lovushki-prodakshena-i-edge-cases">5. Ловушки продакшена и edge cases</a></li><li class="toc-item toc-h2"><a href="#6-voprosy-s-sobesedovaniy-glubina-ponimaniya">6. Вопросы с собеседований: глубина понимания</a></li><li class="toc-item toc-h2"><a href="#itog-chek-list-proektirovaniya-kesh-struktur">Итог: чек-лист проектирования кэш-структур</a></li>
+    <li class="toc-item toc-h2"><a href="#kesh-struktury-arkhitektura-politiki-vytesneniya-i-mekhanika-pamyati">Кэш-структуры: Архитектура, политики вытеснения и механика памяти</a></li><li class="toc-item toc-h2"><a href="#1-fundamentalnaya-triada-arkhitektury-kesha">1. Фундаментальная триада архитектуры кэша</a></li><li class="toc-item toc-h2"><a href="#2-sravnenie-politik-vytesneniya-eviction-policies">2. Сравнение политик вытеснения (Eviction Policies)</a></li><li class="toc-item toc-h2"><a href="#3-mekhanicheskaya-simpatiya-pamyat-kesh-linii-i-sborshchik-musora">3. Механическая симпатия: Память, кэш-линии и сборщик мусора</a></li><li class="toc-item toc-h3"><a href="#1-problema-pointer-chasing-v-dvusvyaznykh-spiskakh">1. Проблема Pointer Chasing в двусвязных списках</a></li><li class="toc-item toc-h3"><a href="#2-lovushka-delete-v-go-map-memory-bloat">2. Ловушка delete() в Go map: Memory Bloat</a></li><li class="toc-item toc-h2"><a href="#4-patterny-nadezhnosti-borba-so-shtormom-zaprosov-cache-stampede">4. Паттерны надежности: Борьба со штормом запросов (Cache Stampede)</a></li><li class="toc-item toc-h3"><a href="#zashchita-cherez-paket-golang-orgxsyncsingleflight">Защита через пакет golang.org/x/sync/singleflight</a></li><li class="toc-item toc-h2"><a href="#5-granichnye-sluchai-i-lovushki-prodakshena">5. Граничные случаи и ловушки продакшена</a></li><li class="toc-item toc-h2"><a href="#voprosy-dlya-sobesedovaniya">Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

@@ -2171,16 +2171,21 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~24 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~21 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">3. LRU Cache</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="arkhitektura-lru-kesha-kompozitsiya-struktur-konkurentsiya-i-mekhanika-pamyati">Архитектура LRU-кэша: композиция структур, конкуренция и механика памяти</h2>
+            <blockquote>
+<p><em>«Старое уступает место новому не из прихоти, а из суровой нехватки пространства».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="arkhitektura-lru-kesha-kompozitsiya-struktur-konkurentsiya-i-mekhanika-pamyati">Архитектура LRU-кэша: Композиция структур, конкуренция и механика памяти</h2>
 
-<p>Least Recently Used (LRU) кэш — один из самых востребованных паттернов в системном дизайне и алгоритмических собеседованиях. Его задача проста: хранить ограниченный набор элементов и вытеснять те, к которым не было обращений дольше всего. Однако реализация LRU, которая работает предсказуемо под конкурентной нагрузкой, не создаёт memory leaks и минимизирует задержки, требует глубокого понимания рантайма Go, работы с памятью и аппаратных ограничений CPU.</p>
+<p><strong>Least Recently Used (LRU)</strong> кэш — один из наиболее часто запрашиваемых архитектурных паттернов на техническом интервью уровня Middle+ и Senior. Его задача обманчиво проста: хранить ограниченный объем данных и при нехватке памяти вытеснять те элементы, к которым дольше всего не было обращений.</p>
+<p>Однако реализация LRU-кэша, способного стабильно выдерживать конкурентную нагрузку, не создающего утечек памяти и сводящего к минимуму латентность в горячем пути, требует глубокого знания устройства рантайма Go, кэш-линий процессора и поведения сборщика мусора (GC).</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2195,50 +2200,53 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Запрос Get(key):::entry или Put(key, value)&quot;] --&gt; B[&quot;Блокировка структуры&quot;]
-B --&gt; C{&quot;Ключ в map?&quot;}
-C --&gt;|Да| D[&quot;Получить *Node&lt;br&gt;Переместить узел в голову списка&lt;br&gt;Обновить payload при Put&quot;]
-C --&gt;|Нет| E{&quot;Размер &gt;= capacity?&quot;}
-E --&gt;|Да| F[&quot;Извлечь хвост списка&lt;br&gt;Удалить из map&lt;br&gt;Освободить память&quot;]
-E --&gt;|Нет| G[&quot;Аллокация нового *Node&quot;]
-F --&gt; G
-G --&gt; H[&quot;Вставить в голову списка&lt;br&gt;Добавить в map&quot;]
-H --&gt; I[&quot;Разблокировка&lt;br&gt;Возврат результата&quot;]
-D --&gt; I
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef warn    fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+
+Op[&quot;Вызов Get(key) или Put(key, val)&quot;]:::entry --&gt; Lock[&quot;Захват sync.Mutex&quot;]:::process
+Lock --&gt; Find{&quot;Ключ присутствует в Map?&quot;}:::process
+
+Find -- &quot;Да (Hit)&quot; --&gt; Update[&quot;Перемещение узла в голову списка (Head)&lt;br/&gt;Обновление payload при Put&quot;]:::accent
+Find -- &quot;Нет (Miss)&quot; --&gt; CheckCap{&quot;size &gt;= capacity?&quot;}:::process
+
+CheckCap -- &quot;Да (Кэш переполнен)&quot; --&gt; Evict[&quot;Извлечение хвоста (Tail.Prev)&lt;br/&gt;delete(map, victim.key)&lt;br/&gt;size--&quot;]:::warn
+CheckCap -- &quot;Нет&quot; --&gt; Alloc[&quot;Создание нового узла &amp;Node{}&quot;]:::process
+
+Evict --&gt; Alloc
+Alloc --&gt; Insert[&quot;Добавление в голову списка (Head.Next)&lt;br/&gt;map[key] = node&lt;br/&gt;size++&quot;]:::accent
+
+Update --&gt; Unlock[&quot;Разблокировка мьютекса&lt;br/&gt;Возврат результата&quot;]:::success
+Insert --&gt; Unlock
   </pre>
 </div>
 
 
-<p>В этом материале мы разберём, почему стандартный подход «map + двусвязный список» не всегда оптимален, как LRU взаимодействует с Garbage Collector, почему <code>sync.RWMutex</code> часто вредит производительности в этом паттерне, и как писать production-ready кэш на Go.</p>
-<h2 id="1-arkhitekturnyy-pattern-pochemu-imenno-map-list">1. Архитектурный паттерн: почему именно Map + List</h2>
+<hr />
+<h2 id="1-arkhitekturnyy-pattern-simbioz-map-i-dvusvyaznogo-spiska">1. Архитектурный паттерн: Симбиоз Map и Двусвязного списка</h2>
 
-<p>LRU требует двух ортогональных операций:<br />
-- <strong>Быстрый поиск по ключу</strong> → <code>O(1)</code> через хеш-таблицу (<code>map[string]*Node</code>).<br />
-- <strong>Быстрое перемещение/удаление по порядку доступа</strong> → <code>O(1)</code> через двусвязный список.</p>
-<p>Массив или slice здесь не подходят: удаление из середины требует сдвига элементов <code>O(n)</code>, а вставка в начало при переполнении — аналогично. Хеш-таблица без списка не хранит информацию о порядке доступа. Композиция <code>map[K]*Node</code> и двусвязного списка закрывает обе потребности, но ценой увеличения потребления памяти и усложнения инвариантов.</p>
+<p>LRU-кэш требует выполнения двух взаимоисключающих требований с константной сложностью $O(1)$:<br />
+1. <strong>Мгновенный поиск элемента по ключу</strong> $\to$ $O(1)$ через хэш-таблицу <code>map[string]*Node</code>.<br />
+2. <strong>Мгновенное изменение приоритета и удаление жертвы</strong> $\to$ $O(1)$ через двусвязный список.</p>
+<p>Массивы и слайсы здесь неприменимы: удаление или вставка в середину слайса требует сдвига элементов за линейное время $O(N)$. Хэш-таблица сама по себе не хранит хронологический порядок доступа. Только комбинация <code>map</code> (хранящего указатели на узлы списка) и двусвязного списка (связывающего узлы по времени обращения) обеспечивает честное $O(1)$ для всех операций.</p>
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
   </div>
   <div class="callout-body">
-    <p>Многие кандидаты предлагают <code>container/list</code> из стандартной библиотеки. Это <strong>антипаттерн для production</strong>. <code>container/list</code> хранит <code>interface{}</code> значения, что заставляет рантайм упаковывать указатели в кучу, добавляет слой абстракции и требует <code>sync.Mutex</code> внутри самого контейнера. Для интервью и продакшена всегда пишите типизированную реализацию вручную: это убирает boxing/unboxing, даёт контроль над аллокациями и упрощает профилирование.</p>
+    <p><strong>Почему <code>container/list</code> из стандартной библиотеки — антипаттерн для продакшена?</strong><br />
+Многие кандидаты на собеседованиях используют стандартный пакет <code>container/list</code>. В production-коде с высокими требованиями к латентности это серьезный недостаток:<br />
+1. <code>container/list</code> оперирует нетипизированными значениями <code>any</code> (<code>interface{}</code>). Каждая вставка упаковывает данные в кучу (boxing), увеличивая нагрузку на Garbage Collector и порождая дополнительные разыменования указателей.<br />
+2. Ручная реализация типизированного двусвязного списка с фиктивными (dummy) узлами <code>head</code> и <code>tail</code> занимает всего 30 строк, полностью исключает boxing/unboxing и гарантирует отсутствие проверок на <code>nil</code>.</p>
   </div>
 </div>
 
+<hr />
 <h2 id="2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</h2>
 
-<p>Классическая реализация использует pointer-receiver, фабричную функцию и строгую инкапсуляцию внутренней структуры списка.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2252,144 +2260,137 @@ D --&gt; I
 
 import &quot;sync&quot;
 
-// Node представляет элемент кэша с ссылками на соседей
+// Node представляет элемент двусвязного списка
 type Node struct {
-    Key   string
-    Value any
-    Prev  *Node
-    Next  *Node
+    key   string
+    value any
+    prev  *Node
+    next  *Node
 }
 
-// Cache реализует потокобезопасный LRU-кэш фиксированной ёмкости
-type Cache struct {
+// LRUCache реализует потокобезопасный LRU-кэш с O(1) операциями
+type LRUCache struct {
     mu       sync.Mutex
-    cap      int
+    capacity int
     size     int
-    cache    map[string]*Node
-    head, tail *Node // Фиктивные узлы для упрощения операций
+    items    map[string]*Node
+    head     *Node // Фиктивная голова (самый свежий элемент — head.next)
+    tail     *Node // Фиктивный хвост (кандидат на вытеснение — tail.prev)
 }
 
-// NewCache создаёт новый кэш. capacity должен быть &gt; 0
-func NewCache(capacity int) *Cache {
+// NewLRUCache создает новый кэш заданной емкости
+func NewLRUCache(capacity int) *LRUCache {
     if capacity &lt;= 0 {
-        panic(&quot;lru: capacity must be positive&quot;)
+        capacity = 16
     }
-    c := &amp;Cache{
-        cap:   capacity,
-        cache: make(map[string]*Node, capacity),
+
+    c := &amp;LRUCache{
+        capacity: capacity,
+        items:    make(map[string]*Node, capacity),
+        head:     &amp;Node{},
+        tail:     &amp;Node{},
     }
-    // Инициализация двусвязного списка с dummy-узлами
-    c.head = &amp;Node{Key: &quot;__head__&quot;}
-    c.tail = &amp;Node{Key: &quot;__tail__&quot;}
-    c.head.Next = c.tail
-    c.tail.Prev = c.head
+
+    // Замыкаем фиктивные узлы друг на друга
+    c.head.next = c.tail
+    c.tail.prev = c.head
+
     return c
 }
 
-// Get возвращает значение и статус наличия ключа
-func (c *Cache) Get(key string) (any, bool) {
+// Get возвращает значение и обновляет приоритет элемента
+func (c *LRUCache) Get(key string) (any, bool) {
     c.mu.Lock()
     defer c.mu.Unlock()
 
-    node, ok := c.cache[key]
+    node, ok := c.items[key]
     if !ok {
         return nil, false
     }
 
-    // Ключ найден: перемещаем в начало (LRU-обновление)
+    // Элемент запрошен — перемещаем его в начало как самый свежий
     c.moveToHead(node)
-    return node.Value, true
+    return node.value, true
 }
 
-// Put вставляет или обновляет значение
-func (c *Cache) Put(key string, value any) {
+// Put вставляет или обновляет элемент, при необходимости вытесняя старый
+func (c *LRUCache) Put(key string, value any) {
     c.mu.Lock()
     defer c.mu.Unlock()
 
-    if node, ok := c.cache[key]; ok {
-        // Обновление существующего
-        node.Value = value
+    if node, ok := c.items[key]; ok {
+        // Ключ уже существует: обновляем payload и двигаем в голову
+        node.value = value
         c.moveToHead(node)
         return
     }
 
-    // Создание нового узла
-    newNode := &amp;Node{Key: key, Value: value}
-    c.cache[key] = newNode
+    // Создаем новый узел
+    newNode := &amp;Node{
+        key:   key,
+        value: value,
+    }
+
+    c.items[key] = newNode
     c.addToHead(newNode)
     c.size++
 
-    // Эвикция при переполнении
-    if c.size &gt; c.cap {
-        tail := c.removeTail()
-        delete(c.cache, tail.Key)
+    // Проверяем превышение емкости
+    if c.size &gt; c.capacity {
+        // Удаляем наименее используемый элемент (хвост списка)
+        victim := c.removeTail()
+        delete(c.items, victim.key)
         c.size--
     }
 }
 
-// Внутренние методы управления списком
-func (c *Cache) addToHead(node *Node) {
-    node.Next = c.head.Next
-    node.Prev = c.head
-    c.head.Next.Prev = node
-    c.head.Next = node
+// Вспомогательные методы управления двусвязным списком
+
+func (c *LRUCache) addToHead(node *Node) {
+    node.prev = c.head
+    node.next = c.head.next
+    c.head.next.prev = node
+    c.head.next = node
 }
 
-func (c *Cache) removeNode(node *Node) {
-    node.Prev.Next = node.Next
-    node.Next.Prev = node.Prev
+func (c *LRUCache) removeNode(node *Node) {
+    node.prev.next = node.next
+    node.next.prev = node.prev
 }
 
-func (c *Cache) moveToHead(node *Node) {
+func (c *LRUCache) moveToHead(node *Node) {
     c.removeNode(node)
     c.addToHead(node)
 }
 
-func (c *Cache) removeTail() *Node {
-    res := c.tail.Prev
-    c.removeNode(res)
-    return res
+func (c *LRUCache) removeTail() *Node {
+    victim := c.tail.prev
+    c.removeNode(victim)
+    return victim
 }
 </code></pre>
 </div>
 
-<div class="callout callout-info">
+<div class="callout callout-note">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Заметка</span>
   </div>
   <div class="callout-body">
-    <p>Dummy-узлы (<code>head</code>, <code>tail</code>) — это классическая техника, исключающая проверки на <code>nil</code> в углах списка. Они не хранят данных и не попадают в <code>map</code>. При <code>addToHead</code> и <code>removeTail</code> мы всегда работаем с реальными узлами, что убирает 2 условных перехода на операцию. Компилятор Go эффективно инлайнит эти методы, превращая 4 вызова в ~20 инструкций ассемблера без overhead на <code>CALL/RET</code>.</p>
+    <p><strong>Изящество Dummy-узлов (<code>head</code> и <code>tail</code>):</strong><br />
+Использование двух фиктивных терминальных узлов полностью исключает граничные проверки <code>if node.prev == nil</code> или <code>if node.next == nil</code>. Любой реальный узел всегда находится строго между двумя другими узлами. Компилятор Go инлайнит операции <code>addToHead</code> и <code>removeNode</code>, генерируя плотный машинный код без лишних переходов.</p>
   </div>
 </div>
 
-<h2 id="3-pod-kapotom-pamyat-kesh-linii-i-sborshchik-musora">3. Под капотом: память, кэш-линии и сборщик мусора</h2>
+<hr />
+<h2 id="3-mekhanika-pamyati-kesh-linii-cpu-i-sborshchik-musora">3. Механика памяти: Кэш-линии CPU и сборщик мусора</h2>
 
-<h3 id="pointer-chasing-i-kesh-promakhi">Pointer Chasing и кэш-промахи</h3>
-<p>Каждый <code>*Node</code> аллоцируется в куче через <code>runtime.mallocgc</code>. Адреса узлов распределены случайно по памяти. При последовательном обходе списка или перемещении узла CPU вынужден загружать новые кэш-линии (64 байта) из RAM. Статистически это даёт <strong>~100-150 тактов задержки</strong> на каждый промах L1. В LRU это неизбежно, но мы можем смягчить эффект:<br />
-- Предварительная аллокация пула узлов через <code>sync.Pool</code>.<br />
-- Хранение индексов в массиве вместо указателей (массивный LRU).</p>
-<h3 id="escape-analysis-i-gc-pressure">Escape Analysis и GC-pressure</h3>
-<p>В <code>Get</code>/<code>Put</code> создаются указатели на <code>Node</code>, которые сохраняются в <code>map</code>. Компилятор помечает их как <code>escapes to heap</code>. При эвикции <code>tail</code> узел удаляется из <code>map</code>, но остаётся в памяти до следующего цикла GC. Если кэш активно обновляется (высокий churn rate), сборщик мусора работает в фазе <code>mark</code> чаще, что увеличивает <code>STW</code> паузы.</p>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как снизить давление на GC при высокой частоте <code>Put</code>?<br />
-<strong>Ответ:</strong> <br />
-1. Использовать <code>sync.Pool</code> для повторного использования <code>*Node</code>.<br />
-2. Хранить значения по значению (<code>map[string]NodeValue</code>), если размер &lt; 64 байт, чтобы уменьшить количество указателей.<br />
-3. Настроить <code>GOMEMLIMIT</code> и <code>GOGC</code> под конкретный RSS-бюджет.<br />
-4. В высоконагруженных сценариях переходить на array-based LRU с индексами, что позволяет хранить все узлы в одном contiguous slice.</p>
-  </div>
-</div>
-
-<h2 id="4-potokobezopasnost-paradoks-chteniya-zapisi-v-lru">4. Потокобезопасность: парадокс чтения-записи в LRU</h2>
-
-<p>В большинстве структур <code>sync.RWMutex</code> даёт прирост производительности, так как читатели не блокируют друг друга. <strong>LRU ломает эту модель.</strong></p>
-<p>Метод <code>Get(key)</code> не просто читает данные — он вызывает <code>moveToHead(node)</code>, который модифицирует указатели <code>Prev</code>/<code>Next</code>. Это <strong>запись</strong>. Если использовать <code>RWMutex</code>, конкурентные <code>Get</code> будут падать в <code>RLock</code>, но при попытке изменить список возникнет data race или corruption. Поэтому <code>sync.Mutex</code> часто предпочтительнее, несмотря на потенциальное contention.</p>
+<h3 id="1-pointer-chasing-i-promakhi-l1l2-kesha">1. Pointer Chasing и промахи L1/L2 кэша</h3>
+<p>В классической реализации каждый <code>Node</code> аллоцируется отдельно в куче через <code>runtime.mallocgc</code>.<br />
+Узлы разбросаны по разным виртуальным страницам памяти. При перемещении узла процессор выполняет доступ по 4 указателям (<code>node.prev</code>, <code>node.next</code>, <code>c.head.next</code> и т.д.). Каждый такой скачок может вызывать промах L1d-кэша процессора с задержкой в ~100–150 тактов.</p>
+<p><strong>Решение для High-Performance сервисов (Array-backed / Indexed LRU):</strong><br />
+Вместо связных списков на указателях узлы упаковываются в один сплошной плоский слайс <code>nodes := make([]Node, capacity)</code>.<br />
+Вместо указателей <code>*Node</code> используются целочисленные индексы <code>int32</code>:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2399,25 +2400,27 @@ func (c *Cache) removeTail() *Node {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// ❌ НЕВЕРНО для LRU:
-func (c *Cache) Get(key string) (any, bool) {
-    c.mu.RLock() // Блокировка чтения
-    // ...
-    c.moveToHead(node) // Модификация состояния! RACE CONDITION
-    c.mu.RUnlock()
+  <pre class="language-go"><code class="language-go">type IndexedNode struct {
+    key   string
+    value any
+    prev  int32 // Индекс в слайсе, -1 если нет
+    next  int32
 }
 </code></pre>
 </div>
 
-<h3 id="alternativa-read-copy-update-rcu-ili-atomic-snapshots">Альтернатива: Read-Copy-Update (RCU) или Atomic Snapshots</h3>
-<p>Для экстремальных нагрузок применяют copy-on-write: при <code>Get</code> читается атомарный указатель на snapshot состояния. При <code>Put</code> создаётся новая версия структуры, и указатель обновляется через <code>atomic.StorePointer</code>. Это даёт неблокирующее чтение, но удваивает расход памяти и перекладывает нагрузку на GC. На интервью достаточно описать этот trade-off.</p>
-<h2 id="5-optimizatsii-dlya-vysokonagruzhennykh-sistem">5. Оптимизации для высоконагруженных систем</h2>
+<p>Такой подход устраняет фрагментацию памяти, кардинально снижает нагрузку на сборщик мусора и позволяет аппаратному префетчеру CPU работать с максимальной эффективностью.</p>
+<h3 id="2-paradoks-sinkhronizatsii-v-lru-pochemu-sync-rwmutex-vreden">2. Парадокс синхронизации в LRU: Почему `sync.RWMutex` вреден?</h3>
 
-<ol>
-<li><strong>Шардирование (Sharding):</strong> Разделение кэша на <code>N</code> независимых LRU-сегментов. Хеш ключа определяет шард: <code>idx := hash(key) % N</code>. Contention снижается в <code>N</code> раз. Именно так работают <code>ristretto</code> и <code>bigcache</code>.</li>
-<li><strong>Массивный LRU (Array-backed):</strong> Вместо <code>*Node</code> используем <code>[]Node</code> и индексы. Это превращает случайные переходы по памяти в последовательный доступ, идеально ложится на CPU prefetcher и снижает GC-pressure.</li>
-<li><strong>Lazy Eviction:</strong> Удаление происходит только при <code>Put</code>. Если память критична, добавляют фоновую горутину, очищающую узлы по TTL, но это усложняет синхронизацию и требует аккуратной работы с <code>sync.Mutex</code>.</li>
-</ol>
+<p>В классических структурах данных <code>sync.RWMutex</code> позволяет десяткам горутин одновременно читать данные через <code>RLock()</code>.<br />
+Но в LRU-кэше операция <strong><code>Get(key)</code> не является чистым чтением!</strong><br />
+При каждом успешном <code>Get</code> вызывается <code>moveToHead(node)</code>, который <strong>мутирует</strong> ссылки <code>prev</code> и <code>next</code> списка. Это операция записи!</p>
+<p>Если использовать <code>RLock()</code> при чтении, то параллельные вызовы <code>Get</code> приведут к одновременной мутации указателей списка без эксклюзивной блокировки, что мгновенно вызовет <strong>Data Race и повреждение связности списка</strong>.<br />
+Следовательно, в LRU операция <code>Get</code> обязана брать полный <code>Lock()</code>, и разделяемый <code>RWMutex</code> теряет свой смысл, лишь добавляя накладные расходы на атомарный счетчик читателей.</p>
+<hr />
+<h2 id="4-optimizatsiya-dlya-prodakshena-shardirovanie-kesha">4. Оптимизация для продакшена: Шардирование кэша</h2>
+
+<p>Чтобы масштабировать LRU-кэш на десятки ядер CPU без блокировки единым мьютексом, применяют <strong>шардирование (Striped / Sharded LRU)</strong>:</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2432,81 +2435,120 @@ func (c *Cache) Get(key string) (any, bool) {
   </div>
   <pre class="mermaid">
 flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Запрос приходит&quot;]:::entry --&gt; B[&quot;Вычисляется hash(key)&quot;]
-B --&gt; C[&quot;Выбор шарда 0..N-1&quot;]
-C --&gt; D[&quot;Lock шарда&quot;]
-D --&gt; E[&quot;Операция с локальным map+list&quot;]
-E --&gt; F[&quot;Unlock&quot;]
-F --&gt; G[&quot;Ответ клиенту&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef accent  fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+
+Req[&quot;Запрос Get / Put&quot;]:::process --&gt; Hash[&quot;Хэширование ключа:&lt;br/&gt;shardID = FNV1a(key) % N&quot;]:::accent
+
+Hash --&gt; Shard0[&quot;Шард 0 (Mutex + LRU)&quot;]:::process
+Hash --&gt; Shard1[&quot;Шард 1 (Mutex + LRU)&quot;]:::process
+Hash --&gt; ShardN[&quot;Шард N-1 (Mutex + LRU)&quot;]:::process
+
+Shard0 --&gt; Res[&quot;Локальная операция&quot;]:::success
+Shard1 --&gt; Res
+ShardN --&gt; Res
   </pre>
 </div>
 
 
-<h2 id="6-lovushki-i-tipichnye-oshibki">6. Ловушки и типичные ошибки</h2>
 
-<ol>
-<li><strong>Pointer Aliasing при возврате <code>any</code>:</strong> Если вернуть <code>node.Value</code> (особенно если это <code>*Struct</code>), вызывающий код может изменить данные без блокировки кэша. Решение: возвращать копию или явно документировать readonly-контракт.</li>
-<li><strong>Забывание обновить <code>map</code> при эвикции:</strong> Удалить узел из списка недостаточно. Обязательно <code>delete(c.cache, tail.Key)</code>, иначе произойдёт memory leak и ложные <code>Get</code> на удалённые данные.</li>
-<li><strong>Использование <code>container/list</code>:</strong> Как упоминалось, это убивает типизацию и добавляет hidden allocations. На интервью это минус за системный дизайн.</li>
-<li><strong>Паники при capacity &lt;= 0:</strong> В продакшене лучше возвращать <code>error</code> или <code>nil</code>, но для алгоритмических задач <code>panic</code> допустим как контрактное ограничение.</li>
-</ol>
-<h2 id="7-voprosy-s-sobesedovaniy-glubina-ponimaniya">7. Вопросы с собеседований: глубина понимания</h2>
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">type ShardedLRU struct {
+    shardMask uint32
+    shards    []*LRUCache
+}
+
+func NewShardedLRU(numShards, totalCapacity int) *ShardedLRU {
+    // Количество шардов приводим к степени двойки для быстрой битовой маски
+    shardCap := totalCapacity / numShards
+    shards := make([]*LRUCache, numShards)
+    for i := 0; i &lt; numShards; i++ {
+        shards[i] = NewLRUCache(shardCap)
+    }
+    return &amp;ShardedLRU{
+        shardMask: uint32(numShards - 1),
+        shards:    shards,
+    }
+}
+
+func (s *ShardedLRU) getShard(key string) *LRUCache {
+    // Быстрый FNV-1a хэш
+    var h uint32 = 2166136261
+    for i := 0; i &lt; len(key); i++ {
+        h = (h ^ uint32(key[i])) * 16777619
+    }
+    return s.shards[h&amp;s.shardMask]
+}
+
+func (s *ShardedLRU) Get(key string) (any, bool) {
+    return s.getShard(key).Get(key)
+}
+
+func (s *ShardedLRU) Put(key string, value any) {
+    s.getShard(key).Put(key, value)
+}
+</code></pre>
+</div>
+
+<p>Шардирование снижает вероятность contention ровно в $N$ раз, позволяя разным ядрам процессора обрабатывать запросы параллельно.</p>
+<hr />
+<h2 id="voprosy-dlya-sobesedovaniya">Вопросы для собеседования</h2>
 
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Какова асимптотика <code>Get</code> и <code>Put</code>? Какие скрытые константы влияют на реальное время?<br />
-<strong>Ответ:</strong> Формально <code>O(1)</code> по времени и памяти. Но на практике: хеширование строки <code>O(L)</code> (L — длина ключа), аллокация <code>*Node</code> через <code>mallocgc</code> (~50-100 нс), промах кэша L1 (~100 нс), блокировка <code>Mutex</code> (~20 нс без contention, ~микросекунды при lock-stealing). В production LRU доминируют задержки памяти и GC, а не алгоритмические операции.</p>
+    <p><strong>Вопрос 1:</strong> Что произойдет, если забыть удалить элемент из <code>items map</code> при вызове <code>removeTail()</code>?<br />
+<strong>Ответ:</strong><br />
+Элемент будет удален из двусвязного списка, но останется в хэш-таблице <code>items</code>. Это приведет к утечке памяти (Memory Leak) и логической ошибке: последующий <code>Get(key)</code> найдет висячий узел (Dangling Node) в <code>map</code> и попытается вставить его обратно в список, нарушив связность указателей.</p>
   </div>
 </div>
 
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Что произойдёт, если в кэш одновременно вставляют 1000 горутин?<br />
-<strong>Ответ:</strong> <code>sync.Mutex</code> сериализует доступ. 999 горутин уйдут в syscall <code>futex</code> (блокировка ядра), планировщик Go создаст новые треды или переключит горутины. При возврате из syscall возможен thundering herd, но в Linux это смягчено. Итог: линейное падение throughput. Решение: шардирование или lock-free структуры.</p>
+    <p><strong>Вопрос 2:</strong> Как предотвратить Cache Stampede при использовании LRU-кэша?<br />
+<strong>Ответ:</strong><br />
+Интегрировать паттерн <strong>Singleflight</strong> (<code>golang.org/x/sync/singleflight</code>). При промахе кэша (<code>Get</code> вернул <code>false</code>) запрос к базе данных оборачивается в <code>singleflight.Group.Do(key, fetcher)</code>. Все параллельные горутины, запросившие один и тот же ключ, блокируются и ждут завершения ровно одного вызова к источнику, после чего результат записывается в кэш.</p>
   </div>
 </div>
 
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как реализовать LRU без двусвязного списка?<br />
-<strong>Ответ:</strong> Через массив с кольцевым буфером и счётчиками времени доступа, но это даст <code>O(N)</code> или <code>O(log N)</code> при поиске наименее используемого. Другой вариант — Clock Pro / ARC алгоритмы, которые аппроксимируют LRU через биты доступа в массиве, избегая указателей. Но для интервью классический list + map остаётся стандартом.</p>
+    <p><strong>Вопрос 3:</strong> В чем заключается проблема Scan Resistance в классическом LRU?<br />
+<strong>Ответ:</strong><br />
+Если приложение выполняет полный скан большой таблицы или пакетную выгрузку (Batch Job), тысячи однократно читаемых ключей попадут в кэш и вытеснят действительно популярные «горячие» данные.<br />
+Для защиты от этой проблемы применяют усовершенствованные алгоритмы: <strong>LRU-2 / 2Q</strong> (элемент попадает в основной LRU только после второго обращения) или адаптивный <strong>ARC (Adaptive Replacement Cache)</strong>.</p>
   </div>
 </div>
 
-<h2 id="itog-chek-list-realizatsii-lru">Итог: чек-лист реализации LRU</h2>
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
-<ol>
-<li><strong>Композиция структур:</strong> <code>map</code> для поиска, двусвязный список для порядка. Избегайте <code>container/list</code>.</li>
-<li><strong>Инварианты списка:</strong> Используйте dummy-узлы, всегда синхронизируйте <code>map</code> и <code>list</code> внутри одной критической секции.</li>
-<li><strong>Потокобезопасность:</strong> <code>sync.Mutex</code> предпочтительнее <code>RWMutex</code>, так как <code>Get</code> модифицирует состояние.</li>
-<li><strong>Управление памятью:</strong> Контролируйте <code>size</code>, обязательно удаляйте из <code>map</code> при эвикции, учитывайте GC-pressure.</li>
-<li><strong>Оптимизации:</strong> Шардирование для конкуренции, <code>sync.Pool</code> или массивные индексы для locality.</li>
-<li><strong>Контракт API:</strong> Возвращайте <code>any, bool</code>, не паникуйте в публичных методах, документируйте поведение при дубликатах.</li>
-</ol>
-<p>LRU — это баланс между алгоритмической чистотой и системной инженерией. Умение объяснить, как ваш код взаимодействует с CPU-кэшем, планировщиком горутин и сборщиком мусора, переводит решение из «студенческого» в «архитектурное».</p>
-<p>В следующей статье мы разберём более сложный паттерн вытеснения, учитывающий частоту обращений, и построим структуру с двойной приоритизацией: <a href="4-lfu-cache.html" class="wikilink">4. LFU Cache</a></p>
+<ul>
+<li>Архитектура LRU строится на симбиозе хэш-таблицы (поиск за $O(1)$) и двусвязного списка (обновление порядка за $O(1)$).</li>
+<li>Использование фиктивных узлов <code>head</code> и <code>tail</code> исключает проверки на <code>nil</code> и делает код устойчивым к ошибкам.</li>
+<li>Операция <code>Get</code> в LRU является операцией записи (мутирует список), поэтому требует эксклюзивного <code>sync.Mutex</code>.</li>
+<li>Для высоконагруженных систем стандартом является шардирование кэша по битовой маске FNV-хэша.</li>
+</ul>
+<p>В следующей лекции мы разберем кэш, ориентированный на частоту обращений: <a href="4-lfu-cache.html" class="wikilink">4. LFU Cache</a>, где научимся поддерживать двухуровневые списки с минимальной частотой за константное время $O(1)$.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2534,7 +2576,7 @@ F --&gt; G[&quot;Ответ клиенту&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#arkhitektura-lru-kesha-kompozitsiya-struktur-konkurentsiya-i-mekhanika-pamyati">Архитектура LRU-кэша: композиция структур, конкуренция и механика памяти</a></li><li class="toc-item toc-h2"><a href="#1-arkhitekturnyy-pattern-pochemu-imenno-map-list">1. Архитектурный паттерн: почему именно Map + List</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#3-pod-kapotom-pamyat-kesh-linii-i-sborshchik-musora">3. Под капотом: память, кэш-линии и сборщик мусора</a></li><li class="toc-item toc-h3"><a href="#pointer-chasing-i-kesh-promakhi">Pointer Chasing и кэш-промахи</a></li><li class="toc-item toc-h3"><a href="#escape-analysis-i-gc-pressure">Escape Analysis и GC-pressure</a></li><li class="toc-item toc-h2"><a href="#4-potokobezopasnost-paradoks-chteniya-zapisi-v-lru">4. Потокобезопасность: парадокс чтения-записи в LRU</a></li><li class="toc-item toc-h3"><a href="#alternativa-read-copy-update-rcu-ili-atomic-snapshots">Альтернатива: Read-Copy-Update (RCU) или Atomic Snapshots</a></li><li class="toc-item toc-h2"><a href="#5-optimizatsii-dlya-vysokonagruzhennykh-sistem">5. Оптимизации для высоконагруженных систем</a></li><li class="toc-item toc-h2"><a href="#6-lovushki-i-tipichnye-oshibki">6. Ловушки и типичные ошибки</a></li><li class="toc-item toc-h2"><a href="#7-voprosy-s-sobesedovaniy-glubina-ponimaniya">7. Вопросы с собеседований: глубина понимания</a></li><li class="toc-item toc-h2"><a href="#itog-chek-list-realizatsii-lru">Итог: чек-лист реализации LRU</a></li>
+    <li class="toc-item toc-h2"><a href="#arkhitektura-lru-kesha-kompozitsiya-struktur-konkurentsiya-i-mekhanika-pamyati">Архитектура LRU-кэша: Композиция структур, конкуренция и механика памяти</a></li><li class="toc-item toc-h2"><a href="#1-arkhitekturnyy-pattern-simbioz-map-i-dvusvyaznogo-spiska">1. Архитектурный паттерн: Симбиоз Map и Двусвязного списка</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#3-mekhanika-pamyati-kesh-linii-cpu-i-sborshchik-musora">3. Механика памяти: Кэш-линии CPU и сборщик мусора</a></li><li class="toc-item toc-h3"><a href="#1-pointer-chasing-i-promakhi-l1l2-kesha">1. Pointer Chasing и промахи L1/L2 кэша</a></li><li class="toc-item toc-h3"><a href="#2-paradoks-sinkhronizatsii-v-lru-pochemu-sync-rwmutex-vreden">2. Парадокс синхронизации в LRU: Почему sync.RWMutex вреден?</a></li><li class="toc-item toc-h2"><a href="#4-optimizatsiya-dlya-prodakshena-shardirovanie-kesha">4. Оптимизация для продакшена: Шардирование кэша</a></li><li class="toc-item toc-h2"><a href="#voprosy-dlya-sobesedovaniya">Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

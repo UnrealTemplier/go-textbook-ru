@@ -2171,16 +2171,25 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~21 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">1. Теория. Потоковые алгоритмы</h1>
           </header>
 
           <div class="article-markdown">
-            <h2 id="vvedenie-chto-takoe-potokovye-algoritmy">Введение: Что такое потоковые алгоритмы</h2>
+            <blockquote>
+<p><em>«В потоке данных вы не можете позволить себе роскошь оглянуться назад: либо вы поняли суть на лету, либо она потеряна навсегда».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="potokovye-algoritmy-obrabotka-beskonechnykh-dannykh-v-ogranichennoy-pamyati">Потоковые алгоритмы: обработка бесконечных данных в ограниченной памяти</h2>
 
-<p>Потоковые алгоритмы (Streaming Algorithms) решают задачи обработки данных, которые поступают непрерывно, имеют неизвестный или экстремально большой размер <code>N</code>, и не помещаются в оперативную память. Ключевое ограничение: один или несколько проходов по данным, строгий лимит памяти <code>O(polylog(N))</code> или <code>O(ε⁻¹)</code>, и минимальная задержка на элемент. В бэкенд-инженерии это ядро мониторинга метрик, анализа логов в реальном времени, детекции аномалий, A/B-тестирования и балансировки трафика.</p>
+<p>Потоковые алгоритмы (Streaming Algorithms) предназначены для обработки непрерывных потоков данных, размер которых $N$ заранее неизвестен или настолько колоссален, что данные физически невозможно сохранить на диске или в оперативной памяти.</p>
+<p>Ключевые ограничения потоковой модели:<br />
+1. <strong>Строго однопроходный режим (One-Pass Processing):</strong> каждый входящий элемент считывается ровно один раз.<br />
+2. <strong>Сублинейная память:</strong> расход оперативной памяти ограничен константой $O(1)$ либо логарифмической шкалой $O(\text{polylog}(N))$ или $O(\varepsilon^{-1})$.<br />
+3. <strong>Минимальная латентность:</strong> обработка каждого элемента обязана укладываться в единицы или десятки наносекунд.</p>
+<p>В современной инфраструктуре потоковые алгоритмы лежат в фундаменте систем мониторинга (Prometheus, VictoriaMetrics), распределенных брокеров (Apache Kafka), брокеров сетевой безопасности (детекция DDoS, L7 rate-limiting) и аналитических СУБД (ClickHouse).</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2195,61 +2204,83 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Поток данных&quot;]:::warning --&gt; B{&quot;Требуется точный результат?&quot;}
-B --&gt;|Да| C[&quot;Детерминированные алгоритмы&lt;br&gt;Скользящее окно&lt;br&gt;Агрегация по ключам&lt;br&gt;Требуют памяти O-N&quot;]
-B --&gt;|Нет| D[&quot;Вероятностные алгоритмы&lt;br&gt;HyperLogLog&lt;br&gt;Count-Min Sketch&lt;br&gt;t-Digest&quot;]
-C --&gt; E[&quot;Точные квантили&lt;br&gt;Эксклюзивные счётчики&lt;br&gt;Backpressure обязателен&quot;]
-D --&gt; F[&quot;Аппроксимация с ε-ошибкой&lt;br&gt;Дельта-гарантии&lt;br&gt;Память O-log-N или O-1&quot;]
-E --&gt; G[&quot;Интеграция в Go-систему&quot;]
-F --&gt; G
-G --&gt; H[&quot;io-Reader или итераторы&lt;br&gt;Буферизация IO&lt;br&gt;Нулевые аллокации в горячем цикле&lt;br&gt;Контроль GC-давления&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+A[&quot;Входящий поток событий&quot;]:::entry --&gt; B{&quot;Требуется ли 100% точность?&quot;}:::warning
+B --&gt;|Да| C[&quot;Детерминированные алгоритмы&lt;br/&gt;Скользящее окно, Two Heaps, Misra-Gries&quot;]:::process
+B --&gt;|Нет| D[&quot;Вероятностные скетчи&lt;br/&gt;HyperLogLog, Count-Min, t-Digest&quot;]:::process
+C --&gt; E[&quot;Память: O(K) или O(N/k)&lt;br/&gt;Строгие математические гарантии&quot;]:::success
+D --&gt; F[&quot;Память: O(1/eps)&lt;br/&gt;Контролируемая погрешность с дельта-вероятностью&quot;]:::success
   </pre>
 </div>
 
 
-<p>В этой статье мы разберём математические основы потоковой обработки, классификацию алгоритмов, их механику на уровне CPU и сборщика мусора Go, а также архитектурные компромиссы, которые отличают production-решения от академических упражнений.</p>
-<h2 id="1-klassifikatsiya-i-matematicheskie-osnovy">1. Классификация и математические основы</h2>
+<hr />
+<h2 id="1-fundamentalnye-zadachi-potokovoy-obrabotki">1. Фундаментальные задачи потоковой обработки</h2>
 
-<p>Потоковые алгоритмы делятся на две фундаментальные категории по гарантии результата:</p>
-<ol>
-<li><strong>Детерминированные (точные)</strong>: Дают гарантированно правильный ответ. Требуют памяти, пропорциональной размеру окна или количеству уникальных ключей. Примеры: точный подсчёт частот в фиксированном окне, скользящее среднее.</li>
-<li><strong>Вероятностные (аппроксимативные)</strong>: Гарантируют ответ с заданной вероятностью или ограниченной ошибкой <code>ε</code>. Потребляют <code>O(log N)</code> или <code>O(1)</code> памяти. Примеры: HyperLogLog для уникальных посетителей, Count-Min Sketch для оценки частот, t-Digest для квантилей задержек.</li>
-</ol>
-<div class="callout callout-info">
+<p>В потоковой обработке выделяют четыре классические задачи:</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th style="text-align: left;">Задача</th>
+<th style="text-align: left;">Наивный подход</th>
+<th style="text-align: left;">Потоковое решение</th>
+<th style="text-align: left;">Потребление RAM</th>
+<th style="text-align: left;">Точность</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Cardinality (Уникальные элементы)</strong></td>
+<td style="text-align: left;">Хеш-таблица всех уникальных ключей (<code>map[K]struct{}</code>)</td>
+<td style="text-align: left;"><strong>HyperLogLog (HLL)</strong></td>
+<td style="text-align: left;"><strong>1.5 КБ</strong> (при ошибке $\approx 1\%$)</td>
+<td style="text-align: left;">Вероятностная ($\pm \varepsilon$)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Heavy Hitters (Частые элементы)</strong></td>
+<td style="text-align: left;">Счётчик по каждому ключу (<code>map[K]int</code>)</td>
+<td style="text-align: left;"><strong>Misra-Gries</strong> / <strong>Count-Min Sketch</strong></td>
+<td style="text-align: left;"><strong>Несколько килобайт</strong></td>
+<td style="text-align: left;">Гарантированное превышение порога</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Frequency Estimation (Оценка частоты)</strong></td>
+<td style="text-align: left;">Полный словарь частот</td>
+<td style="text-align: left;"><strong>Count-Min Sketch (CMS)</strong></td>
+<td style="text-align: left;">Фиксированная матрица $d \times w$</td>
+<td style="text-align: left;">Никогда не занижает частоту</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Quantiles &amp; Percentiles (p50, p95, p99)</strong></td>
+<td style="text-align: left;">Сохранение и сортировка массива ($O(N \log N)$)</td>
+<td style="text-align: left;"><strong>Two Heaps</strong> (точная медиана) / <strong>t-Digest</strong> / <strong>P²</strong></td>
+<td style="text-align: left;">$O(K)$ или $O(1)$</td>
+<td style="text-align: left;">Зависит от алгоритма</td>
+</tr>
+</tbody>
+</table></div>
+<div class="callout callout-note">
   <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Заметка</span>
   </div>
   <div class="callout-body">
-    <p>Почему вероятностные алгоритмы быстрее и экономнее? Они используют <strong>хеширование с контролируемым коллизированием</strong> или <strong>битовые массивы</strong>. В Go это означает работу с примитивными типами (<code>[]byte</code>, <code>[]uint64</code>), которые не создают указателей в куче. Сборщик мусора не сканирует битовые маски, CPU кэширует их целиком, а ветвление минимизировано за счёт побитовых операций (<code>|</code>, <code>&amp;</code>, <code>^</code>).</p>
+    <p><strong>Почему вероятностные структуры столь компактны:</strong><br />
+Вероятностные структуры данных (Probabilistic Data Structures) отказываются от сохранения самих элементов. Они оперируют исключительно компактными битовыми регистрами, хеш-сигнатурами и интерполяционными кластерами. В результате миллионы входящих событий сворачиваются в пару килобайт оперативной памяти.</p>
   </div>
 </div>
 
-<h2 id="2-klyuchevye-patterny-potokovoy-obrabotki">2. Ключевые паттерны потоковой обработки</h2>
+<hr />
+<h2 id="2-arkhitektura-go-potokovyy-vvod-vyvod-i-sborshchik-musora">2. Архитектура Go: потоковый ввод-вывод и сборщик мусора</h2>
 
-<h3 id="chastotnaya-otsenka-i-heavy-hitters">Частотная оценка и Heavy Hitters</h3>
-<p>Задача: найти элементы, встречающиеся чаще порога <code>φ · N</code>. Наивный <code>map[K]int</code> растёт до <code>O(N)</code>. Решение: <strong>Misra-Gries</strong> или <strong>Count-Min Sketch</strong>. Первый хранит <code>k</code> кандидатов и декрементирует все при переполнении, второй использует 2D-массив хешей и берёт минимум по строкам.</p>
-<h3 id="podschyot-unikalnykh-elementov">Подсчёт уникальных элементов</h3>
-<p>Задача: <code>CARDINALITY</code> потока. Точное решение требует <code>set</code> всех элементов. Приближённое: <strong>HyperLogLog</strong>. Алгоритм хеширует элемент, ищет позицию первого единичного бита в хеше и использует её как оценку. Объединение множеств происходит через <code>max</code> регистров, что идеально для шардирования и распределённых агрегаций.</p>
-<h3 id="kvantili-i-pertsentili">Квантили и перцентили</h3>
-<p>Задача: найти <code>p95</code> задержки HTTP-запросов. Сортировка <code>O(N log N)</code> невозможна в потоке. Решение: <strong>t-Digest</strong> или <strong>GK-алгоритм</strong>. Они хранят сжатые кластеры данных с весами, позволяя оценивать квантили с ошибкой <code>ε</code>, которая растёт ближе к медиане и минимальна на хвостах распределения (что критично для SLO).</p>
-<h3 id="skolzyashchee-okno-sliding-window">Скользящее окно (Sliding Window)</h3>
-<p>Ограничение обработки фиксированным интервалом времени или количеством элементов. Реализуется через кольцевой буфер (<code>[]T</code> с индексом <code>i % cap</code>) или дека. При вытеснении старых элементов агрегаты обновляются инкрементально, без пересчёта всего окна.</p>
-<h2 id="3-pod-kapotom-v-go-io-allokatsii-i-planirovshchik">3. Под капотом в Go: IO, аллокации и планировщик</h2>
-
-<p>Потоковая обработка в Go упирается не в математику, а в механику рантайма и взаимодействие с ОС.</p>
-<h3 id="buferizatsiya-io-i-syscalls">Буферизация IO и syscalls</h3>
-<p>Чтение по одному байту вызывает системный вызов <code>read</code> на каждый элемент. Это тысячи переключений Ring 3 → Ring 0, очистка TLB и промахи кэша. В Go используется <code>bufio.Reader</code>, который выделяет буфер в куче (обычно 4-32 КБ) и заполняет его за один <code>syscall</code>. Внутренний цикл читает из <code>[]byte</code> в User Space, что в 50-100 раз быстрее.</p>
+<p>В высоконагруженных сетевых сервисах на Go потоковые алгоритмы упираются не в вычислительную сложность, а в накладные расходы рантайма: системные вызовы и паузы сборщика мусора.</p>
+<h3 id="buferizatsiya-i-predotvrashchenie-allokatsiy">Буферизация и предотвращение аллокаций</h3>
+<p>Наивное чтение через <code>bufio.Scanner</code> с вызовом <code>scanner.Text()</code> выделяет новую строку в куче на каждой строке:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2259,71 +2290,44 @@ G --&gt; H[&quot;io-Reader или итераторы&lt;br&gt;Буферизац
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">import (
+  <pre class="language-go"><code class="language-go">// ❌ ПЛОХО: 1 000 000 аллокаций в секунду вызовет деградацию GC
+for scanner.Scan() {
+    process(scanner.Text())
+}
+
+// ✅ ОТЛИЧНО: Zero-allocation потоковая обработка
+for scanner.Scan() {
+    lineBytes := scanner.Bytes() // Срез указывает на внутренний буфер scanner
+    processBytes(lineBytes)      // Обработка без выделения памяти в куче
+}
+</code></pre>
+</div>
+
+<h3 id="iteratory-go-1-23-iter-seq">Итераторы Go 1.23+ (`iter.Seq`)</h3>
+<p>Начиная с Go 1.23, в язык встроена поддержка стандартных итераторов (<code>iter.Seq</code>), позволяющая создавать чистые конвейеры потоковой обработки без накладных расходов каналов (<code>chansend</code>/<code>chanrecv</code>) и блокировок планировщика:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package stream
+
+import (
     &quot;bufio&quot;
     &quot;io&quot;
+    &quot;iter&quot;
 )
 
-// ProcessStream обрабатывает поток строк без аллокаций на элемент
-func ProcessStream(r io.Reader) error {
-    scanner := bufio.NewScanner(r)
-    // Увеличиваем буфер для длинных строк, чтобы избежать runtime panic
-    buf := make([]byte, 0, 1024*1024) // 1 МБ
-    scanner.Buffer(buf, 1024*1024)
-
-    scanner.Split(bufio.ScanLines)
-    for scanner.Scan() {
-        line := scanner.Bytes() // []byte, а не string! Без копирования
-        // Обработка в горячем цикле...
-        if err := processLine(line); err != nil {
-            return err
-        }
-    }
-    return scanner.Err()
-}
-</code></pre>
-</div>
-
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p><code>scanner.Text()</code> возвращает <code>string</code>, что вызывает <strong>копирование байтов в кучу</strong> на каждой итерации. В потоке из 10⁶ строк это создаёт миллион аллокаций и мгновенно запускает <code>GC mark phase</code>. Всегда используйте <code>scanner.Bytes()</code> для обработки, если не требуется сохранение строк после итерации.</p>
-  </div>
-</div>
-
-<h3 id="escape-analysis-i-gc-davlenie">Escape Analysis и GC-давление</h3>
-<p>В потоковых алгоритмах часто создаются временные структуры для агрегации. Если компилятор помечает их как <code>escapes to heap</code>, каждая итерация генерирует мусор. Решение:<br />
-- Хранить агрегаты в значениях (<code>struct</code>), а не указателях.<br />
-- Использовать <code>sync.Pool</code> для переиспользования буферов.<br />
-- Избегать <code>interface{}</code> в горячем пути (динамическая диспетчеризация + упаковка в кучу).</p>
-<h3 id="kanaly-vs-iteratory-go-1-23">Каналы vs Итераторы (Go 1.23+)</h3>
-<p>Каналы удобны для декоулинга компонентов, но каждый <code>send/receive</code> проходит через <code>runtime chansend/chanrecv</code>, использует внутренние мьютексы и может парковать горутины. Для CPU-bound потоков это оверхед. В Go 1.23+ рекомендуется использовать <code>iter.Seq[V]</code> (pull-итераторы):</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Идиоматичный потоковый генератор без goroutine-overhead
-func ReadChunks(r io.Reader) iter.Seq[[]byte] {
+// ScanLinesSeq возвращает pull-итератор по строкам без создания горутин
+func ScanLinesSeq(r io.Reader) iter.Seq[[]byte] {
     return func(yield func([]byte) bool) {
-        buf := make([]byte, 4096)
-        for {
-            n, err := r.Read(buf)
-            if n &gt; 0 &amp;&amp; !yield(buf[:n]) {
-                return // Прерывание по контексту
-            }
-            if err == io.EOF {
-                return
-            }
-            if err != nil {
-                // Логирование или возврат ошибки
+        scanner := bufio.NewScanner(r)
+        for scanner.Scan() {
+            if !yield(scanner.Bytes()) {
                 return
             }
         }
@@ -2332,61 +2336,50 @@ func ReadChunks(r io.Reader) iter.Seq[[]byte] {
 </code></pre>
 </div>
 
-<p>Это устраняет аллокации для горутин, убирает блокировки и даёт предсказуемую латентность.</p>
-<h2 id="4-arkhitekturnye-kompromissy-v-raspredelyonnykh-potokakh">4. Архитектурные компромиссы в распределённых потоках</h2>
+<hr />
+<h2 id="3-backpressure-i-ustoychivost-sistem">3. Backpressure и устойчивость систем</h2>
+
+<p>В распределенных потоковых системах критически важен механизм <strong>обратного давления (Backpressure)</strong>.<br />
+Если генератор событий (Kafka, TCP-сокет) поставляет данные со скоростью $200\,000$ сообщений/сек, а процессор способен обработать только $100\,000$, буферы неизбежно переполнятся, вызвав аварийное завершение по OOM (Out Of Memory).</p>
+<p>Способы управления давлением потока:<br />
+1. <strong>Синхронное торможение (TCP Flow Control):</strong> приостановка чтения из сетевого сокета (<code>net.Conn</code>), заставляющая операционную систему заполнить TCP Receive Window и замедлить отправителя.<br />
+2. <strong>Буферизованные каналы ограниченной емкости:</strong> блокировка горутины-продюсера при заполнении очереди.<br />
+3. <strong>Вероятностное прореживание (Load Shedding):</strong> контролируемый сброс входящих пакетов при превышении порогового SLA очереди.</p>
+<hr />
+<h2 id="4-voprosy-dlya-sobesedovaniya">4. Вопросы для собеседования</h2>
+
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> В чем разница между алгоритмами классов Монте-Карло и Лас-Вегас в контексте потоковой обработки?<br />
+<strong>Ответ:</strong> Алгоритмы <strong>Лас-Вегас</strong> (например, рандомизированный QuickSort или двукучевая медиана) всегда возвращают $100\%$ математически точный результат, но время их работы или объем требуемой памяти являются случайной величиной.<br />
+Алгоритмы <strong>Монте-Карло</strong> (например, Count-Min Sketch или HyperLogLog) работают за строго фиксированное, детерминированное время и память, но возвращают ответ с вероятностной погрешностью (например, с ошибкой $\varepsilon$ и надежностью $1 - \delta$).</p>
+  </div>
+</div>
+
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Почему для расчета 99-го перцентиля (p99) времени ответа серверов нельзя просто усреднять перцентили, собранные с разных нод кластера?<br />
+<strong>Ответ:</strong> Перцентили и медианы не являются аддитивными величинами. Среднее арифметическое от p99 по пяти серверам математически бессмысленно и занижает реальные хвостовые задержки. Для корректной распределенной агрегации квантилей необходимо использовать объединяемые структуры данных (Mergeable Summaries), такие как <strong>t-Digest</strong> или <strong>HdrHistogram</strong>.</p>
+  </div>
+</div>
+
+<hr />
+<h2 id="rezyume">Резюме</h2>
 
 <ol>
-<li><strong>Backpressure (Обратное давление)</strong>: Если потребитель медленнее продюсера, поток нужно тормозить. В Go это делается через буферизованные каналы с блокировкой, <code>context.Context</code> с таймаутами или явные <code>ACK/NACK</code> протоколы. Без backpressure потребление RAM растёт линейно → OOM.</li>
-<li><strong>Порядок событий (Ordering)</strong>: Сети доставляют пакеты с задержками и в разном порядке. Потоковые системы используют <strong>Watermarks</strong> и <strong>Buffering</strong>. В Go это требует сортировки по timestamp в окне, что добавляет задержку и память.</li>
-<li><strong>Exactly-Once vs At-Least-Once</strong>: Точная однократная обработка в распределённом потоке требует идемпотентности + checkpointing + distributed consensus (например, Kafka transactions). На практике 99% систем выбирают At-Least-Once с дедупликацией на приёмнике, так как Exactly-Once добавляет 3-5x latency.</li>
+<li>Потоковые алгоритмы решают задачи анализа данных за один последовательный проход в условиях жестких ограничений памяти.</li>
+<li>Вероятностные скетчи жертвуют абсолютной точностью ради фиксированного расхода оперативной памяти ($O(1)$ или $O(\text{polylog} N)$).</li>
+<li>В Go потоковая производительность зависит от исключения лишних аллокаций (<code>scanner.Bytes()</code>, отсутствие упаковки в интерфейсы) и управления обратным давлением (Backpressure).</li>
 </ol>
-<h2 id="5-lovushki-i-voprosy-s-sobesedovaniy">5. Ловушки и вопросы с собеседований</h2>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как посчитать количество уникальных пользователей в потоке из 10⁹ записей, имея только 10 МБ RAM?<br />
-<strong>Ответ:</strong> Использовать HyperLogLog. Для <code>ε = 2%</code> требуется ~16 КБ памяти. Алгоритм хеширует ID, берёт старшие биты для выбора регистра, младшие для позиции первого <code>1</code>. Объединение результатов с других шардов происходит через <code>MAX</code> по регистрам. Точное решение потребовало бы <code>Bloom Filter</code> + точный счётчик или внешнюю БД, что нарушает лимит RAM.</p>
-  </div>
-</div>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Почему Count-Min Sketch даёт завышенную оценку частот, но никогда заниженную?<br />
-<strong>Ответ:</strong> Из-за коллизий хешей. Несколько ключей могут маппиться в одну ячейку массива, суммируя счётчики. При запросе берётся <code>min</code> по всем хеш-строкам, что минимизирует влияние коллизий. <code>min</code> гарантирует, что мы не вернём значение меньше реального, так как настоящий счётчик всегда участвует в выборке минимума.</p>
-  </div>
-</div>
-
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p><strong>Вопрос:</strong> Как обрабатывать задержанные (late) события в потоке с агрегацией по окнам?<br />
-<strong>Ответ:</strong> Внедрить механизм Watermark: маркер времени, гарантирующий, что все события с timestamp &lt; Watermark уже поступили. События, пришедшие позже Watermark, либо отбрасываются, либо помещаются в отдельный side-output для корректировки агрегатов. В Go это реализуется через <code>time.Ticker</code> для генерации Watermark и <code>map[windowKey][]Event</code> для буферизации.</p>
-  </div>
-</div>
-
-<h2 id="6-itog-chek-list-dlya-potokovykh-algoritmov">6. Итог: чек-лист для потоковых алгоритмов</h2>
-
-<ol>
-<li><strong>Ограничьте память</strong>: <code>O(1)</code> или <code>O(log N)</code> относительно размера потока. Точные решения масштабируются плохо.</li>
-<li><strong>Выбирайте аппроксимацию осознанно</strong>: HyperLogLog для уникальности, Count-Min Sketch для частот, t-Digest для квантилей. Документируйте <code>ε</code> и <code>δ</code>.</li>
-<li><strong>Контролируйте IO</strong>: <code>bufio.Reader</code>, <code>scanner.Bytes()</code>, один <code>syscall</code> на буфер. Никаких <code>scanner.Text()</code> в горячих циклах.</li>
-<li><strong>Минимизируйте GC</strong>: Значения вместо указателей, <code>sync.Pool</code> для буферов, избегайте <code>interface{}</code> и аллокаций на элемент.</li>
-<li><strong>Реализуйте Backpressure</strong>: Блокировка, буферизация или дроп. Потоки без контроля давления приводят к OOM.</li>
-<li><strong>Выбирайте примитив передачи</strong>: Для CPU-bound — <code>iter.Seq</code> или callback, для decoupled IO — буферизованные каналы с <code>context</code>.</li>
-</ol>
-<p>Потоковые алгоритмы — это баланс между математической строгостью, ограничениями железа и предсказуемостью рантайма. Умение проектировать системы, которые обрабатывают терабайты данных с мегабайтами RAM и стабильной латентностью, напрямую коррелирует с готовностью к роли Senior/Lead.</p>
-<p>В следующей статье мы детально разберём задачу поиска наиболее частых элементов в потоке, реализуем алгоритм Misra-Gries и Count-Min Sketch на Go, и сравним их по памяти, скорости и точности: <a href="2-heavy-hitters.html" class="wikilink">2. Heavy hitters</a></p>
+<p>В следующей статье мы разберем поиск наиболее частых элементов в потоке с помощью алгоритмов Misra-Gries и Count-Min Sketch: <a href="2-heavy-hitters.html" class="wikilink">2. Heavy hitters</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2414,7 +2407,7 @@ func ReadChunks(r io.Reader) iter.Seq[[]byte] {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#vvedenie-chto-takoe-potokovye-algoritmy">Введение: Что такое потоковые алгоритмы</a></li><li class="toc-item toc-h2"><a href="#1-klassifikatsiya-i-matematicheskie-osnovy">1. Классификация и математические основы</a></li><li class="toc-item toc-h2"><a href="#2-klyuchevye-patterny-potokovoy-obrabotki">2. Ключевые паттерны потоковой обработки</a></li><li class="toc-item toc-h3"><a href="#chastotnaya-otsenka-i-heavy-hitters">Частотная оценка и Heavy Hitters</a></li><li class="toc-item toc-h3"><a href="#podschyot-unikalnykh-elementov">Подсчёт уникальных элементов</a></li><li class="toc-item toc-h3"><a href="#kvantili-i-pertsentili">Квантили и перцентили</a></li><li class="toc-item toc-h3"><a href="#skolzyashchee-okno-sliding-window">Скользящее окно (Sliding Window)</a></li><li class="toc-item toc-h2"><a href="#3-pod-kapotom-v-go-io-allokatsii-i-planirovshchik">3. Под капотом в Go: IO, аллокации и планировщик</a></li><li class="toc-item toc-h3"><a href="#buferizatsiya-io-i-syscalls">Буферизация IO и syscalls</a></li><li class="toc-item toc-h3"><a href="#escape-analysis-i-gc-davlenie">Escape Analysis и GC-давление</a></li><li class="toc-item toc-h3"><a href="#kanaly-vs-iteratory-go-1-23">Каналы vs Итераторы (Go 1.23+)</a></li><li class="toc-item toc-h2"><a href="#4-arkhitekturnye-kompromissy-v-raspredelyonnykh-potokakh">4. Архитектурные компромиссы в распределённых потоках</a></li><li class="toc-item toc-h2"><a href="#5-lovushki-i-voprosy-s-sobesedovaniy">5. Ловушки и вопросы с собеседований</a></li><li class="toc-item toc-h2"><a href="#6-itog-chek-list-dlya-potokovykh-algoritmov">6. Итог: чек-лист для потоковых алгоритмов</a></li>
+    <li class="toc-item toc-h2"><a href="#potokovye-algoritmy-obrabotka-beskonechnykh-dannykh-v-ogranichennoy-pamyati">Потоковые алгоритмы: обработка бесконечных данных в ограниченной памяти</a></li><li class="toc-item toc-h2"><a href="#1-fundamentalnye-zadachi-potokovoy-obrabotki">1. Фундаментальные задачи потоковой обработки</a></li><li class="toc-item toc-h2"><a href="#2-arkhitektura-go-potokovyy-vvod-vyvod-i-sborshchik-musora">2. Архитектура Go: потоковый ввод-вывод и сборщик мусора</a></li><li class="toc-item toc-h3"><a href="#buferizatsiya-i-predotvrashchenie-allokatsiy">Буферизация и предотвращение аллокаций</a></li><li class="toc-item toc-h3"><a href="#iteratory-go-1-23-iter-seq">Итераторы Go 1.23+ (iter.Seq)</a></li><li class="toc-item toc-h2"><a href="#3-backpressure-i-ustoychivost-sistem">3. Backpressure и устойчивость систем</a></li><li class="toc-item toc-h2"><a href="#4-voprosy-dlya-sobesedovaniya">4. Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

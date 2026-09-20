@@ -2171,176 +2171,24 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~30 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">7. Serialize and Deserialize Binary Tree</h1>
           </header>
 
           <div class="article-markdown">
-            <p><strong>LeetCode 297. Serialize and Deserialize Binary Tree.</strong> Требуется спроектировать алгоритм сериализации и десериализации бинарного дерева. Сериализация — это процесс преобразования дерева в строку, десериализация — обратное восстановление из строки. Формат сериализации не задан жёстко; необходимо, чтобы результат десериализации был структурно идентичен исходному дереву. Задача завершает кластер «Сложные задачи» и соединяет воедино два мира: классические структуры данных (<a href="../13-derevya/1-teoriya-derevya.html" class="wikilink">1. Теория. Деревья</a>) и алгоритмическую инженерию — проектирование формата, устойчивого к ошибкам, быстрого по времени и экономного по памяти.</p>
-<p>После геометрических и стековых прозрений <a href="5-largest-rectangle-in-histogram.html" class="wikilink">5. Largest Rectangle in Histogram</a> и композиции окна с монотонной очередью в <a href="6-sliding-window-maximum.html" class="wikilink">6. Sliding Window Maximum</a> мы приходим к задаче, где сложность не в математическом инсайте, а в системном проектировании. Как представить дерево линейно, чтобы его можно было однозначно восстановить, не теряя структуру null-указателей? Как сделать это идиоматично на Go, балансируя между читаемостью, производительностью строковых операций и управлением памятью? Senior-разработчик обязан не просто выдать работающий код, но и обсудить форматы (preorder с маркерами, BFS), сравнить их стоимость по памяти и аллокациям, а также показать, как <code>strings.Builder</code> и <code>strconv</code> помогают избежать мусора.</p>
-<h3 id="formulirovka-i-utochneniya">Формулировка и уточнения</h3>
+            <blockquote>
+<p><em>«Формат данных переживает код, который его создал; проектируйте его так, будто он останется навсегда».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="serializatsiya-i-deserializatsiya-binarnogo-dereva-proektirovanie-protokolov-i-s">Сериализация и десериализация бинарного дерева: проектирование протоколов и строковая инженерия</h2>
 
-<p><strong>Условие:</strong> реализовать две функции:<br />
-- <code>serialize(root *TreeNode) string</code> — возвращает строку, однозначно представляющую дерево.<br />
-- <code>deserialize(data string) *TreeNode</code> — восстанавливает дерево из строки.</p>
-<p>Тип узла:</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">type TreeNode struct {
-    Val   int
-    Left  *TreeNode
-    Right *TreeNode
-}
-</code></pre>
-</div>
-
-<p><strong>Вопросы интервьюеру (Senior-стиль):</strong><br />
-- <em>Может ли дерево быть пустым?</em> Да, <code>root == nil</code> → нужно как-то представить пустое дерево, обычно специальной строкой или пустым значением.<br />
-- <em>Какие значения могут быть в узлах?</em> Целые числа, могут быть отрицательными, нулями, дубликаты разрешены.<br />
-- <em>Насколько большим может быть дерево?</em> До 10⁴ узлов. Значит, рекурсивный подход должен быть безопасен по стеку (стек горутины в Go растёт, но глубина 10⁴ — это нормально, хотя может быть близко к предельному для вложенных рекурсий).<br />
-- <em>Важен ли точный формат строки?</em> Нет, только обратимость.<br />
-- <em>Можно ли использовать глобальные переменные или состояния?</em> Нет, всё должно быть инкапсулировано в функции; для десериализации потребуется передавать позицию в строке.</p>
-<p>На основе ответов мы выбираем <strong>preorder-обход с маркерами null</strong> как канонический подход. Альтернатива — BFS с маркерами — также будет рассмотрена.</p>
-<h3 id="naivnoe-reshenie-raw-stroki-i-razdelenie-cherez-strings-split">Наивное решение: raw строки и разделение через strings.Split</h3>
-
-<p>Первый порыв — сериализовать в строку вида <code>1,2,null,null,3,4,null,null,5,null,null</code>, затем при десериализации разбить по запятой через <code>strings.Split</code> и восстанавливать рекурсивно. Это работает, но имеет проблемы:<br />
-- <code>strings.Split</code> аллоцирует слайс всех токенов сразу, что при 10⁴ узлов даёт O(N) памяти только под слайс токенов.<br />
-- Каждый вызов <code>strings.Split</code> порождает новые строки (копии), хотя можно было бы избежать части аллокаций, используя посимвольный парсинг.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Наивная десериализация (для понимания)
-func deserializeNaive(data string) *TreeNode {
-    if data == &quot;&quot; {
-        return nil
-    }
-    tokens := strings.Split(data, &quot;,&quot;)
-    return buildTree(&amp;tokens)
-}
-
-func buildTree(tokens *[]string) *TreeNode {
-    if len(*tokens) == 0 {
-        return nil
-    }
-    token := (*tokens)[0]
-    *tokens = (*tokens)[1:]
-    if token == &quot;null&quot; {
-        return nil
-    }
-    val, _ := strconv.Atoi(token) // ошибка игнорируется — неидиоматично
-    node := &amp;TreeNode{Val: val}
-    node.Left = buildTree(tokens)
-    node.Right = buildTree(tokens)
-    return node
-}
-</code></pre>
-</div>
-
-<p>Senior сразу укажет на недостатки: аллокация слайса <code>tokens</code>, игнорирование ошибки <code>Atoi</code>, неэффективное копирование строк. Оптимизируем.</p>
-<h3 id="optimalnoe-reshenie-preorder-dfs-s-strings-builder-i-posimvolnym-parsingom">Оптимальное решение: preorder DFS с `strings.Builder` и посимвольным парсингом</h3>
-
-<p><strong>Сериализация.</strong> Обходим дерево рекурсивно в preorder (корень → лево → право). Для каждого узла записываем его значение, для null-указателей — специальный маркер, например <code>#</code>. Разделитель — запятая. Чтобы избежать конкатенации строк в цикле (которая создаёт новую строку на каждое присоединение), используем <code>strings.Builder</code>. Это стандартный идиоматичный подход в Go для построения длинных строк.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func serialize(root *TreeNode) string {
-    var b strings.Builder
-    serializeHelper(root, &amp;b)
-    return b.String()
-}
-
-func serializeHelper(node *TreeNode, b *strings.Builder) {
-    if node == nil {
-        b.WriteString(&quot;#,&quot;)
-        return
-    }
-    // Записываем значение через strconv.Itoa без лишних преобразований
-    b.WriteString(strconv.Itoa(node.Val))
-    b.WriteByte(',')
-    serializeHelper(node.Left, b)
-    serializeHelper(node.Right, b)
-}
-</code></pre>
-</div>
-
-<p><strong>Go-идиомы:</strong><br />
-- <code>strings.Builder</code> — эффективный способ построения строки; внутри использует <code>[]byte</code> и растёт амортизированно.<br />
-- <code>strconv.Itoa</code> — конвертирует <code>int</code> в строку, аллоцируя её, но builder примет строку и скопирует в свой буфер.<br />
-- Разделитель — запятая; финальная строка будет заканчиваться запятой, но это не мешает парсингу.</p>
-<p><strong>Десериализация.</strong> Вместо разбиения всей строки на слайс токенов, мы будем идти по строке, извлекая значения по одному. Для этого заведём индекс <code>pos</code>, который будет продвигаться вперёд. При каждом рекурсивном вызове читаем следующий токен (до запятой) и сдвигаем <code>pos</code>. Это O(N) времени и O(глубина рекурсии) дополнительной памяти (без учёта выходного дерева). Стек вызовов — O(h), где h — высота дерева. Для сбалансированного дерева O(log N), для вырожденного O(N), но N ≤ 10⁴, что безопасно для стека горутины (начальный стек 2 КБ, растёт динамически).</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func deserialize(data string) *TreeNode {
-    if data == &quot;&quot; {
-        return nil
-    }
-    return deserializeHelper(data, &amp;pos)
-}
-
-// pos — индекс начала следующего токена
-func deserializeHelper(data string, pos *int) *TreeNode {
-    if *pos &gt;= len(data) {
-        return nil
-    }
-
-    // Извлекаем следующий токен
-    start := *pos
-    for *pos &lt; len(data) &amp;&amp; data[*pos] != ',' {
-        *pos++
-    }
-    token := data[start:*pos] // срез строки — без аллокации!
-    *pos++ // пропускаем запятую
-
-    if token == &quot;#&quot; {
-        return nil
-    }
-
-    val, err := strconv.Atoi(token)
-    if err != nil {
-        // По контракту строка валидна, но Senior всегда проверяет
-        return nil
-    }
-    node := &amp;TreeNode{Val: val}
-    node.Left = deserializeHelper(data, pos)
-    node.Right = deserializeHelper(data, pos)
-    return node
-}
-</code></pre>
-</div>
-
-<p><strong>Go-идиомы и комментарии:</strong><br />
-- <code>token := data[start:*pos]</code> — срез строки, <strong>не копирует</strong> байты, а создаёт новый заголовок <code>stringStruct</code>, указывающий на ту же память. Это O(1) по памяти. Однако поскольку <code>data</code> — это большая строка, а <code>token</code> живёт только внутри функции <code>strconv.Atoi</code> (которая всё равно парсит и преобразует), удержания памяти не происходит. Если бы мы сохраняли эти токены надолго, следовало бы скопировать.<br />
-- <code>strconv.Atoi</code> обрабатывает отрицательные числа корректно.<br />
-- Индекс <code>pos</code> передаётся по указателю, что экономит память (не нужно возвращать новый индекс) и является стандартным паттерном в Go.<br />
-- <code>for *pos &lt; len(data) &amp;&amp; data[*pos] != ','</code> — посимвольный проход, без <code>strings.Index</code>. Быстро и без аллокаций.</p>
+<p>Задача проектирования алгоритма сериализации и десериализации бинарного дерева (<strong>Serialize and Deserialize Binary Tree</strong>, LeetCode 297) венчает раздел алгоритмических задач.<br />
+В отличие от задач на вычисление одного числового ответа, здесь проверяется <strong>системный инженерный дизайн</strong>:<br />
+- <strong>Сериализация:</strong> преобразование древовидной структуры в компактную строку или поток байтов.<br />
+- <strong>Десериализация:</strong> однозначное, детерминированное восстановление исходной структуры дерева из строки.</p>
+<p>В распределенных бэкенд-системах этот процесс лежит в основе сетевых протоколов (gRPC / Protocol Buffers, JSON RPC), передачи деревьев выражений в SQL-оптимизаторах и персистентного сохранения деревьев состояний на диск.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2355,44 +2203,51 @@ func deserializeHelper(data string, pos *int) *TreeNode {
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-subgraph Serialize
-A[&quot;Вход: корень дерева&quot;]:::entry --&gt; B{&quot;Узел == nil?&quot;}
-B --&gt;|&quot;Да&quot;| C[&quot;b.WriteString(&#x27;#,&#x27;)&quot;]
-B --&gt;|&quot;Нет&quot;| D[&quot;b.WriteString(Val)&lt;br&gt;b.WriteByte(&#x27;,&#x27;)&quot;]
-D --&gt; E[&quot;serializeHelper(Left)&quot;]
-E --&gt; F[&quot;serializeHelper(Right)&quot;]
-C --&gt; G[&quot; &quot;]
-F --&gt; G
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+subgraph Serialization[&quot;Сериализация: Preorder DFS&quot;]
+A[&quot;Корень node&quot;]:::entry --&gt; B{&quot;node == nil ?&quot;}:::warning
+B --&gt;|Да| C[&quot;Записать маркер &#x27;#,&#x27;&quot;]:::process
+B --&gt;|Нет| D[&quot;Записать &#x27;val,&#x27;&quot;]:::process
+D --&gt; E[&quot;Рекурсия для node.Left&quot;]:::process
+E --&gt; F[&quot;Рекурсия для node.Right&quot;]:::process
 end
-subgraph Deserialize
-H[&quot;Вход: строка data, pos=0&quot;]:::entry --&gt; I{&quot;pos &gt;= len(data)?&quot;}
-I --&gt;|&quot;Да&quot;| J[&quot;return nil&quot;]
-I --&gt;|&quot;Нет&quot;| K[&quot;Извлечь токен до запятой&quot;]
-K --&gt; L{&quot;token == &#x27;#&#x27;?&quot;}
-L --&gt;|&quot;Да&quot;| M[&quot;return nil&quot;]
-L --&gt;|&quot;Нет&quot;| N[&quot;node = &amp;TreeNode{Val: Atoi(token)}&quot;]
-N --&gt; O[&quot;node.Left = deserializeHelper(...)&quot;]
-O --&gt; P[&quot;node.Right = deserializeHelper(...)&quot;]
-P --&gt; Q[&quot;return node&quot;]
+
+subgraph Deserialization[&quot;Десериализация: Посимвольный парсинг&quot;]
+G[&quot;Чтение следующего токена&quot;]:::entry --&gt; H{&quot;token == &#x27;#&#x27; ?&quot;}:::warning
+H --&gt;|Да| I[&quot;Вернуть nil&quot;]:::process
+H --&gt;|Нет| J[&quot;Создать TreeNode(val)&quot;]:::process
+J --&gt; K[&quot;node.Left = Десериализация&quot;]:::process
+K --&gt; L[&quot;node.Right = Десериализация&quot;]:::process
+L --&gt; M[&quot;Вернуть восстановленный узел&quot;]:::success
 end
   </pre>
 </div>
 
 
-<h3 id="alternativnoe-reshenie-bfs-urovnevyy-obkhod">Альтернативное решение: BFS (уровневый обход)</h3>
+<hr />
+<h2 id="1-arkhitektura-protokola-pochemu-odnogo-obkhoda-obychno-nedostatochno">1. Архитектура протокола: почему одного обхода обычно недостаточно?</h2>
 
-<p>Можно сериализовать дерево в BFS-порядке. Это удобнее для визуализации и иногда позволяет обрабатывать дерево без рекурсии (полностью итеративно). При десериализации используем очередь для восстановления.</p>
-<p><strong>Сериализация (BFS):</strong></p>
+<p>В классической теории деревьев (<a href="../13-derevya/1-teoriya-derevya.html" class="wikilink">1. Теория. Деревья</a>) известно: чтобы однозначно восстановить бинарное дерево по значениям узлов, требуются <strong>два</strong> обхода (например, Preorder + Inorder).<br />
+Однако если мы сохраняем <strong>маркеры пустых указателей (Nil / Null Sentinel)</strong>, например символ <code>#</code>, то дерево однозначно восстанавливается всего по <strong>одному Preorder (или Postorder) обходу</strong>!</p>
+<h3 id="sravnenie-formatov-obkhoda">Сравнение форматов обхода:</h3>
+<ol>
+<li><strong>Preorder DFS (Корень → Лево → Право):</strong><br />
+   Самый лаконичный и естественный формат. Десериализация строится через прямую рекурсию без очередей.</li>
+<li><strong>BFS (Поуровневый обход):</strong><br />
+   Использует очередь. Удобен для потокового чтения без глубокого рекурсивного стека вызовов, но требует хранения очередей в памяти.</li>
+</ol>
+<hr />
+<h2 id="2-idiomatichnaya-realizatsiya-na-go-zero-allocation-parsing">2. Идиоматичная реализация на Go: Zero-Allocation парсинг</h2>
+
+<p>Наивный подход использует <code>strings.Split(data, ",")</code>. Это порождает огромный срез строк в куче, создавая двойное потребление памяти.<br />
+В промышленной реализации мы используем:<br />
+- <code>strings.Builder</code> для линейной конкатенации строки сериализации.<br />
+- Посимвольный парсинг по указателю смещения <code>pos</code> для десериализации (срезы строк без выделения памяти).</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2402,182 +2257,154 @@ end
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func serializeBFS(root *TreeNode) string {
-    if root == nil {
-        return &quot;#&quot;
-    }
-    var b strings.Builder
-    queue := []*TreeNode{root}
-    for len(queue) &gt; 0 {
-        node := queue[0]
-        queue = queue[1:]
-        if node == nil {
-            b.WriteString(&quot;#,&quot;)
-        } else {
-            b.WriteString(strconv.Itoa(node.Val))
-            b.WriteByte(',')
-            queue = append(queue, node.Left, node.Right)
-        }
-    }
-    return b.String()
+  <pre class="language-go"><code class="language-go">package treecodec
+
+import (
+    &quot;strconv&quot;
+    &quot;strings&quot;
+)
+
+// TreeNode представляет узел бинарного дерева
+type TreeNode struct {
+    Val   int
+    Left  *TreeNode
+    Right *TreeNode
 }
-</code></pre>
-</div>
 
-<p><strong>Десериализация (BFS):</strong> нужно обойти токены, создавая узлы и связывая их через очередь. Это полностью итеративный процесс, не использующий рекурсию, что может быть предпочтительнее для очень глубоких деревьев. Память — O(ширина дерева) для очереди.</p>
+// Codec инкапсулирует логику кодирования и декодирования
+type Codec struct{}
 
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func deserializeBFS(data string) *TreeNode {
-    if data == &quot;#&quot; {
+func Constructor() Codec {
+    return Codec{}
+}
+
+// Serializes a tree to a single string.
+func (c *Codec) Serialize(root *TreeNode) string {
+    var sb strings.Builder
+    c.buildString(root, &amp;sb)
+    return sb.String()
+}
+
+func (c *Codec) buildString(node *TreeNode, sb *strings.Builder) {
+    if node == nil {
+        sb.WriteString(&quot;#,&quot;)
+        return
+    }
+
+    sb.WriteString(strconv.Itoa(node.Val))
+    sb.WriteByte(',')
+
+    c.buildString(node.Left, sb)
+    c.buildString(node.Right, sb)
+}
+
+// Deserializes your encoded data to tree.
+func (c *Codec) Deserialize(data string) *TreeNode {
+    if len(data) == 0 {
         return nil
     }
-    // Извлекаем первый токен (корень) вручную
     pos := 0
-    root := readNextNodeBFS(data, &amp;pos)
-    if root == nil {
-        return nil
-    }
-    queue := []*TreeNode{root}
-    for len(queue) &gt; 0 {
-        node := queue[0]
-        queue = queue[1:]
-        // Читаем левого потомка
-        node.Left = readNextNodeBFS(data, &amp;pos)
-        if node.Left != nil {
-            queue = append(queue, node.Left)
-        }
-        // Читаем правого потомка
-        node.Right = readNextNodeBFS(data, &amp;pos)
-        if node.Right != nil {
-            queue = append(queue, node.Right)
-        }
-    }
-    return root
+    return c.buildTree(data, &amp;pos)
 }
 
-func readNextNodeBFS(data string, pos *int) *TreeNode {
+func (c *Codec) buildTree(data string, pos *int) *TreeNode {
     if *pos &gt;= len(data) {
         return nil
     }
+
+    // Извлекаем следующий токен до запятой за O(1) памяти
     start := *pos
     for *pos &lt; len(data) &amp;&amp; data[*pos] != ',' {
         *pos++
     }
     token := data[start:*pos]
-    *pos++
-    if token == &quot;#&quot; || token == &quot;&quot; {
+    *pos++ // пропускаем разделительную запятую
+
+    if token == &quot;#&quot; {
         return nil
     }
-    val, _ := strconv.Atoi(token)
-    return &amp;TreeNode{Val: val}
+
+    val, err := strconv.Atoi(token)
+    if err != nil {
+        return nil
+    }
+
+    node := &amp;TreeNode{Val: val}
+    node.Left = c.buildTree(data, pos)
+    node.Right = c.buildTree(data, pos)
+
+    return node
 }
 </code></pre>
 </div>
 
-<p><strong>Сравнение DFS vs BFS:</strong></p>
-<div class="table-container"><table>
-<thead>
-<tr>
-<th>Характеристика</th>
-<th>DFS (preorder)</th>
-<th>BFS (уровневый)</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Рекурсия</td>
-<td>Да (глубина O(h))</td>
-<td>Нет (итеративный)</td>
-</tr>
-<tr>
-<td>Память (помимо данных)</td>
-<td>Стек вызовов O(h)</td>
-<td>Очередь O(ширина)</td>
-</tr>
-<tr>
-<td>Восстановление</td>
-<td>Рекурсивное, естественное для preorder</td>
-<td>Итеративное, более громоздкое</td>
-</tr>
-<tr>
-<td>Идиоматичность в Go</td>
-<td>Рекурсия по дереву — стандарт</td>
-<td>Итеративный BFS — стандарт для поиска в ширину</td>
-</tr>
-<tr>
-<td>Кэш-локальность</td>
-<td>Узлы обходятся в глубину, может быть хуже</td>
-<td>По уровням, лучше для «плоских» структур</td>
-</tr>
-</tbody>
-</table></div>
-<p>На собеседовании Senior продемонстрирует оба подхода и объяснит выбор: DFS проще и лаконичнее, BFS безопаснее для вырожденных деревьев без риска глубокой рекурсии.</p>
-<h3 id="edge-cases">Edge Cases</h3>
+<hr />
+<h2 id="3-apparatnaya-effektivnost-i-mekhanika-strok-v-go">3. Аппаратная эффективность и механика строк в Go</h2>
 
-<ul>
-<li><strong>Пустое дерево:</strong> <code>nil</code>. Сериализуем как <code>"#"</code>. При десериализации сразу возвращаем <code>nil</code>.</li>
-<li><strong>Один узел:</strong> <code>"1,#,#"</code>. Десериализация корректно создаст узел с <code>nil</code>-детьми.</li>
-<li><strong>Все узлы левые (вырожденное дерево):</strong> <code>"1,2,3,#,#,#,#"</code>. DFS зайдёт в рекурсию на глубину N. Стек горутины справится (N ≤ 10⁴), но Senior может упомянуть, что в экстремальных случаях при N &gt; 10⁶ лучше использовать BFS или итеративный DFS с собственным стеком.</li>
-<li><strong>Отрицательные значения и нули:</strong> <code>strconv.Atoi</code> корректно обрабатывает.</li>
-<li><strong>Строка с пробелами:</strong> не должна возникать, формат жёсткий.</li>
-</ul>
-<h3 id="analiz-slozhnosti">Анализ сложности</h3>
+<h3 id="zero-copy-srezy-strok">Zero-Copy срезы строк</h3>
+<p>В коде <code>token := data[start:*pos]</code> не происходит копирования символов.<br />
+В рантайме Go строка представляется структурой <code>StringHeader</code>:</p>
 
-<ul>
-<li><strong>Сериализация:</strong></li>
-<li>Время O(N) — каждый узел посещается один раз, <code>Builder.WriteString</code> амортизированно O(1) на операцию.</li>
-<li>Память O(N) для итоговой строки, плюс O(h) стек рекурсии.</li>
-<li><strong>Десериализация (DFS):</strong></li>
-<li>Время O(N) — каждый токен извлекается один раз, <code>Atoi</code> работает за O(длина токена).</li>
-<li>Память O(N) для создаваемого дерева, плюс O(h) стек вызовов.</li>
-</ul>
-<h3 id="mechanical-sympathy-strings-builder-srezy-strok-i-allokatsii">Mechanical Sympathy: `strings.Builder`, срезы строк и аллокации</h3>
-
-<ul>
-<li><strong><code>strings.Builder</code></strong> внутри использует <code>[]byte</code>. При вызове <code>b.String()</code> он не копирует байты, а создаёт строку, ссылающуюся на тот же массив (если Builder не был переиспользован). Это эффективно и дружественно GC: массив в куче один, строка над ним — лёгкий заголовок.</li>
-<li><strong>Срезы строк <code>data[start:*pos]</code></strong> при десериализации не копируют данные — они ссылаются на исходную большую строку. Исходная строка будет жить до конца десериализации, что нормально. Если бы мы хотели освободить её (например, при потоковой обработке), можно было бы копировать токены через <code>string([]byte(token))</code>, но здесь это не требуется.</li>
-<li><strong>Отсутствие <code>strings.Split</code></strong> уменьшает пиковое потребление памяти: мы не аллоцируем слайс всех токенов сразу. Посимвольный проход даёт константную дополнительную память.</li>
-<li><strong><code>strconv.Atoi</code></strong> конвертирует строку в <code>int</code>, не сохраняя ссылку на строку — GC может собрать исходную строку, если она больше не нужна? Исходная строка <code>data</code> всё ещё удерживается вызывающей функцией, поэтому она не будет собрана до завершения <code>deserialize</code>. Это нормально.</li>
-</ul>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p>В рантайме Go строка — это <code>stringStruct{unsafe.Pointer, int}</code>. Срез <code>data[start:*pos]</code> просто уменьшает длину в новом заголовке, сохраняя исходный указатель на массив. Никаких копирований. Именно это позволяет парсить строки без аллокаций. Аналогично <code>strings.Builder</code> хранит слайс байтов и при вызове <code>String()</code> конструирует строку, указывающую на тот же массив. Это zero-copy операции, которые Senior обязан знать и использовать.</p>
-  </div>
+  <pre class="language-go"><code class="language-go">type StringHeader struct {
+    Data unsafe.Pointer
+    Len  int
+}
+</code></pre>
 </div>
 
-<h3 id="alternativnye-formaty-i-trade-off">Альтернативные форматы и trade-off</h3>
+<p>Срез строки лишь сдвигает указатель <code>Data</code> и изменяет <code>Len</code>. Он живет в регистрах процессора и не аллоцируется в куче.</p>
+<h3 id="preimushchestva-strings-builder">Преимущества `strings.Builder`</h3>
+<p>Вызов оператора <code>+</code> для строк выделяет новую строку в куче на каждом шаге ($O(N^2)$ аллокаций).<br />
+<code>strings.Builder</code> использует внутренний байтовый буфер <code>[]byte</code>, удваивающийся геометрически, что гарантирует амортизированное линейное время $O(N)$ и минимальную фрагментацию памяти.</p>
+<hr />
+<h2 id="4-voprosy-dlya-sobesedovaniya">4. Вопросы для собеседования</h2>
 
-<ul>
-<li><strong>JSON или XML:</strong> избыточны для бинарного дерева с целыми числами, увеличивают размер строки и сложность парсинга.</li>
-<li><strong>Бинарный формат:</strong> можно сериализовать в <code>[]byte</code> с использованием <code>encoding/binary</code>. Меньше размер, но нечитаемо человеком и сложнее отлаживать. На собеседовании обычно не требуют.</li>
-<li><strong>Использование <code>strconv.FormatInt</code> / <code>strconv.AppendInt</code>:</strong> ещё более эффективно, так как можно писать прямо в <code>[]byte</code>, избегая аллокации промежуточной строки. Для продакшена Senior может рассмотреть этот вариант.</li>
-</ul>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Вопрос: «Как бы вы адаптировали сериализацию для очень большого дерева, которое не помещается в память?»<br />
-Ответ: «Я бы использовал стриминговую сериализацию: вместо построения полной строки в памяти писал бы токены в <code>io.Writer</code> (например, файл или сетевой сокет). Для десериализации читал бы из <code>io.Reader</code> с использованием буфера. BFS-формат здесь удобнее, так как не требует глубокой рекурсии при чтении. В Go это легко сделать благодаря интерфейсам <code>io.Writer</code> и <code>io.Reader</code>».</p>
+    <p><strong>Вопрос:</strong> Что произойдет при десериализации вырожденного дерева (длинной цепочки из 10 000 левых узлов)?<br />
+<strong>Ответ:</strong> Рекурсивная функция <code>buildTree</code> зайдет на глубину $10\,000$ вызовов. В Go стек горутины начинается с $2$ КБ и динамически расширяется в куче вплоть до лимита (по умолчанию $1$ ГБ на 64-битных ОС). Поэтому глубина $10^4$ не вызовет паники переполнения стека (Stack Overflow). Однако для ультраглубоких деревьев ($10^6$ узлов) безопаснее использовать полностью итеративную десериализацию на базе BFS и явной очереди.</p>
   </div>
 </div>
 
-<h3 id="itog">Итог</h3>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Как адаптировать этот алгоритм для сериализации бинарного дерева поиска (BST), чтобы уменьшить размер строки?<br />
+<strong>Ответ:</strong> Для BST маркеры <code>#</code> не нужны вовсе! В силу свойства упорядоченности ($Left &lt; Root &lt; Right$) дерево поиска можно однозначно восстановить из чистого Preorder-обхода чисел, восстанавливая границы диапазона $[\text{min}, \text{max}]$ на каждом шаге. Это сократит объем передаваемых данных почти в два раза.</p>
+  </div>
+</div>
 
-<p>Serialize and Deserialize Binary Tree завершает кластер сложных задач, подводя итог всему, чему мы научились: от распознавания паттернов и композиции структур данных до механической симпатии и идиоматичного Go. Задача не ставит рекордов по алгоритмической сложности, но требует зрелого инженерного подхода: проектирования формата, эффективной работы со строками, осознанного выбора между рекурсией и итерацией, и внимания к памяти. Senior-разработчик, решивший её, демонстрирует готовность не только к собеседованию, но и к реальной работе, где подобные задачи — рутина.</p>
-<p>На этом мы завершаем раздел <strong>02. Задачи</strong>. Весь теоретический фундамент из раздела <strong>01. Теория</strong> и практические навыки, отточенные на десятках задач, теперь составляют ваш личный инструментарий Go-инженера. Осталось лишь отточить его на mock-интервью и реальных собеседованиях. Вперёд!</p>
+<hr />
+<h2 id="rezyume">Резюме</h2>
+
+<ol>
+<li>Добавление маркеров пустых узлов (<code>#</code>) позволяет восстановить структуру дерева всего по одному обходу.</li>
+<li>Использование <code>strings.Builder</code> и посимвольного извлечения токенов исключает ненужные аллокации памяти в рантайме Go.</li>
+<li>Механическая симпатия проявляется в использовании zero-copy срезов строк, что делает сериализатор масштабируемым под высокие нагрузки.</li>
+</ol>
+<hr />
+<h3 id="zavershenie-modulya-21-vy-gotovy-k-sobesedovaniyam-lyubogo-urovnya">🎓 Завершение Модуля 21: Вы готовы к собеседованиям любого уровня</h3>
+
+<p>Вы прошли колоссальный путь через 29 фундаментальных кластеров и 247 лекций:<br />
+- От базовых трюков со слайсами и указателями до параллельных графовых обходов и динамического программирования.<br />
+- От системных структур данных (LRU/LFU, Swiss Tables, Min-Heap) до потоковых вероятностных скетчей (HyperLogLog, Count-Min, $P^2$).<br />
+- Вы овладели не просто академическими алгоритмами, а <strong>механической симпатией</strong> к рантайму Go, ядру Linux и архитектуре современных процессоров.</p>
+<p>Теперь любые алгоритмические секции уровня Middle, Senior и Lead — это не препятствие, а возможность продемонстрировать инженерное превосходство. В добрый путь!</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2605,7 +2432,7 @@ func readNextNodeBFS(data string, pos *int) *TreeNode {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#formulirovka-i-utochneniya">Формулировка и уточнения</a></li><li class="toc-item toc-h3"><a href="#naivnoe-reshenie-raw-stroki-i-razdelenie-cherez-strings-split">Наивное решение: raw строки и разделение через strings.Split</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-preorder-dfs-s-strings-builder-i-posimvolnym-parsingom">Оптимальное решение: preorder DFS с strings.Builder и посимвольным парсингом</a></li><li class="toc-item toc-h3"><a href="#alternativnoe-reshenie-bfs-urovnevyy-obkhod">Альтернативное решение: BFS (уровневый обход)</a></li><li class="toc-item toc-h3"><a href="#edge-cases">Edge Cases</a></li><li class="toc-item toc-h3"><a href="#analiz-slozhnosti">Анализ сложности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-strings-builder-srezy-strok-i-allokatsii">Mechanical Sympathy: strings.Builder, срезы строк и аллокации</a></li><li class="toc-item toc-h3"><a href="#alternativnye-formaty-i-trade-off">Альтернативные форматы и trade-off</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#serializatsiya-i-deserializatsiya-binarnogo-dereva-proektirovanie-protokolov-i-s">Сериализация и десериализация бинарного дерева: проектирование протоколов и строковая инженерия</a></li><li class="toc-item toc-h2"><a href="#1-arkhitektura-protokola-pochemu-odnogo-obkhoda-obychno-nedostatochno">1. Архитектура протокола: почему одного обхода обычно недостаточно?</a></li><li class="toc-item toc-h3"><a href="#sravnenie-formatov-obkhoda">Сравнение форматов обхода:</a></li><li class="toc-item toc-h2"><a href="#2-idiomatichnaya-realizatsiya-na-go-zero-allocation-parsing">2. Идиоматичная реализация на Go: Zero-Allocation парсинг</a></li><li class="toc-item toc-h2"><a href="#3-apparatnaya-effektivnost-i-mekhanika-strok-v-go">3. Аппаратная эффективность и механика строк в Go</a></li><li class="toc-item toc-h3"><a href="#zero-copy-srezy-strok">Zero-Copy срезы строк</a></li><li class="toc-item toc-h3"><a href="#preimushchestva-strings-builder">Преимущества strings.Builder</a></li><li class="toc-item toc-h2"><a href="#4-voprosy-dlya-sobesedovaniya">4. Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#rezyume">Резюме</a></li><li class="toc-item toc-h3"><a href="#zavershenie-modulya-21-vy-gotovy-k-sobesedovaniyam-lyubogo-urovnya">🎓 Завершение Модуля 21: Вы готовы к собеседованиям любого уровня</a></li>
   </ul>
 </aside>
 
