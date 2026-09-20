@@ -2171,7 +2171,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~22 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">1. Теория. Динамическое программирование 2D</h1>
@@ -2320,90 +2320,6 @@ val := dp[i*cols + j]
 <li><strong>Сжатие памяти:</strong> Если переход зависит только от предыдущей строки, сжимайте матрицу до 1D слайса. Всегда следите за тем, не затираете ли вы данные, которые понадобятся на следующем шаге.</li>
 <li><strong>Практика:</strong> 2D DP — это основа алгоритмов сравнения строк (diff, LCS), которые активно используются в инфраструктурных инструментах.</li>
 </ol>
-<p>В следующей статье мы применим теорию сетевого пути к матрицам на практических задачах: <a href="2-matritsy.html" class="wikilink">2. Матрицы</a>.<br />
- должны выделять один непрерывный блок памяти и вручную вычислять индекс.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// ВМЕСТО джаггед-массива:
-// dp := make([][]int, rows) ...
-
-// ИСПОЛЬЗУЕМ плоский слайс:
-dp := make([]int, rows*cols) // Одна аллокация, непрерывный кусок памяти!
-
-// Доступ к элементу [i][j]:
-// Строки идут подряд. Смещение = индекс_строки * кол_во_столбцов + индекс_столбца
-val := dp[i*cols + j]
-</code></pre>
-</div>
-
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>При использовании плоского массива <code>dp[i*cols + j]</code> и построчном обходе (внешний цикл по <code>i</code>, внутренний по <code>j</code>), доступ к памяти становится строго последовательным. Процессор увидит, что мы читаем память вперед, и его аппаратный префетчер (Hardware Prefetcher) начнет подгружать следующие кэш-линии (по 64 байта) заранее. Это ускоряет заполнение матрицы в десятки раз по сравнению со слайсом слайсов. Кроме того, одна аллокация вместо <code>N+1</code> радикально снижает нагрузку на Garbage Collector.</p>
-  </div>
-</div>
-
-<h2 id="optimizatsiya-pamyati-szhatie-razmernosti-space-optimization">Оптимизация памяти: Сжатие размерности (Space Optimization)</h2>
-
-<p>Матрица <code>dp</code> размером $M \times N$ требует $O(M \cdot N)$ памяти. Если $M$ и $N$ равны 10 000, наш плоский слайс займет 800 МБ (для <code>int64</code>). Это неприемлемо для бэкенда.</p>
-<p>Ключ к оптимизации — анализ зависимостей. Если для вычисления <code>dp[i][j]</code> нужны только значения из текущей строки <code>i</code> и предыдущей строки <code>i-1</code>, то хранить строки <code>0 ... i-2</code> бессмысленно.</p>
-<p>Мы можем сжать 2D матрицу до <strong>двух 1D слайсов</strong> (или даже одного, если быть аккуратным).</p>
-<p><strong>Трюк с одним слайсом (In-place update):</strong><br />
-Если переход выглядит как <code>dp[i][j] = dp[i-1][j] + dp[i][j-1]</code>:<br />
-- <code>dp[i-1][j]</code> — это старое значение в нашем 1D слайсе на позиции <code>j</code> (с прошлой итерации внешнего цикла).<br />
-- <code>dp[i][j-1]</code> — это новое, только что вычисленное значение на позиции <code>j-1</code> (в текущей итерации).</p>
-<p>Следовательно, мы можем переписать формулу так:<br />
-<code>dp[j] = dp[j] + dp[j-1]</code></p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Для такой in-place оптимизации порядок обновления <strong>критически важен</strong>. Если обходить слайс слева направо (по <code>j</code>), то при вычислении <code>dp[j]</code> значение <code>dp[j-1]</code> уже будет обновлено до <code>i</code>-й строки, а <code>dp[j]</code> всё ещё хранит значение с <code>i-1</code>-й строки. Это именно то, что нам нужно! Если бы переход требовал <code>dp[i-1][j-1]</code> (старое диагональное значение), то перезапись <code>dp[j-1]</code> уничтожила бы его. В таких случаях нужно либо вводить переменную <code>prev</code> для хранения диагонали, либо использовать два слайса (<code>prevRow</code> и <code>currRow</code>).</p>
-  </div>
-</div>
-
-<h2 id="system-design-gde-2d-dp-na-bekende">System Design: Где 2D DP на бэкенде?</h2>
-
-<ol>
-<li><strong>Diff-алгоритмы (Git, Wikipedia):</strong> Сравнение версий файлов или документов — это классическая задача Longest Common Subsequence (LCS). Git ищет минимальное количество правок (insert/delete), чтобы превратить файл A в файл B. Это чистое 2D DP с двумя строками.</li>
-<li><strong>Поиск плагиата и дедупликация:</strong> Сравнение логов или текстов на схожесть. Расстояние Левенштейна (Edit Distance) — это 2D DP.</li>
-<li><strong>Ресурсное планирование (Bin Packing):</strong> Задача о рюкзаке. У вас есть серверы (вместимость) и микросервисы (вес и потребление CPU). Как оптимально распределить сервисы по серверам? 2D DP дает точный ответ для ограниченных размерностей.</li>
-</ol>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p>На интервью по 2D DP ваш главный козырь — не написать код за 2 минуты, а нарисовать матрицу на доске.<br />
-1. Нарисуйте оси (что значит <code>i</code>, что значит <code>j</code>).<br />
-2. Заполните базовые случаи (первую строку и первый столбец).<br />
-3. Возьмите произвольную клетку внутри и покажите стрелками, откуда в нее приходят значения.<br />
-4. Напишите формулу перехода.<br />
-5. Скажите: <em>"Поскольку нам нужны только две предыдущие строки, мы можем сжать память до O(min(N,M)) используя один слайс"</em>. Это мгновенный Strong Hire.</p>
-  </div>
-</div>
-
-<h2 id="itog">Итог</h2>
-
-<ol>
-<li><strong>Два измерения:</strong> 2D DP моделирует пересечение двух последовательностей или координатной сетки.</li>
-<li><strong>Плоский массив:</strong> Никогда не используйте <code>[][]int</code> для больших матриц в Go. Выделяйте плоский слайс <code>make([]int, rows*cols)</code> и вычисляйте индекс для идеальной локальности кэша.</li>
-<li><strong>Сжатие памяти:</strong> Если переход зависит только от предыдущей строки, сжимайте матрицу до 1D слайса. Всегда следите за тем, не затираете ли вы данные, которые понадобятся на следующем шаге.</li>
-<li><strong>Практика:</strong> 2D DP — это основа алгоритмов сравнения строк (diff, LCS), которые активно используются в инфраструктурных инструментах.</li>
-</ol>
 <p>В следующей статье мы применим теорию сетевого пути к матрицам на практических задачах: <a href="2-matritsy.html" class="wikilink">2. Матрицы</a>.</p>
           </div>
 
@@ -2432,7 +2348,7 @@ val := dp[i*cols + j]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#anatomiya-2d-dp-zavisimosti-v-matritse">Анатомия 2D DP: Зависимости в матрице</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-dzhagged-massivy-i-kesh">Mechanical Sympathy: Джаггед-массивы и Кэш</a></li><li class="toc-item toc-h3"><a href="#reshenie-ploskiy-massiv-flat-array">Решение: Плоский массив (Flat Array)</a></li><li class="toc-item toc-h2"><a href="#optimizatsiya-pamyati-szhatie-razmernosti-space-optimization">Оптимизация памяти: Сжатие размерности (Space Optimization)</a></li><li class="toc-item toc-h2"><a href="#system-design-gde-2d-dp-na-bekende">System Design: Где 2D DP на бэкенде?</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li><li class="toc-item toc-h2"><a href="#optimizatsiya-pamyati-szhatie-razmernosti-space-optimization">Оптимизация памяти: Сжатие размерности (Space Optimization)</a></li><li class="toc-item toc-h2"><a href="#system-design-gde-2d-dp-na-bekende">System Design: Где 2D DP на бэкенде?</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#anatomiya-2d-dp-zavisimosti-v-matritse">Анатомия 2D DP: Зависимости в матрице</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-dzhagged-massivy-i-kesh">Mechanical Sympathy: Джаггед-массивы и Кэш</a></li><li class="toc-item toc-h3"><a href="#reshenie-ploskiy-massiv-flat-array">Решение: Плоский массив (Flat Array)</a></li><li class="toc-item toc-h2"><a href="#optimizatsiya-pamyati-szhatie-razmernosti-space-optimization">Оптимизация памяти: Сжатие размерности (Space Optimization)</a></li><li class="toc-item toc-h2"><a href="#system-design-gde-2d-dp-na-bekende">System Design: Где 2D DP на бэкенде?</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

@@ -104,11 +104,11 @@ diff /tmp/first_half.txt /tmp/second_half.txt
 
 ### Критерии приёмки этапа 0
 
-- [ ] Все 3 файла очищены от дублей
-- [ ] Каждый файл содержит полный, не обрезанный контент (только 1 экземпляр)
-- [ ] `python3 builder/build_all.py --all` — успешно
-- [ ] `python3 builder/audit_all.py` — 0 новых ошибок
-- [ ] Коммит: `fix(module21): remove duplicate content from 3 files`
+- [x] Все 3 файла очищены от дублей
+- [x] Каждый файл содержит полный, не обрезанный контент (только 1 экземпляр)
+- [x] `python3 builder/build_all.py --all` — успешно
+- [x] `python3 builder/audit_all.py` — 0 новых ошибок
+- [x] Коммит: `fix(module21): remove duplicate content from 3 files`
 
 ---
 
