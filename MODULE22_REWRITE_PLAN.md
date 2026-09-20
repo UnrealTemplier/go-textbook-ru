@@ -137,51 +137,51 @@ sources/22. Вопросы и ответы с собеседований по Go
 
 **Новые вопросы из MODULE22_NEW_QUESTIONS.md:** Q01, Q02, Q03, Q20
 
-- [ ] **Эпиграф** (Кен Томпсон или Роб Пайк — о простоте Go)
-- [ ] **Mermaid:** Жизненный цикл переменной Go (scope, zero value, escape)
-- [ ] **Mermaid:** Процесс компиляции Go (front-end → SSA → machine code)
-- [ ] **Callout `[!INTERVIEW]`:** на вопросах `iota`, `init()`, `_`
-- [ ] Интегрировать: Q01 (range over integers), Q02 (loop variable capture fix), Q03 (math/rand/v2), Q20 (new(expr))
-- [ ] **Таблица сравнения:** новые синтаксические возможности Go 1.22–1.27
+- [x] **Эпиграф** (Кен Томпсон или Роб Пайк — о простоте Go)
+- [x] **Mermaid:** Жизненный цикл переменной Go (scope, zero value, escape)
+- [x] **Mermaid:** Процесс компиляции Go (front-end → SSA → machine code)
+- [x] **Callout `[!INTERVIEW]`:** на вопросах `iota`, `init()`, `_`
+- [x] Интегрировать: Q01 (range over integers), Q02 (loop variable capture fix), Q03 (math/rand/v2), Q20 (new(expr)), Q05, Q06
+- [x] **Таблица сравнения:** новые синтаксические возможности Go 1.22–1.27
 
 ### Файл 03: Типы данных, slice, map, string
 
 **Новые вопросы:** Q07 (unique), Q09 (Swiss Tables)
 
-- [ ] **Эпиграф** (о структурах данных — Кнут)
-- [ ] **Mermaid:** Внутреннее устройство slice header (ptr + len + cap)
-- [ ] **Mermaid:** Swiss Tables vs классический map (сравнение структур)
-- [ ] **Mermaid:** string internals — immutable byte array + len
-- [ ] **Callout `[!WARNING]`:** ловушки при append со скрытой ёмкостью
-- [ ] Интегрировать: Q09 (Swiss Tables map), Q07 (unique.Handle)
-- [ ] ASCII-схема: раскладка slice в памяти (64-байтные cache lines)
+- [x] **Эпиграф** (о структурах данных — Кнут)
+- [x] **Mermaid:** Внутреннее устройство slice header (ptr + len + cap)
+- [x] **Mermaid:** Swiss Tables vs классический map (сравнение структур)
+- [x] **Mermaid:** string internals — immutable byte array + len
+- [x] **Callout `[!WARNING]`:** ловушки при append со скрытой ёмкостью
+- [x] Интегрировать: Q09 (Swiss Tables map), Q07 (unique.Handle)
+- [x] ASCII-схема: раскладка slice в памяти (64-байтные cache lines)
 
 ### Файл 04: Функции, методы, интерфейсы
 
 **Новые вопросы:** Q10 (generic type aliases), Q21 (self-referential generics), Q26 (generic methods), Q27 (generalized type inference)
 
-- [ ] **Эпиграф** (Роб Пайк о интерфейсах и утиной типизации)
-- [ ] **Mermaid:** Устройство iface (itab + data pointer)
-- [ ] **Mermaid:** Method set rules (value vs pointer receiver)
-- [ ] **Mermaid:** Generic type inference flowchart (Go 1.18 → 1.24 → 1.27)
-- [ ] Интегрировать: Q10, Q21, Q26, Q27 — блок «Generics на собеседовании: от 1.18 до 1.27»
-- [ ] **Callout `[!INTERVIEW]`:** «Почему Go не поддерживает generic methods в интерфейсах?»
+- [x] **Эпиграф** (Роб Пайк о интерфейсах и утиной типизации)
+- [x] **Mermaid:** Устройство iface (itab + data pointer)
+- [x] **Mermaid:** Method set rules (value vs pointer receiver)
+- [x] **Mermaid:** Generic type inference flowchart (Go 1.18 → 1.24 → 1.27)
+- [x] Интегрировать: Q10, Q21, Q26, Q27 — блок «Generics на собеседовании: от 1.18 до 1.27»
+- [x] **Callout `[!INTERVIEW]`:** «Почему Go не поддерживает generic methods в интерфейсах?»
 
 ### Файл 05: Ошибки, defer, panic, recover
 
-- [ ] **Эпиграф** (о явной обработке ошибок)
-- [ ] **Mermaid:** Порядок выполнения defer (LIFO stack)
-- [ ] **Mermaid:** Механизм panic/recover (unwind + recover capture)
-- [ ] **Mermaid:** Дерево паттернов обработки ошибок (sentinel, typed, wrapping, errors.Is/As)
-- [ ] **Callout `[!WARNING]`:** defer в цикле — классическая ловушка
-- [ ] **Callout `[!INTERVIEW]`:** «Что напечатает этот код с panic в defer?»
+- [x] **Эпиграф** (о явной обработке ошибок)
+- [x] **Mermaid:** Порядок выполнения defer (LIFO stack)
+- [x] **Mermaid:** Механизм panic/recover (unwind + recover capture)
+- [x] **Mermaid:** Дерево паттернов обработки ошибок (sentinel, typed, wrapping, errors.Is/As)
+- [x] **Callout `[!WARNING]`:** defer в цикле — классическая ловушка
+- [x] **Callout `[!INTERVIEW]`:** «Что напечатает этот код с panic в defer?»
 
 ### Критерии приёмки этапа 1:
-- [ ] `python3 builder/build_all.py --all` → exit 0
-- [ ] `python3 builder/audit_all.py` → 0 errors (308 warnings — норма)
-- [ ] Каждый файл содержит эпиграф + минимум 2 Mermaid-диаграммы с цветами
-- [ ] Все 4 новых вопроса (Q01, Q02, Q03, Q07, Q09, Q10, Q20, Q21, Q26, Q27) интегрированы
-- [ ] Коммит: `refactor(module22): этап 1 — основы языка (файлы 02–05)`
+- [x] `python3 builder/build_all.py --all` → exit 0
+- [x] `python3 builder/audit_all.py` → 0 errors (308 warnings — норма)
+- [x] Каждый файл содержит эпиграф + минимум 2 Mermaid-диаграммы с цветами
+- [x] Все новые вопросы (Q01, Q02, Q03, Q05, Q06, Q07, Q09, Q10, Q20, Q21, Q26, Q27) интегрированы
+- [x] Коммит: `refactor(module22): этап 1 — основы языка (файлы 02–05)`
 
 ---
 
