@@ -2171,21 +2171,65 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~24 мин чтения</span>
-              
+              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. Типовые операции и приёмы</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Теоретическая база из статьи <a href="1-teoriya-massivy-i-stroki.html" class="wikilink">1. Теория. Массивы и строки</a> дала вам понимание внутреннего устройства массивов, слайсов и строк в Go. Но в реальной задаче знание того, как устроен <code>SliceHeader</code> или почему <code>string</code> иммутабельна, — это лишь половина успеха. Вторая половина — это умение мгновенно применить правильный приём: пройти массив двумя указателями, построить префиксные суммы, за O(N) найти окно с нужным свойством или без дополнительной памяти модифицировать слайс in-place.</p>
-<p>В этой статье мы формализуем <strong>семь фундаментальных операционных приёмов</strong>, которые закрывают 90% задач кластера «Массивы и строки» и служат кирпичиками для более сложных паттернов. Каждый приём разобран с идиоматичным Go-кодом, анализом механической симпатии и указанием ловушек. Это не просто справочник — это карта, которая позволит вам, взглянув на условие задачи, мгновенно выбрать нужный инструмент.</p>
-<h3 id="priyom-1-idiomatichnyy-obkhod-i-bazovye-manipulyatsii">Приём 1: Идиоматичный обход и базовые манипуляции</h3>
+            <blockquote>
+<p><em>«Мастерство инженера проявляется не в изощрённости редких трюков, а в безупречном и точном владении базовым арсеналом инструментов».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>Теоретический фундамент из лекции <a href="1-teoriya-massivy-i-stroki.html" class="wikilink">1. Теория. Массивы и строки</a> раскрыл нам механику работы заголовка среза (<code>SliceHeader</code>), аллокаций в куче и неизменяемости строк. Но на реальном техническом собеседовании знание низкоуровневых структур — это лишь половина победы. Вторая половина — это умение мгновенно распознать математическую природу задачи и применить подходящий алгоритмический паттерн.</p>
+<p>В этой главе мы систематизируем <strong>семь фундаментальных операционных приёмов</strong>, которые покрывают свыше 90% задач на массивы и строки. Для каждого приёма мы разберём идиоматичную реализацию на Go, пошаговую физическую модель взаимодействия с памятью процессора и типичные подводные камни.</p>
+<hr />
+<h3 id="karta-vybora-algoritmicheskogo-priyoma">Карта выбора алгоритмического приёма</h3>
 
-<p>Прежде чем переходить к сложным паттернам, зафиксируем «гигиенический минимум» — операции, которые Senior Go-разработчик выполняет на автомате, без оглядки на IDE.</p>
-<p><strong>Обход слайса.</strong> Используйте <code>range</code> всегда, когда не нужна прямая работа с индексом ради модификации нижележащего массива. Если требуется индекс и значение — <code>for i, v := range s</code>. Если только индекс — <code>for i := range s</code>. Цикл в стиле C (<code>for i := 0; i &lt; len(s); i++</code>) оправдан только при нетривиальной логике изменения индекса (например, пропуск элементов).</p>
-<p><strong>Обход строки.</strong> Если задача гарантирует ASCII — индексация по байту (<code>s[i]</code>). Если Unicode — <code>for _, r := range s</code> для получения рун или явное преобразование в <code>[]rune</code> для произвольного доступа. Всегда уточняйте алфавит на старте собеседования.</p>
-<p><strong>Копирование.</strong> Для создания независимой копии слайса используйте <code>make</code> + <code>copy</code>:</p>
+
+<div class="mermaid-wrapper">
+  <div class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
+    </button>
+  </div>
+  <pre class="mermaid">
+flowchart TD
+classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
+
+Start[&quot;Задача на массивы или строки&quot;]:::entry --&gt; Q1{&quot;Массив отсортирован&lt;br&gt;или монотонный?&quot;}:::warning
+
+Q1 --&gt;|&quot;Да&quot;| TP[&quot;1. Два указателя (Two Pointers)&lt;br&gt;или бинарный поиск slices.BinarySearch&quot;]:::success
+Q1 --&gt;|&quot;Нет&quot;| Q2{&quot;Требуется непрерывный&lt;br&gt;подмассив / подстрока?&quot;}:::warning
+
+Q2 --&gt;|&quot;Да&quot;| Q3{&quot;Сумма / длина&lt;br&gt;строго монотонны?&quot;}:::warning
+Q3 --&gt;|&quot;Да (только числа &gt; 0)&quot;| SW[&quot;2. Скользящее окно (Sliding Window)&lt;br&gt;O(N) time, O(1) space&quot;]:::success
+Q3 --&gt;|&quot;Нет (есть числа &lt;= 0)&quot;| PS[&quot;3. Префиксные суммы + Хеш-карта&lt;br&gt;O(N) time, O(N) space&quot;]:::process
+
+Q2 --&gt;|&quot;Нет&quot;| Q4{&quot;Поиск пар, частот&lt;br&gt;или анаграмм?&quot;}:::warning
+Q4 --&gt;|&quot;Да: ограниченный алфавит&quot;| Arr[&quot;4. Массив частот [26]int / [128]int&lt;br&gt;Zero-allocation на стеке&quot;]:::success
+Q4 --&gt;|&quot;Да: произвольный ввод&quot;| HM[&quot;5. Хеш-карта map[K]V&lt;br&gt;make с предвыделением cap&quot;]:::process
+Q4 --&gt;|&quot;Нужен порядок или группировка&quot;| Sort[&quot;6. Сортировка как предобработка&lt;br&gt;slices.Sort O(N log N)&quot;]:::accent
+  </pre>
+</div>
+
+
+<hr />
+<h3 id="priyom-1-dva-ukazatelya-two-pointers">Приём 1: Два указателя (Two Pointers)</h3>
+
+<p>Один из самых мощных приёмов с асимптотикой $O(N)$ по времени и строгим $O(1)$ по дополнительной памяти.</p>
+<h4 id="1-vstrechnye-ukazateli-opposite-direction">1. Встречные указатели (Opposite Direction)</h4>
+<p>Применяется на отсортированных массивах и палиндромах. Левый указатель (<code>left = 0</code>) и правый (<code>right = len-1</code>) движутся навстречу друг другу. На каждом шаге мы отсекаем заведомо неподходящее подмножество:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2195,38 +2239,7 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">cp := make([]int, len(original))
-copy(cp, original)
-</code></pre>
-</div>
-
-<p>Это предотвращает непреднамеренное разделение нижележащего массива. Для строк копирование не требуется, они иммутабельны.</p>
-<p><strong>Сравнение.</strong> Слайсы сравнивают только с <code>nil</code>. Массивы (<code>[5]int</code>) сравнимы поэлементно оператором <code>==</code>, если их элементы сравнимы. Это ключевой мотиватор использовать массивы фиксированного размера для словарей частот: <code>[26]int</code> можно сравнить мгновенно, <code>map[byte]int</code> — только вручную.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Слайс <code>nil</code> и пустой слайс <code>[]int{}</code> ведут себя одинаково в <code>len</code>, <code>cap</code>, <code>range</code>, <code>append</code>. Но <code>nil</code>-слайс сериализуется в JSON как <code>null</code>, пустой — как <code>[]</code>. В алгоритмических задачах это редко имеет значение, но Senior знает разницу и при необходимости уточняет: «Вернуть <code>nil</code> или пустой слайс?».</p>
-  </div>
-</div>
-
-<h3 id="priyom-2-dva-ukazatelya-two-pointers">Приём 2: Два указателя (Two Pointers)</h3>
-
-<p>Семейство приёмов, где два индекса движутся по слайсу в определённых направлениях, сокращая пространство поиска на каждом шаге.</p>
-<p><strong>Встречные указатели (Opposite Direction).</strong> Применяется в отсортированных массивах: поиск пары с суммой, проверка палиндрома, контейнер с водой. Левый указатель начинает с 0, правый — с <code>len-1</code>. На каждом шаге по монотонному условию сдвигаем один из них.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Two Sum II - Input Array Is Sorted
-func twoSum(numbers []int, target int) []int {
+  <pre class="language-go"><code class="language-go">func twoSumSorted(numbers []int, target int) []int {
     left, right := 0, len(numbers)-1
     for left &lt; right {
         sum := numbers[left] + numbers[right]
@@ -2234,9 +2247,9 @@ func twoSum(numbers []int, target int) []int {
         case sum == target:
             return []int{left + 1, right + 1}
         case sum &lt; target:
-            left++
+            left++ // Увеличиваем сумму сдвигом левого края
         default:
-            right--
+            right-- // Уменьшаем сумму сдвигом правого края
         }
     }
     return nil
@@ -2244,7 +2257,8 @@ func twoSum(numbers []int, target int) []int {
 </code></pre>
 </div>
 
-<p><strong>Однонаправленные указатели (Fast &amp; Slow).</strong> Применяется для удаления дубликатов in-place, перемещения нулей, задач на связные списки. Медленный указатель (<code>write</code>) фиксирует позицию для записи, быстрый (<code>read</code>) сканирует массив.</p>
+<h4 id="2-bystryy-i-medlennyy-ukazateli-fast-slow-in-place-mutation">2. Быстрый и медленный указатели (Fast & Slow / In-place Mutation)</h4>
+<p>Используется для фильтрации данных без аллокации дополнительного массива. Медленный указатель (<code>write</code>) фиксирует границу валидных данных, а быстрый (<code>read</code>) сканирует входной срез:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2254,8 +2268,7 @@ func twoSum(numbers []int, target int) []int {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// Move Zeroes — сохраняем порядок ненулевых элементов
-func moveZeroes(nums []int) {
+  <pre class="language-go"><code class="language-go">func moveZeroes(nums []int) {
     write := 0
     for read := 0; read &lt; len(nums); read++ {
         if nums[read] != 0 {
@@ -2267,11 +2280,11 @@ func moveZeroes(nums []int) {
 </code></pre>
 </div>
 
-<p><strong>Механическая симпатия:</strong> Оба варианта работают in-place, O(1) дополнительной памяти. Доступ к элементам последовательный, prefetcher CPU легко предсказывает паттерн, cache miss минимальны. Это самые «лёгкие» алгоритмы с точки зрения железа.</p>
-<h3 id="priyom-3-skolzyashchee-okno-sliding-window">Приём 3: Скользящее окно (Sliding Window)</h3>
+<p><strong>Mechanical Sympathy:</strong> Доступ к элементам строго последовательный. Процессорный блок <code>prefetcher</code> идеально предсказывает адреса, загружая кэш-линии L1/L2 наперёд, что обеспечивает максимальную скорость шины памяти.</p>
+<hr />
+<h3 id="priyom-2-skolzyashchee-okno-sliding-window">Приём 2: Скользящее окно (Sliding Window)</h3>
 
-<p>Для задач на непрерывные подмассивы или подстроки с условием, допускающим инкрементальный пересчёт. Окно <code>[left, right)</code> расширяется вправо, при нарушении условия сжимается слева.</p>
-<p><strong>Инвариант:</strong> окно всегда удовлетворяет условию (или находится в процессе расширения), а метрика окна (сумма, частоты, количество уникальных) пересчитывается за O(1) при каждом сдвиге.</p>
+<p>Паттерн для поиска оптимального непрерывного подмассива или подстроки. Окно задается полуинтервалом <code>[left, right)</code>: правый указатель монотонно расширяет окно, а левый сжимает его, как только инвариант нарушается.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2281,19 +2294,22 @@ func moveZeroes(nums []int) {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// Minimum Size Subarray Sum — минимальная длина подмассива с суммой ≥ target
-func minSubArrayLen(target int, nums []int) int {
+  <pre class="language-go"><code class="language-go">func minSubArrayLen(target int, nums []int) int {
     left, sum, minLen := 0, 0, math.MaxInt
+
     for right := 0; right &lt; len(nums); right++ {
-        sum += nums[right]
-        for sum &gt;= target {
-            if right-left+1 &lt; minLen {
-                minLen = right - left + 1
+        sum += nums[right] // Расширяем окно вправо
+
+        for sum &gt;= target { // Сжимаем окно слева при выполнении условия
+            curLen := right - left + 1
+            if curLen &lt; minLen {
+                minLen = curLen
             }
             sum -= nums[left]
             left++
         }
     }
+
     if minLen == math.MaxInt {
         return 0
     }
@@ -2302,11 +2318,21 @@ func minSubArrayLen(target int, nums []int) int {
 </code></pre>
 </div>
 
-<p><strong>Вариация: окно с частотным словарём.</strong> Если условие — «содержит все символы строки t», вместо <code>sum</code> поддерживаем массив <code>[128]int</code> или <code>map[byte]int</code> с инкрементальным обновлением счётчика совпадений. При расширении символ добавляется, при сжатии — удаляется. Подробно разобрано в <a href="../../01-teoriya/14-razbor-zadachi-ot-usloviya-do-koda.html" class="wikilink">14. Разбор задачи от условия до кода</a>.</p>
-<p><strong>Ловушка чисел с разными знаками.</strong> Скользящее окно работает для монотонных условий (расширение окна всегда увеличивает сумму, количество символов). Если в массиве есть отрицательные числа, сумма не монотонна, и окно неприменимо — используйте префиксные суммы с хеш-картой.</p>
-<h3 id="priyom-4-prefiksnye-summy-prefix-sums">Приём 4: Префиксные суммы (Prefix Sums)</h3>
+<div class="callout callout-warning">
+  <div class="callout-header">
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Критическое ограничение скользящего окна</span>
+  </div>
+  <div class="callout-body">
+    <p>Скользящее окно применимо <strong>только при монотонности метрики</strong>! Если массив содержит отрицательные числа, добавление элемента может как увеличить, так и уменьшить сумму окна. В этом случае скользящее окно бессильно — необходимо переходить к префиксным суммам.</p>
+  </div>
+</div>
 
-<p>Инструмент для быстрых запросов суммы на любом подмассиве. Строим массив <code>pref[i+1] = pref[i] + nums[i]</code>, тогда сумма <code>nums[L:R] = pref[R] - pref[L]</code> (полуинтервалы). Построение — O(N), запрос — O(1).</p>
+<hr />
+<h3 id="priyom-3-prefiksnye-summy-prefix-sums">Приём 3: Префиксные суммы (Prefix Sums)</h3>
+
+<p>Позволяет за $O(1)$ получать сумму на любом произвольном подотрезке <code>[L, R]</code>.<br />
+Формула: $\text{Sum}(L, R) = \text{Prefix}[R+1] - \text{Prefix}[L]$.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2316,17 +2342,18 @@ func minSubArrayLen(target int, nums []int) int {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">nums := []int{1, 2, 3, 4, 5}
+  <pre class="language-go"><code class="language-go">nums := []int{10, 20, 30, 40}
 pref := make([]int, len(nums)+1)
 for i, v := range nums {
     pref[i+1] = pref[i] + v
 }
-// сумма [1:4] = nums[1] + nums[2] + nums[3] = 2+3+4 = 9
-sum := pref[4] - pref[1] // 10 - 1 = 9
+// Сумма элементов nums[1..2] (20 + 30 = 50)
+rangeSum := pref[3] - pref[1] // 60 - 10 = 50
 </code></pre>
 </div>
 
-<p><strong>Применение для подмассивов с суммой K.</strong> Если массив содержит отрицательные числа, скользящее окно не работает. Но задача «количество подмассивов с суммой K» (LeetCode 560) решается через префиксные суммы и map: <code>pref[R] - pref[L] = K</code> → <code>pref[L] = pref[R] - K</code>. Проходим массив, поддерживаем map встреченных префиксных сумм.</p>
+<h4 id="tandem-s-khesh-kartoy-kolichestvo-podmassivov-s-summoy-k-leetcode-560">Тандем с хеш-картой: Количество подмассивов с суммой K (LeetCode 560)</h4>
+<p>Если в массиве есть отрицательные числа, мы ищем отрезок, где $\text{Prefix}[R] - \text{Prefix}[L] = K$, что эквивалентно $\text{Prefix}[L] = \text{Prefix}[R] - K$:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2337,28 +2364,26 @@ sum := pref[4] - pref[1] // 10 - 1 = 9
     </button>
   </div>
   <pre class="language-go"><code class="language-go">func subarraySum(nums []int, k int) int {
-    count, sum := 0, 0
-    freq := map[int]int{0: 1}
-    for _, v := range nums {
-        sum += v
-        count += freq[sum-k]
-        freq[sum]++
+    count, currentSum := 0, 0
+    // Базовый случай: префиксная сумма 0 встретилась 1 раз до начала массива
+    seen := make(map[int]int, len(nums))
+    seen[0] = 1
+
+    for _, x := range nums {
+        currentSum += x
+        count += seen[currentSum-k]
+        seen[currentSum]++
     }
+
     return count
 }
 </code></pre>
 </div>
 
-<p><strong>Go-нюанс:</strong> Если диапазон сумм известен и невелик, массив вместо map. Для Negative/Positive в общем случае — map с предвыделением <code>make(map[int]int, len(nums))</code>.</p>
-<h3 id="priyom-5-chastotnyy-analiz-vybor-mezhdu-map-i-massivom">Приём 5: Частотный анализ — выбор между map и массивом</h3>
+<hr />
+<h3 id="priyom-4-chastotnyy-slovar-massiv-protiv-map">Приём 4: Частотный словарь — Массив против Map</h3>
 
-<p>Огромный пласт задач: анаграммы, первый уникальный символ, пересечение массивов, группировка. Ключевой выбор — структура словаря.</p>
-<p><strong>Когда массив:</strong> алфавит известен и мал. <code>[26]int</code> для a-z, <code>[128]int</code> для ASCII. Массив даёт:<br />
-- Стековую аллокацию (нет GC).<br />
-- Доступ по индексу за 1–2 такта (прямая адресация).<br />
-- Сравнение <code>==</code> за O(размер массива), что для 26 элементов — ничтожно.</p>
-<p><strong>Когда map:</strong> ключи не ограничены диапазоном, или диапазон велик (Unicode). Map даёт O(1) в среднем, но с накладными расходами на хеширование и pointer chasing. Всегда инициализируйте через <code>make(map[K]V, capacity)</code>.</p>
-<p><strong>Пример: Valid Anagram.</strong> Подсчёт частот двумя массивами <code>[26]int</code> и сравнение <code>==</code> — эталонное решение.</p>
+<p>В задачах на анаграммы, изоморфизм строк и подсчёт частот выбор типа структуры данных определяет производительность:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2368,33 +2393,22 @@ sum := pref[4] - pref[1] // 10 - 1 = 9
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func isAnagram(s string, t string) bool {
+  <pre class="language-go"><code class="language-go">// ИДЕАЛЬНО (ASCII / Латиница): zero allocation, стек, мгновенное сравнение ==
+func isAnagram(s, t string) bool {
     if len(s) != len(t) {
         return false
     }
-    var freq [26]int
+    var counts [26]int
     for i := 0; i &lt; len(s); i++ {
-        freq[s[i]-'a']++
-        freq[t[i]-'a']--
+        counts[s[i]-'a']++
+        counts[t[i]-'a']--
     }
-    return freq == [26]int{} // сравнение с нулевым массивом
+    return counts == [26]int{}
 }
 </code></pre>
 </div>
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Сравнение массивов <code>[26]int</code> происходит поэлементно, но для 26 восьмибайтовых элементов это ~208 байт, которые помещаются в несколько кэш-линий. На практике это быстрее, чем пробег по map с хешированием, даже для одноразовой проверки.</p>
-  </div>
-</div>
-
-<h3 id="priyom-6-strokovye-operatsii-i-preobrazovaniya">Приём 6: Строковые операции и преобразования</h3>
-
-<p><strong>Байты vs руны.</strong> Если задача не гарантирует ASCII, и вы используете <code>len(s)</code> или <code>s[i]</code>, помните: вы работаете с байтами. Для посимвольных операций с Unicode преобразуйте в <code>[]rune</code>:</p>
+<p>Если же алфавит произвольный (Unicode), используем <code>map[rune]int</code>, обязательно предвыделяя емкость:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2404,15 +2418,14 @@ sum := pref[4] - pref[1] // 10 - 1 = 9
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">runes := []rune(s)
-for i, j := 0, len(runes)-1; i &lt; j; i, j = i+1, j-1 {
-    runes[i], runes[j] = runes[j], runes[i]
-}
-return string(runes)
+  <pre class="language-go"><code class="language-go">counts := make(map[rune]int, len(s))
 </code></pre>
 </div>
 
-<p><strong>Иммутабельность и <code>strings.Builder</code>.</strong> Конкатенация в цикле — квадратичный рост памяти. Для аккумуляции строк используйте <code>strings.Builder</code>:</p>
+<hr />
+<h3 id="priyom-5-in-place-razvoroty-i-tsiklicheskiy-sdvig">Приём 5: In-Place развороты и циклический сдвиг</h3>
+
+<p>Многие задачи требуют трансформации среза без выделения дополнительной памяти. Базовым кирпичиком выступает разворот диапазона:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2422,35 +2435,23 @@ return string(runes)
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">var b strings.Builder
-for _, word := range words {
-    b.WriteString(word)
-}
-result := b.String()
-</code></pre>
-</div>
-
-<p><strong>Срезы строк.</strong> <code>s[start:end]</code> не копирует данные — это O(1). Удобно для возврата подстроки без лишних аллокаций. Но будьте осторожны: если исходная строка огромна, а срез маленький и долгоживущий, память под всю строку не будет освобождена. В DSA-задачах этим обычно пренебрегают, но Senior упомянет.</p>
-<h3 id="priyom-7-in-place-modifikatsii-i-razvoroty">Приём 7: In-place модификации и развороты</h3>
-
-<p>Многие задачи требуют трансформации массива без дополнительной памяти. Базовые кирпичики:</p>
-<p><strong>Разворот слайса (Reverse):</strong></p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">for i, j := 0, len(s)-1; i &lt; j; i, j = i+1, j-1 {
-    s[i], s[j] = s[j], s[i]
+  <pre class="language-go"><code class="language-go">func reverse(s []int) {
+    for i, j := 0, len(s)-1; i &lt; j; i, j = i+1, j-1 {
+        s[i], s[j] = s[j], s[i]
+    }
 }
 </code></pre>
 </div>
 
-<p><strong>Циклический сдвиг (Rotate):</strong> Три разворота. <code>rotate(nums, k)</code>:</p>
+<p><strong>Алгоритм трех разворотов для циклического сдвига массива на $K$ позиций вправо (Rotate Array):</strong><br />
+1. Развернуть весь массив целиком;<br />
+2. Развернуть первые $K$ элементов;<br />
+3. Развернуть оставшиеся $N - K$ элементов.</p>
+<p>Сложность: строго $O(N)$ по времени и $O(1)$ по памяти!</p>
+<hr />
+<h3 id="priyom-6-sovremennaya-sortirovka-slices-sort-go-1-21">Приём 6: Современная сортировка (`slices.Sort` Go 1.21+)</h3>
+
+<p>Сортировка часто превращает запутанную задачу в элементарную. Начиная с Go 1.21, вместо устаревшего <code>sort.Slice</code> следует использовать оптимизированный дженерик-пакет <code>slices</code>:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2460,82 +2461,21 @@ result := b.String()
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">k %= len(nums)
-reverse(nums[:len(nums)-k])
-reverse(nums[len(nums)-k:])
-reverse(nums)
+  <pre class="language-go"><code class="language-go">import &quot;slices&quot;
+
+nums := []int{5, 2, 6, 3, 1, 4}
+slices.Sort(nums) // In-place pdqsort за O(N log N), zero-allocation!
+
+// Бинарный поиск в отсортированном срезе:
+idx, found := slices.BinarySearch(nums, 3)
 </code></pre>
 </div>
 
-<p><strong>Удаление элемента по индексу (не сохраняя порядок):</strong></p>
+<hr />
+<h3 id="rezyume">Резюме</h3>
 
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">s[i] = s[len(s)-1]
-s = s[:len(s)-1]
-</code></pre>
-</div>
-
-<p><strong>Удаление элемента с сохранением порядка:</strong></p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">s = append(s[:i], s[i+1:]...)
-</code></pre>
-</div>
-
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p><code>append(s[:i], s[i+1:]...)</code> модифицирует нижележащий массив. Если после этого есть другие ссылки на исходный слайс, они увидят изменённые данные. Для изолированной работы делайте копию.</p>
-  </div>
-</div>
-
-<h3 id="priyom-8-sortirovka-kak-podgotovka">Приём 8: Сортировка как подготовка</h3>
-
-<p>Сортировка — это O(N log N), и в Go она реализована в <code>sort</code> пакете. <code>sort.Ints</code>, <code>sort.Strings</code> работают in-place. Для слайсов произвольных типов — <code>sort.Slice</code> с замыканием. Но помните: замыкание может не быть встроено компилятором и вносить накладные расходы. Для performance-critical участков лучше реализовать <code>sort.Interface</code>.</p>
-<p><strong>Бинарный поиск:</strong> <code>sort.Search(n int, fn func(int) bool) int</code> — возвращает первый индекс, для которого <code>fn</code> возвращает <code>true</code>. Это обобщённый бинарный поиск, используемый как для поиска элемента, так и для «поиска по ответу».</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Поиск вставки: первый индекс, где nums[i] &gt;= target
-idx := sort.Search(len(nums), func(i int) bool {
-    return nums[i] &gt;= target
-})
-</code></pre>
-</div>
-
-<p><strong>Применение в задачах:</strong> Three Sum, Merge Intervals, поиск пар в неотсортированных массивах. Сортировка — часто первый шаг, после которого применимы два указателя или бинарный поиск.</p>
-<h3 id="integratsiya-priyomov-kak-eto-vyglyadit-v-realnoy-zadache">Интеграция приёмов: как это выглядит в реальной задаче</h3>
-
-<p>В одной задаче редко используется ровно один приём. Senior видит композицию. Например, задача «Product of Array Except Self» (<a href="6-product-of-array-except-self.html" class="wikilink">6. Product of Array Except Self</a>): два прохода — слева направо и справа налево — с аккумуляцией префиксных и суффиксных произведений в результирующем массиве. Это гибрид префиксных сумм (только умножение) и двух указателей (разнесённых во времени).</p>
-<p>Задача «Merge Sorted Array» (<a href="9-merge-sorted-array.html" class="wikilink">9. Merge Sorted Array</a>): заполнение с конца, три указателя (два на концы сливаемых массивов, один на конец результирующего). Это тот же приём «два указателя», но применённый в нестандартном порядке — справа налево.</p>
-<p>Именно умение комбинировать отличает решателя задач от инженера, и мы будем практиковать это во всех последующих разборах.</p>
-<h3 id="zaklyuchenie">Заключение</h3>
-
-<p>Семь типовых приёмов — два указателя, скользящее окно, префиксные суммы, частотный анализ, строковые преобразования, in-place модификации и сортировка — это ваш базовый инструментарий в мире массивов и строк. Идиоматичный Go добавляет к ним требования: предвыделение capacity, выбор массива вместо map для ограниченного алфавита, осторожность с иммутабельностью строк и утечками подслайсов. Всё это вместе формирует тот уровень владения, который ожидается от Senior-кандидата.</p>
-<p>Теперь, закрепив инструменты, переходим к первой задаче кластера — Two Sum. Мы разберём её от наивного решения до идиоматичной хеш-карты и увидим, как выбор структуры данных меняет сложность и производительность. <a href="3-two-sum.html" class="wikilink">3. Two Sum</a></p>
+<p>Семь базовых приёмов — два указателя, скользящее окно, префиксные суммы, частотный массив, in-place развороты, предварительная сортировка и сборка через <code>strings.Builder</code> — образуют универсальный арсенал бэкенд-инженера. </p>
+<p>В следующей статье мы применим эти навыки к разбору классической задачи, с которой начинается путь любого разработчика на LeetCode: <a href="3-two-sum.html" class="wikilink">3. Two Sum</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2563,7 +2503,7 @@ idx := sort.Search(len(nums), func(i int) bool {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#priyom-1-idiomatichnyy-obkhod-i-bazovye-manipulyatsii">Приём 1: Идиоматичный обход и базовые манипуляции</a></li><li class="toc-item toc-h3"><a href="#priyom-2-dva-ukazatelya-two-pointers">Приём 2: Два указателя (Two Pointers)</a></li><li class="toc-item toc-h3"><a href="#priyom-3-skolzyashchee-okno-sliding-window">Приём 3: Скользящее окно (Sliding Window)</a></li><li class="toc-item toc-h3"><a href="#priyom-4-prefiksnye-summy-prefix-sums">Приём 4: Префиксные суммы (Prefix Sums)</a></li><li class="toc-item toc-h3"><a href="#priyom-5-chastotnyy-analiz-vybor-mezhdu-map-i-massivom">Приём 5: Частотный анализ — выбор между map и массивом</a></li><li class="toc-item toc-h3"><a href="#priyom-6-strokovye-operatsii-i-preobrazovaniya">Приём 6: Строковые операции и преобразования</a></li><li class="toc-item toc-h3"><a href="#priyom-7-in-place-modifikatsii-i-razvoroty">Приём 7: In-place модификации и развороты</a></li><li class="toc-item toc-h3"><a href="#priyom-8-sortirovka-kak-podgotovka">Приём 8: Сортировка как подготовка</a></li><li class="toc-item toc-h3"><a href="#integratsiya-priyomov-kak-eto-vyglyadit-v-realnoy-zadache">Интеграция приёмов: как это выглядит в реальной задаче</a></li><li class="toc-item toc-h3"><a href="#zaklyuchenie">Заключение</a></li>
+    <li class="toc-item toc-h3"><a href="#karta-vybora-algoritmicheskogo-priyoma">Карта выбора алгоритмического приёма</a></li><li class="toc-item toc-h3"><a href="#priyom-1-dva-ukazatelya-two-pointers">Приём 1: Два указателя (Two Pointers)</a></li><li class="toc-item toc-h4"><a href="#1-vstrechnye-ukazateli-opposite-direction">1. Встречные указатели (Opposite Direction)</a></li><li class="toc-item toc-h4"><a href="#2-bystryy-i-medlennyy-ukazateli-fast-slow-in-place-mutation">2. Быстрый и медленный указатели (Fast &amp; Slow / In-place Mutation)</a></li><li class="toc-item toc-h3"><a href="#priyom-2-skolzyashchee-okno-sliding-window">Приём 2: Скользящее окно (Sliding Window)</a></li><li class="toc-item toc-h3"><a href="#priyom-3-prefiksnye-summy-prefix-sums">Приём 3: Префиксные суммы (Prefix Sums)</a></li><li class="toc-item toc-h4"><a href="#tandem-s-khesh-kartoy-kolichestvo-podmassivov-s-summoy-k-leetcode-560">Тандем с хеш-картой: Количество подмассивов с суммой K (LeetCode 560)</a></li><li class="toc-item toc-h3"><a href="#priyom-4-chastotnyy-slovar-massiv-protiv-map">Приём 4: Частотный словарь — Массив против Map</a></li><li class="toc-item toc-h3"><a href="#priyom-5-in-place-razvoroty-i-tsiklicheskiy-sdvig">Приём 5: In-Place развороты и циклический сдвиг</a></li><li class="toc-item toc-h3"><a href="#priyom-6-sovremennaya-sortirovka-slices-sort-go-1-21">Приём 6: Современная сортировка (slices.Sort Go 1.21+)</a></li><li class="toc-item toc-h3"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

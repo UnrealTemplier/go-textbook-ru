@@ -2171,29 +2171,103 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
-              
+              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">3. Two Sum</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Это задача, с которой начинается путь в алгоритмические собеседования. Она же — идеальный полигон для демонстрации того, как Go-разработчик выбирает структуру данных, думает о памяти и не забывает уточнить крайние случаи. На первый взгляд Two Sum проста. Но именно на её примере интервьюер проверяет: мыслит ли кандидат категориями компромисса «время–память», знает ли устройство map и способен ли написать идиоматичный код, который не стыдно показать на code review.</p>
-<p>Мы разберём наивное решение, поймём его узкое место и выведем оптимум. А затем спустимся «под капот» Go и посмотрим, как выбор map влияет на аллокации, pointer chasing и сборщик мусора.</p>
-<h3 id="formulirovka-i-utochneniya">Формулировка и уточнения</h3>
+            <blockquote>
+<p><em>«Прежде чем бросаться складывать числа в слепом двойном цикле, спросите себя: нельзя ли один раз запомнить увиденное, чтобы мгновенно узнавать нужное?»</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>С этой классической задачи начинается путь каждого инженера на платформах вроде LeetCode. На первый взгляд Two Sum тривиальна. Однако на реальном техническом собеседовании уровня Senior она выступает превосходным лакмусовым тестом:<br />
+- Насколько быстро кандидат переходит от наивного перебора к оптимальному обмену памяти на время?<br />
+- Задает ли он вопросы об ограничениях и типах до написания кода?<br />
+- Понимает ли он физику работы хэш-таблицы в рантайме Go (бакеты, pointer chasing, GC)?<br />
+- Пишет ли он идиоматичный код с предвыделением емкости и защитой от дублирования ключа?</p>
+<hr />
+<h3 id="formulirovka-zadachi-i-kalibrovka-trebovaniy">Формулировка задачи и калибровка требований</h3>
 
-<p><strong>LeetCode 1. Two Sum.</strong></p>
-<p>Дан массив целых чисел <code>nums</code> и целевое значение <code>target</code>. Нужно вернуть индексы двух элементов, дающих в сумме <code>target</code>. Гарантируется, что ровно одно решение существует. Один и тот же элемент нельзя использовать дважды.</p>
-<p>Прежде чем писать код, Senior задаёт вопросы:<br />
-- Могут ли быть отрицательные числа? Да.<br />
-- Может ли <code>target</code> быть отрицательным? Да.<br />
-- Есть ли дубликаты в массиве? Допустим, могут быть.<br />
-- Если решение не найдено (но по условию гарантировано), что возвращать? В Go-стиле — <code>nil</code> или пустой слайс.<br />
-- Важен ли порядок индексов? Обычно нет, но обычно ожидают возрастающий.</p>
-<p>Ответы определяют выбор структур: map справится с отрицательными числами, дубликатами и вернёт индексы в любом порядке.</p>
-<h3 id="naivnoe-reshenie-dvoynoy-tsikl">Наивное решение: двойной цикл</h3>
+<p><strong>LeetCode 1. Two Sum (Easy / Core)</strong></p>
+<p>Дан массив целых чисел <code>nums</code> и целевое число <code>target</code>. Необходимо вернуть индексы двух чисел, сумма которых в точности равна <code>target</code>.</p>
+<p><strong>Ограничения и гарантии:</strong><br />
+- Гарантируется, что существует ровно одно валидное решение.<br />
+- Запрещено использовать один и тот же элемент по одному и тому же индексу дважды.<br />
+- Порядок возвращаемых индексов в ответе не имеет значения.</p>
+<p><strong>Пример:</strong></p>
 
-<p>Брутфорс — перебор всех пар. Внешний цикл <code>i</code> от 0 до <code>n-2</code>, внутренний <code>j</code> от <code>i+1</code> до <code>n-1</code>. Сложность O(N²) по времени, O(1) по памяти (кроме результирующего слайса).</p>
+<div class="code-block" data-lang="text">
+  <div class="code-header">
+    <span class="code-lang-tag">Text</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-text"><code class="language-text">Вход:  nums = [2, 7, 11, 15], target = 9
+Вывод: [0, 1]
+Объяснение: nums[0] + nums[1] == 2 + 7 == 9
+</code></pre>
+</div>
+
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Что спросить у интервьюера перед кодом</span>
+  </div>
+  <div class="callout-body">
+    <ol>
+<li><em>«Могут ли входные числа и target быть отрицательными или нулями?»</em> — Да, алгоритм обязан работать со всем диапазоном <code>int</code>.</li>
+<li><em>«Могут ли в массиве присутствовать дубликаты?»</em> — Да (например, <code>[3, 3]</code>, <code>target = 6</code>).</li>
+<li><em>«Каков максимальный размер массива $N$?»</em> — $N \le 10^5$. Это исключает квадратичные решения $O(N^2)$.</li>
+<li><em>«Что возвращать, если пара не найдена вопреки условию?»</em> — Идиоматичный <code>nil</code>.</li>
+</ol>
+  </div>
+</div>
+
+<hr />
+<h3 id="vizualnyy-walk-through-kak-rabotaet-odnoprokhodnaya-khesh-karta">Визуальный Walk-Through: Как работает однопроходная хеш-карта</h3>
+
+<p>Бытовая аналогия: представьте, что вы организуете танцевальный вечер. Вместо того чтобы при входе каждого нового гостя заставлять его обходить весь зал и опрашивать всех присутствующих ($O(N^2)$), вы ставите на входе администратора с амбарной книгой.<br />
+Каждый гость говорит, кто ему нужен в пару (<code>target - x</code>). Если нужного человека в книге нет, гость оставляет своё имя и номер столика в книге и проходит в зал ($O(1)$).</p>
+
+<div class="mermaid-wrapper">
+  <div class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
+    </button>
+  </div>
+  <pre class="mermaid">
+flowchart TD
+classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
+
+Init[&quot;Вход: nums = [2, 7, 11, 15], target = 9&lt;br&gt;Хеш-таблица seen = {}&quot;]:::entry --&gt; Step1[&quot;Итерация 1: i = 0, val = 2&lt;br&gt;Ищем complement = 9 - 2 = 7&quot;]:::process
+
+Step1 --&gt; Check1{&quot;Есть 7 в seen?&quot;}:::warning
+Check1 --&gt;|&quot;Нет&quot;| Save1[&quot;Записываем seen[2] = 0&quot;]:::data
+
+Save1 --&gt; Step2[&quot;Итерация 2: i = 1, val = 7&lt;br&gt;Ищем complement = 9 - 7 = 2&quot;]:::process
+Step2 --&gt; Check2{&quot;Есть 2 в seen?&quot;}:::warning
+Check2 --&gt;|&quot;Да! (индекс 0)&quot;| Match[&quot;ПАРА НАЙДЕНА!&lt;br&gt;Возвращаем [seen[2], 1] -&gt; [0, 1]&quot;]:::success
+  </pre>
+</div>
+
+
+<hr />
+<h3 id="naivnoe-reshenie-kvadratichnyy-brutfors">Наивное решение: Квадратичный брутфорс</h3>
+
+<p>Прямой перебор всех возможных неупорядоченных пар индексов $(i, j)$ с проверкой суммы.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2217,11 +2291,14 @@
 </code></pre>
 </div>
 
-<p>Почему это не подходит для серьёзного собеседования? При N = 10⁴ (типичные ограничения) алгоритм выполнит ~50 миллионов итераций — около 0.1–0.3 секунды на Go, что ещё приемлемо, но при N = 10⁵ это уже 5 миллиардов итераций и вероятный TLE. Интервьюер ожидает линейного решения.</p>
-<h3 id="optimalnoe-reshenie-khesh-tablitsa-map">Оптимальное решение: хеш-таблица (map)</h3>
+<ul>
+<li><strong>Время:</strong> $O(N^2)$ — $\frac{N(N-1)}{2}$ сравнений. При $N = 10^5$ это $5 \cdot 10^9$ операций, что гарантирует <code>Time Limit Exceeded</code> (TLE).</li>
+<li><strong>Память:</strong> $O(1)$ — дополнительная память не расходуется.</li>
+</ul>
+<hr />
+<h3 id="optimalnoe-reshenie-odnoprokhodnaya-khesh-karta-za-on">Оптимальное решение: Однопроходная хеш-карта за O(N)</h3>
 
-<p>Идея: проходя по массиву, для текущего элемента <code>nums[i]</code> мы знаем, что ему в пару нужен <code>complement = target - nums[i]</code>. Если <code>complement</code> уже встречался ранее, мы нашли ответ. Иначе сохраняем текущее значение и его индекс в map для будущих запросов.</p>
-<p><strong>Инвариант:</strong> после каждой итерации map содержит все элементы, встреченные до текущего индекса. Проверка существования <code>complement</code> в map — O(1) в среднем.</p>
+<p>Мы обходим массив один раз слева направо. Для каждого числа вычисляем необходимое дополнение <code>complement = target - v</code>. Если дополнение уже лежит в карте <code>seen</code>, мы немедленно возвращаем пару индексов. Если нет — заносим текущее число и его индекс в карту.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2232,8 +2309,9 @@
     </button>
   </div>
   <pre class="language-go"><code class="language-go">func twoSum(nums []int, target int) []int {
-    // Ключ — значение элемента, значение — его индекс
+    // Предварительно выделяем емкость карты, чтобы избежать эвакуаций бакетов
     seen := make(map[int]int, len(nums))
+
     for i, v := range nums {
         complement := target - v
         if j, ok := seen[complement]; ok {
@@ -2241,62 +2319,71 @@
         }
         seen[v] = i
     }
+
     return nil
 }
 </code></pre>
 </div>
 
-<p><strong>Что здесь важно с точки зрения Go:</strong><br />
-- <code>make(map[int]int, len(nums))</code> — предвыделение вместимости. Без него map будет расти и эвакуировать бакеты при заполнении, что вызовет дополнительные аллокации и замедление. С указанием capacity мы сокращаем число эвакуаций до нуля (если нет дубликатов).<br />
-- <code>if j, ok := seen[complement]; ok</code> — идиоматичная проверка наличия ключа (comma-ok). Она позволяет отличить присутствие нуля от отсутствия ключа.<br />
-- Возвращаем индексы в порядке <code>[j, i]</code> — <code>j</code> встретился раньше, это соответствует возрастающему порядку.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Карта в Go — это структура <code>runtime.hmap</code> в куче. Доступ к элементу включает: вычисление хеша ключа, нахождение бакета (bucket), линейный пробег по цепочке переполнения. Это pointer chasing, который разрушает кэш-локальность. Внутри цикла мы делаем два обращения к map: <code>seen[complement]</code> и <code>seen[v] = i</code> (запись). Каждое из них потенциально вызывает промах мимо L1/L2-кэша и стоит десятки тактов. Но асимптотика O(1) в среднем делает алгоритм линейным, а при N до 10⁵ накладные расходы (~100–200 нс на доступ) укладываются в лимит.</p>
-  </div>
-</div>
-
-<p><strong>Trade-off памяти:</strong> Мы платим O(N) дополнительной памяти за map. В худшем случае все элементы уникальны и попадут в map.</p>
-<h3 id="alternativa-sortirovka-dva-ukazatelya">Альтернатива: сортировка + два указателя</h3>
-
-<p>Если бы задача требовала вернуть сами значения, а не индексы, мы могли бы отсортировать массив и пройти двумя указателями (<a href="2-tipovye-operatsii-i-priyomy.html" class="wikilink">2. Типовые операции и приёмы</a>). Это дало бы O(N log N) времени и O(1) памяти (или O(N) для копии, если исходный порядок важен). Но для исходной задачи сохранение индексов после сортировки потребовало бы хранить кортежи <code>(значение, исходный_индекс)</code>, что снова приводит к O(N) памяти и усложняет код. Поэтому map — предпочтительный выбор.</p>
-<p>На собеседовании стоит упомянуть эту альтернативу: «Если бы память была критична и мы могли модифицировать входной массив, я бы рассмотрел сортировку с двумя указателями. Но поскольку нужны исходные индексы, map даёт лучшее сочетание простоты и O(N) времени».</p>
-<h3 id="edge-cases">Edge cases</h3>
-
-<ul>
-<li><strong>Пустой массив или длина 1:</strong> цикл не выполнится, вернётся <code>nil</code>. По условию гарантировано решение, но корректное поведение при отсутствии — плюс.</li>
-<li><strong>Дубликаты:</strong> <code>nums = [3, 3], target = 6</code>. На первой итерации <code>3</code> запишется в map с индексом 0. На второй итерации <code>complement = 3</code>, найдётся <code>j = 0</code>, вернётся <code>[0, 1]</code> — верно.</li>
-<li><strong>Отрицательные числа:</strong> map работает с любыми целыми ключами.</li>
-<li><strong>Переполнение:</strong> в Go <code>int</code> — 64 бита на 64-битных системах, при сумме двух 32-битных значений переполнения не будет. Если бы мы использовали <code>int32</code>, следовало бы упомянуть.</li>
-</ul>
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Критическая ловушка последовательности операций</span>
   </div>
   <div class="callout-body">
-    <p>Не делайте запись в map до проверки complement. Если <code>target = 2 * nums[i]</code>, а элемент один, вы можете найти «самого себя». Порядок в коде выше (сначала проверка, потом запись) гарантирует, что текущий элемент не используется дважды.</p>
+    <p>Запись <code>seen[v] = i</code> обязана происходить <strong>строго после</strong> проверки <code>if j, ok := seen[complement]</code>.<br />
+Если сначала записать <code>seen[v] = i</code>, то при <code>nums = [3, 2, 4]</code>, <code>target = 6</code> на первой же итерации для числа 3 дополнение будет $6 - 3 = 3$. Карта найдет само число 3 по его собственному индексу 0 и ошибочно вернет <code>[0, 0]</code>, нарушив условие «один и тот же элемент нельзя использовать дважды».</p>
   </div>
 </div>
 
-<h3 id="analiz-slozhnosti">Анализ сложности</h3>
+<hr />
+<h3 id="mechanical-sympathy-chto-proiskhodit-v-rantayme-go">Mechanical Sympathy: Что происходит в рантайме Go</h3>
+
+<p>Почему Senior-инженер на собеседовании обратит внимание на <code>make(map[int]int, len(nums))</code>?</p>
+<ol>
+<li><strong>Строение <code>runtime.hmap</code>:</strong> Хеш-таблица в Go состоит из массива бакетов (<code>bmap</code>), каждый из которых вмещает до 8 пар ключ-значение.</li>
+<li><strong>Стоимость эвакуации (Evacuation Overhead):</strong> Если карта создается без емкости (<code>seen := make(map[int]int)</code>), при факторе загрузки $\approx 6.5$ рантайм вынужден выделять в куче массив бакетов удвоенного размера и переносить (эвакуировать) все существующие ключи. Для 100 000 элементов это вызовет более 10 дорогостоящих аллокаций.</li>
+<li><strong>Кэш-линии и Pointer Chasing:</strong> Поиск в <code>map</code> требует вычисления хэша, взятия смещения бакета и возможного перехода по указателю <code>overflow</code>. Это сопровождается промахами мимо кэша L1/L2. Однако выигрыш по асимптотике с $O(N^2)$ до $O(N)$ перевешивает этот микрооверхед в тысячи раз.</li>
+</ol>
+<hr />
+<h3 id="analiz-pogranichnykh-sluchaev-edge-cases">Анализ пограничных случаев (Edge Cases)</h3>
 
 <ul>
-<li><strong>Время:</strong> O(N) в среднем. Каждый элемент обрабатывается один раз, каждая операция с map — O(1) амортизированно.</li>
-<li><strong>Память:</strong> O(N) для хранения map. В худшем случае все элементы сохраняются.</li>
-<li><strong>Константы:</strong> два обращения к map на итерацию плюс предвыделение вместимости — практически без скрытых копирований. GC будет освобождать map после возврата из функции (если она не сохраняется глобально).</li>
+<li><strong>Массив из двух элементов:</strong> <code>nums = [3, 3], target = 6</code> $\to$ на первой итерации <code>seen[3] = 0</code>, на второй находится пара <code>[0, 1]</code>.</li>
+<li><strong>Отрицательные числа:</strong> <code>nums = [-3, 4, 3, 90], target = 0</code> $\to$ для -3 ищется complement $0 - (-3) = 3$. Работает безупречно.</li>
+<li><strong>Один элемент или пустой слайс:</strong> Цикл завершится без паники, функция вернет идиоматичный <code>nil</code>.</li>
 </ul>
-<h3 id="mechanical-sympathy-map-vs-massiv">Mechanical Sympathy: map vs массив</h3>
+<hr />
+<h3 id="itogi-i-asimptotika">Итоги и асимптотика</h3>
 
-<p>В Two Sum ключи — произвольные целые числа, поэтому массив фиксированного размера неприменим. Но если бы значения <code>nums</code> были ограничены, скажем, <code>1 &lt;= nums[i] &lt;= 1000</code>, мы могли бы использовать <code>[1001]int</code> с индексами и избежать map. Тогда доступ был бы прямым (одна инструкция LEA), без pointer chasing, без аллокаций в куче, без нагрузки на GC. На собеседовании это можно озвучить: «Я выбрал map, потому что диапазон входных значений не ограничен. Если бы значения были в узком диапазоне, я бы заменил map на массив для лучшей кэш-локальности».</p>
-<h3 id="itog">Итог</h3>
-
-<p>Two Sum — это демонстрация базового инженерного навыка: готовность пожертвовать памятью ради времени. В Go она дополнительно подсвечивает знание устройства map и умение писать идиоматичный код с <code>make(map[K]V, cap)</code> и comma-ok. Для Senior-кандидата этого недостаточно — он обязан обсудить trade-off, упомянуть альтернативу с сортировкой и двумя указателями, а также понимать, как выбранная структура данных взаимодействует с кэш-памятью и GC.</p>
-<p>Далее мы перейдём к естественному продолжению — задаче Three Sum, где простого map уже недостаточно и появляется сортировка с двумя указателями. <a href="4-three-sum.html" class="wikilink">4. Three Sum</a></p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Параметр</th>
+<th style="text-align: center;">Наивное решение</th>
+<th style="text-align: center;">Однопроходный Map</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Время ($T$)</strong></td>
+<td style="text-align: center;">$O(N^2)$</td>
+<td style="text-align: center;"><strong>$O(N)$</strong></td>
+</tr>
+<tr>
+<td><strong>Память ($M$)</strong></td>
+<td style="text-align: center;"><strong>$O(1)$</strong></td>
+<td style="text-align: center;">$O(N)$</td>
+</tr>
+<tr>
+<td><strong>Аллокации в куче</strong></td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">1 (при вызове <code>make</code> с cap)</td>
+</tr>
+</tbody>
+</table></div>
+<p>Two Sum блестяще демонстрирует силу классического размена памяти на время (Time-Memory Trade-off).</p>
+<p>В следующей задаче мы поднимем планку сложности: когда элементов для суммы требуется уже не два, а три, простой хеш-карты становится недостаточно, и на сцену выходит предварительная сортировка в сочетании с двумя встречными указателями: <a href="4-three-sum.html" class="wikilink">4. Three Sum</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2324,7 +2411,7 @@
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#formulirovka-i-utochneniya">Формулировка и уточнения</a></li><li class="toc-item toc-h3"><a href="#naivnoe-reshenie-dvoynoy-tsikl">Наивное решение: двойной цикл</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-khesh-tablitsa-map">Оптимальное решение: хеш-таблица (map)</a></li><li class="toc-item toc-h3"><a href="#alternativa-sortirovka-dva-ukazatelya">Альтернатива: сортировка + два указателя</a></li><li class="toc-item toc-h3"><a href="#edge-cases">Edge cases</a></li><li class="toc-item toc-h3"><a href="#analiz-slozhnosti">Анализ сложности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-map-vs-massiv">Mechanical Sympathy: map vs массив</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h3"><a href="#formulirovka-zadachi-i-kalibrovka-trebovaniy">Формулировка задачи и калибровка требований</a></li><li class="toc-item toc-h3"><a href="#vizualnyy-walk-through-kak-rabotaet-odnoprokhodnaya-khesh-karta">Визуальный Walk-Through: Как работает однопроходная хеш-карта</a></li><li class="toc-item toc-h3"><a href="#naivnoe-reshenie-kvadratichnyy-brutfors">Наивное решение: Квадратичный брутфорс</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-odnoprokhodnaya-khesh-karta-za-on">Оптимальное решение: Однопроходная хеш-карта за O(N)</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-chto-proiskhodit-v-rantayme-go">Mechanical Sympathy: Что происходит в рантайме Go</a></li><li class="toc-item toc-h3"><a href="#analiz-pogranichnykh-sluchaev-edge-cases">Анализ пограничных случаев (Edge Cases)</a></li><li class="toc-item toc-h3"><a href="#itogi-i-asimptotika">Итоги и асимптотика</a></li>
   </ul>
 </aside>
 

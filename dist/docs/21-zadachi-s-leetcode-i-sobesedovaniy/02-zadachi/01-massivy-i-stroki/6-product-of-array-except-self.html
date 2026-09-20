@@ -2171,73 +2171,38 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~21 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~11 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">6. Product of Array Except Self</h1>
           </header>
 
           <div class="article-markdown">
-            <p><strong>LeetCode 238. Product of Array Except Self.</strong> Дан массив целых чисел <code>nums</code> длиной <code>n</code> (n &gt; 1). Нужно вернуть массив <code>answer</code>, где <code>answer[i]</code> равен произведению всех элементов <code>nums</code>, кроме <code>nums[i]</code>. Запрещено использовать операцию <strong>деления</strong>, и решение должно работать за <strong>O(n)</strong> по времени.</p>
-<p>Задача находится на стыке префиксных сумм (только здесь произведение) и двухпроходной техники. Она проверяет способность отказаться от очевидного подхода «посчитать общее произведение и поделить» в пользу аккуратного аккумулирования без нарушения ограничений. Для Go-разработчика уровня Senior здесь важно не просто написать два цикла, а показать понимание того, как работает O(1) extra memory в терминах Go-слайсов, как избежать лишних аллокаций и как нули в массиве взрывают «делительный» подход.</p>
-<h3 id="uslovie-i-utochneniya">Условие и уточнения</h3>
+            <blockquote>
+<p><em>«Опытный инженер находит обходной путь не потому, что прямой путь труден, а потому, что запрет на очевидную операцию открывает подлинную геометрию данных».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p><strong>LeetCode 238. Product of Array Except Self (Medium / Core)</strong></p>
+<p>Дан целочисленный массив <code>nums</code> длиной $N &gt; 1$. Требуется сформировать и вернуть массив <code>answer</code>, в котором каждый элемент <code>answer[i]</code> равен произведению всех элементов <code>nums</code>, <strong>кроме</strong> <code>nums[i]</code>.</p>
+<p><strong>Особые ограничения:</strong><br />
+- Алгоритм обязан работать за строго линейное время <strong>$O(N)$</strong>.<br />
+- <strong>Категорически запрещено использовать операцию деления (<code>/</code>)</strong>.<br />
+- Алгоритм должен укладываться в <strong>$O(1)$ дополнительной памяти</strong> (память, выделенная под выходной массив <code>answer</code>, условием не учитывается).</p>
+<hr />
+<h3 id="pochemu-ochevidnye-podkhody-provalivayutsya">Почему очевидные подходы проваливаются</h3>
 
-<p>На собеседовании вы получаете задачу и сразу уточняете детали:<br />
-- <strong>Длина массива:</strong> гарантируется ≥ 2.<br />
-- <strong>Элементы:</strong> целые числа, могут быть отрицательные и нули.<br />
-- <strong>Возвращаемое значение:</strong> слайс такой же длины, как <code>nums</code>.<br />
-- <strong>Память:</strong> extra space O(1) (выходной массив не считается дополнительной памятью).<br />
-- <strong>Деление:</strong> запрещено. В языке Go это означает, что нельзя просто пройтись и разделить общее произведение на <code>nums[i]</code> — даже если бы не было нулей.</p>
-<h3 id="naivnyy-podkhod-i-pochemu-on-ne-podkhodit">Наивный подход и почему он не подходит</h3>
+<h4 id="1-naivnoe-delenie-zapreshcheno-usloviem-krakh-na-nulyakh">1. «Наивное деление» (Запрещено условием + крах на нулях)</h4>
+<p>Первая мысль новичка: вычислить общее произведение всех чисел <code>total</code> за один проход, а затем вторым циклом записать <code>answer[i] = total / nums[i]</code>.<br />
+- Этот подход прямо запрещён условием задачи.<br />
+- Но даже если бы запрета не было, появление хотя бы одного нуля <code>nums[k] = 0</code> приводит к панике деления на ноль (<code>panic: runtime error: integer divide by zero</code>). Если же нулей два или больше (<code>[0, 4, 0]</code>), все элементы ответа должны быть нулями, что потребовало бы громоздких условий и костылей.</p>
+<h4 id="2-kvadratichnyy-brutfors-on2">2. Квадратичный брутфорс $O(N^2)$</h4>
+<p>Для каждого элемента <code>i</code> запускать внутренний цикл, перемножающий все элементы, кроме текущего. При $N = 10^5$ это $10^{10}$ операций умножения — гарантированный <code>Time Limit Exceeded</code>.</p>
+<hr />
+<h3 id="arkhitekturnaya-ideya-prefiksnye-i-suffiksnye-nakopiteli">Архитектурная идея: Префиксные и суффиксные накопители</h3>
 
-<p><strong>1. Делительный подход.</strong> Посчитать <code>totalProduct</code>, затем для каждого <code>i</code> положить <code>totalProduct / nums[i]</code>. Это O(N) времени, O(1) памяти. Но:<br />
-- Если в массиве есть <strong>ноль</strong>, деление невозможно.<br />
-- Если нулей два и больше, то все ответы — нули, но деление на ноль всё равно проблема.<br />
-- Задача явно запрещает деление, поэтому этот вариант не рассматривается.</p>
-<p><strong>2. Брутфорс.</strong> Для каждого <code>i</code> перемножить все элементы, кроме <code>i</code>-го. Вложенный цикл, O(N²) времени. При N = 10⁵ это 10¹⁰ операций — TLE. Для собеседования такой старт допустим только как baseline с последующей оптимизацией.</p>
-<h3 id="optimalnoe-reshenie-prefiksnye-i-suffiksnye-proizvedeniya-za-o1-pamyati">Оптимальное решение: префиксные и суффиксные произведения за O(1) памяти</h3>
-
-<p>Идея состоит в том, чтобы за два прохода накопить частичные произведения. В первом проходе слева направо мы заполняем <code>answer[i]</code> произведением всех элементов <strong>до</strong> <code>i</code> (префикс). Во втором проходе справа налево мы умножаем каждое <code>answer[i]</code> на произведение всех элементов <strong>после</strong> <code>i</code> (суффикс).</p>
-<p>Таким образом, <code>answer[i]</code> в конце становится <code>pref(i) * suff(i)</code>, что и требовалось.</p>
-<p><strong>Память O(1):</strong> мы не создаём отдельных массивов для префиксов и суффиксов. Выходной слайс <code>answer</code> сначала хранит префиксы, а затем обновляется на финальный результат. Константное количество целочисленных переменных.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func productExceptSelf(nums []int) []int {
-    n := len(nums)
-    // Выходной слайс; предвыделяем память.
-    answer := make([]int, n)
-
-    // Первый проход: слева направо, заполняем answer[i] = произведение nums[0..i-1]
-    // Для i=0 произведение пустого набора = 1.
-    prefix := 1
-    for i := 0; i &lt; n; i++ {
-        answer[i] = prefix
-        prefix *= nums[i]
-    }
-
-    // Второй проход: справа налево, домножаем answer[i] на произведение nums[i+1..n-1]
-    suffix := 1
-    for i := n - 1; i &gt;= 0; i-- {
-        answer[i] *= suffix
-        suffix *= nums[i]
-    }
-
-    return answer
-}
-</code></pre>
-</div>
-
-<p><strong>Что здесь важно с точки зрения Go:</strong><br />
-- <code>make([]int, n)</code> выделяет непрерывный массив в куче и возвращает слайс с длиной <code>n</code>. Никаких дополнительных аллокаций внутри циклов нет — идеально.<br />
-- Переменные <code>prefix</code> и <code>suffix</code> — примитивные типы, живут на стеке, не взаимодействуют с GC.<br />
-- Индексация <code>answer[i]</code> — прямая адресация в памяти, cache-friendly (последовательный доступ в обоих проходах).</p>
+<p>Математически произведение всех элементов, кроме $i$-го, раскладывается на две независимые части:<br />
+$$\text{answer}[i] = \underbrace{(nums[0] \cdot nums[1] \dots nums[i-1])}<em>{\text{Произведение слева (Prefix)}} \times \underbrace{(nums[i+1] \cdot nums[i+2] \dots nums[N-1])}</em>{\text{Произведение справа (Suffix)}}$$</p>
+<p>Чтобы уложиться в $O(1)$ дополнительной памяти, мы не создаем два вспомогательных массива <code>prefix[]</code> и <code>suffix[]</code>. Мы используем сам результирующий срез <code>answer</code> как аккумулятор!</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2252,96 +2217,108 @@
   </div>
   <pre class="mermaid">
 flowchart LR
+classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
 classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
 classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;nums = [1,2,3,4]:::process&quot;] --&gt; B[&quot;Проход 1: prefix&lt;br&gt;answer[0]=1&lt;br&gt;answer[1]=1*1=1&lt;br&gt;answer[2]=1*2=2&lt;br&gt;answer[3]=2*3=6&quot;]
-B --&gt; C[&quot;Проход 2: suffix&lt;br&gt;suffix=1: answer[3]=6*1=6&lt;br&gt;suffix=4: answer[2]=2*4=8&lt;br&gt;suffix=12: answer[1]=1*12=12&lt;br&gt;suffix=24: answer[0]=1*24=24&quot;]
-C --&gt; D[&quot;Результат: [24,12,8,6]&quot;]
+
+A[&quot;Входной массив:&lt;br&gt;nums = [1, 2, 3, 4]&quot;]:::entry --&gt; B[&quot;Проход 1 (Слева направо):&lt;br&gt;answer[i] = префиксное произведение&lt;br&gt;answer = [1, 1, 2, 6]&quot;]:::accent
+
+B --&gt; C[&quot;Проход 2 (Справа налево):&lt;br&gt;Домножаем answer[i] на suffix&lt;br&gt;suffix накапливается в переменной&quot;]:::process
+
+C --&gt; D[&quot;Финальный ответ:&lt;br&gt;answer = [24, 12, 8, 6]&lt;br&gt;O(N) time, O(1) extra space!&quot;]:::success
   </pre>
 </div>
 
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+<hr />
+<h3 id="idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</h3>
+
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p><code>make([]int, n)</code> создаёт слайс с длиной <code>n</code>, но его элементы не инициализированы явно — они получают zero-value (0 для int). В первом проходе мы сразу же перезаписываем каждый элемент <code>answer[i] = prefix</code>, так что предварительная инициализация нулями не является лишней работой (она всё равно происходит в рантайме при выделении памяти). Для больших N можно было бы использовать <code>make([]int, 0, n)</code> и <code>append</code>, но это дало бы дополнительные проверки выхода за capacity внутри цикла. Текущий вариант с фиксированной длиной и присваиванием по индексу — самый быстрый.</p>
-  </div>
+  <pre class="language-go"><code class="language-go">package main
+
+func productExceptSelf(nums []int) []int {
+    n := len(nums)
+    if n &lt; 2 {
+        return nil
+    }
+
+    // Выделяем память под срез ответа ровно один раз
+    answer := make([]int, n)
+
+    // ПРОХОД 1: Слева направо
+    // answer[i] будет содержать произведение всех элементов строго левее i
+    prefix := 1
+    for i := 0; i &lt; n; i++ {
+        answer[i] = prefix
+        prefix *= nums[i]
+    }
+
+    // ПРОХОД 2: Справа налево
+    // Домножаем накопленный префикс на суффиксное произведение
+    suffix := 1
+    for i := n - 1; i &gt;= 0; i-- {
+        answer[i] *= suffix
+        suffix *= nums[i]
+    }
+
+    return answer
+}
+</code></pre>
 </div>
 
-<h3 id="pochemu-eto-rabotaet-invarianty-prokhodov">Почему это работает — инварианты проходов</h3>
+<hr />
+<h3 id="trassirovka-invariantov-po-shagam">Трассировка инвариантов по шагам</h3>
 
-<p><strong>Первый проход (префикс):</strong> после итерации <code>i</code> переменная <code>prefix</code> содержит <code>∏ nums[0..i]</code>, а <code>answer[i]</code> содержит <code>∏ nums[0..i-1]</code>. Это легко доказывается по индукции.</p>
-<p><strong>Второй проход (суффикс):</strong> после итерации <code>i</code> (в обратном порядке) переменная <code>suffix</code> содержит <code>∏ nums[i..n-1]</code>, а <code>answer[i]</code> умножается на <code>∏ nums[i+1..n-1]</code> (значение <code>suffix</code> до учёта <code>nums[i]</code>). После умножения <code>answer[i]</code> становится <code>pref(i) * suff(i)</code>.</p>
-<p>Эти инварианты гарантируют корректность без деления и дополнительных массивов.</p>
-<h3 id="edge-cases-uglovye-sluchai">Edge Cases (угловые случаи)</h3>
+<p>Возьмем массив <code>nums = [1, 2, 3, 4]</code>:</p>
+<h4 id="prokhod-1-sleva-napravo-prefix">Проход 1 (слева направо, prefix):</h4>
+<ul>
+<li><code>i = 0</code>: <code>answer[0] = 1</code> (пустой префикс), <code>prefix</code> становится $1 \times 1 = 1$</li>
+<li><code>i = 1</code>: <code>answer[1] = 1</code>, <code>prefix</code> становится $1 \times 2 = 2$</li>
+<li><code>i = 2</code>: <code>answer[2] = 2</code>, <code>prefix</code> становится $2 \times 3 = 6$</li>
+<li><code>i = 3</code>: <code>answer[3] = 6</code>, <code>prefix</code> становится $6 \times 4 = 24$<br />
+<em>Промежуточный <code>answer</code> равен <code>[1, 1, 2, 6]</code>.</em></li>
+</ul>
+<h4 id="prokhod-2-sprava-nalevo-suffix">Проход 2 (справа налево, suffix):</h4>
+<ul>
+<li><code>i = 3</code>: <code>answer[3] = 6 * 1 = 6</code>, <code>suffix</code> становится $1 \times 4 = 4$</li>
+<li><code>i = 2</code>: <code>answer[2] = 2 * 4 = 8</code>, <code>suffix</code> становится $4 \times 3 = 12$</li>
+<li><code>i = 1</code>: <code>answer[1] = 1 * 12 = 12</code>, <code>suffix</code> становится $12 \times 2 = 24$</li>
+<li><code>i = 0</code>: <code>answer[0] = 1 * 24 = 24</code>, <code>suffix</code> становится $24 \times 1 = 24$<br />
+<em>Итоговый <code>answer</code> равен <code>[24, 12, 8, 6]</code>.</em></li>
+</ul>
+<hr />
+<h3 id="analiz-pogranichnykh-stsenariev-edge-cases">Анализ пограничных сценариев (Edge Cases)</h3>
 
 <ul>
-<li><strong>Один ноль.</strong> Если в массиве ровно один нуль, то все элементы, кроме него, дадут результат 0 (потому что произведение включает этот нуль). Элемент, соответствующий нулю, должен равняться произведению всех остальных (ненулевых) чисел. Наш алгоритм это обеспечивает: префикс до нуля накапливает ненулевые произведения, суффикс после нуля тоже; в позиции нуля <code>answer[i]</code> получит произведение левой и правой частей без нуля.</li>
-<li><strong>Два и более нулей.</strong> Все ответы — нули. Алгоритм даёт нули на всех позициях, потому что и префикс, и суффикс в какой-то момент обнуляются и дальше всё зануляется. Отдельной проверки не требуется, но можно для оптимизации: при обнаружении второго нуля заполнить весь слайс нулями и выйти. На собеседовании это можно упомянуть как возможную микрооптимизацию.</li>
-<li><strong>Все единицы.</strong> Ответ — все единицы. Циклы отработают корректно.</li>
-<li><strong>Отрицательные числа.</strong> Произведения корректны, знак обрабатывается автоматически.</li>
-<li><strong>Большие числа.</strong> Go использует 64-битный int (на 64-битных системах), произведение может переполниться. LeetCode обычно гарантирует, что суммарное произведение умещается в 32-битный int, но в 64-битном Go это не вызывает проблем. Тем не менее Senior отметит: «Если бы N было велико и числа большие, следовало бы использовать <code>math/big</code> или проверять переполнение, но в рамках задачи достаточно int».</li>
+<li><strong>Ровно один ноль в массиве:</strong> <code>nums = [-1, 1, 0, -3, 3]</code>:</li>
+<li>Для всех ненулевых элементов произведение слева или справа в какой-то момент умножится на 0, дав <code>answer[i] = 0</code>.</li>
+<li>Для позиции, где стоит сам ноль, префикс слева соберет $(-1) \times 1 = -1$, а суффикс справа соберет $(-3) \times 3 = -9$.<br />
+    Итог: $(-1) \times (-9) = 9$. Деления не было, результат идеально верен!</li>
+<li><strong>Два и более нулей:</strong> <code>nums = [0, 4, 0]</code>:</li>
+<li>При наличии хотя бы двух нулей любой подмассив «кроме $i$» гарантированно содержит минимум один ноль. Весь массив ответа заполнится нулями.</li>
 </ul>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Не пытайтесь втиснуть логику в один проход с хитрыми умножениями — код станет нечитаемым. Два прохода — это идиоматично и прозрачно. На собеседовании чистота кода важнее микроскопической экономии одного цикла.</p>
-  </div>
-</div>
+<hr />
+<h3 id="mechanical-sympathy-pamyat-i-kesh-linii">Mechanical Sympathy: Память и кэш-линии</h3>
 
-<h3 id="analiz-slozhnosti">Анализ сложности</h3>
+<ol>
+<li><strong>Единственная аллокация:</strong> Вызов <code>make([]int, n)</code> создает один непрерывный блок памяти в куче. Внутри обоих циклов нет вызовов <code>append</code>, нет ветвлений и нет скрытых аллокаций.</li>
+<li><strong>Линейная утилизация L1d-кэша:</strong> Первый проход идет строго вперед (<code>0</code> $\to$ <code>n-1</code>), второй — строго назад (<code>n-1</code> $\to$ <code>0</code>). Оба паттерна доступа являются строго последовательными (<code>strided access</code>), что позволяет аппаратному prefetcher процессора гарантировать 100% Cache Hit Rate.</li>
+<li><strong>Чистые регистры:</strong> Переменные <code>prefix</code> и <code>suffix</code> никогда не выходят в память — компилятор Go размещает их непосредственно в регистрах процессора.</li>
+</ol>
+<hr />
+<h3 id="rezyume">Резюме</h3>
 
-<ul>
-<li><strong>Время:</strong> O(N). Два независимых прохода по массиву, каждый занимает N итераций с константными операциями.</li>
-<li><strong>Память:</strong> O(1) дополнительной, если не считать выходной слайс. В Go <code>answer</code> — это O(N) памяти, но согласно условию задачи это разрешено (output array). Стек содержит только <code>n</code>, <code>prefix</code>, <code>suffix</code>, итераторы — фиксированный объём.</li>
-</ul>
-<h3 id="mechanical-sympathy-kak-kod-vzaimodeystvuet-s-zhelezom">Mechanical Sympathy: как код взаимодействует с железом</h3>
-
-<ul>
-<li><strong>Последовательный доступ:</strong> первый проход — слева направо, второй — справа налево. Оба направления последовательны, поэтому аппаратный prefetcher CPU легко предсказывает следующие кэш-линии. Промахов мимо кэша почти нет.</li>
-<li><strong>Аллокации:</strong> единственная аллокация — <code>make</code> для <code>answer</code>. Внутри циклов нет <code>append</code>, нет создания новых объектов. GC не испытывает давления.</li>
-<li><strong>Отсутствие указателей:</strong> слайс <code>answer</code> хранит <code>int</code> напрямую, без косвенности. Это максимально утилизирует кэш-линии (по 8 int'ов на 64-байтную линию).</li>
-</ul>
-<p>Если бы мы использовали <code>[][]int</code> или map, картина была бы иной, но здесь всё оптимально. На собеседовании уместно сказать: «Моё решение обладает хорошей cache locality и нулевым pressure на GC, потому что использует единственный слайс и два целочисленных аккумулятора».</p>
-<h3 id="alternativy-i-trade-off">Альтернативы и trade-off</h3>
-
-<ul>
-<li><strong>Решение с двумя массивами (префикс и суффикс).</strong> Занимает O(N) дополнительной памяти, чуть проще для понимания, но избыточно. Ожидается, что Senior сразу предложит O(1) extra space.</li>
-<li><strong>Однопроходное решение с поддержанием префикса и суффикса.</strong> Технически возможно: идти с двух концов одновременно, обновляя <code>answer</code> для <code>i</code> и <code>n-1-i</code> за одну итерацию, но логика становится запутанной. Два прохода предпочтительнее по читаемости и практически не медленнее.</li>
-<li><strong>Делительный подход с обработкой нулей.</strong> Если бы деление было разрешено, нужно было бы подсчитать количество нулей:</li>
-<li>Нет нулей → делим общее произведение.</li>
-<li>Один ноль → весь слайс нулей, кроме позиции нуля (там произведение остальных).</li>
-<li>Два и более нулей → все нули.<br />
-Это полезно обсудить как исторический контекст, чтобы показать, что вы знаете «запрещённые» приёмы.</li>
-</ul>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p>Интервьюер может спросить: «Как ваше решение обрабатывает случай, когда в массиве есть нули?» Правильный ответ: «Нули не создают проблем, потому что мы не используем деление. Префиксный и суффиксный проходы естественным образом аккумулируют произведения без учёта текущего элемента, так что в позиции нуля произведение всех ненулевых элементов будет корректно восстановлено.»</p>
-  </div>
-</div>
-
-<h3 id="itog">Итог</h3>
-
-<p>Product of Array Except Self — это демонстрация паттерна «префиксные/суффиксные накопления». В Go она реализуется элегантно: один слайс, два прохода, нулевые дополнительные аллокации. Senior-разработчик не просто запоминает шаблон, а понимает, почему он эффективен с точки зрения кэша и сборщика мусора, и может аргументированно отбросить запрещённое деление в пользу чистой инженерной мысли.</p>
-<p>Теперь, вооружившись двухпроходной техникой, мы перейдём к задаче, где два указателя работают не для префиксов и суффиксов, а для поиска максимума вместимости — Container With Most Water. <a href="7-container-with-most-water.html" class="wikilink">7. Container With Most Water</a></p>
+<p>Product of Array Except Self — великолепный пример того, как декомпозиция глобального вычисления на префиксную и суффиксную части позволяет обойти фундаментальные математические ограничения (деление на ноль) и добиться строгой линейной производительности при нулевых затратах дополнительной памяти.</p>
+<p>В следующей лекции мы перейдем к задаче геометрической оптимизации с двумя указателями — поиску максимального объема воды в контейнере: <a href="7-container-with-most-water.html" class="wikilink">7. Container With Most Water</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2369,7 +2346,7 @@ C --&gt; D[&quot;Результат: [24,12,8,6]&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#uslovie-i-utochneniya">Условие и уточнения</a></li><li class="toc-item toc-h3"><a href="#naivnyy-podkhod-i-pochemu-on-ne-podkhodit">Наивный подход и почему он не подходит</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-prefiksnye-i-suffiksnye-proizvedeniya-za-o1-pamyati">Оптимальное решение: префиксные и суффиксные произведения за O(1) памяти</a></li><li class="toc-item toc-h3"><a href="#pochemu-eto-rabotaet-invarianty-prokhodov">Почему это работает — инварианты проходов</a></li><li class="toc-item toc-h3"><a href="#edge-cases-uglovye-sluchai">Edge Cases (угловые случаи)</a></li><li class="toc-item toc-h3"><a href="#analiz-slozhnosti">Анализ сложности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-kak-kod-vzaimodeystvuet-s-zhelezom">Mechanical Sympathy: как код взаимодействует с железом</a></li><li class="toc-item toc-h3"><a href="#alternativy-i-trade-off">Альтернативы и trade-off</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h3"><a href="#pochemu-ochevidnye-podkhody-provalivayutsya">Почему очевидные подходы проваливаются</a></li><li class="toc-item toc-h4"><a href="#1-naivnoe-delenie-zapreshcheno-usloviem-krakh-na-nulyakh">1. «Наивное деление» (Запрещено условием + крах на нулях)</a></li><li class="toc-item toc-h4"><a href="#2-kvadratichnyy-brutfors-on2">2. Квадратичный брутфорс $O(N^2)$</a></li><li class="toc-item toc-h3"><a href="#arkhitekturnaya-ideya-prefiksnye-i-suffiksnye-nakopiteli">Архитектурная идея: Префиксные и суффиксные накопители</a></li><li class="toc-item toc-h3"><a href="#idiomatichnaya-realizatsiya-na-go">Идиоматичная реализация на Go</a></li><li class="toc-item toc-h3"><a href="#trassirovka-invariantov-po-shagam">Трассировка инвариантов по шагам</a></li><li class="toc-item toc-h4"><a href="#prokhod-1-sleva-napravo-prefix">Проход 1 (слева направо, prefix):</a></li><li class="toc-item toc-h4"><a href="#prokhod-2-sprava-nalevo-suffix">Проход 2 (справа налево, suffix):</a></li><li class="toc-item toc-h3"><a href="#analiz-pogranichnykh-stsenariev-edge-cases">Анализ пограничных сценариев (Edge Cases)</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-pamyat-i-kesh-linii">Mechanical Sympathy: Память и кэш-линии</a></li><li class="toc-item toc-h3"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

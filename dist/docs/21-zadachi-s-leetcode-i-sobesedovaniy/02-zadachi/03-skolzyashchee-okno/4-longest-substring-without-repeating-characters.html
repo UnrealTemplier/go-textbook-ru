@@ -2171,103 +2171,35 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~21 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">4. Longest Substring Without Repeating Characters</h1>
           </header>
 
           <div class="article-markdown">
-            <p><strong>LeetCode 3. Longest Substring Without Repeating Characters.</strong> Дана строка <code>s</code>. Требуется найти длину самой длинной подстроки без повторяющихся символов. Это классическая задача на <strong>динамическое скользящее окно</strong>, и после разбора фиксированного окна в <a href="3-maximum-average-subarray-i.html" class="wikilink">3. Maximum Average Subarray I</a> мы переходим к более гибкому инструменту — окну переменной длины, границы которого адаптируются под условие уникальности.</p>
-<p>На собеседовании эта задача проверяет умение выбрать правильную структуру состояния (map или массив), понимание амортизированного O(N) и способность чётко сформулировать инвариант. Для Senior Go-разработчика она также становится полигоном демонстрации механической симпатии: почему массив <code>[128]int</code> предпочтительнее map, как работает escape analysis и почему внутри горячего цикла не место аллокациям.</p>
-<h3 id="formulirovka-i-utochneniya">Формулировка и уточнения</h3>
+            <blockquote>
+<p><em>«Простота — это не нехватка замысла, это ясность мысли, воплощённая в коде».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<h2 id="leetcode-3-longest-substring-without-repeating-characters">LeetCode 3. Longest Substring Without Repeating Characters</h2>
 
-<p><strong>Условие:</strong> функция <code>lengthOfLongestSubstring(s string) int</code>. Возвращаемое значение — длина самой длинной подстроки без повторяющихся символов.</p>
-<p><strong>Вопросы интервьюеру:</strong><br />
-- <em>Из каких символов состоит строка?</em> Только ли ASCII (английские буквы, цифры, знаки) или возможен Unicode? От ответа зависит, используем ли мы массив фиксированного размера или map. Предположим, ASCII — тогда <code>[128]int</code> достаточно.<br />
-- <em>Учитываются ли пробелы и специальные символы?</em> Да, это всё часть ASCII.<br />
-- <em>Может ли строка быть пустой?</em> Да, <code>len(s) == 0</code>, тогда ответ 0.<br />
-- <em>Регистрозависимость?</em> Да, <code>'a'</code> и <code>'A'</code> — разные символы.</p>
-<p>Уточнения позволяют нам выбрать <code>[128]int</code> для хранения индексов последних появлений символов.</p>
-<h3 id="naivnoe-reshenie-perebor-vsekh-podstrok">Наивное решение: перебор всех подстрок</h3>
+<p><strong>Сложность:</strong> Medium<br />
+<strong>Тема:</strong> Динамическое скользящее окно, индексация последних позиций, нулевые аллокации<br />
+<strong>Ссылки:</strong> <span class="wikilink-unresolved" title="Заметка в разработке">Теория: Скользящее окно</span>, <span class="wikilink-unresolved" title="Заметка в разработке">Фиксированное и динамическое окно</span>, <span class="wikilink-unresolved" title="Заметка в разработке">Minimum Window Substring</span></p>
+<hr />
+<h3 id="1-vvedenie-i-fizicheskaya-intuitsiya">1. Введение и физическая интуиция</h3>
 
-<p>Брутфорс: для каждой пары <code>(left, right)</code> проверить, уникальны ли символы в подстроке <code>s[left:right+1]</code>. Проверку можно делать через map или set. Сложность O(N³) в худшем случае (или O(N²), если проверять инкрементально). При N до 5×10⁴ (ограничения LeetCode) это неприемлемо.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func lengthOfLongestSubstringNaive(s string) int {
-    n := len(s)
-    maxLen := 0
-    for left := 0; left &lt; n; left++ {
-        seen := make(map[byte]bool)
-        for right := left; right &lt; n; right++ {
-            if seen[s[right]] {
-                break
-            }
-            seen[s[right]] = true
-            if right-left+1 &gt; maxLen {
-                maxLen = right - left + 1
-            }
-        }
-    }
-    return maxLen
-}
-</code></pre>
-</div>
-
-<p>Узкое место — внешний цикл фиксирует <code>left</code> и заново строит множество. Но если для <code>left</code> мы остановились на <code>right</code>, где произошёл повтор, то при сдвиге <code>left</code> вправо нам не нужно откатывать <code>right</code> назад — можно продолжать расширять. Это свойство монотонности и приводит к скользящему окну.</p>
-<h3 id="optimalnoe-reshenie-dinamicheskoe-okno-s-khraneniem-indeksov">Оптимальное решение: динамическое окно с хранением индексов</h3>
-
-<p>Мы поддерживаем окно <code>[left, right]</code>, в котором все символы уникальны. Правый указатель <code>right</code> движется вперёд. Для быстрой проверки повтора храним <strong>последнюю позицию</strong> каждого символа. Если текущий символ уже встречался внутри текущего окна (позиция ≥ left), мы немедленно сдвигаем <code>left</code> на <code>pos+1</code>, пропуская повтор. Таким образом, окно всегда остаётся валидным, и нам не нужен цикл сжатия — один прыжок.</p>
-<p><strong>Состояние:</strong> <code>lastPos</code> — массив или map, хранящий для каждого символа индекс его последнего появления.</p>
-<p><strong>Инвариант:</strong> для любого символа <code>c</code> все вхождения внутри окна <code>[left, right]</code> уникальны. При добавлении <code>s[right]</code>, если его последняя позиция меньше <code>left</code>, повтора нет; иначе <code>left</code> перепрыгивает за прошлое вхождение.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func lengthOfLongestSubstring(s string) int {
-    if len(s) == 0 {
-        return 0
-    }
-    // Для ASCII: массив фиксированного размера
-    var lastPos [128]int
-    for i := range lastPos {
-        lastPos[i] = -1 // -1 означает &quot;не встречался&quot;
-    }
-    left, maxLen := 0, 0
-    for right := 0; right &lt; len(s); right++ {
-        ch := s[right]
-        // Если символ уже был внутри окна — перепрыгиваем левую границу
-        if prev := lastPos[ch]; prev &gt;= left {
-            left = prev + 1
-        }
-        lastPos[ch] = right
-        if curLen := right - left + 1; curLen &gt; maxLen {
-            maxLen = curLen
-        }
-    }
-    return maxLen
-}
-</code></pre>
-</div>
-
-<p><strong>Go-идиомы:</strong><br />
-- <code>var lastPos [128]int</code> — массив фиксированного размера, размещается на стеке (не сбегает через escape analysis). Никаких аллокаций.<br />
-- Инициализация <code>-1</code> через <code>for i := range</code> — компактно и читаемо.<br />
-- Проверка <code>prev &gt;= left</code> чётко отсекает «старые» появления, выпавшие за левую границу.<br />
-- Имена <code>left</code>, <code>right</code>, <code>maxLen</code> понятны.<br />
-- Возврат 0 для пустой строки.</p>
+<p>Представьте скользящую рамку на ленте символов: <code>"a b c a b c b b"</code>.<br />
+Мы растягиваем правый край рамки (<code>right</code>), затягивая внутрь новые буквы:<br />
+- <code>"a"</code> $\implies$ длина 1.<br />
+- <code>"a b"</code> $\implies$ длина 2.<br />
+- <code>"a b c"</code> $\implies$ длина 3.<br />
+- И тут в правый край входит вторая буква <code>'a'</code>! Внутри окна возник конфликт — дубликат.</p>
+<p>Как устранить дубликат?<br />
+- <strong>Наивный способ:</strong> двигать левый край рамки по одному символу (<code>left++</code>), проверяя, исчез ли конфликт.<br />
+- <strong>Оптимальный способ (Прыжок):</strong> мгновенно перенести левую границу окна <code>left</code> <strong>сразу за позицию предыдущего вхождения конфликтного символа</strong> (<code>left = prevPos + 1</code>).</p>
+<p>Поскольку все символы внутри окна должны быть уникальны, хранение последнего индекса каждого символа превращает сжатие окна в мгновенную операцию $O(1)$. Общее время работы алгоритма становится строго линейным $O(N)$ при <strong>нулевых аллокациях памяти</strong>.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2281,36 +2213,211 @@
     </button>
   </div>
   <pre class="mermaid">
-flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;left=0, maxLen=0&lt;br&gt;lastPos = [-1 ... -1]:::process&quot;] --&gt; B[&quot;right от 0 до len(s)-1&quot;]
-B --&gt; C{&quot;lastPos[s[right]] &gt;= left?&quot;}
-C --&gt;|&quot;Да&quot;| D[&quot;left = lastPos[s[right]] + 1&quot;]
-C --&gt;|&quot;Нет&quot;| E[&quot;ничего&quot;]
-D --&gt; F[&quot;lastPos[s[right]] = right&quot;]
-E --&gt; F
-F --&gt; G{&quot;right-left+1 &gt; maxLen?&quot;}
-G --&gt;|&quot;Да&quot;| H[&quot;maxLen = right-left+1&quot;]
-G --&gt;|&quot;Нет&quot;| I[&quot;продолжить&quot;]
-H --&gt; I
-I --&gt; B
-B --&gt;|&quot;конец&quot;| J[&quot;Вернуть maxLen&quot;]
+flowchart TD
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+A[&quot;s = &#x27;abcabcbb&#x27;&quot;]:::entry --&gt; B[&quot;lastPos = [-1 .. -1] (128 байт на стеке)&lt;br&gt;left = 0, maxLen = 0&quot;]:::process
+B --&gt; C[&quot;right от 0 до len(s)-1&quot;]:::process
+C --&gt; D{&quot;lastPos[s[right]] &gt;= left?&quot;}:::warning
+D --&gt;|&quot;Да (Дубликат внутри окна!)&quot;| E[&quot;left = lastPos[s[right]] + 1&lt;br&gt;(Прыжок левой границы)&quot;]:::process
+D --&gt;|&quot;Нет (Символ уникален)&quot;| F[&quot;Окно валидно&quot;]:::process
+E --&gt; G[&quot;lastPos[s[right]] = right&quot;]:::process
+F --&gt; G
+G --&gt; H[&quot;maxLen = max(maxLen, right - left + 1)&quot;]:::success
+H --&gt; C
   </pre>
 </div>
 
 
-<h3 id="alternativa-okno-s-map-dlya-unicode">Альтернатива: окно с map для Unicode</h3>
+<hr />
+<h3 id="2-formulirovka-zadachi-i-voprosy-intervyueru">2. Формулировка задачи и вопросы интервьюеру</h3>
 
-<p>Если бы алфавит был Unicode, массив фиксированного размера не подошёл бы. Тогда используем <code>map[rune]int</code>. Важно предвыделить capacity, чтобы избежать эвакуаций бакетов в горячем цикле:</p>
+<p>Дана строка <code>s</code>. Найти длину самой длинной подстроки без повторяющихся символов.</p>
+<h4 id="voprosy-intervyueru-senior-stil">Вопросы интервьюеру (Senior-стиль):</h4>
+<ol>
+<li><strong>Каков алфавит строки?</strong><br />
+<em>«Только печатные символы ASCII (буквы английского алфавита, цифры, символы и пробелы)? В LeetCode 3 гарантируется ASCII (коды 0–127). Это позволяет применить массив <code>[128]int</code> на стеке вместо медленной <code>map[rune]int</code>.»</em></li>
+<li><strong>Может ли строка быть пустой?</strong><br />
+<em>«Да, если <code>len(s) == 0</code>, возвращаем 0.»</em></li>
+<li><strong>Регистрозависимость?</strong><br />
+<em>«Да, <code>'a' != 'A'</code>.»</em></li>
+</ol>
+<hr />
+<h3 id="3-razbor-podkhodov">3. Разбор подходов</h3>
+
+<h4 id="podkhod-1-polnyy-perebor-vsekh-podstrok-naivnyy">Подход 1: Полный перебор всех подстрок (Наивный)</h4>
+<p>Проверить все возможные пары границ <code>(left, right)</code> с проверкой уникальности через хэш-сет.<br />
+- <strong>Сложность:</strong> $O(N^3)$ или $O(N^2)$. При $N = 50\,000$ — Time Limit Exceeded.</p>
+<h4 id="podkhod-2-skolzyashchee-okno-so-mnozhestvom-mapbytebool-suboptimalnyy">Подход 2: Скользящее окно со множеством `map[byte]bool` (Субоптимальный)</h4>
+<p>Сдвигать <code>left</code> на 1 позицию в цикле <code>while</code>, удаляя элементы из мапы, пока не уйдет дубликат.<br />
+- <strong>Сложность:</strong> $O(2N)$, но требует аллокаций <code>map</code> и медленного посимвольного сжатия.</p>
+<h4 id="podkhod-3-skolzyashchee-okno-s-pryzhkom-po-massivu-128int-etalonnyy">Подход 3: Скользящее окно с прыжком по массиву `[128]int` (Эталонный)</h4>
+<p>Храним последние индексы в статическом массиве. При обнаружении дубликата делаем мгновенный прыжок: <code>left = max(left, lastPos[ch] + 1)</code>.<br />
+- <strong>Сложность:</strong> строго $O(N)$ по времени, $O(1)$ по памяти (<strong>0 B/op, 0 allocs/op</strong>).</p>
+<hr />
+<h3 id="4-etalonnaya-realizatsiya-na-go">4. Эталонная реализация на Go</h3>
+
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package main
+
+// LengthOfLongestSubstring возвращает длину наибольшей подстроки без повторов.
+// Временная сложность: O(N) — ровно один проход правого указателя.
+// Пространственная сложность: O(1) памяти — статический массив на 128 int на стеке.
+func LengthOfLongestSubstring(s string) int {
+    if len(s) == 0 {
+        return 0
+    }
+
+    // Массив последних позиций символов ASCII.
+    // 128 int занимает 1024 байта и гарантированно аллоцируется на стеке.
+    var lastPos [128]int
+    for i := range lastPos {
+        lastPos[i] = -1 // -1 означает, что символ еще не встречался
+    }
+
+    left := 0
+    maxLen := 0
+
+    for right := 0; right &lt; len(s); right++ {
+        char := s[right]
+
+        // Если символ уже встречался ВНУТРИ текущего окна [left .. right]
+        if prevIdx := lastPos[char]; prevIdx &gt;= left {
+            // Прыгаем левой границей сразу за предыдущее вхождение
+            left = prevIdx + 1
+        }
+
+        // Запоминаем текущую позицию символа
+        lastPos[char] = right
+
+        // Обновляем максимальную длину окна
+        currentLen := right - left + 1
+        if currentLen &gt; maxLen {
+            maxLen = currentLen
+        }
+    }
+
+    return maxLen
+}
+</code></pre>
+</div>
+
+<hr />
+<h3 id="5-poshagovaya-trassirovka-walkthrough">5. Пошаговая трассировка (Walkthrough)</h3>
+
+<p>Рассмотрим строку <code>s = "abba"</code>. Это классический коварный тест!</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th style="text-align: center;">Шаг</th>
+<th style="text-align: center;"><code>right</code></th>
+<th style="text-align: center;">Символ <code>char</code></th>
+<th style="text-align: center;"><code>prevIdx = lastPos[char]</code></th>
+<th style="text-align: center;">Условие <code>prevIdx &gt;= left</code></th>
+<th style="text-align: center;">Новое значение <code>left</code></th>
+<th style="text-align: center;">Длина <code>right - left + 1</code></th>
+<th style="text-align: center;"><code>maxLen</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;"><code>'a'</code></td>
+<td style="text-align: center;">-1</td>
+<td style="text-align: center;">Ложь (<code>-1 &gt;= 0</code>)</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">$0 - 0 + 1 = 1$</td>
+<td style="text-align: center;"><strong>1</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;"><code>'b'</code></td>
+<td style="text-align: center;">-1</td>
+<td style="text-align: center;">Ложь (<code>-1 &gt;= 0</code>)</td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;">$1 - 0 + 1 = 2$</td>
+<td style="text-align: center;"><strong>2</strong></td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td style="text-align: center;">2</td>
+<td style="text-align: center;"><code>'b'</code></td>
+<td style="text-align: center;">1</td>
+<td style="text-align: center;"><strong>Истина</strong> (<code>1 &gt;= 0</code>)</td>
+<td style="text-align: center;"><code>1 + 1 = 2</code> (прыжок!)</td>
+<td style="text-align: center;">$2 - 2 + 1 = 1$</td>
+<td style="text-align: center;">2</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td style="text-align: center;">3</td>
+<td style="text-align: center;"><code>'a'</code></td>
+<td style="text-align: center;">0</td>
+<td style="text-align: center;"><strong>Ложь</strong> (<code>0 &gt;= 2</code>)!</td>
+<td style="text-align: center;">2 (не меняется!)</td>
+<td style="text-align: center;">$3 - 2 + 1 = 2$</td>
+<td style="text-align: center;"><strong>2</strong></td>
+</tr>
+</tbody>
+</table></div>
+<div class="callout callout-important">
+  <div class="callout-header">
+    <span class="callout-icon">⚡</span>
+    <span class="callout-title">Важно</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Почему условие <code>prevIdx &gt;= left</code> критично:</strong><br />
+На шаге 3 символ <code>'a'</code> уже встречался ранее на индексе 0. Но индекс 0 находится <strong>левее</strong> текущей границы <code>left = 2</code>! Этот символ уже давно выпал из окна и не создает дубликата.<br />
+Если бы мы написали наивное <code>left = prevIdx + 1</code>, указатель <code>left</code> откатился бы назад с 2 на 1, что сломало бы инвариант монотонности!</p>
+  </div>
+</div>
+
+<hr />
+<h3 id="6-mechanical-sympathy-massiv-na-steke-protiv-map">6. Mechanical Sympathy: массив на стеке против map</h3>
+
+
+<div class="code-block" data-lang="text">
+  <div class="code-header">
+    <span class="code-lang-tag">TEXT</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-text"><code class="language-text">Расположение [128]int в стековом кадре функции (L1d кэш):
++-----------------------------------------------------------+
+| lastPos[0..127] : 1024 байта (16 кэш-линий по 64 байта)   |
++-----------------------------------------------------------+
+  ^
+  |-- Доступ: MOVQ (RSP+offset), RAX (1 такт CPU, 0 cache misses)
+</code></pre>
+</div>
+
+<ol>
+<li><strong>Escape Analysis (Анализ побега):</strong><br />
+   Компилятор Go видит, что размер массива <code>[128]int</code> фиксирован и ссылка на него не покидает тело функции. Массив выделяется в стеке простым сдвигом регистра <code>RSP</code> (<code>SUBQ $1024, RSP</code>).<br />
+   При выходе из функции память очищается за 0 тактов. Никаких объектов для GC не создается.</li>
+<li><strong>Нулевой Pointer Chasing:</strong><br />
+   Прямая адресация <code>lastPos[char]</code> компилируется в одну команду ассемблера с базовым регистром и смещением. В случае с <code>map[byte]int</code> выполнялись бы десятки инструкций runtime хэширования.</li>
+</ol>
+<hr />
+<h3 id="7-rasshirenie-dlya-proizvolnogo-unicode-follow-up">7. Расширение для произвольного Unicode (Follow-up)</h3>
+
+<p>Если на собеседовании спросят: <em>«А что, если строка содержит китайские иероглифы или эмодзи?»</em></p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2321,97 +2428,33 @@ B --&gt;|&quot;конец&quot;| J[&quot;Вернуть maxLen&quot;]
     </button>
   </div>
   <pre class="language-go"><code class="language-go">func lengthOfLongestSubstringUnicode(s string) int {
-    lastPos := make(map[rune]int, len(s))
-    left, maxLen := 0, 0
-    for right, ch := range s {
-        if prev, ok := lastPos[ch]; ok &amp;&amp; prev &gt;= left {
-            left = prev + 1
+    lastPos := make(map[rune]int)
+    left := 0
+    maxLen := 0
+
+    // Итерация range по строке автоматически декодирует символы UTF-8 в руны!
+    for right, r := range []rune(s) {
+        if prevIdx, ok := lastPos[r]; ok &amp;&amp; prevIdx &gt;= left {
+            left = prevIdx + 1
         }
-        lastPos[ch] = right
-        if curLen := right - left + 1; curLen &gt; maxLen {
-            maxLen = curLen
-        }
+        lastPos[r] = right
+        maxLen = max(maxLen, right-left+1)
     }
+
     return maxLen
 }
 </code></pre>
 </div>
 
-<p>Заметьте: в этом варианте <code>make(map[rune]int, len(s))</code> предвыделяет память под бакеты, что снижает количество эвакуаций, но всё равно каждая вставка — это pointer chasing.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>При использовании map на каждой итерации вызывается <code>runtime.mapaccess2</code> (для проверки <code>ok</code>) и <code>runtime.mapassign</code> (для обновления позиции). Оба проходят через хеширование руны, поиск бакета и возможный пробег по цепочке переполнения. Это десятки-сотни тактов на итерацию.</p>
-<p>Массив <code>[128]int</code>, напротив, даёт прямую адресацию: <code>lastPos[ch]</code> — это одна инструкция LEA, занимающая 1–2 такта. Никакого pointer chasing, никаких блокировок, никакой нагрузки на GC. Поэтому для ASCII решение с массивом в 5–10 раз быстрее.</p>
-  </div>
-</div>
-
-<h3 id="edge-cases">Edge Cases</h3>
+<hr />
+<h3 id="8-invarianty-i-chek-list-samoproverki">8. Инварианты и чек-лист самопроверки</h3>
 
 <ul>
-<li><strong>Пустая строка:</strong> <code>len(s) == 0</code> → сразу возвращаем 0.</li>
-<li><strong>Все символы одинаковы:</strong> <code>"aaaaa"</code> → при первом повторе <code>left</code> перепрыгивает на <code>prev+1</code>, окно всегда состоит из одного символа, <code>maxLen = 1</code>.</li>
-<li><strong>Все символы уникальны:</strong> <code>"abcde"</code> → <code>left</code> никогда не сдвигается, <code>maxLen = len(s)</code>.</li>
-<li><strong>Повторяющиеся группы:</strong> <code>"abba"</code> → когда <code>right=2</code> (<code>'b'</code>), <code>left</code> становится <code>1</code>; когда <code>right=3</code> (<code>'a'</code>), <code>lastPos['a']</code> = 0, что меньше <code>left=1</code>, поэтому повтора нет, окно <code>[1,3]</code> = <code>"bba"</code> — длина 3, но правильно? На самом деле подстрока без повторов — <code>"ab"</code> (0-1) или <code>"ba"</code> (1-2). Алгоритм даёт <code>maxLen=2</code> (<code>"ab"</code>). Проверяем: <code>right=2</code> (<code>'b'</code>): <code>prev=1 &gt;= left=0</code> → <code>left=2</code>, окно <code>[2,2]</code> — <code>'b'</code>. <code>right=3</code> (<code>'a'</code>): <code>prev=0 &lt; left=2</code> → окно <code>[2,3]</code> = <code>"ba"</code>, длина 2. <code>maxLen</code> был обновлён для <code>right=1</code> (<code>"ab"</code>) — 2. Всё верно.</li>
-<li><strong>Спецсимволы и цифры:</strong> входят в <code>[128]int</code>, корректно.</li>
+<li>[x] <strong>Инициализация <code>-1</code>:</strong> гарантирует, что нулевой индекс массива <code>s[0]</code> не спутается со значением по умолчанию.</li>
+<li>[x] <strong>Защита от отката назад:</strong> проверка <code>prevIdx &gt;= left</code> предотвращает движение левой границы влево.</li>
+<li>[x] <strong>Zero Allocations:</strong> для ASCII алгоритм работает со строгой памятью $O(1)$ и 0 B/op.</li>
 </ul>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Частая ошибка — не обновить <code>left</code> при обнаружении повтора, а просто инкрементировать на 1. Если старый символ был далеко позади, <code>left</code> должен прыгнуть на <code>prev+1</code>, а не ползти. Ползучий подход привёл бы к лишним итерациям или неверному результату (например, <code>"abca"</code> — при встрече второго <code>'a'</code> <code>left</code> должен стать 1, а не просто <code>left++</code>). Правильное решение — немедленный перенос левой границы за предшествующее вхождение.</p>
-  </div>
-</div>
-
-<h3 id="analiz-slozhnosti">Анализ сложности</h3>
-
-<ul>
-<li><strong>Время:</strong> O(N). Каждый символ обрабатывается правым указателем ровно один раз. Левый указатель либо стоит, либо прыгает вперёд; суммарное количество движений левого указателя не превышает N.</li>
-<li><strong>Память:</strong> O(1) с массивом <code>[128]int</code> (фиксированный размер на стеке). Для Unicode с map — O(min(N, алфавит)), где алфавит — количество уникальных символов.</li>
-</ul>
-<h3 id="mechanical-sympathy-kak-okno-begaet-po-pamyati">Mechanical Sympathy: как окно бегает по памяти</h3>
-
-<ul>
-<li><strong>Последовательное чтение строки.</strong> <code>s</code> — иммутабельная строка, её байты лежат в непрерывной области памяти. <code>s[right]</code> — доступ по смещению, prefetcher подгружает будущие байты.</li>
-<li><strong>Инкрементальные обновления.</strong> Внутри цикла только сравнения, присваивания и арифметика. Никаких вызовов внешних функций (при использовании массива). Цикл компилируется в плотный машинный код.</li>
-<li><strong>Отсутствие аллокаций в массиве.</strong> <code>var lastPos [128]int</code> — это 1024 байта на стеке. Выделяется простым сдвигом указателя стека за наносекунду. GC даже не знает об этом массиве. В варианте с map каждый <code>lastPos[ch] = right</code> потенциально вызывает аллокацию бакета, а при заполнении — эвакуацию <code>hmap</code>, что даёт внезапные всплески времени.</li>
-</ul>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Если бы мы использовали <code>map[byte]int</code> для ASCII, компилятор Go всё равно разместил бы map в куче. Даже при предвыделении <code>make(map[byte]int, 128)</code> внутри map есть <code>hmap</code> и массив бакетов. При длине строки 5×10⁴ число вставок/обновлений равно числу символов; каждое обновление — это поиск в бакете. Массив же просто перезаписывает ячейку 1024-байтовой структуры, которая гарантированно находится в L1-кэше.</p>
-  </div>
-</div>
-
-<h3 id="alternativy-i-trade-off">Альтернативы и trade-off</h3>
-
-<ul>
-<li><strong>Set с удалениями (классическое окно со сжатием).</strong> Альтернативный подход: хранить множество символов окна. Когда встречаем повтор, сдвигаем <code>left</code> посимвольно, удаляя символы из множества, пока повтор не исчезнет. Это гарантирует валидность окна, но требует больше операций (цикл сжатия). С массивом <code>[128]int</code> подход с прыжком эффективнее, так как мы избегаем множественных итераций удаления.</li>
-<li><strong>Использование <code>strings.Builder</code> или <code>[]byte</code>.</strong> Здесь не требуется, так как мы не строим подстроку, а только считаем длину.</li>
-</ul>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p>Вопрос: «Что если строка очень длинная, но содержит только буквы 'a'?»<br />
-Ответ: «Максимальная длина будет 1. Алгоритм с массивом выполнит ровно N итераций, на каждом обновляя <code>lastPos['a']</code> и сдвигая <code>left</code> на <code>prev+1</code>. Память останется O(1). Map в такой ситуации будет многократно обновлять один и тот же ключ, что вызовет операции внутри одного бакета, но всё равно медленнее массива».</p>
-  </div>
-</div>
-
-<h3 id="itog">Итог</h3>
-
-<p>Longest Substring Without Repeating Characters — это хрестоматийная задача, раскрывающая мощь динамического скользящего окна с хранением индексов. Senior Go-разработчик не просто пишет работающее решение, но и выбирает правильную структуру состояния (массив для ASCII, map для Unicode), осознаёт последствия для GC и кэш-локальности, и может доказать корректность инварианта на лету.</p>
-<p>Следующая задача — <strong>Minimum Window Substring</strong> — поднимет ставки: теперь окно должно содержать все символы заданного шаблона в нужном количестве, и мы будем использовать инкрементальный счётчик <code>matched</code> для проверки валидности. <a href="5-minimum-window-substring.html" class="wikilink">5. Minimum Window Substring</a></p>
+<p>Следующая задача — легендарный Hard с LeetCode, где скользящее окно ищет минимальный покрывающий отрезок: <span class="wikilink-unresolved" title="Заметка в разработке">5. Minimum Window Substring</span>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2439,7 +2482,7 @@ B --&gt;|&quot;конец&quot;| J[&quot;Вернуть maxLen&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#formulirovka-i-utochneniya">Формулировка и уточнения</a></li><li class="toc-item toc-h3"><a href="#naivnoe-reshenie-perebor-vsekh-podstrok">Наивное решение: перебор всех подстрок</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-dinamicheskoe-okno-s-khraneniem-indeksov">Оптимальное решение: динамическое окно с хранением индексов</a></li><li class="toc-item toc-h3"><a href="#alternativa-okno-s-map-dlya-unicode">Альтернатива: окно с map для Unicode</a></li><li class="toc-item toc-h3"><a href="#edge-cases">Edge Cases</a></li><li class="toc-item toc-h3"><a href="#analiz-slozhnosti">Анализ сложности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-kak-okno-begaet-po-pamyati">Mechanical Sympathy: как окно бегает по памяти</a></li><li class="toc-item toc-h3"><a href="#alternativy-i-trade-off">Альтернативы и trade-off</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#leetcode-3-longest-substring-without-repeating-characters">LeetCode 3. Longest Substring Without Repeating Characters</a></li><li class="toc-item toc-h3"><a href="#1-vvedenie-i-fizicheskaya-intuitsiya">1. Введение и физическая интуиция</a></li><li class="toc-item toc-h3"><a href="#2-formulirovka-zadachi-i-voprosy-intervyueru">2. Формулировка задачи и вопросы интервьюеру</a></li><li class="toc-item toc-h4"><a href="#voprosy-intervyueru-senior-stil">Вопросы интервьюеру (Senior-стиль):</a></li><li class="toc-item toc-h3"><a href="#3-razbor-podkhodov">3. Разбор подходов</a></li><li class="toc-item toc-h4"><a href="#podkhod-1-polnyy-perebor-vsekh-podstrok-naivnyy">Подход 1: Полный перебор всех подстрок (Наивный)</a></li><li class="toc-item toc-h4"><a href="#podkhod-2-skolzyashchee-okno-so-mnozhestvom-mapbytebool-suboptimalnyy">Подход 2: Скользящее окно со множеством map[byte]bool (Субоптимальный)</a></li><li class="toc-item toc-h4"><a href="#podkhod-3-skolzyashchee-okno-s-pryzhkom-po-massivu-128int-etalonnyy">Подход 3: Скользящее окно с прыжком по массиву [128]int (Эталонный)</a></li><li class="toc-item toc-h3"><a href="#4-etalonnaya-realizatsiya-na-go">4. Эталонная реализация на Go</a></li><li class="toc-item toc-h3"><a href="#5-poshagovaya-trassirovka-walkthrough">5. Пошаговая трассировка (Walkthrough)</a></li><li class="toc-item toc-h3"><a href="#6-mechanical-sympathy-massiv-na-steke-protiv-map">6. Mechanical Sympathy: массив на стеке против map</a></li><li class="toc-item toc-h3"><a href="#7-rasshirenie-dlya-proizvolnogo-unicode-follow-up">7. Расширение для произвольного Unicode (Follow-up)</a></li><li class="toc-item toc-h3"><a href="#8-invarianty-i-chek-list-samoproverki">8. Инварианты и чек-лист самопроверки</a></li>
   </ul>
 </aside>
 

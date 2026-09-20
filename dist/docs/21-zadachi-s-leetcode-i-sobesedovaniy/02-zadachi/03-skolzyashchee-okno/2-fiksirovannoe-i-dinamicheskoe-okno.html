@@ -2171,17 +2171,24 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~27 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. Фиксированное и динамическое окно</h1>
           </header>
 
           <div class="article-markdown">
-            <p>В предыдущей статье <a href="1-teoriya-skolzyashchee-okno.html" class="wikilink">1. Теория. Скользящее окно</a> мы определили скользящее окно как паттерн с двумя указателями и поддержанием состояния, пересчитываемого инкрементально. Теперь мы детально разберём две его основные разновидности — <strong>фиксированное</strong> и <strong>динамическое</strong> окно. Внешне они похожи: два указателя, аккумулятор, линейный проход. Но выбор между ними определяет всю структуру решения. Ошибка здесь — например, применение фиксированного окна там, где длина окна варьируется, — ведёт либо к неверному ответу, либо к неоправданному переусложнению.</p>
-<p>Senior Go-разработчик распознаёт, какой тип окна нужен, за секунды: по наличию явного параметра длины <code>k</code>, по словам «максимальная/минимальная длина», по требованию найти все окна с заданным свойством. В этой статье мы разложим оба типа на атомарные составляющие: каркасы циклов, инварианты, типичные ловушки и — что критично — механическую симпатию каждого варианта к рантайму Go и железу.</p>
-<h3 id="dva-tipa-okon-edinaya-mekhanika-raznaya-strategiya-szhatiya">Два типа окон: единая механика, разная стратегия сжатия</h3>
+            <blockquote>
+<p><em>«Если рамки задачи заданы строго — держите строй. Если границы гибки — позвольте им сжиматься и расширяться по законам монотонности».</em><br />
+— Дональд Кнут</p>
+</blockquote>
+<h1>2. Фиксированное и динамическое окно</h1>
+<p><strong>Тема:</strong> Паттерны скользящего окна, каркасы алгоритмов, выбор стратегии сжатия<br />
+<strong>Ссылки:</strong> <span class="wikilink-unresolved" title="Заметка в разработке">Теория: Скользящее окно</span>, <span class="wikilink-unresolved" title="Заметка в разработке">Maximum Average Subarray I</span>, <span class="wikilink-unresolved" title="Заметка в разработке">Longest Substring</span>, <span class="wikilink-unresolved" title="Заметка в разработке">Minimum Window Substring</span></p>
+<hr />
+<h3 id="1-derevo-vybora-tipa-okna">1. Дерево выбора типа окна</h3>
 
+<p>При первом взгляде на задачу со скользящим окном Senior-инженер определяет категорию по двум ключевым признакам:</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2196,36 +2203,44 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-Window[&quot;Скользящее окно&quot;]:::process --&gt; Fixed[&quot;Фиксированное окно&lt;br&gt;Длина = k&quot;]
-Window --&gt; Variable[&quot;Динамическое окно&lt;br&gt;Длина переменна&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
 
-Fixed --&gt; F1[&quot;Окно всегда размера k&lt;br&gt;Сдвиг: добавляем новый элемент,&lt;br&gt;убираем старый&quot;]
-Fixed --&gt; F2[&quot;Применение:&lt;br&gt;Maximum Average Subarray&lt;br&gt;Sliding Window Maximum&quot;]
+Start[&quot;Задача на непрерывный подмассив/подстроку&quot;]:::entry --&gt; Q1{&quot;Длина окна K задана жестко&lt;br&gt;в условии задачи?&quot;}:::warning
 
-Variable --&gt; V1[&quot;Окно расширяется вправо&lt;br&gt;При нарушении условия&lt;br&gt;сжимается слева&quot;]
-Variable --&gt; V2[&quot;Применение:&lt;br&gt;Longest Substring&lt;br&gt;Minimum Window Substring&quot;]
+Q1 --&gt;|&quot;Да (K константно)&quot;| Fixed[&quot;1. Фиксированное окно&lt;br&gt;(Fixed-size Window)&quot;]:::success
+Fixed --&gt; F_Simple[&quot;Простая метрика: сумма, среднее&lt;br&gt;(сложение и вычитание)&quot;]:::process
+Fixed --&gt; F_Complex[&quot;Сложное состояние: анаграммы p&lt;br&gt;(частотный массив [26]int)&quot;]:::process
+
+Q1 --&gt;|&quot;Нет (длина плавает)&quot;| Variable[&quot;2. Динамическое окно&lt;br&gt;(Variable-size Window)&quot;]:::success
+Variable --&gt; V_Max[&quot;Ищем МАКСИМАЛЬНУЮ длину:&lt;br&gt;сжимаем только при нарушении&quot;]:::process
+Variable --&gt; V_Min[&quot;Ищем МИНИМАЛЬНУЮ длину:&lt;br&gt;сжимаем пока условие выполняется&quot;]:::process
   </pre>
 </div>
 
 
-<p>Общая черта: оба типа используют два указателя (<code>left</code> и <code>right</code>) и поддерживают некоторый аккумулятор состояния. Различие в том, <strong>когда и почему сдвигается левый указатель</strong>. В фиксированном окне <code>left</code> жёстко привязан к <code>right</code>: <code>left == right - k</code> (или <code>right - k + 1</code> при индексации). В динамическом окне <code>left</code> сдвигается <strong>по условию</strong> — когда состояние перестаёт удовлетворять заданному критерию.</p>
-<h3 id="fiksirovannoe-okno-zhyostkaya-dlina-prostoy-sdvig">Фиксированное окно: жёсткая длина, простой сдвиг</h3>
+<hr />
+<h3 id="2-tip-1-fiksirovannoe-skolzyashchee-okno">2. Тип 1: Фиксированное скользящее окно</h3>
 
-<p><strong>Когда применять:</strong><br />
-- Длина окна <code>k</code> задана явно (или вычисляется из условия однозначно).<br />
-- Требуется найти окно <strong>ровно</strong> длины <code>k</code> с оптимальной метрикой: максимум суммы, минимум среднего, максимум количества уникальных элементов и т.п.<br />
-- Иногда длина не является частью ответа, но мы точно знаем, что искомый подмассив/подстрока имеет строго определённый размер.</p>
-<p><strong>Общий каркас (Go):</strong></p>
+<h4 id="signaly-v-uslovii">Сигналы в условии:</h4>
+<ul>
+<li>«Дан массив и целое число $K$...»</li>
+<li>«Найти максимальное среднее значение среди всех подмассивов длины $K$».</li>
+<li>«Проверить, содержит ли строка перестановку длины $|P|$».</li>
+</ul>
+<h4 id="arkhitektura-algoritma">Архитектура алгоритма:</h4>
+<ol>
+<li><strong>Фаза инициализации:</strong> вычисляем состояние для самого первого окна <code>[0 .. K-1]</code>.</li>
+<li><strong>Фаза скольжения:</strong> запускаем цикл от индекса $K$ до $N-1$:<br />
+   - Включаем новый элемент: <code>state += nums[i]</code>.<br />
+   - Исключаем старый элемент, выпавший слева: <code>state -= nums[i-k]</code>.<br />
+   - Обновляем глобальный оптимум.</li>
+</ol>
+<h4 id="idiomatichnyy-go-karkas">Идиоматичный Go-каркас:</h4>
+
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2235,51 +2250,53 @@ Variable --&gt; V2[&quot;Применение:&lt;br&gt;Longest Substring&lt;br&
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func fixedWindow(nums []int, k int) int {
+  <pre class="language-go"><code class="language-go">func fixedSlidingWindow(nums []int, k int) int {
     if len(nums) &lt; k {
-        return 0 // или другую invalid-метку
+        return 0
     }
-    // Инициализация аккумулятора для первого окна [0, k)
-    state := 0
-    for i := 0; i &lt; k; i++ {
-        state += nums[i] // пример для суммы
-    }
-    answer := state
 
-    // Сдвиг окна
-    for i := k; i &lt; len(nums); i++ {
-        state += nums[i]      // добавляем новый элемент
-        state -= nums[i-k]    // убираем элемент, вышедший за левую границу
-        answer = max(answer, state)
+    // 1. Инициализация первого окна
+    currentSum := 0
+    for i := 0; i &lt; k; i++ {
+        currentSum += nums[i]
     }
-    return answer
+    maxSum := currentSum
+
+    // 2. Скольжение окна
+    for i := k; i &lt; len(nums); i++ {
+        currentSum += nums[i] - nums[i-k] // + новый, - старый
+        maxSum = max(maxSum, currentSum)
+    }
+
+    return maxSum
 }
 </code></pre>
 </div>
 
-<p><strong>Инвариант:</strong> после каждой итерации переменная <code>state</code> равна сумме (или иной метрике) элементов окна <code>[i-k+1, i]</code>. Левая граница окна всегда <code>right - k + 1</code>, правая — <code>right</code>. При сдвиге окна вправо состояние обновляется строго двумя операциями: добавлением нового элемента и удалением старого.</p>
-<p><strong>Механическая симпатия:</strong><br />
-- Элементы читаются последовательно, по одному. Аппаратный prefetcher загружает следующие кэш-линии без промахов.<br />
-- При использовании массива <code>[26]int</code> для состояния частот (например, в задачах на подстроки фиксированной длины) сам массив лежит на стеке, операции инкремента/декремента — прямая адресация, никаких указателей.<br />
-- Нет ветвлений, кроме цикла. Код компилируется в компактный машинный код, дружественный конвейеру.</p>
-<p><strong>Пример задачи:</strong> Maximum Average Subarray I (<a href="3-maximum-average-subarray-i.html" class="wikilink">3. Maximum Average Subarray I</a>) — окно длины <code>k</code>, максимизируем сумму.</p>
-<div class="callout callout-warning">
+<div class="callout callout-interview">
   <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Частая ошибка — путаница с индексами при удалении элемента: <code>state -= nums[i-k]</code>. Если <code>k</code> равно длине окна, то элемент, вышедший за границу, находится по индексу <code>i-k</code>. Если вы используете <code>i</code> от 0 до <code>len-k</code>, формулы будут другими. Senior всегда проверяет на минимальном примере: <code>k=1</code>, массив из одного элемента.</p>
+    <p><strong>Индекс вышедшего элемента:</strong><br />
+В цикле <code>for i := k; i &lt; len(nums); i++</code> текущий входящий элемент — <code>nums[i]</code>, а выбывающий левый элемент всегда находится строго по индексу <code>nums[i - k]</code>.</p>
   </div>
 </div>
 
-<h3 id="dinamicheskoe-okno-peremennaya-dlina-szhatie-po-usloviyu">Динамическое окно: переменная длина, сжатие по условию</h3>
+<hr />
+<h3 id="3-tip-2-dinamicheskoe-skolzyashchee-okno">3. Тип 2: Динамическое скользящее окно</h3>
 
-<p><strong>Когда применять:</strong><br />
-- Требуется найти окно <strong>минимальной</strong> или <strong>максимальной</strong> длины, удовлетворяющее условию.<br />
-- Условие <strong>монотонно</strong>: если окно <code>[left, right]</code> удовлетворяет условию, то любое его расширение вправо (при фиксированном <code>left</code>) тоже удовлетворяет (или наоборот). Обычно это свойство выполняется для сумм неотрицательных чисел, частот символов, количества уникальных элементов.<br />
-- Явного параметра <code>k</code> нет, или он является частью ответа.</p>
-<p><strong>Общий каркас (Go):</strong></p>
+<h4 id="signaly-v-uslovii">Сигналы в условии:</h4>
+<ul>
+<li>«Найти длину <strong>самой длинной</strong> подстроки без повторяющихся символов».</li>
+<li>«Найти <strong>минимальную</strong> длину подмассива с суммой не менее $S$».</li>
+<li>«Найти кратчайшее окно, содержащее все символы шаблона $T$».</li>
+</ul>
+<h4 id="arkhitektura-algoritma">Архитектура алгоритма:</h4>
+<p>Окно расширяется правым указателем <code>right</code>, пока оно легально. Как только инвариант нарушается, левый указатель <code>left</code> подтягивается вправо, сжимая окно и восстанавливая валидность.</p>
+<h4 id="karkas-dlya-poiska-maksimalnoy-dliny">Каркас для поиска МАКСИМАЛЬНОЙ длины:</h4>
+
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2289,92 +2306,150 @@ Variable --&gt; V2[&quot;Применение:&lt;br&gt;Longest Substring&lt;br&
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func dynamicWindow(s string) int {
-    var state State // зависит от задачи: сумма, map, массив частот
+  <pre class="language-go"><code class="language-go">func dynamicWindowMax(s string) int {
+    var freq [128]int
     left := 0
-    answer := 0 // или math.MaxInt для минимизации
-    for right := 0; right &lt; len(s); right++ {
-        // расширяем окно: добавляем s[right] в состояние
-        state.Add(s[right])
+    maxLen := 0
 
-        // пока условие НАРУШЕНО, сжимаем окно
-        for state.Violates() {
-            state.Remove(s[left])
+    for right := 0; right &lt; len(s); right++ {
+        // Расширяем окно вправо
+        freq[s[right]]++
+
+        // Сжимаем окно слева, пока условие нарушено
+        for freq[s[right]] &gt; 1 { // например, обнаружен дубликат
+            freq[s[left]]--
             left++
         }
 
-        // теперь окно валидно — обновляем ответ
-        answer = max(answer, right-left+1) // для максимизации
+        // Окно валидно — фиксируем максимальную длину
+        maxLen = max(maxLen, right-left+1)
     }
-    return answer
+
+    return maxLen
 }
 </code></pre>
 </div>
 
-<p><strong>Инвариант:</strong> после внутреннего цикла <code>for</code> окно <code>[left, right]</code> является <strong>минимальным валидным окном</strong> с правой границей <code>right</code>. То есть никакое окно <code>[l, right]</code> с <code>l &gt; left</code> не может быть валидным (иначе мы бы продолжали сжимать). Это гарантирует, что мы не пропустим оптимальное окно: для каждой правой границы мы рассматриваем наилучшую левую.</p>
-<p><strong>Механическая симпатия:</strong><br />
-- <code>left</code> и <code>right</code> движутся только вперёд: каждый из них суммарно сдвигается не более N раз. Это O(N) шагов.<br />
-- Внутренний цикл может выполняться много раз для одного <code>right</code>, но амортизированно каждая позиция <code>left</code> удаляется из окна ровно один раз.<br />
-- Состояние пересчитывается инкрементально: добавление элемента — O(1), удаление — O(1). Для map удаление элемента может быть дороже (поиск бакета), но всё равно амортизированно O(1).<br />
-- Выбор структуры состояния критичен для производительности. Если алфавит ограничен, массив <code>[128]int</code> вместо <code>map[byte]int</code> радикально снижает накладные расходы и исключает pointer chasing.</p>
-<p><strong>Пример задачи:</strong> Longest Substring Without Repeating Characters (<a href="4-longest-substring-without-repeating-characters.html" class="wikilink">4. Longest Substring Without Repeating Characters</a>) — окно без повторяющихся символов, максимизируем длину.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+<h4 id="karkas-dlya-poiska-minimalnoy-dliny">Каркас для поиска МИНИМАЛЬНОЙ длины:</h4>
+
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p>Новички иногда пишут <code>if</code> вместо <code>for</code> при сжатии окна. Важно понимать: после одного удаления окно может всё ещё нарушать условие, поэтому нужен <strong>цикл</strong> <code>for</code>, а не <code>if</code>. Ошибка приводит к неверному ответу для случаев, где нужно удалить несколько элементов (например, при переполнении суммы большим элементом).</p>
-  </div>
+  <pre class="language-go"><code class="language-go">func dynamicWindowMin(nums []int, target int) int {
+    left := 0
+    currentSum := 0
+    minLen := len(nums) + 1
+
+    for right := 0; right &lt; len(nums); right++ {
+        currentSum += nums[right]
+
+        // Пока условие выполняется — пытаемся СЖАТЬ окно слева,
+        // чтобы сделать его еще меньше!
+        for currentSum &gt;= target {
+            minLen = min(minLen, right-left+1)
+            currentSum -= nums[left]
+            left++
+        }
+    }
+
+    if minLen &gt; len(nums) {
+        return 0 // решение не найдено
+    }
+    return minLen
+}
+</code></pre>
 </div>
 
-<h3 id="sravnitelnaya-tablitsa-kogda-chto-primenyat">Сравнительная таблица: когда что применять</h3>
+<hr />
+<h3 id="4-gibridnyy-tip-fiksirovannaya-dlina-so-slozhnym-sostoyaniem">4. Гибридный тип: фиксированная длина со сложным состоянием</h3>
+
+<p>Иногда длина окна фиксирована ($K = len(pattern)$), но сравнение окон требует учета частот символов (например, <span class="wikilink-unresolved" title="Заметка в разработке">Permutation in String</span> или <span class="wikilink-unresolved" title="Заметка в разработке">Find All Anagrams</span>).</p>
+<p>Вместо примитивной суммы мы ведем массив частот:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">var targetFreq, windowFreq [26]int
+// Инициализируем шаблоны
+for i := 0; i &lt; len(p); i++ {
+    targetFreq[p[i]-'a']++
+    windowFreq[s[i]-'a']++
+}
+
+// Скользим окном длины len(p)
+for i := len(p); i &lt; len(s); i++ {
+    if windowFreq == targetFreq {
+        // Найдена анаграмма!
+    }
+    windowFreq[s[i]-'a']++           // вошел символ справа
+    windowFreq[s[i-len(p)]-'a']--   // вышел символ слева
+}
+</code></pre>
+</div>
+
+<p>В Go сравнение массивов фиксированного размера <code>windowFreq == targetFreq</code> выполняется <strong>мгновенно за один вызов <code>memequal</code></strong> (208 байт сравниваются аппаратно через регистры AVX/SSE).</p>
+<hr />
+<h3 id="5-sravnitelnaya-shpargalka">5. Сравнительная шпаргалка</h3>
 
 <div class="table-container"><table>
 <thead>
 <tr>
-<th>Характеристика</th>
-<th>Фиксированное окно</th>
-<th>Динамическое окно</th>
+<th style="text-align: left;">Параметр</th>
+<th style="text-align: left;">Фиксированное окно</th>
+<th style="text-align: left;">Динамическое (Максимум)</th>
+<th style="text-align: left;">Динамическое (Минимум)</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Длина окна</td>
-<td>Задана константой <code>k</code></td>
-<td>Переменна, ищется в процессе</td>
+<td style="text-align: left;"><strong>Условие сдвига <code>left</code></strong></td>
+<td style="text-align: left;">Автоматически каждый шаг ($i \ge K$)</td>
+<td style="text-align: left;">В цикле <code>while</code> (пока нарушен инвариант)</td>
+<td style="text-align: left;">В цикле <code>while</code> (пока инвариант соблюден)</td>
 </tr>
 <tr>
-<td>Сдвиг левого указателя</td>
-<td>Жёстко привязан к правому: <code>left = right - k + 1</code></td>
-<td>По условию, когда состояние нарушено</td>
+<td style="text-align: left;"><strong>Точка обновления ответа</strong></td>
+<td style="text-align: left;">После сдвига обеих границ</td>
+<td style="text-align: left;">После цикла сжатия <code>left</code></td>
+<td style="text-align: left;">Внутри цикла сжатия <code>left</code></td>
 </tr>
 <tr>
-<td>Внутренний цикл сжатия</td>
-<td>Отсутствует</td>
-<td>Присутствует (<code>for condition</code>)</td>
+<td style="text-align: left;"><strong>Инициализация ответа</strong></td>
+<td style="text-align: left;">Первое окно <code>[0 .. K-1]</code></td>
+<td style="text-align: left;"><code>0</code></td>
+<td style="text-align: left;">$\infty$ (<code>len(arr) + 1</code>)</td>
 </tr>
 <tr>
-<td>Инвариант</td>
-<td>Окно всегда размера <code>k</code></td>
-<td>Окно минимально/максимально валидно для текущего <code>right</code></td>
-</tr>
-<tr>
-<td>Типичные задачи</td>
-<td>Maximum Average Subarray, Sliding Window Maximum</td>
-<td>Longest Substring Without Repeating, Minimum Window Substring</td>
-</tr>
-<tr>
-<td>Сложность по времени</td>
-<td>O(N)</td>
-<td>O(N) амортизированно</td>
+<td style="text-align: left;"><strong>Типичные задачи</strong></td>
+<td style="text-align: left;">Max Average, Anagrams</td>
+<td style="text-align: left;">Longest Substring No Repeats</td>
+<td style="text-align: left;">Min Window Substring</td>
 </tr>
 </tbody>
 </table></div>
-<h3 id="gibridnye-sluchai-fiksirovannaya-dlina-s-usloviem">Гибридные случаи: фиксированная длина с условием</h3>
+<hr />
+<h3 id="6-mechanical-sympathy-predotvrashchenie-lovushek">6. Mechanical Sympathy: предотвращение ловушек</h3>
 
-<p>Иногда окно имеет фиксированную длину <code>k</code>, но проверка его валидности требует нетривиального состояния. Например, проверка анаграммы (Permutation in String, <a href="6-permutation-in-string.html" class="wikilink">6. Permutation in String</a>) или сравнение частот (Find All Anagrams in a String, <a href="9-find-all-anagrams-in-a-string.html" class="wikilink">9. Find All Anagrams in a String</a>). В таких случаях мы движем окно фиксированной длины, но состояние обновляем как в динамическом: при входе в окно нового символа инкрементируем его частоту, при выходе — декрементируем.</p>
-<p>Это гибрид: левая граница жёстко связана с правой (<code>left = right - k</code>), но состояние ведётся через структуру (чаще всего массив <code>[26]int</code>). Никакого цикла сжатия нет, потому что длина окна не меняется.</p>
+<div class="callout callout-caution">
+  <div class="callout-header">
+    <span class="callout-icon">🛑</span>
+    <span class="callout-title">Предостережение</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Ловушка забытого декремента:</strong><br />
+При сжатии окна <code>left++</code> начинающие разработчики часто забывают уменьшить счетчик в аккумуляторе: <code>state -= nums[left]</code>.<br />
+Всегда сначала модифицируйте аккумулятор, и только затем двигайте указатель:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2384,82 +2459,33 @@ Variable --&gt; V2[&quot;Применение:&lt;br&gt;Longest Substring&lt;br&
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func findAnagrams(s string, p string) []int {
-    if len(s) &lt; len(p) {
-        return nil
-    }
-    var target, window [26]int
-    for i := 0; i &lt; len(p); i++ {
-        target[p[i]-'a']++
-        window[s[i]-'a']++
-    }
-    var res []int
-    if window == target {
-        res = append(res, 0)
-    }
-    for i := len(p); i &lt; len(s); i++ {
-        window[s[i]-'a']++              // добавили новый символ
-        window[s[i-len(p)]-'a']--      // убрали старый
-        if window == target {
-            res = append(res, i-len(p)+1)
-        }
-    }
-    return res
-}
+  <pre class="language-go"><code class="language-go">state -= nums[left]
+left++
 </code></pre>
 </div>
 
-<p>Здесь <code>state</code> — это массив <code>[26]int</code>. Операции в цикле — аддитивные. Проверка <code>window == target</code> выполняется за O(26) = O(1). Никаких вложенных циклов, сложность O(N).</p>
-<h3 id="kak-na-sobesedovanii-vybrat-pravilnyy-tip">Как на собеседовании выбрать правильный тип</h3>
-
-<p>Senior-разработчик действует по чек-листу:</p>
-<ol>
-<li><strong>Есть ли в условии число <code>k</code>?</strong> Если да — скорее всего, фиксированное окно.</li>
-<li><strong>Требуется ли найти «минимальную длину», «максимальную длину» с условием?</strong> Если да — динамическое окно.</li>
-<li><strong>Монотонно ли условие?</strong> Если нет (например, присутствуют отрицательные числа), скользящее окно может не работать. В таком случае используйте префиксные суммы (<a href="../04-prefiksnye-summy/4-subarray-sum-equals-k.html" class="wikilink">4. Subarray Sum Equals K</a>) или другие паттерны.</li>
-<li><strong>Какова сложность пересчёта состояния?</strong> Если при добавлении/удалении элемента состояние обновляется за O(1), окно применимо. Если нужно пересчитывать всё заново — окно не даст выигрыша.</li>
-</ol>
-<p>На собеседовании полезно озвучить свой выбор: «Я вижу, что длина окна не задана, и нужно найти минимальную подстроку с заданными свойствами. Это классическое динамическое окно. Я буду поддерживать частотный массив и сжимать окно, пока оно валидно».</p>
-<h3 id="mekhanicheskaya-simpatiya-razlichiya-v-nagruzke-na-rantaym">Механическая симпатия: различия в нагрузке на рантайм</h3>
-
-<p>Хотя оба типа окон линейны, их профиль работы с памятью немного отличается.</p>
-<ul>
-<li><strong>Фиксированное окно</strong> обычно использует простейший аккумулятор (сумма, счётчик). Внутри цикла — две арифметические операции. Это самый быстрый возможный код: одна аллокация (слайс ответа), ноль pointer chasing, не более двух cache lines активны одновременно.</li>
-<li><strong>Динамическое окно</strong> может использовать map или массив частот. Внутренний цикл сжатия добавляет дополнительную работу, но амортизированно её мало. Если используется map, каждая вставка и удаление ключа затрагивает бакеты <code>hmap</code>, что вызывает pointer chasing и потенциальные эвакуации. Массив частот лишён этих проблем и всегда предпочтительнее, когда алфавит ограничен.</li>
-</ul>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Операция <code>delete(m, key)</code> в Go не освобождает память немедленно; она просто помечает ячейку как пустую. Бакет остаётся в памяти до следующей эвакуации или до тех пор, пока map живёт. При частых вставках и удалениях внутри скользящего окна map может накапливать пустые бакеты, увеличивая потребление памяти. Массив же просто уменьшает счётчик — никаких скрытых накладных расходов. Поэтому для состояний, где ключи дискретны и их диапазон известен, массив — безусловный выбор.</p>
   </div>
 </div>
 
-<h3 id="tipichnye-oshibki-obshchie-dlya-oboikh-tipov">Типичные ошибки: общие для обоих типов</h3>
+<div class="callout callout-warning">
+  <div class="callout-header">
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Ловушка размера окна:</strong><br />
+Всегда проверяйте крайний случай <code>len(nums) &lt; k</code> на первой строке функции для фиксированного окна. Попытка инициализировать первое окно приведет к панике выхода за границы массива (<code>index out of range</code>).</p>
+  </div>
+</div>
 
-<ol>
-<li>
-<p><strong>Отсутствие ранней проверки размера.</strong> Если <code>k &gt; len(nums)</code>, фиксированное окно должно сразу вернуть 0 или invalid. Без проверки цикл или выйдет за границы, или даст неверный результат.</p>
-</li>
-<li>
-<p><strong>Инициализация ответа.</strong> Для максимума — <code>0</code> (или <code>math.MinInt</code> для сумм с отрицательными). Для минимума — <code>math.MaxInt</code>. Неправильная инициализация приводит к тому, что ответ никогда не обновляется.</p>
-</li>
-<li>
-<p><strong>Путаница с индексами при вычислении границ.</strong> Особенно в фиксированном окне: <code>nums[i] - nums[i-k]</code> против <code>nums[i+1] - nums[i]</code>. Проверяйте на минимальных примерах.</p>
-</li>
-<li>
-<p><strong>Забытый <code>left++</code> в цикле сжатия.</strong> Если <code>left</code> не инкрементируется, цикл становится бесконечным.</p>
-</li>
-<li>
-<p><strong>Неверное обновление ответа при сжатии.</strong> В задачах на минимум длины окна ответ нужно обновлять <strong>после</strong> цикла сжатия (когда окно стало валидным). В задачах на максимум — тоже после, либо в цикле сжатия, если окно валидно до начала сжатия? Лучше чётко разделить: цикл сжатия — для восстановления инварианта, после него — обновление ответа.</p>
-</li>
-</ol>
-<h3 id="zaklyuchenie">Заключение</h3>
+<hr />
+<h3 id="7-itog">7. Итог</h3>
 
-<p>Фиксированное и динамическое окно — две грани одного мощного паттерна. Первое — молот для задач с заранее известной длиной, второе — скальпель для поиска оптимальных границ по условию. Senior Go-разработчик мгновенно выбирает нужный тип, руководствуясь ограничениями задачи и свойствами данных, и обосновывает свой выбор перед интервьюером. Он также помнит, что выбор структуры состояния (массив против map) — это не деталь реализации, а стратегическое решение, влияющее на производительность и GC.</p>
-<p>Теперь мы готовы к штурму конкретных задач. Начнём с классики фиксированного окна — <strong>Maximum Average Subarray I</strong>, где длина окна известна, и нужно найти максимальную сумму. <a href="3-maximum-average-subarray-i.html" class="wikilink">3. Maximum Average Subarray I</a></p>
+<ul>
+<li>Фиксированное окно — прямолинейный инструмент: одно сложение, одно вычитание на каждом шаге.</li>
+<li>Динамическое окно — эластичный инструмент: растягивается в поисках новых элементов и сжимается до предела, находя локальный оптимум.</li>
+</ul>
+<p>Переходим к первой практической задаче кластера — расчету максимального среднего значения: <span class="wikilink-unresolved" title="Заметка в разработке">3. Maximum Average Subarray I</span>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2487,7 +2513,7 @@ Variable --&gt; V2[&quot;Применение:&lt;br&gt;Longest Substring&lt;br&
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#dva-tipa-okon-edinaya-mekhanika-raznaya-strategiya-szhatiya">Два типа окон: единая механика, разная стратегия сжатия</a></li><li class="toc-item toc-h3"><a href="#fiksirovannoe-okno-zhyostkaya-dlina-prostoy-sdvig">Фиксированное окно: жёсткая длина, простой сдвиг</a></li><li class="toc-item toc-h3"><a href="#dinamicheskoe-okno-peremennaya-dlina-szhatie-po-usloviyu">Динамическое окно: переменная длина, сжатие по условию</a></li><li class="toc-item toc-h3"><a href="#sravnitelnaya-tablitsa-kogda-chto-primenyat">Сравнительная таблица: когда что применять</a></li><li class="toc-item toc-h3"><a href="#gibridnye-sluchai-fiksirovannaya-dlina-s-usloviem">Гибридные случаи: фиксированная длина с условием</a></li><li class="toc-item toc-h3"><a href="#kak-na-sobesedovanii-vybrat-pravilnyy-tip">Как на собеседовании выбрать правильный тип</a></li><li class="toc-item toc-h3"><a href="#mekhanicheskaya-simpatiya-razlichiya-v-nagruzke-na-rantaym">Механическая симпатия: различия в нагрузке на рантайм</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-obshchie-dlya-oboikh-tipov">Типичные ошибки: общие для обоих типов</a></li><li class="toc-item toc-h3"><a href="#zaklyuchenie">Заключение</a></li>
+    <li class="toc-item toc-h3"><a href="#1-derevo-vybora-tipa-okna">1. Дерево выбора типа окна</a></li><li class="toc-item toc-h3"><a href="#2-tip-1-fiksirovannoe-skolzyashchee-okno">2. Тип 1: Фиксированное скользящее окно</a></li><li class="toc-item toc-h4"><a href="#signaly-v-uslovii">Сигналы в условии:</a></li><li class="toc-item toc-h4"><a href="#arkhitektura-algoritma">Архитектура алгоритма:</a></li><li class="toc-item toc-h4"><a href="#idiomatichnyy-go-karkas">Идиоматичный Go-каркас:</a></li><li class="toc-item toc-h3"><a href="#3-tip-2-dinamicheskoe-skolzyashchee-okno">3. Тип 2: Динамическое скользящее окно</a></li><li class="toc-item toc-h4"><a href="#signaly-v-uslovii">Сигналы в условии:</a></li><li class="toc-item toc-h4"><a href="#arkhitektura-algoritma">Архитектура алгоритма:</a></li><li class="toc-item toc-h4"><a href="#karkas-dlya-poiska-maksimalnoy-dliny">Каркас для поиска МАКСИМАЛЬНОЙ длины:</a></li><li class="toc-item toc-h4"><a href="#karkas-dlya-poiska-minimalnoy-dliny">Каркас для поиска МИНИМАЛЬНОЙ длины:</a></li><li class="toc-item toc-h3"><a href="#4-gibridnyy-tip-fiksirovannaya-dlina-so-slozhnym-sostoyaniem">4. Гибридный тип: фиксированная длина со сложным состоянием</a></li><li class="toc-item toc-h3"><a href="#5-sravnitelnaya-shpargalka">5. Сравнительная шпаргалка</a></li><li class="toc-item toc-h3"><a href="#6-mechanical-sympathy-predotvrashchenie-lovushek">6. Mechanical Sympathy: предотвращение ловушек</a></li><li class="toc-item toc-h3"><a href="#7-itog">7. Итог</a></li>
   </ul>
 </aside>
 

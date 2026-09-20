@@ -2171,18 +2171,27 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~27 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
+              <span class="meta-tag read-time">⏱ ~19 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">1. Теория. Массивы и строки</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Массивы и строки — это zero-cost абстракции, с которых начинается любое алгоритмическое собеседование. В Go они устроены иначе, чем в C++ или Python: массивы являются типами-значениями фиксированного размера, строки иммутабельны и состоят из байтов, а основным рабочим инструментом служит слайс — динамическое «окно» в нижележащий массив. Понимание этих различий на уровне рантайма и памяти — обязательный фундамент для Senior-разработчика. Ошибка, допущенная в базовых операциях со слайсами или строками, может превратить O(N) решение в O(N²) по памяти, вызвать «утечку» через подслайс или панику на пустом месте.</p>
-<p>В этой статье мы систематизируем всё, что нужно знать о массивах и строках в Go перед решением задач нашего первого практического кластера: Two Sum, Three Sum, Maximum Subarray, Product of Array Except Self и других. Мы разберём внутреннее устройство, типовые приёмы (два указателя, скользящее окно, префиксные суммы — в обзоре) и, главное, механическую симпатию: как выбор структуры данных влияет на кэш-линии, escape analysis и сборщик мусора.</p>
-<h3 id="massivy-v-go-fiksirovannyy-kontrakt">Массивы в Go: фиксированный контракт</h3>
+            <blockquote>
+<p><em>«Структуры данных — это скелет программы. Если кости сложены правильно, алгоритмы движутся с естественной лёгкостью и грацией».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>Массивы и строки — это фундамент, с которого начинается практически любое алгоритмическое собеседование. Однако в языке Go эти базовые сущности устроены совсем не так, как в C++, Java или Python:<br />
+- Массив в Go — это строго типизированное значение фиксированной длины, которое копируется целиком при передаче.<br />
+- Строка — это неизменяемая (<code>immutable</code>) последовательность байтов UTF-8.<br />
+- Слайс (срез) — легковесный дескриптор, динамическое «окно» в непрерывный массив памяти.</p>
+<p>Непонимание того, как эти структуры взаимодействуют с аллокатором рантайма Go, кэш-линиями процессора и сборщиком мусора, способно превратить формально правильный алгоритм $O(N)$ в источник тяжелейших просадок производительности, фрагментации памяти и коварных паник в продакшене.</p>
+<p>В этой главе мы систематизируем фундаментальные знания о массивах, строках и срезах в Go перед переходом к практическому разбору задач: Two Sum, 3Sum, Maximum Subarray, Product of Array Except Self и других.</p>
+<hr />
+<h3 id="massivy-v-go-zhelezobetonnyy-kontrakt-pamyati">Массивы в Go: Железобетонный контракт памяти</h3>
 
-<p>Массив в Go — это последовательность элементов фиксированной длины, являющаяся <strong>типом-значением</strong>. Это ключевое отличие от C, где массив — это указатель на первый элемент. В Go при присваивании или передаче массива в функцию происходит <strong>копирование всех элементов</strong>.</p>
+<p>В отличие от языка Си, где имя массива тривиально деградирует в указатель на его первый элемент, в Go массив — это полноценный <strong>тип-значение (value type)</strong>:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2193,33 +2202,37 @@
     </button>
   </div>
   <pre class="language-go"><code class="language-go">var a [5]int
-b := a     // полная копия 5 × 8 = 40 байт
-b[0] = 1  // a[0] остался 0
+b := a    // ВНИМАНИЕ: полное побайтовое копирование 5 × 8 = 40 байт!
+b[0] = 42 // a[0] по-прежнему равен 0
 </code></pre>
 </div>
 
-<p>Размер массива — часть его типа: <code>[5]int</code> и <code>[6]int</code> — разные типы, несовместимые по присваиванию. Это делает массивы неудобными для функций общего назначения, поэтому в повседневном коде (и в DSA-задачах) мы почти всегда оперируем слайсами. Однако у массивов есть две ниши, критически важные для алгоритмических собеседований:</p>
+<p>Размер массива является неотъемлемой частью его типа: <code>[5]int</code> и <code>[6]int</code> — это два абсолютно разных типа, несовместимых при присваивании. Это делает массивы неудобными для написания обобщённых функций (до появления дженериков), поэтому в прикладном коде мы оперируем срезами (<code>[]T</code>).</p>
+<p>Однако у фиксированных массивов в Go есть две критические ниши, где Senior-разработчик обязан предпочесть именно массив:</p>
 <ol>
-<li>
-<p><strong>Фиксированный алфавит.</strong> Если задача гарантирует ASCII (128 символов) или английские строчные буквы (26 символов), массив <code>[26]int</code> или <code>[128]int</code> — это идеальная структура для частотного словаря. Он размещается на стеке, доступ по индексу — прямая адресация, нет pointer chasing, нет нагрузки на GC, и два массива можно сравнить оператором <code>==</code> за O(размер), что для 26 элементов — константа, близкая к мгновенной.</p>
-</li>
-<li>
-<p><strong>Разменные монеты в DP.</strong> Иногда в задачах на динамическое программирование номиналы монет — это небольшой фиксированный набор. Здесь массив также предпочтительнее слайса, потому что его размер известен компилятору, и он гарантированно не убегает в кучу.</p>
-</li>
+<li><strong>Фиксированные алфавиты и частотные словари:</strong><br />
+   Если условие задачи гарантирует символы латиницы (<code>a-z</code>) или таблицу ASCII, структура <code>var freq [26]int</code> или <code>[128]int</code> идеальна. Она гарантированно размещается на стеке вызова, не порождает аллокаций в куче, даёт сверхбыстрый доступ по прямой адресации без вычисления хэшей, а два таких массива можно мгновенно сравнить между собой оператором <code>==</code> за $O(1)$ процессорных инструкций!</li>
+<li><strong>Локальные матрицы и константные таблицы:</strong><br />
+   Фиксированные размеры позволяют компилятору идеально соптимизировать машинный код, избегая лишних проверок границ (<code>bounds checks elimination</code>).</li>
 </ol>
 <div class="callout callout-info">
   <div class="callout-header">
     <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+    <span class="callout-title">Под капотом: Escape Analysis и стек</span>
   </div>
   <div class="callout-body">
-    <p>Escape analysis — алгоритм компилятора Go, решающий, выделять переменную в куче или на стеке. Массив фиксированного размера, который не покидает функцию и не передаётся по указателю наружу, будет размещён на стеке. Стек — это LIFO-область памяти, операции с которой сводятся к сдвигу указателя стека (stack pointer) на несколько тактов CPU. Никакого <code>malloc</code>, никакой фрагментации, никакого GC. Поэтому <code>var freq [26]int</code> внутри горячего цикла — это «бесплатно», тогда как <code>make(map[byte]int)</code> — это аллокация <code>runtime.hmap</code> в куче и будущая работа для GC.</p>
+    <p>Механизм <code>escape analysis</code> компилятора Go решает, где выделить память под переменную — на стеке или в куче (<code>heap</code>). Массив фиксированного размера, который не передается по указателю наружу и не оборачивается в интерфейс, выделяется на стеке горутины.  </p>
+<p>Выделение памяти на стеке сводится к банальному сдвигу регистра указателя стека (<code>RSP</code>) на один такт процессора. Никаких системных вызовов, никакой фрагментации кучи и нулевая нагрузка на сборщик мусора (GC). Именно поэтому <code>var freq [26]int</code> внутри цикла работает на порядки быстрее <code>make(map[byte]int)</code>.</p>
   </div>
 </div>
 
-<h3 id="slaysy-dinamicheskoe-okno-v-pamyat">Слайсы: динамическое «окно» в память</h3>
+<hr />
+<h3 id="srezy-slices-umnoe-dinamicheskoe-okno">Срезы (Slices): Умное динамическое окно</h3>
 
-<p>Слайс — это трёхсловный заголовок: указатель на нижележащий массив, длина (<code>len</code>) и вместимость (<code>cap</code>). Сам слайс — value-type (копируется заголовок), но данные, на которые он указывает, разделяются.</p>
+<p>Срез в Go — это компактный 24-байтный заголовок на 64-битной архитектуре (3 машинных слова):<br />
+1. <code>Data unsafe.Pointer</code> — указатель на базовый массив;<br />
+2. <code>Len int</code> — текущее количество элементов;<br />
+3. <code>Cap int</code> — максимальная вместимость до необходимости реаллокации.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2230,139 +2243,13 @@ b[0] = 1  // a[0] остался 0
     </button>
   </div>
   <pre class="language-go"><code class="language-go">type slice struct {
-    Data unsafe.Pointer
-    Len  int
-    Cap  int
+    array unsafe.Pointer
+    len   int
+    cap   int
 }
 </code></pre>
 </div>
 
-<p>Из этого устройства следуют все нюансы, которые Senior обязан знать.</p>
-<p><strong>1. Срезы и утечки памяти.</strong><br />
-Если вы делаете срез от большого слайса, новый заголовок указывает на тот же нижележащий массив. И пока этот срез жив, весь исходный массив не может быть собран GC.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func firstN(data []byte, n int) []byte {
-    return data[:n] // держит весь data в памяти
-}
-</code></pre>
-</div>
-
-<p>На собеседовании это может всплыть в вопросе: «Как ваша функция взаимодействует с GC?» Senior-ответ: «Я сделаю явное копирование через <code>make</code> + <code>copy</code>, если <code>data</code> большой, а <code>n</code> маленький, чтобы избежать утечки».</p>
-<p><strong>2. Рост слайса.</strong><br />
-Когда <code>append</code> исчерпывает <code>cap</code>, Go выделяет новый массив (обычно удвоенного размера) и копирует элементы. В цикле на 10⁵ итераций это может произойти ~17 раз с суммарным копированием ~200 тыс. элементов. Решение: <code>make([]int, 0, expectedSize)</code>.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p><code>make([]int, 5)</code> создаёт слайс длиной 5 (все элементы нули), а <code>make([]int, 0, 5)</code> — пустой слайс с вместимостью 5. Методы <code>append</code> во втором случае добавляют элементы, не перезаписывая существующие. Путаница между этими двумя формами — частая причина off-by-one ошибок и паник.</p>
-  </div>
-</div>
-
-<p><strong>3. Слайс как стек и очередь.</strong><br />
-Идиоматичный Go не использует <code>container/list</code> для алгоритмических задач. Вместо него — слайсы:<br />
-- <strong>Стек:</strong> <code>s = append(s, v)</code> и <code>s = s[:len(s)-1]</code>. Амортизированное O(1), никаких дополнительных аллокаций, кроме роста.<br />
-- <strong>Очередь:</strong> <code>q = append(q, v)</code> и <code>q = q[1:]</code>. Здесь есть нюанс: <code>q[1:]</code> сдвигает начало слайса, но нижележащий массив не освобождается. При длительной работе с очередью это может привести к накоплению неиспользуемой памяти (в production-коде используют кольцевой буфер, но для собеседования слайс-очередь допустима с комментарием).</p>
-<p><strong>4. In-place модификации.</strong><br />
-Многие задачи требуют модификации слайса без дополнительной памяти. Идиоматичный приём — «два указателя» на одном слайсе: один читает, другой пишет.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Удаление дубликатов in-place (паттерн двух указателей)
-func removeDuplicates(nums []int) int {
-    if len(nums) == 0 {
-        return 0
-    }
-    write := 0
-    for read := 1; read &lt; len(nums); read++ {
-        if nums[read] != nums[write] {
-            write++
-            nums[write] = nums[read]
-        }
-    }
-    return write + 1
-}
-</code></pre>
-</div>
-
-<p>Этот код не выделяет память, работает за O(N) и является эталоном идиоматичного Go.</p>
-<h3 id="stroki-v-go-immutabelnye-posledovatelnosti-baytov">Строки в Go: иммутабельные последовательности байтов</h3>
-
-<p>Строка в Go — это иммутабельный слайс байтов с дополнительными гарантиями. Структура <code>string</code> аналогична слайсу, но без поля <code>Cap</code>:</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">type stringStruct struct {
-    str unsafe.Pointer
-    len int
-}
-</code></pre>
-</div>
-
-<p>Из этого следуют важнейшие для собеседований свойства:</p>
-<p><strong>1. <code>len(s)</code> возвращает количество байтов, а не символов.</strong><br />
-Если строка содержит Unicode (например, кириллицу), <code>len("Привет")</code> — это 12 (каждая кириллическая буква — 2 байта в UTF-8), а не 6. Задачи на палиндромы, анаграммы, поиск подстроки ОБЯЗАНЫ уточнять алфавит. Если алфавит — только ASCII, мы работаем с байтами в индексации. Если Unicode — используем <code>for _, r := range s</code>, который декодирует руны.</p>
-<p><strong>2. Иммутабельность.</strong><br />
-<code>s[0] = 'x'</code> — ошибка компиляции. Любая «модификация» строки создаёт новую строку. Конкатенация в цикле <code>s += "a"</code> — это O(N²) по времени и памяти. Идиоматичное решение — <code>strings.Builder</code>, который внутри использует слайс байтов и растёт амортизированно.</p>
-<p><strong>3. Преобразование <code>string</code> ↔ <code>[]byte</code> копирует данные.</strong><br />
-Каждое такое преобразование — это аллокация и копирование. В задачах, где строка большая, а вам нужно часто модифицировать символы, выгоднее сразу работать с <code>[]byte</code> и в конце конвертировать обратно.</p>
-<p><strong>4. Срезы строк.</strong><br />
-<code>s[start:end]</code> не копирует данные, а создаёт новую строку-заголовок, указывающую на тот же нижележащий массив. Это O(1) операция. Но поскольку строка иммутабельна, утечек памяти, как со слайсами, здесь не возникает.</p>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p>Вопрос: «Как проверить палиндром, если строка может содержать Unicode?»<br />
-Ответ: «Я конвертирую строку в <code>[]rune</code>, чтобы оперировать кодовыми точками, а не байтами. Это даёт O(N) дополнительной памяти. Если память критична, можно использовать <code>for _, r := range s</code> с двухпроходным алгоритмом или нормализацию NFC/NFD, но это выходит за рамки DSA. В рамках собеседования я выберу <code>[]rune</code> для читаемости.»</p>
-  </div>
-</div>
-
-<h3 id="tipovye-operatsii-i-priyomy-v-massivakh-i-strokakh">Типовые операции и приёмы в массивах и строках</h3>
-
-<p>Внутри кластера «Массивы и строки» мы будем решать задачи, опирающиеся на несколько фундаментальных приёмов. Перечислим их кратко, чтобы при встрече с задачей вы могли мгновенно узнать знакомый каркас.</p>
-<p><strong>1. Два указателя (Two Pointers).</strong><br />
-Один из самых частых паттернов для отсортированных массивов и строк. Два индекса движутся навстречу друг другу (или в одном направлении с разной скоростью), уменьшая пространство поиска на каждом шаге. Применяется в Two Sum II, 3Sum, Valid Palindrome, Container With Most Water.</p>
-<p><strong>2. Скользящее окно (Sliding Window).</strong><br />
-Для задач на непрерывные подмассивы/подстроки. Поддерживаем окно <code>[left, right)</code> и инкрементально обновляем его метрику (сумму, частоты). Правый указатель расширяет окно, левый — сжимает, когда условие нарушено. Требует монотонности условия (обычно не работает с отрицательными числами).</p>
-<p><strong>3. Префиксные суммы (Prefix Sums).</strong><br />
-Если нужно быстро отвечать на запросы о сумме подмассива или разбивать массив по условию. Строим массив <code>prefix[i+1] = prefix[i] + nums[i]</code>, тогда сумма <code>[L, R]</code> = <code>prefix[R+1] - prefix[L]</code> за O(1). Работает с отрицательными числами.</p>
-<p><strong>4. Хеш-таблица (или массив) для хранения индексов/частот.</strong><br />
-Задачи вида «найти пару с суммой», «группировка анаграмм», «найти первый уникальный символ» — все они строятся вокруг словаря. В Go выбор между <code>map</code> и массивом <code>[26]int</code>/<code>[128]int</code> — это осознанный trade-off между универсальностью и производительностью.</p>
-<p><strong>5. Разворот (Reversal).</strong><br />
-Иногда задача на ротацию или перестановку элементов решается через трёхкратный разворот подмассивов. В Go разворот слайса in-place идиоматичен: <code>for i, j := 0, len(s)-1; i &lt; j; i, j = i+1, j-1 { s[i], s[j] = s[j], s[i] }</code>.</p>
-<p><strong>6. Алгоритм Кадане (Kadane's Algorithm).</strong><br />
-Для Maximum Subarray — классика динамического программирования за O(N) с O(1) памяти. <code>maxEndingHere = max(nums[i], maxEndingHere + nums[i])</code>.</p>
-<p><strong>7. Сортировка как предобработка.</strong><br />
-Многие задачи (3Sum, Merge Intervals) решаются через предварительную сортировку. В Go <code>sort.Ints</code> работает in-place и использует pdqsort (pattern-defeating quicksort) — очень быстрая, O(N log N) в среднем и худшем случае.</p>
-<h3 id="mechanical-sympathy-kak-massivy-i-stroki-vzaimodeystvuyut-s-zhelezom">Mechanical Sympathy: как массивы и строки взаимодействуют с железом</h3>
-
-<p>Почему Senior-разработчик выберет <code>[26]int</code> вместо <code>map[byte]int</code> для задачи на анаграммы, даже если обе структуры дают O(1) доступ? Ответ лежит не в Big O, а в архитектуре компьютера.</p>
-<p><strong>Cache lines.</strong> Процессор загружает данные из RAM в кэш не побайтово, а блоками по 64 байта (cache line). Массив <code>[26]int</code> занимает 208 байтов и помещается в несколько кэш-линий L1. Когда вы итерируете по нему, prefetcher загружает следующие линии заранее. Map же — это pointer chasing: каждый бакет может находиться в произвольном месте памяти, вызывая cache miss на каждом обращении.</p>
-<p><strong>Pointer chasing.</strong> Каждое обращение к map требует: взять указатель на <code>hmap</code>, вычислить хеш, найти бакет, пройти по цепочке переполнения. Это минимум 3–4 разыменования указателей, каждое из которых может промахнуться мимо кэша. Массив: <code>&amp;freq[ch]</code> — одна инструкция LEA.</p>
-<p><strong>GC pressure.</strong> Map порождает объекты в куче (бакеты), которые GC должен обходить и освобождать. Массив на стеке невидим для GC.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2377,42 +2264,159 @@ func removeDuplicates(nums []int) int {
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
 classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
 classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-Task[&quot;Задача: частотный анализ&lt;br&gt;символов в строке&quot;]:::warning --&gt; Decision{&quot;Алфавит&lt;br&gt;ограничен?&quot;}
-Decision --&gt;|&quot;Да, ASCII&lt;br&gt;или a-z&quot;| Array[&quot;[26]int или [128]int&lt;br&gt;на стеке&quot;]
-Decision --&gt;|&quot;Unicode&quot;| Map[&quot;map[rune]int&lt;br&gt;в куче&quot;]
+classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
 
-Array --&gt; A1[&quot;Прямая адресация&lt;br&gt;кэш-локальность&lt;br&gt;сравнение ==&quot;]
-Array --&gt; A2[&quot;Нет pointer chasing&lt;br&gt;Нет GC-нагрузки&quot;]
+Slice[&quot;Slice Header&lt;br&gt;24 байта на стеке&quot;]:::entry --&gt; Ptr[&quot;Data: *[8]int&quot;]:::accent
+Slice --&gt; Len[&quot;Len = 4&quot;]:::process
+Slice --&gt; Cap[&quot;Cap = 8&quot;]:::warning
 
-Map --&gt; M1[&quot;Хеширование&lt;br&gt;поиск бакета&lt;br&gt;цепочки&quot;]
-Map --&gt; M2[&quot;Pointer chasing&lt;br&gt;GC обходит бакеты&quot;]
+Ptr --&gt; Arr[&quot;Базовый массив в памяти:&lt;br&gt;[ 10 | 20 | 30 | 40 | _ | _ | _ | _ ]&quot;]:::success
   </pre>
 </div>
 
 
-<p>На собеседовании Senior-уровня вы не просто пишете код — вы объясняете этот выбор, когда он релевантен.</p>
-<h3 id="svyaz-s-drugimi-razdelami">Связь с другими разделами</h3>
+<p>Из этой трехкомпонентной структуры следуют фундаментальные законы работы:</p>
+<h4 id="1-lovushka-skrytogo-uderzhaniya-pamyati-memory-leaks-via-sub-slices">1. Ловушка скрытого удержания памяти (Memory Leaks via Sub-slices)</h4>
+<p>Когда вы делаете срез от гигантского массива, новый заголовок среза продолжает ссылаться на исходный базовый массив:</p>
 
-<p>Кластер «Массивы и строки» — это входная точка. Освоив его, вы естественно перейдёте к более специализированным паттернам:<br />
-- <strong>Два указателя</strong> — выделены в отдельный кластер (<a href="../02-dva-ukazatelya/1-teoriya-dva-ukazatelya.html" class="wikilink">1. Теория. Два указателя</a>) из-за обилия вариаций.<br />
-- <strong>Скользящее окно</strong> — следующий по сложности кластер (<a href="../03-skolzyashchee-okno/1-teoriya-skolzyashchee-okno.html" class="wikilink">1. Теория. Скользящее окно</a>), где мы углубимся в динамическое изменение окна.<br />
-- <strong>Префиксные суммы</strong> — кластер (<a href="../04-prefiksnye-summy/1-teoriya-prefiksnye-summy.html" class="wikilink">1. Теория. Префиксные суммы</a>), где мы научимся решать задачи с произвольными запросами на диапазоны.<br />
-- <strong>Сортировка и бинарный поиск</strong> — кластер <a href="../09-binarnyy-poisk/1-teoriya-binarnyy-poisk.html" class="wikilink">1. Теория. Бинарный поиск</a>, где мы разберём <code>sort.Search</code> и поиск по ответу.</p>
-<p>Все эти темы — ветви одного древа, корень которого — грамотная работа со слайсами и строками.</p>
-<h3 id="zaklyuchenie">Заключение</h3>
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">func getHeader(hugeData []byte) []byte {
+    return hugeData[:8] // ОПАСНОСТЬ: держит в памяти гигабайтный hugeData!
+}
+</code></pre>
+</div>
 
-<p>Массивы и строки в Go — это не примитивы, а высокоуровневые абстракции с глубокими последствиями для производительности и корректности. Слайс — это власть над памятью, которая может обернуться утечкой. Строка — это иммутабельный байтовый срез, который нельзя индексировать по рунам без конвертации. Массив — это стековая аллокация и сравнение за O(1), которое не заменит ни один map. Всё это Senior-разработчик держит в голове, когда за 45 минут пишет решение, которое должно быть не просто «Accepted», а production-grade в миниатюре.</p>
-<p>Теперь, вооружённые теорией, переходим к практике. Следующая статья откроет нам конкретные типовые операции и приёмы, которые мы будем использовать в каждой задаче кластера. <a href="2-tipovye-operatsii-i-priyomy.html" class="wikilink">2. Типовые операции и приёмы</a></p>
+<p>Пока жива маленькая ссылка на первые 8 байт, GC не имеет права освободить весь исходный массив.<br />
+<strong>Лечение:</strong> Если подмассив должен жить долго, принудительно скопируйте его:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">res := make([]byte, 8)
+copy(res, hugeData[:8])
+return res
+</code></pre>
+</div>
+
+<h4 id="2-kontrol-emkosti-i-tsena-reallokatsiy">2. Контроль емкости и цена реаллокаций</h4>
+<p>Когда встроенная функция <code>append</code> превышает текущий <code>cap</code>, рантайм выделяет новый массив большего размера (удвоение для срезов &lt; 256 элементов и коэффициент ~1.25 далее) и копирует туда данные.<br />
+При обработке массива на $10^5$ элементов без предварительного указания емкости произойдет более 15 скрытых реаллокаций с постоянным копированием данных в куче.<br />
+<strong>Правило:</strong> Всегда пишите <code>make([]int, 0, expectedCapacity)</code>.</p>
+<div class="callout callout-warning">
+  <div class="callout-header">
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Ловушка `make([]int, n)` vs `make([]int, 0, n)`</span>
+  </div>
+  <div class="callout-body">
+    <p><code>make([]int, 5)</code> создает слайс длиной 5, заполненный нулями <code>[0, 0, 0, 0, 0]</code>. Последующий <code>append(s, 10)</code> добавит число 10 на <strong>шестую</strong> позицию, увеличив слайс до 6 элементов!<br />
+Если вы планируете заполнять срез через <code>append</code>, создавайте его как <code>make([]int, 0, 5)</code>.</p>
+  </div>
+</div>
+
+<h4 id="3-idiomatichnyy-stek-i-ochered-na-srezakh">3. Идиоматичный стек и очередь на срезах</h4>
+<p>В алгоритмических задачах Go категорически не рекомендуется использовать связные списки (<code>container/list</code>). Срезы быстрее в сотни раз за счет непрерывности размещения в кэше CPU:<br />
+- <strong>Стек (LIFO):</strong><br />
+<code>go
+  stack = append(stack, val)           // Push
+  val = stack[len(stack)-1]           // Peek
+  stack = stack[:len(stack)-1]        // Pop</code><br />
+- <strong>Очередь (FIFO):</strong><br />
+<code>go
+  queue = append(queue, val)          // Enqueue
+  val = queue[0]                      // Dequeue
+  queue = queue[1:]                   // Сдвиг окна (O(1))</code></p>
+<hr />
+<h3 id="stroki-neizmenyaemye-baytovye-posledovatelnosti">Строки: Неизменяемые байтовые последовательности</h3>
+
+<p>Строка в Go — это структура из двух полей: указателя на неизменяемый байтовый массив и длины в байтах:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">type StringHeader struct {
+    Data uintptr
+    Len  int
+}
+</code></pre>
+</div>
+
+<p>Ключевые свойства строк, критичные для интервью:<br />
+1. <strong><code>len(s)</code> считает байты, а не символы!</strong><br />
+   Для ASCII <code>len("hello") == 5</code>. Но для строки на кириллице <code>len("Привет") == 12</code>, поскольку в UTF-8 каждый русский символ кодируется 2 байтами. Если задача требует манипуляции с Unicode-символами, строку необходимо приводить к срезу рун <code>[]rune(s)</code>.<br />
+2. <strong>Конкатенация в цикле убивает производительность:</strong><br />
+   Поскольку строка неизменяема, операция <code>s += char</code> на каждой итерации выделяет новый буфер памяти и копирует туда всю накопленную строку. Сложность цикла из $N$ итераций превращается в катастрофические $O(N^2)$ по времени и аллокациям.<br />
+3. <strong><code>strings.Builder</code> — инструмент профессионала:</strong><br />
+   Внутри <code>strings.Builder</code> накапливает данные в динамическом байтовом буфере, а метод <code>String()</code> возвращает результат без дополнительного копирования памяти.</p>
+<hr />
+<h3 id="mechanical-sympathy-pochemu-massiv-pobezhdaet-kartu-v-10-raz">Mechanical Sympathy: Почему массив побеждает карту в 10 раз</h3>
+
+<p>Почему Senior Go-инженер при анализе строки выберет <code>[128]int</code>, а не <code>map[byte]int</code>, даже если Big-O для обеих структур заявляет доступ за $O(1)$?</p>
+
+<div class="mermaid-wrapper">
+  <div class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
+    </button>
+  </div>
+  <pre class="mermaid">
+flowchart TD
+classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+
+Task[&quot;Задача: подсчет частот символов&quot;]:::entry --&gt; Decision{&quot;Алфавит строго фиксирован?&lt;br&gt;(ASCII / латиница)&quot;}:::warning
+
+Decision --&gt;|&quot;Да: a-z или ASCII&quot;| Array[&quot;Массив [26]int / [128]int&lt;br&gt;на стеке функции&quot;]:::success
+Decision --&gt;|&quot;Нет: произвольный Unicode&quot;| Map[&quot;Хеш-таблица map[rune]int&lt;br&gt;в куче (heap)&quot;]:::process
+
+Array --&gt; A1[&quot;1. Прямая адресация через смещение (1 такт)&lt;br&gt;2. 100% попадание в L1-кэш (Cache Locality)&lt;br&gt;3. Нулевая нагрузка на Garbage Collector&lt;br&gt;4. Мгновенное сравнение ==&quot;]:::success
+
+Map --&gt; M1[&quot;1. Вычисление хеш-функции (оверхед CPU)&lt;br&gt;2. Поиск по цепочке бакетов (Pointer Chasing)&lt;br&gt;3. Аллокация hmap в куче и нагрузка на GC&lt;br&gt;4. Промахи мимо кэша CPU (Cache Miss)&quot;]:::process
+  </pre>
+</div>
+
+
+<ol>
+<li><strong>Кэш-линии CPU (64 байта):</strong> Массив <code>[26]int</code> занимает ровно 208 байтов — это всего три кэш-линии процессора. При первом обращении аппаратный предвыборщик (<code>hardware prefetcher</code>) загружает весь массив в ультрабыстрый L1-кэш ядра.</li>
+<li><strong>Pointer Chasing (Погоня за указателями):</strong> Структура <code>hmap</code> хранит бакеты разрозненно в оперативной памяти. Каждый поиск ключа требует разыменования указателей, что при неблагоприятном сценарии приводит к штрафу в ~200 тактов процессора на чтение из RAM при каждом Cache Miss.</li>
+<li><strong>Нагрузка на сборщик мусора (GC):</strong> Миллионы короткоживущих карт создают колоссальное давление на рантайм Go, вынуждая GC чаще включать фазу Mark-Sweep и отбирать процессорные ядра у рабочих горутин.</li>
+</ol>
+<hr />
+<h3 id="rezyume">Резюме</h3>
+
+<p>Массивы, слайсы и строки в Go — это первоклассные инструменты системного программирования. Глубокое понимание их внутреннего устройства позволяет писать не просто формально корректный, а механически совершенный код:<br />
+- Используйте плоские массивы <code>[N]int</code> для фиксированных алфавитов.<br />
+- Предвыделяйте емкость срезов через <code>make([]T, 0, cap)</code>.<br />
+- Собирайте строки только через <code>strings.Builder</code>.<br />
+- Помните про разделение памяти при взятии подслайсов.</p>
+<p>В следующей лекции мы детально разберем типовые алгоритмические операции и приемы, которые станут нашим главным оружием в решении задач: <a href="2-tipovye-operatsii-i-priyomy.html" class="wikilink">2. Типовые операции и приёмы</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2440,7 +2444,7 @@ Map --&gt; M2[&quot;Pointer chasing&lt;br&gt;GC обходит бакеты&quot
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#massivy-v-go-fiksirovannyy-kontrakt">Массивы в Go: фиксированный контракт</a></li><li class="toc-item toc-h3"><a href="#slaysy-dinamicheskoe-okno-v-pamyat">Слайсы: динамическое «окно» в память</a></li><li class="toc-item toc-h3"><a href="#stroki-v-go-immutabelnye-posledovatelnosti-baytov">Строки в Go: иммутабельные последовательности байтов</a></li><li class="toc-item toc-h3"><a href="#tipovye-operatsii-i-priyomy-v-massivakh-i-strokakh">Типовые операции и приёмы в массивах и строках</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-kak-massivy-i-stroki-vzaimodeystvuyut-s-zhelezom">Mechanical Sympathy: как массивы и строки взаимодействуют с железом</a></li><li class="toc-item toc-h3"><a href="#svyaz-s-drugimi-razdelami">Связь с другими разделами</a></li><li class="toc-item toc-h3"><a href="#zaklyuchenie">Заключение</a></li>
+    <li class="toc-item toc-h3"><a href="#massivy-v-go-zhelezobetonnyy-kontrakt-pamyati">Массивы в Go: Железобетонный контракт памяти</a></li><li class="toc-item toc-h3"><a href="#srezy-slices-umnoe-dinamicheskoe-okno">Срезы (Slices): Умное динамическое окно</a></li><li class="toc-item toc-h4"><a href="#1-lovushka-skrytogo-uderzhaniya-pamyati-memory-leaks-via-sub-slices">1. Ловушка скрытого удержания памяти (Memory Leaks via Sub-slices)</a></li><li class="toc-item toc-h4"><a href="#2-kontrol-emkosti-i-tsena-reallokatsiy">2. Контроль емкости и цена реаллокаций</a></li><li class="toc-item toc-h4"><a href="#3-idiomatichnyy-stek-i-ochered-na-srezakh">3. Идиоматичный стек и очередь на срезах</a></li><li class="toc-item toc-h3"><a href="#stroki-neizmenyaemye-baytovye-posledovatelnosti">Строки: Неизменяемые байтовые последовательности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-pochemu-massiv-pobezhdaet-kartu-v-10-raz">Mechanical Sympathy: Почему массив побеждает карту в 10 раз</a></li><li class="toc-item toc-h3"><a href="#rezyume">Резюме</a></li>
   </ul>
 </aside>
 

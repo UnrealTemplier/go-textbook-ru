@@ -2171,17 +2171,24 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~24 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. Варианты применения</h1>
           </header>
 
           <div class="article-markdown">
-            <p>В предыдущей статье <a href="1-teoriya-dva-ukazatelya.html" class="wikilink">1. Теория. Два указателя</a> мы разобрали три основные разновидности паттерна «два указателя»: встречные указатели, быстрый/медленный и скользящее окно (последнее вынесено в отдельный кластер). Теперь задача — научиться мгновенно определять, какой именно вариант нужен для конкретной задачи, и какие нюансы в реализации диктует Go.</p>
-<p>Правильный выбор варианта — это половина решения. Ошибка здесь приводит либо к неверному алгоритму (встречные указатели на несортированном массиве), либо к неидиоматичному коду (использование <code>container/list</code> вместо слайса для fast/slow), либо к лишним аллокациям, которые нагружают GC без всякой пользы. Senior-разработчик узнаёт «профиль задачи» за секунды и применяет нужный подтип как рефлекс. В этой статье мы систематизируем все варианты и снабдим их чёткими критериями выбора.</p>
-<h3 id="karta-prinyatiya-resheniy-kakoy-variant-primenyat">Карта принятия решений: какой вариант применять</h3>
+            <blockquote>
+<p><em>«Прежде чем бросаться писать код, окиньте задачу взглядом и найдите в ней симметрию или монотонность. Природа любит простоту».</em><br />
+— Чарльз Хоар</p>
+</blockquote>
+<h1>2. Варианты применения двух указателей</h1>
+<p><strong>Тема:</strong> Классификация паттернов, дерево принятия решений, сигналы задачи на интервью<br />
+<strong>Ссылки:</strong> <span class="wikilink-unresolved" title="Заметка в разработке">Теория: Два указателя</span>, <span class="wikilink-unresolved" title="Заметка в разработке">Valid Palindrome</span>, <span class="wikilink-unresolved" title="Заметка в разработке">Two Sum II</span>, <span class="wikilink-unresolved" title="Заметка в разработке">Remove Duplicates</span></p>
+<hr />
+<h3 id="1-karta-prinyatiya-resheniy">1. Карта принятия решений</h3>
 
+<p>На техническом интервью Senior-инженер тратит не более 30–60 секунд на определение базовой парадигмы. Главное — распознать характерные «триггеры» в формулировке условий.</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2196,81 +2203,67 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-Start[&quot;Задача: массив или строка&lt;br&gt;требуется поиск, модификация&lt;br&gt;или сравнение&quot;]:::warning --&gt; Q1{&quot;Входные данные&lt;br&gt;отсортированы&lt;br&gt;или их можно отсортировать?&quot;}
-Q1 --&gt;|&quot;Да&quot;| Q1a{&quot;Нужно найти пару,&lt;br&gt;тройку, проверить&lt;br&gt;симметрию?&quot;}
-Q1a --&gt;|&quot;Да&quot;| Opposite[&quot;Встречные указатели&lt;br&gt;left=0, right=n-1&lt;br&gt;движутся навстречу&quot;]
-Q1a --&gt;|&quot;Нет&quot;| Q1b{&quot;Нужно модифицировать&lt;br&gt;массив in-place?&quot;}
-Q1b --&gt;|&quot;Да&quot;| FastSlow[&quot;Быстрый и медленный&lt;br&gt;read/write в одном&lt;br&gt;направлении&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
 
-Q1 --&gt;|&quot;Нет, порядок важен&lt;br&gt;или данные несортированы&quot;| Q2{&quot;Нужно ли искать&lt;br&gt;непрерывный подмассив&lt;br&gt;с условием?&quot;}
-Q2 --&gt;|&quot;Да&quot;| Window[&quot;Скользящее окно&lt;br&gt;left и right в одном&lt;br&gt;направлении&lt;br&gt;см. кластер 03&quot;]
-Q2 --&gt;|&quot;Нет&quot;| Q3{&quot;Нужно сравнить&lt;br&gt;два разных массива&lt;br&gt;или слить их?&quot;}
-Q3 --&gt;|&quot;Да&quot;| Parallel[&quot;Параллельные указатели&lt;br&gt;на разных массивах&lt;br&gt;p1, p2&quot;]
-Q3 --&gt;|&quot;Нет&quot;| MapOrOther[&quot;Возможно, нужен map,&lt;br&gt;стек или другой паттерн&quot;]
+Start[&quot;Задача: анализ, фильтрация&lt;br&gt;или трансформация слайса/строки&quot;]:::entry --&gt; Q1{&quot;Данные отсортированы&lt;br&gt;или допустима сортировка O(N log N)?&quot;}:::warning
+
+Q1 --&gt;|&quot;Да&quot;| Q1a{&quot;Требуется найти пару/тройку/кортеж&lt;br&gt;или проверить симметрию?&quot;}:::warning
+Q1a --&gt;|&quot;Да&quot;| Opposite[&quot;1. Встречные указатели&lt;br&gt;(Opposite Direction)&lt;br&gt;left=0, right=n-1 навстречу&quot;]:::success
+Q1a --&gt;|&quot;Нет&quot;| Q1b{&quot;Требуется уплотнить или очистить&lt;br&gt;массив in-place (без аллокаций)?&quot;}:::warning
+Q1b --&gt;|&quot;Да&quot;| FastSlow[&quot;2. Быстрый и медленный указатели&lt;br&gt;(Read / Write)&lt;br&gt;в одном направлении&quot;]:::success
+
+Q1 --&gt;|&quot;Нет (исходный порядок важен)&quot;| Q2{&quot;Требуется непрерывный подотрезок&lt;br&gt;с гибкой длиной (подстрока/окно)?&quot;}:::warning
+Q2 --&gt;|&quot;Да&quot;| Window[&quot;3. Скользящее окно&lt;br&gt;(Sliding Window)&lt;br&gt;см. Кластер 03&quot;]:::process
+Q2 --&gt;|&quot;Нет&quot;| Q3{&quot;Даны два разных массива/строки&lt;br&gt;для сравнения или слияния?&quot;}:::warning
+Q3 --&gt;|&quot;Да&quot;| Parallel[&quot;4. Параллельные указатели&lt;br&gt;(Two Arrays / Merge)&lt;br&gt;p1 на первом, p2 на втором&quot;]:::success
+Q3 --&gt;|&quot;Нет&quot;| MapStack[&quot;5. Хэш-таблица (map),&lt;br&gt;префиксные суммы или монотонный стек&quot;]:::process
   </pre>
 </div>
 
 
-<h3 id="variant-1-vstrechnye-ukazateli-opposite-direction">Вариант 1: Встречные указатели (Opposite Direction)</h3>
+<hr />
+<h3 id="2-pattern-1-vstrechnye-ukazateli-opposite-direction">2. Паттерн 1: Встречные указатели (Opposite Direction)</h3>
 
-<p><strong>Когда применять:</strong><br />
-- Входные данные <strong>уже отсортированы</strong> (или мы готовы отсортировать их за O(N log N) как предобработку).<br />
-- Требуется найти <strong>два элемента</strong> с определённым свойством, обычно с двух концов диапазона.<br />
-- Задача обладает <strong>симметрией</strong> относительно концов: палиндром, контейнер с водой, сумма двух чисел.</p>
-<p><strong>Примеры задач в этом кластере:</strong><br />
-- <a href="3-valid-palindrome.html" class="wikilink">3. Valid Palindrome</a> — проверка строки на палиндром, игнорируя неалфавитные символы.<br />
-- <a href="4-two-sum-ii-sorted-array.html" class="wikilink">4. Two Sum II Sorted Array</a> — поиск пары с суммой <code>target</code> в отсортированном массиве.<br />
-- <a href="6-3sum.html" class="wikilink">6. 3Sum</a> — поиск троек с суммой 0 (фиксация одного элемента + встречные указатели для оставшейся части).<br />
-- <a href="7-4sum.html" class="wikilink">7. 4Sum</a> — обобщение на четыре элемента.</p>
-<p><strong>Инвариант:</strong> для текущих <code>left</code> и <code>right</code> все элементы левее <code>left</code> и правее <code>right</code> уже исключены как неспособные образовать ответ. Указатели никогда не откатываются, суммарное количество сдвигов ≤ N.</p>
-<p><strong>Идиоматичный Go-каркас:</strong></p>
+<h4 id="signaly-v-uslovii-zadachi">Сигналы в условии задачи:</h4>
+<ul>
+<li>Массив <strong>уже отсортирован</strong> (или элементы можно отсортировать без потери инварианта).</li>
+<li>Требуется найти два элемента, сумма, разность или произведение которых удовлетворяет критерию (<code>target</code>).</li>
+<li>Требуется проверить строковую или числовую <strong>зеркальность (палиндром)</strong>.</li>
+<li>Геометрическая оптимизация крайних границ (поиск максимального объема или площади).</li>
+</ul>
+<h4 id="invariant-i-mekhanika">Инвариант и механика:</h4>
+<p>Один указатель ставится на минимальный элемент (<code>left = 0</code>), второй — на максимальный (<code>right = len(arr) - 1</code>).<br />
+- Если текущая комбинация «меньше желаемого», единственный способ ее увеличить — сдвинуть <code>left++</code>.<br />
+- Если комбинация «больше желаемого», единственный способ уменьшить ее — сдвинуть <code>right--</code>.<br />
+- Указатели сужают диапазон, отсекая сразу целые строки и столбцы гипотетической матрицы перебора $N \times N$.</p>
+<h4 id="katalog-zadach-v-klastere">Каталог задач в кластере:</h4>
+<ol>
+<li><span class="wikilink-unresolved" title="Заметка в разработке">Valid Palindrome</span> — проверка симметрии с пропуском небуквенных символов.</li>
+<li><span class="wikilink-unresolved" title="Заметка в разработке">Two Sum II</span> — классический поиск пары в отсортированном массиве.</li>
+<li><span class="wikilink-unresolved" title="Заметка в разработке">3Sum</span> — фиксация внешнего элемента $nums[i]$ и встречные указатели для поиска пары с суммой $-nums[i]$.</li>
+<li><span class="wikilink-unresolved" title="Заметка в разработке">4Sum</span> — двойной внешний цикл плюс встречные указатели.</li>
+<li><span class="wikilink-unresolved" title="Заметка в разработке">Squares of Sorted Array</span> — заполнение квадратов с конца, сравнивая абсолютные значения на концах.</li>
+<li><span class="wikilink-unresolved" title="Заметка в разработке">Reverse Vowels of String</span> — встречный обмен гласных букв.</li>
+</ol>
+<hr />
+<h3 id="3-pattern-2-bystryy-i-medlennyy-ukazateli-fast-slow-read-write">3. Паттерн 2: Быстрый и медленный указатели (Fast & Slow / Read & Write)</h3>
 
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">left, right := 0, len(arr)-1
-for left &lt; right {
-    // ... обработка arr[left] и arr[right]
-    if условие_для_сдвига_left {
-        left++
-    } else {
-        right--
-    }
-}
-</code></pre>
-</div>
-
-<p><strong>Механическая симпатия:</strong> оба указателя читают из одного непрерывного блока памяти. Аппаратный prefetcher справляется даже с двусторонним доступом, если массив умещается в L2/L3 кэш. Никаких дополнительных структур — только два целых числа на стеке.</p>
-<h3 id="variant-2-bystryy-i-medlennyy-ukazateli-fast-slow-one-direction">Вариант 2: Быстрый и медленный указатели (Fast & Slow, One Direction)</h3>
-
-<p><strong>Когда применять:</strong><br />
-- Требуется <strong>in-place модификация</strong> массива: удаление дубликатов, фильтрация, перемещение элементов.<br />
-- Порядок оставшихся элементов должен быть сохранён.<br />
-- Нет нужды во вспомогательной памяти (O(1) extra space).</p>
-<p><strong>Подвиды:</strong><br />
-- <strong>Read/Write:</strong> <code>read</code> сканирует, <code>write</code> записывает элементы, удовлетворяющие условию.<br />
-- <strong>Fast/Slow:</strong> <code>fast</code> движется быстрее <code>slow</code> (например, в связных списках для поиска цикла, но здесь мы фокусируемся на массивах).</p>
-<p><strong>Примеры задач в этом кластере:</strong><br />
-- <a href="5-remove-duplicates-from-sorted-array.html" class="wikilink">5. Remove Duplicates from Sorted Array</a> — удаление дубликатов in-place.<br />
-- <a href="8-sort-colors.html" class="wikilink">8. Sort Colors</a> — Dutch national flag (три указателя, расширение fast/slow).<br />
-- <a href="../01-massivy-i-stroki/10-move-zeroes.html" class="wikilink">10. Move Zeroes</a> из кластера 01 — перемещение нулей в конец.</p>
-<p><strong>Инвариант:</strong> <code>[0, write-1]</code> — обработанный корректный подмассив; <code>[write, read-1]</code> — «мусор» или элементы, которые можно безопасно перезаписать; <code>[read, n-1]</code> — ещё не просмотренные элементы.</p>
-<p><strong>Идиоматичный Go-каркас:</strong></p>
+<h4 id="signaly-v-uslovii-zadachi">Сигналы в условии задачи:</h4>
+<ul>
+<li>Ключевые фразы: <strong>"in-place"</strong>, <strong>"O(1) extra memory"</strong>, <strong>"modify the input array"</strong>.</li>
+<li>Требуется удалить определенные элементы (дубликаты, нули, заданное значение <code>val</code>).</li>
+<li>Требуется сохранить взаимный порядок оставшихся элементов (стабильная фильтрация).</li>
+</ul>
+<h4 id="invariant-i-mekhanika">Инвариант и механика:</h4>
+<ul>
+<li>Указатель <code>read</code> (быстрый) инспектирует каждый элемент среза подряд.</li>
+<li>Указатель <code>write</code> (медленный) указывает на позицию, куда должен быть записан следующий валидный элемент.</li>
+<li>Пока <code>read</code> встречает мусорные элементы, <code>write</code> стоит на месте. Как только <code>read</code> находит полезный элемент, происходит запись: <code>arr[write] = arr[read]</code>, после чего <code>write++</code>.</li>
+</ul>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2280,156 +2273,118 @@ for left &lt; right {
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">write := 0
-for read := 0; read &lt; len(arr); read++ {
-    if condition(arr[read]) {
-        arr[write] = arr[read]
+  <pre class="language-go"><code class="language-go">// Идиоматичный шаблон компактификации в Go
+write := 0
+for read := 0; read &lt; len(nums); read++ {
+    if isKeep(nums[read]) {
+        nums[write] = nums[read]
         write++
     }
 }
-// опционально: обнуление хвоста или его отсечение (но обычно возвращают write)
+// write возвращает новую эффективную длину среза: nums[:write]
 </code></pre>
 </div>
 
-<p><strong>Механическая симпатия:</strong> последовательное чтение и запись в одном направлении. Идеально для prefetcher'а, кэш-линии загружаются и выгружаются предсказуемо. Нулевые аллокации. Часто это самый быстрый способ перегруппировки массива.</p>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Если вместо перезаписи делать <code>append</code> с удалением элемента по индексу (<code>arr = append(arr[:i], arr[i+1:]...)</code>), каждый такой вызов будет копировать хвост массива, что даст O(N²) по времени. Fast/Slow указатели с перезаписью — это O(N) и без лишних копирований.</p>
-  </div>
-</div>
+<h4 id="katalog-zadach-v-klastere">Каталог задач в кластере:</h4>
+<ol>
+<li><span class="wikilink-unresolved" title="Заметка в разработке">Remove Duplicates from Sorted Array</span> — схлопывание повторов в отсортированном срезе.</li>
+<li><span class="wikilink-unresolved" title="Заметка в разработке">Move Zeroes</span> — вытеснение нулей в конец массива с сохранением порядка чисел.</li>
+<li><span class="wikilink-unresolved" title="Заметка в разработке">Sort Colors</span> (Dutch National Flag) — обобщение до 3 указателей (<code>low</code>, <code>mid</code>, <code>high</code>) для сортировки массива из значений 0, 1, 2 за один проход.</li>
+</ol>
+<hr />
+<h3 id="4-pattern-3-parallelnye-ukazateli-na-raznykh-strukturakh">4. Паттерн 3: Параллельные указатели на разных структурах</h3>
 
-<h3 id="variant-3-skolzyashchee-okno-otdelnyy-klaster">Вариант 3: Скользящее окно (отдельный кластер)</h3>
+<h4 id="signaly-v-uslovii-zadachi">Сигналы в условии задачи:</h4>
+<ul>
+<li>Даны <strong>два или более независимых среза</strong> или строки.</li>
+<li>Задача требует слить их воедино, проверить отношение подпоследовательности или найти пересечение.</li>
+</ul>
+<h4 id="invariant-i-mekhanika">Инвариант и механика:</h4>
+<ul>
+<li>Указатель <code>p1</code> обходит первый срез, <code>p2</code> — второй.</li>
+<li>При слиянии с сохранением сортировки элементы сравниваются: <code>nums1[p1]</code> против <code>nums2[p2]</code>. Меньший помещается в результат.</li>
+<li>Особый трюк: слияние <strong>с конца</strong> (обратные указатели), если один из срезов имеет достаточный буфер, чтобы избежать перезаписи еще не прочитанных данных.</li>
+</ul>
+<h4 id="katalog-zadach">Каталог задач:</h4>
+<ul>
+<li><span class="wikilink-unresolved" title="Заметка в разработке">Merge Sorted Array</span> — слияние двух отсортированных массивов с конца без выделения дополнительной памяти.</li>
+<li>Проверка на подпоследовательность (<code>isSubsequence(s, t)</code>).</li>
+</ul>
+<hr />
+<h3 id="5-pattern-4-skolzyashchee-okno-kratkiy-obzor">5. Паттерн 4: Скользящее окно (Краткий обзор)</h3>
 
-<p>Скользящее окно — это два указателя, движущиеся в одном направлении, но с более богатым состоянием (сумма, частоты). Оно применяется, когда нужно найти непрерывный подмассив/подстроку, удовлетворяющий условию, и это условие допускает инкрементальный пересчёт (обычно требует монотонности).</p>
-<p>Мы не раскрываем его здесь подробно, а отсылаем к кластеру <a href="../03-skolzyashchee-okno/1-teoriya-skolzyashchee-okno.html" class="wikilink">1. Теория. Скользящее окно</a>.</p>
-<h3 id="variant-4-parallelnye-ukazateli-na-raznykh-massivakh-ili-strokakh">Вариант 4: Параллельные указатели (на разных массивах или строках)</h3>
+<p>Когда задача требует найти подотрезок или подстроку переменной или фиксированной длины, удовлетворяющую заданному критерию (максимальная сумма, подстрока без повторов, минимальное окно с символами), указатели двигаются в одну сторону, но формируют динамический интервал <code>[left, right]</code>.</p>
+<p>Подробный разбор, типовые шаблоны и задачи собраны в следующем кластере: <span class="wikilink-unresolved" title="Заметка в разработке">Кластер 03. Скользящее окно</span>.</p>
+<hr />
+<h3 id="6-sravnitelnaya-matritsa-primenimosti">6. Сравнительная матрица применимости</h3>
 
-<p><strong>Когда применять:</strong><br />
-- Нужно <strong>слить</strong> два отсортированных массива (Merge Sorted Array).<br />
-- Нужно <strong>сравнить</strong> две строки или массива поэлементно (Longest Common Prefix в вертикальном варианте, Is Subsequence).<br />
-- Нужно <strong>объединить</strong> результаты из двух источников.</p>
-<p><strong>Примеры задач:</strong><br />
-- <a href="../01-massivy-i-stroki/9-merge-sorted-array.html" class="wikilink">9. Merge Sorted Array</a> — слияние двух отсортированных массивов in-place (указатели с конца!).<br />
-- <a href="../25-stroki/1-teoriya-strokovye-zadachi.html" class="wikilink">1. Теория. Строковые задачи</a> — проверка, является ли одна строка подпоследовательностью другой.</p>
-<p><strong>Инвариант:</strong> зависит от задачи. Для слияния: элементы, уже помещённые в результирующий массив, отсортированы и находятся на своих финальных позициях.</p>
-<p><strong>Идиоматичный Go-каркас:</strong></p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">p1, p2 := m-1, n-1
-for p := m + n - 1; p &gt;= 0; p-- {
-    if p2 &lt; 0 || (p1 &gt;= 0 &amp;&amp; nums1[p1] &gt; nums2[p2]) {
-        nums1[p] = nums1[p1]
-        p1--
-    } else {
-        nums1[p] = nums2[p2]
-        p2--
-    }
-}
-</code></pre>
-</div>
-
-<p><strong>Механическая симпатия:</strong> оба массива лежат в памяти, доступ последовательный или с конца (одинаково предсказуем). Никаких дополнительных аллокаций, кроме, возможно, результирующего слайса.</p>
-<h3 id="chto-vybrat-two-pointers-ili-map">Что выбрать: two pointers или map?</h3>
-
-<p>В задачах поиска пар (Two Sum, Three Sum) часто возникает дилемма: использовать <code>map</code> или два указателя? Критерии выбора:</p>
 <div class="table-container"><table>
 <thead>
 <tr>
-<th>Критерий</th>
-<th>map</th>
-<th>Два указателя</th>
+<th style="text-align: left;">Сценарий</th>
+<th style="text-align: left;">Лучший паттерн</th>
+<th style="text-align: center;">Временная сложность</th>
+<th style="text-align: center;">Память</th>
+<th style="text-align: left;">Пример задачи</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Входные данные</td>
-<td>Не требуют сортировки</td>
-<td>Требуют сортировки (или уже отсортированы)</td>
+<td style="text-align: left;">Поиск пары с суммой в отсортированном массиве</td>
+<td style="text-align: left;">Встречные указатели</td>
+<td style="text-align: center;">$O(N)$</td>
+<td style="text-align: center;"><strong>$O(1)$</strong></td>
+<td style="text-align: left;">Two Sum II</td>
 </tr>
 <tr>
-<td>Сложность по времени</td>
-<td>O(N) в среднем</td>
-<td>O(N log N) с сортировкой, O(N) если отсортированы</td>
+<td style="text-align: left;">Поиск пары в произвольном неотсортированном массиве</td>
+<td style="text-align: left;">Хэш-таблица (<code>map</code>)</td>
+<td style="text-align: center;">$O(N)$</td>
+<td style="text-align: center;">$O(N)$</td>
+<td style="text-align: left;">Two Sum (LeetCode 1)</td>
 </tr>
 <tr>
-<td>Сложность по памяти</td>
-<td>O(N)</td>
-<td>O(1) (или O(N) для копии, если важен исходный порядок)</td>
+<td style="text-align: left;">Поиск уникальных троек с суммой 0</td>
+<td style="text-align: left;">Сортировка + Встречные указатели</td>
+<td style="text-align: center;">$O(N^2)$</td>
+<td style="text-align: center;"><strong>$O(1)$</strong></td>
+<td style="text-align: left;">3Sum</td>
 </tr>
 <tr>
-<td>Дубликаты</td>
-<td>Требуют дополнительной логики</td>
-<td>Естественно обрабатываются через пропуск одинаковых элементов</td>
+<td style="text-align: left;">Удаление дубликатов / фильтрация на месте</td>
+<td style="text-align: left;">Быстрый и медленный указатели</td>
+<td style="text-align: center;">$O(N)$</td>
+<td style="text-align: center;"><strong>$O(1)$</strong></td>
+<td style="text-align: left;">Remove Duplicates</td>
 </tr>
 <tr>
-<td>Влияние на GC</td>
-<td>Аллокации бакетов map, pointer chasing</td>
-<td>Ноль аллокаций</td>
+<td style="text-align: left;">Проверка строки на палиндром</td>
+<td style="text-align: left;">Встречные указатели</td>
+<td style="text-align: center;">$O(N)$</td>
+<td style="text-align: center;"><strong>$O(1)$</strong></td>
+<td style="text-align: left;">Valid Palindrome</td>
 </tr>
 <tr>
-<td>Кэш-локальность</td>
-<td>Плохая (случайный доступ через хеш)</td>
-<td>Отличная (последовательный обход)</td>
+<td style="text-align: left;">Слияние двух упорядоченных массивов in-place</td>
+<td style="text-align: left;">Обратные параллельные указатели</td>
+<td style="text-align: center;">$O(N + M)$</td>
+<td style="text-align: center;"><strong>$O(1)$</strong></td>
+<td style="text-align: left;">Merge Sorted Array</td>
+</tr>
+<tr>
+<td style="text-align: left;">Сортировка 3 типов элементов за один проход</td>
+<td style="text-align: left;">3 указателя (Dutch Flag)</td>
+<td style="text-align: center;">$O(N)$</td>
+<td style="text-align: center;"><strong>$O(1)$</strong></td>
+<td style="text-align: left;">Sort Colors</td>
 </tr>
 </tbody>
 </table></div>
-<p>Senior-разработчик выбирает осознанно:<br />
-- <strong>Map</strong> — когда порядок не важен, не нужно сортировать, и мы готовы заплатить памятью за O(N) среднее время.<br />
-- <strong>Два указателя</strong> — когда память критична, данные уже отсортированы (или их легко отсортировать), либо когда важна детерминированная производительность без всплесков GC.</p>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p>Если интервьюер спрашивает: «Почему вы выбрали два указателя, а не map?», ответ должен содержать обоснование по памяти и/или кэш-локальности. Например: «Я предпочёл два указателя, потому что они не требуют дополнительной памяти и работают на непрерывном слайсе, что дружественно кэшу процессора и не нагружает GC».</p>
-  </div>
-</div>
+<hr />
+<h3 id="7-itog">7. Итог</h3>
 
-<h3 id="kompozitsiya-dva-ukazatelya-drugie-patterny">Композиция: два указателя + другие паттерны</h3>
-
-<p>Чистые два указателя редко встречаются в изоляции на задачах уровня Medium/Hard. Чаще они комбинируются:</p>
-<ol>
-<li><strong>Сортировка + встречные указатели.</strong> Классика для 3Sum, 4Sum. Сортировка за O(N log N), затем указатели.</li>
-<li><strong>Два указателя как часть скользящего окна.</strong> Окно использует два указателя для поддержания границ, но добавляет состояние.</li>
-<li><strong>Два указателя + монотонный стек.</strong> Реже, но бывает (например, Trapping Rain Water с двумя указателями вместо предподсчёта максимумов).</li>
-<li><strong>Fast/Slow на связных списках.</strong> Хотя в этом кластере мы фокусируемся на массивах, тот же принцип применим и к спискам, где указатели — это <code>*Node</code>.</li>
-</ol>
-<p>Освоив базовые варианты, вы сможете распознавать эти комбинации и строить более сложные решения, как описано в <a href="../../01-teoriya/12-kak-kombinirovat-algoritmicheskie-patterny.html" class="wikilink">12. Как комбинировать алгоритмические паттерны</a>.</p>
-<h3 id="tipichnye-oshibki-pri-vybore-varianta-i-realizatsii">Типичные ошибки при выборе варианта и реализации</h3>
-
-<ol>
-<li>
-<p><strong>Применение встречных указателей к несортированному массиву.</strong> Если данные не отсортированы и нет монотонности, встречные указатели не сработают. Классический промах — пытаться решить Two Sum (исходную, где индексы важны) через два указателя без map. Решение: либо сортировать с сохранением индексов (усложнение), либо использовать map.</p>
-</li>
-<li>
-<p><strong>Использование fast/slow там, где нужен встречный.</strong> Если задача про поиск пары с суммой в отсортированном массиве, а вы пытаетесь применить read/write, вы просто не найдёте пару. Встречный указатель использует информацию о том, что массив отсортирован, для сдвигов, уменьшающих или увеличивающих сумму.</p>
-</li>
-<li>
-<p><strong>Забытый сдвиг после обработки.</strong> В 3Sum после нахождения тройки нужно сдвинуть оба указателя и пропустить дубликаты. Если забыть — бесконечный цикл.</p>
-</li>
-<li>
-<p><strong>Неправильная обработка дубликатов.</strong> В задачах типа 3Sum/4Sum дубликаты нужно пропускать аккуратно, не выходя за границы и не пропуская разные варианты. Используйте вложенные циклы <code>for left &lt; right &amp;&amp; nums[left] == nums[left+1] { left++ }</code>.</p>
-</li>
-<li>
-<p><strong>Использование ссылочных типов без копирования.</strong> Если вы сохраняете слайс результатов и добавляете в него подслайсы, помните, что подслайс делит нижележащий массив с исходным. Если исходный массив изменится (например, при дальнейших перестановках in-place), результаты могут исказиться. В задачах, где исходный массив не меняется после нахождения ответа, это безопасно. В противном случае делайте копию.</p>
-</li>
-</ol>
-<h3 id="zaklyuchenie">Заключение</h3>
-
-<p>Варианты применения двух указателей покрывают широкий спектр задач: от простой проверки палиндрома до сложной трёхэтапной обработки массивов. Senior Go-разработчик не просто знает эти варианты, а мгновенно выбирает нужный по «запаху» задачи: видит симметрию — встречные указатели; видит in-place фильтрацию — fast/slow; видит два отсортированных списка — параллельные указатели. И всегда помнит, что его код будет исполняться на реальном железе, поэтому выбирает слайсы, избегает лишних аллокаций и держит инварианты в голове.</p>
-<p>Теперь, вооружившись этим пониманием, мы переходим к первой задаче кластера — <strong>Valid Palindrome</strong>, где встречные указатели наглядно демонстрируют свою элегантность при работе со строками в Go. <a href="3-valid-palindrome.html" class="wikilink">3. Valid Palindrome</a></p>
+<p>Паттерн двух указателей — это квинтэссенция алгоритмической прагматики: минимум сущностей, нулевые накладные расходы на структуры данных и максимальная скорость исполнения за счет непрерывного обхода памяти.</p>
+<p>Приступаем к практической реализации! Наш первый шаг — классическая задача на встречные указатели со строками: <span class="wikilink-unresolved" title="Заметка в разработке">3. Valid Palindrome</span>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2457,7 +2412,7 @@ for p := m + n - 1; p &gt;= 0; p-- {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#karta-prinyatiya-resheniy-kakoy-variant-primenyat">Карта принятия решений: какой вариант применять</a></li><li class="toc-item toc-h3"><a href="#variant-1-vstrechnye-ukazateli-opposite-direction">Вариант 1: Встречные указатели (Opposite Direction)</a></li><li class="toc-item toc-h3"><a href="#variant-2-bystryy-i-medlennyy-ukazateli-fast-slow-one-direction">Вариант 2: Быстрый и медленный указатели (Fast &amp; Slow, One Direction)</a></li><li class="toc-item toc-h3"><a href="#variant-3-skolzyashchee-okno-otdelnyy-klaster">Вариант 3: Скользящее окно (отдельный кластер)</a></li><li class="toc-item toc-h3"><a href="#variant-4-parallelnye-ukazateli-na-raznykh-massivakh-ili-strokakh">Вариант 4: Параллельные указатели (на разных массивах или строках)</a></li><li class="toc-item toc-h3"><a href="#chto-vybrat-two-pointers-ili-map">Что выбрать: two pointers или map?</a></li><li class="toc-item toc-h3"><a href="#kompozitsiya-dva-ukazatelya-drugie-patterny">Композиция: два указателя + другие паттерны</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-pri-vybore-varianta-i-realizatsii">Типичные ошибки при выборе варианта и реализации</a></li><li class="toc-item toc-h3"><a href="#zaklyuchenie">Заключение</a></li>
+    <li class="toc-item toc-h3"><a href="#1-karta-prinyatiya-resheniy">1. Карта принятия решений</a></li><li class="toc-item toc-h3"><a href="#2-pattern-1-vstrechnye-ukazateli-opposite-direction">2. Паттерн 1: Встречные указатели (Opposite Direction)</a></li><li class="toc-item toc-h4"><a href="#signaly-v-uslovii-zadachi">Сигналы в условии задачи:</a></li><li class="toc-item toc-h4"><a href="#invariant-i-mekhanika">Инвариант и механика:</a></li><li class="toc-item toc-h4"><a href="#katalog-zadach-v-klastere">Каталог задач в кластере:</a></li><li class="toc-item toc-h3"><a href="#3-pattern-2-bystryy-i-medlennyy-ukazateli-fast-slow-read-write">3. Паттерн 2: Быстрый и медленный указатели (Fast &amp; Slow / Read &amp; Write)</a></li><li class="toc-item toc-h4"><a href="#signaly-v-uslovii-zadachi">Сигналы в условии задачи:</a></li><li class="toc-item toc-h4"><a href="#invariant-i-mekhanika">Инвариант и механика:</a></li><li class="toc-item toc-h4"><a href="#katalog-zadach-v-klastere">Каталог задач в кластере:</a></li><li class="toc-item toc-h3"><a href="#4-pattern-3-parallelnye-ukazateli-na-raznykh-strukturakh">4. Паттерн 3: Параллельные указатели на разных структурах</a></li><li class="toc-item toc-h4"><a href="#signaly-v-uslovii-zadachi">Сигналы в условии задачи:</a></li><li class="toc-item toc-h4"><a href="#invariant-i-mekhanika">Инвариант и механика:</a></li><li class="toc-item toc-h4"><a href="#katalog-zadach">Каталог задач:</a></li><li class="toc-item toc-h3"><a href="#5-pattern-4-skolzyashchee-okno-kratkiy-obzor">5. Паттерн 4: Скользящее окно (Краткий обзор)</a></li><li class="toc-item toc-h3"><a href="#6-sravnitelnaya-matritsa-primenimosti">6. Сравнительная матрица применимости</a></li><li class="toc-item toc-h3"><a href="#7-itog">7. Итог</a></li>
   </ul>
 </aside>
 

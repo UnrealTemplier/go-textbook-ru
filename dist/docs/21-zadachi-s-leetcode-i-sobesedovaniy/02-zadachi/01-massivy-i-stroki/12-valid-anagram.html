@@ -2178,88 +2178,24 @@
           </header>
 
           <div class="article-markdown">
-            <p><strong>LeetCode 242. Valid Anagram.</strong> Даны две строки <code>s</code> и <code>t</code>. Нужно определить, является ли <code>t</code> анаграммой <code>s</code>. Анаграмма — это строка, образованная перестановкой всех символов исходной строки. Каждый символ должен быть использован ровно столько раз, сколько он встречается в исходной строке.</p>
-<p>Задача проста по формулировке, но именно на таких задачах Senior Go-разработчик показывает глубину: выбор между <code>map</code> и массивом фиксированного размера, понимание того, как иммутабельность строк и escape analysis влияют на производительность, и способность написать код, который будет не просто Accepted, а эталонно идиоматичным. На собеседовании это классическая проверка умения мыслить в категориях «память–время» и знания внутреннего устройства Go.</p>
-<h3 id="formulirovka-i-utochneniya">Формулировка и уточнения</h3>
+            <blockquote>
+<p><em>«Выбор правильного представления данных — это половина победы в любой программистской задаче».</em><br />
+— Фредерик Брукс</p>
+</blockquote>
+<h2 id="leetcode-242-valid-anagram">LeetCode 242. Valid Anagram</h2>
 
-<p><strong>Условие:</strong><br />
-- Вход: две строки <code>s</code> и <code>t</code>.<br />
-- Выход: <code>bool</code> — <code>true</code>, если <code>t</code> — анаграмма <code>s</code>, иначе <code>false</code>.<br />
-- Длина строк: до 5×10⁴ (в LeetCode), могут содержать только строчные латинские буквы (a–z), но в общем случае алфавит может быть шире.</p>
-<p><strong>Вопросы интервьюеру (Senior-стиль):</strong><br />
-- <em>Каков алфавит? Только a–z или могут быть Unicode?</em> — Критично для выбора структуры данных. Если только a–z, достаточно массива <code>[26]int</code>. Если Unicode — <code>map[rune]int</code>.<br />
-- <em>Регистрозависимость?</em> Да, <code>'a' != 'A'</code>.<br />
-- <em>Пробелы, знаки препинания?</em> Обычно нет, но если есть — они такие же символы.<br />
-- <em>Что возвращать, если строки пустые?</em> Пустые строки являются анаграммами (пустая перестановка пустой строки) → <code>true</code>.<br />
-- <em>Допустимы ли nil-строки?</em> В Go строки не бывают nil, но бывают пустыми. Это не проблема.</p>
-<p>Ответы определяют выбор: если алфавит ограничен, используем массив; если нет — map.</p>
-<h3 id="naivnoe-reshenie-sortirovka">Наивное решение: сортировка</h3>
+<p><strong>Сложность:</strong> Easy<br />
+<strong>Тема:</strong> Массивы и строки, частотный анализ (Frequency Counter), структуры данных фиксированного размера<br />
+<strong>Ссылки:</strong> <span class="wikilink-unresolved" title="Заметка в разработке">Теория: Массивы и строки</span>, <span class="wikilink-unresolved" title="Заметка в разработке">Типовые операции и приёмы</span>, <span class="wikilink-unresolved" title="Заметка в разработке">Теория: Два указателя</span></p>
+<hr />
+<h3 id="1-vvedenie-i-fizicheskaya-intuitsiya">1. Введение и физическая интуиция</h3>
 
-<p>Отсортировать обе строки (или слайсы байт) и сравнить. Время O(N log N), память O(N) для отсортированных копий.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func isAnagramSort(s string, t string) bool {
-    if len(s) != len(t) {
-        return false
-    }
-    sBytes := []byte(s)
-    tBytes := []byte(t)
-    sort.Slice(sBytes, func(i, j int) bool { return sBytes[i] &lt; sBytes[j] })
-    sort.Slice(tBytes, func(i, j int) bool { return tBytes[i] &lt; tBytes[j] })
-    return string(sBytes) == string(tBytes)
-}
-</code></pre>
-</div>
-
-<p>Это работает, но O(N log N) — не оптимум для задачи, где можно обойтись линейным проходом. К тому же сортировка через <code>sort.Slice</code> с замыканием менее производительна, чем <code>sort.Ints</code> для слайса int'ов. Для строк можно было бы использовать <code>sort.Strings</code>, но это требует слайса строк, а не байтов.</p>
-<h3 id="optimalnoe-reshenie-chastotnyy-massiv">Оптимальное решение: частотный массив</h3>
-
-<p>Так как задача в LeetCode гарантирует только строчные английские буквы (a–z), алфавит содержит 26 символов. Мы можем использовать массив <code>[26]int</code> для подсчёта частот. Проходим по <code>s</code>, увеличивая счётчики, по <code>t</code> — уменьшая. Если в итоге все счётчики нулевые — строки анаграммы.</p>
-<p><strong>Инвариант:</strong> после обработки первых <code>k</code> символов <code>t</code> разность частот <code>freq[s[i]] - freq[t[i]]</code> равна нулю для всех символов.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">func isAnagram(s string, t string) bool {
-    if len(s) != len(t) {
-        return false
-    }
-
-    var freq [26]int
-    for i := 0; i &lt; len(s); i++ {
-        freq[s[i]-'a']++
-        freq[t[i]-'a']--
-    }
-
-    // проверяем, что все элементы массива равны нулю
-    for _, v := range freq {
-        if v != 0 {
-            return false
-        }
-    }
-    return true
-}
-</code></pre>
-</div>
-
-<p><strong>Go-идиомы:</strong><br />
-- Проверка длины в начале отсекает большинство не-анаграмм за O(1).<br />
-- <code>var freq [26]int</code> — массив на стеке, нулевая аллокация.<br />
-- <code>freq[s[i]-'a']++</code> — прямая адресация, процессор исполняет это за единицы тактов.<br />
-- Сравнение с нулём выполняется через <code>range</code> по массиву — O(26) = O(1) по факту, но асимптотически O(алфавит).</p>
-<p><strong>Вариация с одним массивом и одним проходом (если длины равны):</strong> как выше, но можно обойтись без цикла сравнения, если использовать счётчик несовпадений. Однако цикл по 26 элементам настолько дёшев, что усложнение логики не оправдано. Простота текущего варианта — его главное достоинство.</p>
+<p>Анаграмма — это игра букв, в которой одно слово превращается в другое простым перемешиванием символов: <em>"listen"</em> и <em>"silent"</em>, <em>"nagaram"</em> и <em>"anagram"</em>. Никакие буквы не теряются и не появляются из ниоткуда.</p>
+<p>Представьте себе складского кладовщика с ящиком на 26 отсеков — по числу букв английского алфавита. Когда кладовщик читает строку <code>s</code>, он раскладывает по ячейкам деревянные фишки: буква <code>'a'</code> — плюс фишка в отсек №0, буква <code>'b'</code> — плюс фишка в отсек №1. Читая строку <code>t</code>, он забирает фишки из тех же ячеек. Если в конце все 26 ячеек оказались абсолютно пустыми (баланс ровно ноль) — перед нами безупречная анаграмма!</p>
+<p>Задача формулируется элементарно, но на собеседовании Senior Go-разработчик демонстрирует глубокий инженерный кругозор:<br />
+- Почему выделять <code>map[rune]int</code> для ASCII — это архитектурная ошибка и неоправданная нагрузка на Garbage Collector?<br />
+- Как массив фиксированного размера <code>[26]int</code> на стеке обеспечивает нулевые аллокации (<code>0 B/op</code>) и умещается в единичную кэш-линию CPU?<br />
+- Как устроен оператор сравнения массивов <code>freq == [26]int{}</code> в рантайме Go?</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2274,30 +2210,198 @@
   </div>
   <pre class="mermaid">
 flowchart LR
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;s = &#x27;anagram&#x27;, t = &#x27;nagaram&#x27;&quot;]:::warning --&gt; B[&quot;len(s) != len(t) ?&quot;]
-B --&gt;|&quot;Да&quot;| C[&quot;return false&quot;]
-B --&gt;|&quot;Нет&quot;| D[&quot;freq[26]int = {0}&quot;]
-D --&gt; E[&quot;i=0..len(s)-1:&lt;br&gt;freq[s[i]-&#x27;a&#x27;]++&lt;br&gt;freq[t[i]-&#x27;a&#x27;]--&quot;]
-E --&gt; F{&quot;Все freq == 0?&quot;}
-F --&gt;|&quot;Да&quot;| G[&quot;return true&quot;]
-F --&gt;|&quot;Нет&quot;| H[&quot;return false&quot;]
+classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error   fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry   fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+A[&quot;s = &#x27;anagram&#x27;, t = &#x27;nagaram&#x27;&quot;]:::entry --&gt; B{&quot;len(s) != len(t)?&quot;}:::warning
+B --&gt;|&quot;Да&quot;| C[&quot;false: разная длина&quot;]:::error
+B --&gt;|&quot;Нет&quot;| D[&quot;var freq [26]int (на стеке)&quot;]:::process
+D --&gt; E[&quot;Один проход:&lt;br&gt;freq[s[i]-&#x27;a&#x27;]++&lt;br&gt;freq[t[i]-&#x27;a&#x27;]--&quot;]:::process
+E --&gt; F{&quot;freq == [26]int{}?&quot;}:::warning
+F --&gt;|&quot;Да&quot;| G[&quot;true: все частоты совпали&quot;]:::success
+F --&gt;|&quot;Нет&quot;| H[&quot;false: дисбаланс букв&quot;]:::error
   </pre>
 </div>
 
 
-<h3 id="reshenie-dlya-unicode-map">Решение для Unicode: map</h3>
+<hr />
+<h3 id="2-formulirovka-zadachi-i-voprosy-intervyueru">2. Формулировка задачи и вопросы интервьюеру</h3>
 
-<p>Если алфавит не ограничен (Unicode), массив фиксированного размера неприменим. Тогда используем <code>map[rune]int</code>. При этом важно предвыделить вместимость, чтобы избежать эвакуаций бакетов.</p>
+<p>Даны две строки <code>s</code> и <code>t</code>. Необходимо вернуть <code>true</code>, если <code>t</code> является анаграммой <code>s</code>, и <code>false</code> в противном случае.</p>
+<h4 id="voprosy-intervyueru-senior-stil">Вопросы интервьюеру (Senior-стиль):</h4>
+<ol>
+<li><strong>Каков алфавит входных строк?</strong><br />
+<em>«Только строчные латинские буквы a–z? Если да, то диапазон ограничен 26 значениями, что позволяет использовать статический массив на стеке. Если допускается произвольный Unicode, мы обязаны использовать <code>map[rune]int</code> или динамическую таблицу.»</em></li>
+<li><strong>Имеет ли значение регистр символов?</strong><br />
+<em>«Да, <code>'A' != 'a'</code>. В стандартной постановке LeetCode все символы строчные.»</em></li>
+<li><strong>Могут ли строки содержать пробелы или знаки препинания?</strong><br />
+<em>«Нет, только буквы. Если бы были пробелы, потребовалась бы предварительная фильтрация.»</em></li>
+<li><strong>Что возвращать, если обе строки пустые?</strong><br />
+<em>«Две пустые строки состоят из одинакового (нулевого) набора символов — возвращаем <code>true</code>.»</em></li>
+</ol>
+<hr />
+<h3 id="3-razbor-podkhodov">3. Разбор подходов</h3>
+
+<h4 id="podkhod-1-sortirovka-baytov-naivnyy">Подход 1: Сортировка байтов (Наивный)</h4>
+<p>Две строки являются анаграммами тогда и только тогда, когда их отсортированные представления посимвольно равны.</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">import &quot;slices&quot;
+
+func isAnagramSort(s string, t string) bool {
+    if len(s) != len(t) {
+        return false
+    }
+    sBytes := []byte(s)
+    tBytes := []byte(t)
+
+    // В современном Go (1.21+) используем быстрый slices.Sort
+    slices.Sort(sBytes)
+    slices.Sort(tBytes)
+
+    return string(sBytes) == string(tBytes)
+}
+</code></pre>
+</div>
+
+<p><strong>Оценка:</strong><br />
+- <strong>Время:</strong> $O(N \log N)$ из-за сортировки (pdqsort в стандартной библиотеке Go).<br />
+- <strong>Память:</strong> $O(N)$ дополнительной памяти — срезы <code>[]byte(s)</code> и <code>[]byte(t)</code> копируют строку в кучу.<br />
+- <strong>Вердикт:</strong> Работает, но на позицию Senior недопустимо предлагать $O(N \log N)$ с аллокациями там, где задача решается за $O(N)$ со строгим $O(1)$ по памяти.</p>
+<hr />
+<h4 id="podkhod-2-chastotnyy-massiv-fiksirovannogo-razmera-optimalnyy">Подход 2: Частотный массив фиксированного размера (Оптимальный)</h4>
+
+<p>Поскольку в ASCII алфавите a–z ровно 26 букв, мы выделяем массив <code>[26]int</code>.<br />
+Индекс буквы вычисляется тривиальной арифметикой: <code>char - 'a'</code>.</p>
+<p><strong>Инвариант алгоритма:</strong><br />
+Если длины строк равны (<code>len(s) == len(t)</code>), то за один совместный проход мы прибавляем 1 за букву из <code>s</code> и вычитаем 1 за букву из <code>t</code>. В конце проверяем, равен ли массив нулевому массиву.</p>
+<hr />
+<h3 id="4-etalonnaya-realizatsiya-na-go">4. Эталонная реализация на Go</h3>
+
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package main
+
+// IsAnagram проверяет, является ли строка t анаграммой строки s.
+// Временная сложность: O(N), где N — длина строки.
+// Пространственная сложность: O(1) памяти (208 байт на стеке, 0 аллокаций в куче).
+func IsAnagram(s string, t string) bool {
+    // Если длины не совпадают, анаграмма невозможна в принципе — O(1) ранний выход
+    if len(s) != len(t) {
+        return false
+    }
+
+    // Массив из 26 int гарантированно размещается на стеке
+    var freq [26]int
+
+    // Совместный проход: строим баланс символов
+    for i := 0; i &lt; len(s); i++ {
+        freq[s[i]-'a']++
+        freq[t[i]-'a']--
+    }
+
+    // В Go массивы фиксированной длины являются value-типами!
+    // Сравнение freq == [26]int{} компилируется напрямую в memequal:
+    // побайтовое сравнение 208 байт памяти за считанные такты CPU.
+    return freq == [26]int{}
+}
+</code></pre>
+</div>
+
+<hr />
+<h3 id="5-poshagovaya-trassirovka-walkthrough">5. Пошаговая трассировка (Walkthrough)</h3>
+
+<p>Рассмотрим <code>s = "anagram"</code>, <code>t = "nagaram"</code>:<br />
+- Длины: <code>len(s) == 7</code>, <code>len(t) == 7</code> — проверка пройдена.<br />
+- Итерации:<br />
+  1. <code>i = 0</code>: <code>s[0] = 'a'</code> (<code>freq[0]++</code>), <code>t[0] = 'n'</code> (<code>freq[13]--</code>)<br />
+  2. <code>i = 1</code>: <code>s[1] = 'n'</code> (<code>freq[13]++</code>), <code>t[1] = 'a'</code> (<code>freq[0]--</code>)<br />
+  3. <code>i = 2</code>: <code>s[2] = 'a'</code> (<code>freq[0]++</code>), <code>t[2] = 'g'</code> (<code>freq[6]--</code>)<br />
+  4. <code>i = 3</code>: <code>s[3] = 'g'</code> (<code>freq[6]++</code>), <code>t[3] = 'a'</code> (<code>freq[0]--</code>)<br />
+  5. <code>i = 4</code>: <code>s[4] = 'a'</code> (<code>freq[0]++</code>), <code>t[4] = 'r'</code> (<code>freq[17]--</code>)<br />
+  6. <code>i = 5</code>: <code>s[5] = 'r'</code> (<code>freq[17]++</code>), <code>t[5] = 'a'</code> (<code>freq[0]--</code>)<br />
+  7. <code>i = 6</code>: <code>s[6] = 'm'</code> (<code>freq[12]++</code>), <code>t[6] = 'm'</code> (<code>freq[12]--</code>)<br />
+- Итог: все ячейки <code>freq</code> равны 0. Сравнение <code>freq == [26]int{}</code> возвращает <code>true</code>.</p>
+<hr />
+<h3 id="6-mechanical-sympathy-pochemu-massiv-bet-map-v-desyatki-raz">6. Mechanical Sympathy: почему массив бьет map в десятки раз</h3>
+
+<div class="table-container"><table>
+<thead>
+<tr>
+<th style="text-align: left;">Характеристика</th>
+<th style="text-align: left;"><code>var freq [26]int</code></th>
+<th style="text-align: left;"><code>freq := make(map[rune]int)</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Размещение в памяти</strong></td>
+<td style="text-align: left;">Стек (Stack) — Escape Analysis оставляет его в кадре функции</td>
+<td style="text-align: left;">Куча (Heap) — runtime-структура <code>hmap</code> и бакеты</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Аллокации</strong></td>
+<td style="text-align: left;"><strong>0 B/op, 0 allocs/op</strong></td>
+<td style="text-align: left;">48–1024 B/op в зависимости от числа элементов</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Доступ к элементу</strong></td>
+<td style="text-align: left;">1 инструкция ассемблера <code>LEA</code>/<code>MOV</code> ($1$ такт)</td>
+<td style="text-align: left;">Вызов <code>runtime.mapassign</code>, вычисление хэша, поиск бакета (~$30\text{--}50$ тактов)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>L1d Cache Locality</strong></td>
+<td style="text-align: left;">Массив занимает 208 байт — целиком умещается в 4 кэш-линии (по 64 байта)</td>
+<td style="text-align: left;">Разрозненные указатели на бакеты, неизбежные Cache Misses</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Нагрузка на GC</strong></td>
+<td style="text-align: left;">Нулевая (стек очищается сдвигом указателя RSP)</td>
+<td style="text-align: left;">GC обязан сканировать бакеты мапы во время Mark Phase</td>
+</tr>
+</tbody>
+</table></div>
+
+<div class="code-block" data-lang="text">
+  <div class="code-header">
+    <span class="code-lang-tag">TEXT</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-text"><code class="language-text">Стековый массив [26]int в памяти (208 байт):
++--------+--------+--------+--------+--------+--------+-----+--------+
+|   a    |   b    |   c    |   d    |   e    |   f    | ... |   z    |
+| (8 B)  | (8 B)  | (8 B)  | (8 B)  | (8 B)  | (8 B)  |     | (8 B)  |
++--------+--------+--------+--------+--------+--------+-----+--------+
+  ^
+  |-- Умещается в 4 кэш-линии по 64 байта (горячий L1d кэш!)
+</code></pre>
+</div>
+
+<hr />
+<h3 id="7-rasshirenie-dlya-proizvolnogo-unicode-follow-up">7. Расширение для произвольного Unicode (Follow-up)</h3>
+
+<p>Что делать, если интервьюер спрашивает: <em>«А что, если строки содержат произвольные символы Unicode (китайские иероглифы, эмодзи, кириллицу)?»</em></p>
+<p>В этом случае размер алфавита потенциально равен $2^{21}$ кодовых точек, и статический массив не подойдет. Используем хэш-таблицу рун:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2308,103 +2412,80 @@ F --&gt;|&quot;Нет&quot;| H[&quot;return false&quot;]
     </button>
   </div>
   <pre class="language-go"><code class="language-go">func isAnagramUnicode(s string, t string) bool {
-    if len([]rune(s)) != len([]rune(t)) {
+    // Внимание: для Unicode len() возвращает число байт, а не символов!
+    // Однако если суммарное байтовое представление разное, анаграмма невозможна:
+    if len(s) != len(t) {
         return false
     }
-    freq := make(map[rune]int, len([]rune(s)))
+
+    counts := make(map[rune]int)
+
     for _, r := range s {
-        freq[r]++
+        counts[r]++
     }
+
     for _, r := range t {
-        freq[r]--
-        if freq[r] &lt; 0 {
-            return false // досрочный выход, если символов в t больше
-        }
-    }
-    // после досрочных выходов все значения должны быть 0
-    for _, v := range freq {
-        if v != 0 {
+        counts[r]--
+        if counts[r] &lt; 0 {
+            // Ранний выход: символов r в строке t оказалось больше, чем в s
             return false
         }
     }
+
+    // Если все counts[r] &gt;= 0 и длины равны, то все значения гарантированно равны 0
     return true
 }
 </code></pre>
 </div>
 
-<p><strong>Что важно:</strong><br />
-- <code>len([]rune(s))</code> — аллокация слайса рун, O(N) памяти. Если строки длинные и Unicode, можно использовать <code>utf8.RuneCountInString</code> для длины, но для собеседования это избыточно; достаточно упомянуть.<br />
-- <code>make(map[rune]int, len([]rune(s)))</code> — предвыделение вместимости, уменьшает число эвакуаций.<br />
-- Досрочный выход <code>if freq[r] &lt; 0</code> — оптимизация, отсекающая не-анаграммы на ранней стадии.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Массив <code>[26]int</code> в Go сравнивается поэлементно. Для 26 элементов это 208 байт, что помещается в несколько кэш-линий. Операция <code>==</code> для массива компилируется в эффективную последовательность сравнений (или вызов <code>runtime.memequal</code>). Map же требует хеширования, поиска бакета, обхода цепочки переполнения. Даже для одноразового сравнения массив выигрывает в скорости и не даёт нагрузки на GC.</p>
-  </div>
-</div>
-
-<h3 id="edge-cases">Edge Cases</h3>
-
-<ul>
-<li><strong>Разные длины:</strong> <code>len(s) != len(t)</code> → сразу <code>false</code>.</li>
-<li><strong>Пустые строки:</strong> <code>""</code> и <code>""</code> → длины равны (0), цикл <code>for i := 0; i &lt; 0; i++</code> не выполнится, <code>freq</code> весь нулевой → <code>true</code>.</li>
-<li><strong>Одна пустая, другая нет:</strong> длина разная → <code>false</code>.</li>
-<li><strong>Все символы одинаковые, но разной длины:</strong> проверка длины отсечёт.</li>
-<li><strong>Unicode (если разрешён):</strong> нужно использовать <code>[]rune</code> или <code>range</code>. В варианте для a–z символы 'a'–'z' являются однобайтовыми в UTF-8, поэтому байтовая индексация корректна.</li>
-<li><strong>Регистрозависимость:</strong> <code>'A'</code> и <code>'a'</code> — разные байты, получат разные индексы. Всё корректно.</li>
-</ul>
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
-  </div>
-  <div class="callout-body">
-    <p>Не пытайтесь использовать <code>map[byte]int</code> для Unicode. Символы, выходящие за пределы ASCII, будут занимать несколько байтов, и подсчёт байт разрушит логику. Всегда уточняйте алфавит и при необходимости переходите на руны.</p>
-  </div>
-</div>
-
-<h3 id="analiz-slozhnosti">Анализ сложности</h3>
-
-<p><strong>Для ASCII (массив <code>[26]int</code>):</strong><br />
-- <strong>Время:</strong> O(N), где N — длина строк. Один проход по строкам, затем O(1) проверка массива.<br />
-- <strong>Память:</strong> O(1). Массив <code>[26]int</code> на стеке, несколько локальных переменных. Никаких аллокаций в куче.</p>
-<p><strong>Для Unicode (map):</strong><br />
-- <strong>Время:</strong> O(N) в среднем, O(N²) в крайне маловероятном случае коллизий (но map в Go устойчив).<br />
-- <strong>Память:</strong> O(K), где K — количество уникальных символов. Плюс аллокация слайса рун для проверки длины.</p>
-<h3 id="mechanical-sympathy-pochemu-massiv-vyigryvaet-u-map">Mechanical Sympathy: почему массив выигрывает у map</h3>
-
-<ul>
-<li><strong>Стековая аллокация:</strong> <code>var freq [26]int</code> не вызывает <code>malloc</code>. Компилятор Go, видя, что массив не покидает функцию, размещает его на стеке. Это нулевое давление на GC.</li>
-<li><strong>Прямая адресация:</strong> <code>freq[s[i]-'a']</code> транслируется в одну инструкцию LEA (вычисление адреса) и одну инструкцию INC (инкремент). Никаких вызовов <code>runtime.mapassign_fast64</code>.</li>
-<li><strong>Кэш-локальность:</strong> 26 восьмибайтовых элементов (208 байт) легко умещаются в L1-кэше (32 КБ). При подсчёте массив «горит» в кэше.</li>
-<li><strong>Сравнение массивов:</strong> <code>freq == [26]int{}</code> (или цикл проверки) — это сравнение 208 байт, что для <code>memequal</code> одного-двух тактов с векторными инструкциями. Для map пришлось бы обходить все бакеты.</li>
-</ul>
-<p>На собеседовании Senior обязательно скажет: «Я выбрал массив, потому что алфавит ограничен, и это даёт нулевые аллокации и максимальную speed of light для данной задачи».</p>
-<h3 id="alternativy-i-trade-off">Альтернативы и trade-off</h3>
-
-<ul>
-<li><strong>Сортировка:</strong> O(N log N), память O(N). Проще концептуально, но медленнее. Может быть уместно, если строки короткие и читаемость важнее производительности. Но на позицию Senior ожидают линейное решение.</li>
-<li><strong>Один массив и счётчик несовпадений:</strong> Вместо финального цикла по <code>freq</code> можно поддерживать счётчик <code>unmatched</code> — сколько символов имеют ненулевую разность частот. Это чуть быстрее для короткого алфавита, но усложняет код. Для 26 элементов выигрыш незаметен.</li>
-<li><strong>Использование <code>map[rune]int</code> сразу:</strong> допустимо, если алфавит неизвестен. Но всегда стоит уточнить и выбрать массив, если возможно.</li>
-</ul>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопрос с собеседования</span>
   </div>
   <div class="callout-body">
-    <p>Вопрос: «Что если строки очень длинные, но алфавит маленький — имеет ли смысл map?»<br />
-Ответ: «Нет, массив остаётся предпочтительным: он не растёт с длиной строки, не требует хеширования, не вызывает аллокаций. Единственный случай для map — когда алфавит неизвестен или слишком велик (Unicode). Всегда уточняю алфавит на старте».</p>
+    <p>Обратите внимание на оптимизацию раннего выхода: если при декременте счетчик уходит в отрицательную область (<code>counts[r] &lt; 0</code>), мы немедленно прерываемся и возвращаем <code>false</code>, не обходя мапу повторно!</p>
   </div>
 </div>
 
-<h3 id="itog">Итог</h3>
+<hr />
+<h3 id="8-voprosy-dlya-sobesedovaniya">8. Вопросы для собеседования</h3>
 
-<p>Valid Anagram — это демонстрация того, как правильный выбор структуры данных превращает квадратичный или логарифмический алгоритм в линейный с нулевыми аллокациями. Для Go-разработчика уровня Senior это естественный рефлекс: видишь a–z — бери <code>[26]int</code>; видишь Unicode — уточни и возьми map с предвыделением capacity. И обязательно объясни, почему массив на стеке дружественнее кэшу и GC, а сравнение <code>==</code> мгновенно.</p>
-<p>На этом мы завершаем кластер <strong>«Массивы и строки»</strong> — фундамент, на котором построены все последующие темы. Мы освоили два указателя, скользящее окно, префиксные суммы, частотный анализ, in-place модификации и алгоритм Кадане. Теперь мы переходим к кластеру, который специализируется на одном из самых мощных инструментов — <strong>два указателя</strong>, где мы углубим приёмы, увидим новые вариации и научимся применять их в задачах, которые на первый взгляд не имеют ничего общего с классическим Two Sum. <a href="../02-dva-ukazatelya/1-teoriya-dva-ukazatelya.html" class="wikilink">1. Теория. Два указателя</a></p>
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопрос с собеседования</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Как в Go работает выражение <code>freq == [26]int{}</code>? Разве массивы можно сравнивать через <code>==</code>?<br />
+<strong>Ответ:</strong> Да! В языке Go массивы (в отличие от срезов <code>[]int</code>) являются полноправными типами-значениями (value types). Оператор <code>==</code> для массивов определен спецификацией языка: он выполняет поэлементное сравнение. Компилятор Go оптимизирует сравнение массивов тривиальных типов в единый вызов ассемблерной функции <code>runtime.memequal</code> (или векторные инструкции AVX/SSE), которая побайтово сравнивает блок памяти за считанные такты.</p>
+  </div>
+</div>
+
+<div class="callout callout-note">
+  <div class="callout-header">
+    <span class="callout-icon">📝</span>
+    <span class="callout-title">Заметка</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Почему мы не использовали тип <code>[26]int8</code> или <code>[26]int16</code> для еще большей экономии памяти?<br />
+<strong>Ответ:</strong> Тип <code>[26]int8</code> занял бы всего 26 байт. Однако:<br />
+1. Если длина строки превысит 127 символов, счетчик переполнится (<code>overflow</code>).<br />
+2. На 64-битных процессорах x86-64 и ARM64 работа с 64-битными машинными словами (<code>int</code>) является нативной и часто выполняется быстрее или так же быстро, как с байтами, благодаря отсутствию необходимости маскирования старших разрядов регистров.</p>
+  </div>
+</div>
+
+<hr />
+<h3 id="9-invarianty-i-chek-list-samoproverki">9. Инварианты и чек-лист самопроверки</h3>
+
+<ul>
+<li>[x] <strong>Проверка длин строк в самом начале:</strong> отсекает несовпадающие строки за $O(1)$ времени до входа в цикл.</li>
+<li>[x] <strong>Один совместный проход:</strong> строки <code>s</code> и <code>t</code> обходятся параллельно за один цикл от <code>0</code> до <code>len(s)-1</code>.</li>
+<li>[x] <strong>Zero Allocations:</strong> массив <code>[26]int</code> располагается строго на стеке.</li>
+<li>[x] <strong>Проверка алфавита:</strong> вычитание байта <code>'a'</code> безопасно работает для всех строчных латинских символов.</li>
+</ul>
+<p>На этом мы ставим точку в первом кластере <strong>«Массивы и строки»</strong>. Мы заложили прочный фундамент: освоили префиксные суммы, частотные массивы, технику скользящего сканирования и научились дружить с рантаймом Go.</p>
+<p>Следующий шаг — специализированный кластер <strong>«Два указателя»</strong>, где встречные и параллельные указатели позволят нам сворачивать квадратичные переборы в элегантные линейные алгоритмы: <span class="wikilink-unresolved" title="Заметка в разработке">1. Теория. Два указателя</span>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2432,7 +2513,7 @@ F --&gt;|&quot;Нет&quot;| H[&quot;return false&quot;]
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h3"><a href="#formulirovka-i-utochneniya">Формулировка и уточнения</a></li><li class="toc-item toc-h3"><a href="#naivnoe-reshenie-sortirovka">Наивное решение: сортировка</a></li><li class="toc-item toc-h3"><a href="#optimalnoe-reshenie-chastotnyy-massiv">Оптимальное решение: частотный массив</a></li><li class="toc-item toc-h3"><a href="#reshenie-dlya-unicode-map">Решение для Unicode: map</a></li><li class="toc-item toc-h3"><a href="#edge-cases">Edge Cases</a></li><li class="toc-item toc-h3"><a href="#analiz-slozhnosti">Анализ сложности</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-pochemu-massiv-vyigryvaet-u-map">Mechanical Sympathy: почему массив выигрывает у map</a></li><li class="toc-item toc-h3"><a href="#alternativy-i-trade-off">Альтернативы и trade-off</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#leetcode-242-valid-anagram">LeetCode 242. Valid Anagram</a></li><li class="toc-item toc-h3"><a href="#1-vvedenie-i-fizicheskaya-intuitsiya">1. Введение и физическая интуиция</a></li><li class="toc-item toc-h3"><a href="#2-formulirovka-zadachi-i-voprosy-intervyueru">2. Формулировка задачи и вопросы интервьюеру</a></li><li class="toc-item toc-h4"><a href="#voprosy-intervyueru-senior-stil">Вопросы интервьюеру (Senior-стиль):</a></li><li class="toc-item toc-h3"><a href="#3-razbor-podkhodov">3. Разбор подходов</a></li><li class="toc-item toc-h4"><a href="#podkhod-1-sortirovka-baytov-naivnyy">Подход 1: Сортировка байтов (Наивный)</a></li><li class="toc-item toc-h4"><a href="#podkhod-2-chastotnyy-massiv-fiksirovannogo-razmera-optimalnyy">Подход 2: Частотный массив фиксированного размера (Оптимальный)</a></li><li class="toc-item toc-h3"><a href="#4-etalonnaya-realizatsiya-na-go">4. Эталонная реализация на Go</a></li><li class="toc-item toc-h3"><a href="#5-poshagovaya-trassirovka-walkthrough">5. Пошаговая трассировка (Walkthrough)</a></li><li class="toc-item toc-h3"><a href="#6-mechanical-sympathy-pochemu-massiv-bet-map-v-desyatki-raz">6. Mechanical Sympathy: почему массив бьет map в десятки раз</a></li><li class="toc-item toc-h3"><a href="#7-rasshirenie-dlya-proizvolnogo-unicode-follow-up">7. Расширение для произвольного Unicode (Follow-up)</a></li><li class="toc-item toc-h3"><a href="#8-voprosy-dlya-sobesedovaniya">8. Вопросы для собеседования</a></li><li class="toc-item toc-h3"><a href="#9-invarianty-i-chek-list-samoproverki">9. Инварианты и чек-лист самопроверки</a></li>
   </ul>
 </aside>
 
