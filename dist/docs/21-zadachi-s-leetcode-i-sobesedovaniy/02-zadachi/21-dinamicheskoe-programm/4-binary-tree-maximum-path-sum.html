@@ -2171,22 +2171,59 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
+              <span class="meta-tag read-time">⏱ ~18 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">4. Binary Tree Maximum Path Sum</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Задача Binary Tree Maximum Path Sum (LeetCode 124) — это вершина сложности DP на деревьях. Если в <a href="3-house-robber-iii.html" class="wikilink">3. House Robber III</a> мы просто решали, берем узел или пропускаем, то здесь нам приходится иметь дело с "изгибающимися" путями. Путь в дереве больше не обязан идти строго от корня к листу; он может начаться в левом поддереве, пройти через корень и уйти в правое.</p>
-<p><strong>Условие:</strong> Путь в бинарном дереве — это любая последовательность узлов, где каждые два соседних узла соединены ребром. Путь должен содержать хотя бы один узел. Найти максимальную сумму пути.</p>
-<p>В бэкенде эта задача моделирует поиск самого "узкого" места или самой дорогой цепочки зависимостей в иерархической системе, где сбой может распространяться как вверх, так и вниз по топологии (например, каскадные таймауты в дереве вызовов микросервисов).</p>
-<h2 id="insayt-vetv-branch-protiv-arki-arch">Инсайт: Ветвь (Branch) против Арки (Arch)</h2>
+            <blockquote>
+<p><em>«Наилучший путь через вершину часто требует умения вовремя отсекать бесперспективные ответвления».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>Задача <strong>Binary Tree Maximum Path Sum (LeetCode 124, Hard)</strong> по праву считается вершиной мастерства в динамическом программировании на деревьях. Если в <a href="3-house-robber-iii.html" class="wikilink">3. House Robber III</a> мы решали задачу независимого множества с жесткой субординацией родитель-потомок, то здесь мы сталкиваемся с геометрией «изгибающихся» путей.</p>
+<p>Путь в бинарном дереве больше не обязан следовать гравитации от корня к листьям: он может начаться в глубине левого поддерева, подняться до некоторой вершины-«моста» и спуститься в правое поддерево.</p>
+<hr />
+<h2 id="1-postanovka-zadachi-i-formulirovka-invarianta">1. Постановка задачи и формулировка инварианта</h2>
 
-<p>Главный концептуальный барьер в этой задаче — понять разницу между тем, что мы <em>возвращаем</em> родителю, и тем, что мы <em>обновляем</em> как глобальный максимум.</p>
+<p>Путь в бинарном дереве — это любая непрерывная последовательность узлов, в которой любые два соседних узла соединены ребром. Каждый узел дерева может входить в путь <strong>не более одного раза</strong>. Значения в узлах могут быть как положительными, так и строго отрицательными. Путь обязан содержать хотя бы один узел.</p>
+<p>Требуется найти <strong>максимально возможную сумму значений</strong> узлов вдоль такого пути.</p>
+
+<div class="code-block" data-lang="text">
+  <div class="code-header">
+    <span class="code-lang-tag">TEXT</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-text"><code class="language-text">       -10
+       /  \
+      9   [20]       &lt;- Мост (арка): 15 + 20 + 7 = 42!
+          /  \
+        [15]  [7]
+</code></pre>
+</div>
+
+<p>В инженерной практике эта задача возникает при анализе графов вызовов и трассировок:<br />
+- <strong>Distributed Tracing (OpenTelemetry / Jaeger):</strong> Поиск критического пути (Critical Path Analysis) с максимальной совокупной задержкой или потреблением памяти в дереве вложенных RPC-спанов.<br />
+- <strong>Отказоустойчивость и каскадные сбои:</strong> Определение подсистемы, аккумулирующей максимальный штраф (latency penalty), где ошибка распространяется через общего диспетчера запросов.</p>
+<hr />
+<h2 id="2-arkhitekturnyy-insayt-vetv-branch-protiv-arki-arch">2. Архитектурный инсайт: Ветвь (Branch) против Арки (Arch)</h2>
+
+<p>Ключевой концептуальный барьер задачи — четкое разделение двух топологических ролей текущего узла:</p>
 <ol>
-<li><strong>Ветвь (Branch):</strong> Это путь, который начинается где-то ниже и идет <em>строго вверх</em> через текущий узел к родителю. Родитель может продолжить этот путь. Следовательно, мы можем передать наверх либо <code>node.Val + leftGain</code>, либо <code>node.Val + rightGain</code>, либо только <code>node.Val</code> (если ветви отрицательные).</li>
-<li><strong>Арка (Arch):</strong> Это путь, который изгибается в текущем узле. Он идет из левого поддерева через узел в правое поддерево. <strong>Родитель не может продолжить этот путь</strong>, так как путь в дереве не может дважды проходить через один и тот же узел. Поэтому арку мы учитываем в глобальном максимуме, но наверх <em>не передаем</em>.</li>
+<li>
+<p><strong>Ветвь (Branch — подзадача для родителя):</strong><br />
+   Это однонаправленный путь, который начинается где-то внизу поддерева, поднимается до текущего узла и <strong>готов быть продолжен родителем</strong>. Поскольку дерево не может содержать циклов, родитель может выбрать только <strong>одну</strong> из дочерних ветвей (левую или правую).<br />
+   $$\text{branchGain} = \text{node.Val} + \max(0, \; \max(\text{leftGain}, \; \text{rightGain}))$$</p>
+</li>
+<li>
+<p><strong>Арка (Arch — мост через вершину):</strong><br />
+   Это путь, соединяющий левую ветвь, текущий узел и правую ветвь. Он образует законченную параболу. <strong>Родительский узел не может подключиться к арке</strong>, иначе путь раздвоится, что нарушит аксиому простого пути в дереве. Арка — это локальный кандидат на глобальный оптимум:<br />
+   $$\text{archSum} = \text{node.Val} + \max(0, \text{leftGain}) + \max(0, \text{rightGain})$$</p>
+</li>
 </ol>
 
 <div class="mermaid-wrapper">
@@ -2202,30 +2239,41 @@
   </div>
   <pre class="mermaid">
 flowchart TD
-classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
-classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
-classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Узел Node&quot;]:::process --&gt; B[&quot;Левая ветвь&lt;br&gt;leftGain&quot;]
-A --&gt; C[&quot;Правая ветвь&lt;br&gt;rightGain&quot;]
+classDef entry fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef branch fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef arch fill:#1e1b4b,stroke:#818cf8,stroke-width:2px,color:#f8fafc
+classDef success fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
 
-B --&gt; D[&quot;Арка - обновляем глобальный max&lt;br&gt;Val + leftGain + rightGain&quot;]
-B --&gt; E[&quot;Ветвь вверх - возвращаем родителю&lt;br&gt;Val + max - leftGain, rightGain -&quot;]
+A[&quot;Текущий узел Node&quot;]:::entry --&gt; B[&quot;Левая ветвь: leftGain&quot;]:::branch
+A --&gt; C[&quot;Правая ветвь: rightGain&quot;]:::branch
+
+B --&gt; D[&quot;АРКА (Мост):&lt;br&gt;arch = Node.Val + max(0, left) + max(0, right)&quot;]:::arch
 C --&gt; D
+
+B --&gt; E[&quot;ВЕТВЬ ВВЕРХ (Родителю):&lt;br&gt;branch = Node.Val + max(0, max(left, right))&quot;]:::branch
 C --&gt; E
+
+D --&gt; F[&quot;Обновление глобального max: maxSum = max(maxSum, arch)&quot;]:::success
+E --&gt; G[&quot;Возврат branch в стек вызова&quot;]:::entry
   </pre>
 </div>
 
 
-<h2 id="idiomatichnyy-go-zamykaniya-i-escape-analysis">Идиоматичный Go: Замыкания и Escape Analysis</h2>
+<div class="callout callout-warning">
+  <div class="callout-header">
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Подводные камни / Gotcha</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Фатальная ошибка на собеседованиях:</strong><br />
+Попытка вернуть <code>archSum</code> родителю. Если функция вернет сумму обеих ветвей, вышестоящий узел сформирует «вилку» (три ребра из одного узла), что превратит дерево в некорректный граф. Наверх передается строго <strong>одна</strong> максимальная ветвь!</p>
+  </div>
+</div>
 
-<p>Для хранения глобального максимума идеально подходят замыкания (closures) в Go. Мы объявляем переменную <code>maxSum</code> и используем её внутри локальной функции <code>dfs</code>. Это избавляет от необходимости создавать структуру или передавать указатель <code>*int</code> через аргументы.</p>
+<hr />
+<h2 id="3-idiomatichnaya-realizatsiya-na-go">3. Идиоматичная реализация на Go</h2>
+
+<p>Благодаря встроенной в Go 1.21+ функции <code>max()</code> и константе <code>math.MinInt</code> (минимальное целое число для текущей платформы), код получается лаконичным и безопасным от переполнений:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2235,103 +2283,187 @@ C --&gt; E
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">import &quot;math&quot;
+  <pre class="language-go"><code class="language-go">package main
 
-func maxPathSum(root *TreeNode) int {
-    // Инициализируем минимально возможным значением
-    maxSum := math.MinInt32
+import &quot;math&quot;
 
-    // Функция dfs возвращает &quot;ветвь&quot; (максимальный增益 gain для родителя)
-    var dfs func(node *TreeNode) int
-    dfs = func(node *TreeNode) int {
+// TreeNode представляет узел бинарного дерева.
+type TreeNode struct {
+    Val   int
+    Left  *TreeNode
+    Right *TreeNode
+}
+
+// MaxPathSum находит максимальную сумму любого непустого пути в дереве.
+// Временная сложность: O(N) — каждый узел посещается один раз.
+// Память: O(H) — стек рекурсии горутины.
+func MaxPathSum(root *TreeNode) int {
+    if root == nil {
+        return 0
+    }
+
+    // Инициализируем глобальный максимум минимально возможным int
+    maxSum := math.MinInt
+
+    // postOrder возвращает максимальную однонаправленную ветвь от узла node
+    var postOrder func(node *TreeNode) int
+    postOrder = func(node *TreeNode) int {
         if node == nil {
             return 0
         }
 
-        // Рекурсивно получаем ветви от детей.
-        // Если ветвь отрицательная, мы её отбрасываем (берем 0),
-        // так как лучше начать путь с текущего узла, чем тянуть вниз убытки.
-        leftGain := max(dfs(node.Left), 0)
-        rightGain := max(dfs(node.Right), 0)
+        // 1. Постфиксный спуск: вычисляем выигрыш от левого и правого поддеревьев.
+        // Если ветвь приносит убыток (gain &lt; 0), мы её отсекаем (max(..., 0)).
+        leftGain := max(postOrder(node.Left), 0)
+        rightGain := max(postOrder(node.Right), 0)
 
-        // 1. Считаем &quot;Арку&quot; (путь через текущий узел)
-        archPath := node.Val + leftGain + rightGain
-        if archPath &gt; maxSum {
-            maxSum = archPath
+        // 2. Вычисляем арку (путь, замыкающийся в текущей вершине)
+        currentArch := node.Val + leftGain + rightGain
+
+        // 3. Обновляем глобальный оптимум
+        if currentArch &gt; maxSum {
+            maxSum = currentArch
         }
 
-        // 2. Считаем &quot;Ветвь&quot; (путь вверх к родителю)
-        // Мы можем передать только одну ветвь!
-        branchPath := node.Val + max(leftGain, rightGain)
-
-        return branchPath
+        // 4. Родителю отдаем только ОДНУ ветвь с наибольшей выгодой
+        return node.Val + max(leftGain, rightGain)
     }
 
-    dfs(root)
+    postOrder(root)
     return maxSum
-}
-
-func max(a, b int) int {
-    if a &gt; b { return a }
-    return b
 }
 </code></pre>
 </div>
 
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+<hr />
+<h2 id="4-mechanical-sympathy-branchless-cmov-i-obrezka-otritsatelnykh-vetvey">4. Mechanical Sympathy: Branchless CMOV и обрезка отрицательных ветвей</h2>
+
+<p>Обратите внимание на конструкцию:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p>Кандидаты часто совершают фатальную ошибку: возвращают <code>archPath</code> наверх родителю. Это нарушает определение пути в дереве. Если вы передали арку наверх, вы неявно предполагаете, что родитель может подключиться к узлу, из которого уже вышли две ветви, создавая "ромб" (цикл), что невозможно в дереве. Родителю можно передать строго одну линейную ветвь.</p>
-  </div>
+  <pre class="language-go"><code class="language-go">leftGain := max(postOrder(node.Left), 0)
+</code></pre>
 </div>
 
-<h2 id="under-the-hood-escape-analysis-zamykaniy">Under the Hood: Escape Analysis Замыканий</h2>
+<p>Это не просто математический фильтр, это алгоритмический аналог <strong>Circuit Breaker</strong> (предохранителя цепи). Если поддерево генерирует отрицательную сумму, мы не обязаны включать его в наш путь — мы просто не спускаемся в него, беря $0$.</p>
+<h3 id="assemblernyy-analiz-x86-64-i-arm64">Ассемблерный анализ (x86-64 и ARM64)</h3>
+<p>Как компилятор Go <code>go build -gcflags="-S"</code> переводит <code>max(val, 0)</code>?<br />
+- На платформе <strong>x86-64</strong>: компилятор избегает инструкции условного перехода <code>JLE</code>/<code>JGE</code>, вызывающей сброс конвейера процессора при неверном предсказании переходов (Branch Misprediction). Вместо этого генерируется бессбойная инструкция условного перемещения <strong><code>CMOVL</code> / <code>CMOVG</code></strong>:<br />
+<code>asm
+  TESTQ  AX, AX
+  MOVQ   $0, CX
+  CMOVLQ CX, AX   // Если AX &lt; 0, переместить 0 в AX за 1 такт!</code><br />
+- На архитектуре <strong>ARM64</strong>: генерируется инструкция условного выбора <strong><code>CSEL</code></strong>:<br />
+<code>asm
+  CMP   X0, #0
+  CSEL  GT, X0, XZR, X0  // Выбор между регистром X0 и нулевым регистром XZR</code><br />
+Это гарантирует, что обрезка отрицательных ветвей выполняется за <strong>1 такт CPU без остановки конвейера инструкций</strong>.</p>
+<hr />
+<h2 id="5-under-the-hood-escape-analysis-zamykaniy-v-go">5. Under the Hood: Escape Analysis замыканий в Go</h2>
 
-<p>Как компилятор Go обрабатывает переменную <code>maxSum</code> внутри <code>dfs</code>?</p>
-<p>Поскольку анонимная функция <code>dfs</code> захватывает переменную <code>maxSum</code> из внешней области видимости и модифицирует её, компилятор Go не может разместить <code>maxSum</code> на стеке. Если бы она осталась на стеке, она была бы уничтожена после завершения <code>maxPathSum</code>, а <code>dfs</code> могла бы пережить функцию (например, если бы мы запустили её в горутине).</p>
-<p>Поэтому <strong>Escape Analysis принудительно перемещает <code>maxSum</code> в кучу (Heap)</strong>.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+<p>В коде выше анонимная функция <code>postOrder</code> захватывает переменную <code>maxSum</code> из внешней функции <code>MaxPathSum</code>. Что делает компилятор Go?</p>
+
+<div class="code-block" data-lang="text">
+  <div class="code-header">
+    <span class="code-lang-tag">TEXT</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p>Компилятор Go создает скрытую структуру (closure struct), содержащую указатель на <code>maxSum</code>, и передает указатель на эту структуру в <code>dfs</code> неявным аргументом. Каждое обновление <code>maxSum</code> внутри DFS — это запись в кучу (Write to Heap). Это медленнее, чем работа с регистрами/стеком, но для одного указателя влияние на GC минимально. Если бы мы реализовали это через аргумент <code>*int</code>, поведение Escape Analysis было бы идентичным.</p>
-  </div>
+  <pre class="language-text"><code class="language-text">Стек вызова MaxPathSum:
++-----------------------------+
+| root *TreeNode              |
+| postOrder func(node) int    |
++-----------------------------+
+               |
+               v
+Куча (Heap):
++-----------------------------+
+| maxSum int (escapes to heap)|  &lt;-- Вынесено в кучу из-за захвата в замыкание!
++-----------------------------+
+</code></pre>
 </div>
-
-<h2 id="mechanical-sympathy-otbrasyvanie-otritsatelnykh-vetvey">Mechanical Sympathy: Отбрасывание отрицательных ветвей</h2>
-
-<p>Строка <code>max(dfs(node.Left), 0)</code> — это не просто трюк для прохождения тестов LeetCode. Это глубокий архитектурный принцип.</p>
-<p>В системном дизайне отрицательная ветвь — это каскадный сбой (Cascading Failure). Если микросервис A вызывает B, а B возвращает таймаут (отрицательный вклад в общую надежность), A не должен "протаскивать" этот таймаут выше, блокируя потоки. A должен изолировать сбой (Circuit Breaker) и вернуть свой собственный статус (0), либо обработать деградацию локально.</p>
-<p>В контексте процессора вычисление <code>max(x, 0)</code> компилируется в инструкции <code>CMOV</code> (Conditional Move) или <code>TEST/JNS</code>, что исключает тяжелые ветвления (Branch Mispredictions) и работает за 1-2 такта на современных CPU.</p>
-<h2 id="system-design-topologiya-vyzovov-i-trace-analytics">System Design: Топология вызовов и Trace Analytics</h2>
-
-<p>Представьте, что у вас есть дерево вызовов микросервисов (Distributed Trace). Каждый узел — это сервис, а <code>Val</code> — это время его ответа (latency) в миллисекундах. </p>
-<p>Вы хотите найти самый долгий сквозной путь (End-to-End latency) в вашей системе, учитывая, что запрос может параллелиться (fork-join). Алгоритм Maximum Path Sum находит "арку" — путь через общего предка, где два параллельных запроса суммируют свое время ожидания, создавая максимальную задержку для пользователя. Это помогает выявить архитектурные узкие места (bottlenecks), которые не видны при простом усреднении метрик.</p>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p>Если вы быстро решили задачу, интервьюер обязательно спросит: <em>"А что если значения в узлах могут быть любыми целыми числами?"</em><br />
-В нашей реализации <code>maxSum := math.MinInt32</code> может переполниться, если узлы содержат <code>math.MinInt64</code>. Всегда инициализируйте <code>maxSum</code> значением корня: <code>maxSum := root.Val</code>, либо используйте <code>math.MinInt64</code> (в Go 1.17+ можно <code>math.MinInt</code>). Это покажет ваше внимание к краевым случаям (Edge Cases) и переполнениям.</p>
-  </div>
-</div>
-
-<h2 id="itog">Итог</h2>
 
 <ol>
-<li><strong>Ветвь против Арки:</strong> Ветвь можно передать родителю (одна линия). Арка изгибается через узел и наверх не передается.</li>
-<li><strong>Обрезка отрицательных весов:</strong> <code>max(gain, 0)</code> — это Circuit Breaker в мире алгоритмов. Никогда не тяните вверх отрицательный вклад.</li>
-<li><strong>Замыкания:</strong> Использование локальных функций и захваченных переменных — идиоматичный способ хранения глобального состояния в DFS на деревьях в Go.</li>
-<li><strong>Escape Analysis:</strong> Компилятору придется вынести захваченную переменную в кучу. Для одного <code>int</code> это приемлемо, но не стоит захватывать целые слайсы в горячих путях.</li>
+<li><strong>Escape Analysis:</strong> Поскольку замыкание может потенциально пережить родительский фрейм (например, если бы мы передали его наружу или в горутину), компилятор перемещает переменную <code>maxSum</code> со стека в кучу:<br />
+<code>./solution.go:20:2: moved to heap: maxSum</code></li>
+<li><strong>Аллокации:</strong> Для одного скалярного <code>int</code> это создает всего одну микроаллокацию (8 байт). Однако в экстремально горячем коде (high-frequency trading, ядро сетевого стека) даже одной аллокации можно избежать, если передавать указатель на структуру или использовать именованный метод:</li>
 </ol>
-<p>В следующей статье мы разберем задачу, где паттерн префиксных сумм переносится на деревья, требуя совершенно нового подхода к поиску путей: <a href="5-path-sum-iii.html" class="wikilink">5. Path Sum III</a>.</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">type PathSolver struct {
+    maxSum int
+}
+
+func (s *PathSolver) dfs(node *TreeNode) int {
+    if node == nil { return 0 }
+    l := max(s.dfs(node.Left), 0)
+    r := max(s.dfs(node.Right), 0)
+    s.maxSum = max(s.maxSum, node.Val+l+r)
+    return node.Val + max(l, r)
+}
+// Если PathSolver выделен на стеке вызывающей стороны, аллокаций = 0!
+</code></pre>
+</div>
+
+<hr />
+<h2 id="6-system-design-opentelemetry-i-critical-path-v-dereve-spanov">6. System Design: OpenTelemetry и Critical Path в дереве спанов</h2>
+
+<p>В распределенных микросервисных архитектурах каждый HTTP/gRPC запрос порождает распределенный трейс (Trace), состоящий из родительских и дочерних спанов (Span DAG/Tree).</p>
+
+<div class="mermaid-wrapper">
+  <div class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
+    </button>
+  </div>
+  <pre class="mermaid">
+flowchart TD
+classDef root fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+classDef span fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef bottleneck fill:#7f1d1d,stroke:#f87171,stroke-width:2px,color:#f8fafc
+
+Gateway[&quot;API Gateway (50ms)&quot;]:::root --&gt; Auth[&quot;Auth Service (10ms)&quot;]:::span
+Gateway --&gt; Order[&quot;Order Service (30ms)&quot;]:::span
+Order --&gt; DB[(&quot;PostgreSQL Query (120ms)&quot;)]:::bottleneck
+Order --&gt; Payment[&quot;Payment Gateway (85ms)&quot;]:::bottleneck
+  </pre>
+</div>
+
+
+<p>Когда SRE-инженеры расследуют деградацию времени ответа в системе:<br />
+- Параллельные вызовы (например, обращение к БД и стороннему платежному шлюзу) формируют «арку» совокупной задержки для родителя.<br />
+- Алгоритм поиска максимального взвешенного пути по спанам позволяет автоматически локализовать <strong>узкое горлышко системы (System Bottleneck)</strong> — критическую цепочку выполнения, оптимизация которой даст максимальное сокращение общего времени ожидания пользователя (p99 latency).</p>
+<hr />
+<h2 id="7-rezyume">7. Резюме</h2>
+
+<ol>
+<li><strong>Два взгляда на узел:</strong> Ветвь передается родителю (линейный выбор $\max(L, R)$). Арка соединяет обе ветви через вершину и участвует только в обновлении глобального максимума.</li>
+<li><strong>Обрезка нулем $\max(\text{gain}, 0)$:</strong> Исключает отрицательные поддеревья, компилируясь в бессбойные инструкции процессора <code>CMOV</code>/<code>CSEL</code>.</li>
+<li><strong>Безопасность типов и переполнений:</strong> Инициализируйте аккумулятор <code>math.MinInt</code>, чтобы корректно обрабатывать деревья, целиком состоящие из отрицательных чисел.</li>
+<li><strong>Замыкания и Escape Analysis:</strong> Понимание того, какие переменные выносятся в кучу при захвате контекста, отличает рядового разработчика от senior Go-инженера.</li>
+</ol>
+<p>В следующей лекции мы объединим DP на деревьях с префиксными суммами и скользящими хэш-таблицами в задаче <a href="5-path-sum-iii.html" class="wikilink">5. Path Sum III</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2359,7 +2491,7 @@ func max(a, b int) int {
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#insayt-vetv-branch-protiv-arki-arch">Инсайт: Ветвь (Branch) против Арки (Arch)</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-zamykaniya-i-escape-analysis">Идиоматичный Go: Замыкания и Escape Analysis</a></li><li class="toc-item toc-h2"><a href="#under-the-hood-escape-analysis-zamykaniy">Under the Hood: Escape Analysis Замыканий</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-otbrasyvanie-otritsatelnykh-vetvey">Mechanical Sympathy: Отбрасывание отрицательных ветвей</a></li><li class="toc-item toc-h2"><a href="#system-design-topologiya-vyzovov-i-trace-analytics">System Design: Топология вызовов и Trace Analytics</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-postanovka-zadachi-i-formulirovka-invarianta">1. Постановка задачи и формулировка инварианта</a></li><li class="toc-item toc-h2"><a href="#2-arkhitekturnyy-insayt-vetv-branch-protiv-arki-arch">2. Архитектурный инсайт: Ветвь (Branch) против Арки (Arch)</a></li><li class="toc-item toc-h2"><a href="#3-idiomatichnaya-realizatsiya-na-go">3. Идиоматичная реализация на Go</a></li><li class="toc-item toc-h2"><a href="#4-mechanical-sympathy-branchless-cmov-i-obrezka-otritsatelnykh-vetvey">4. Mechanical Sympathy: Branchless CMOV и обрезка отрицательных ветвей</a></li><li class="toc-item toc-h3"><a href="#assemblernyy-analiz-x86-64-i-arm64">Ассемблерный анализ (x86-64 и ARM64)</a></li><li class="toc-item toc-h2"><a href="#5-under-the-hood-escape-analysis-zamykaniy-v-go">5. Under the Hood: Escape Analysis замыканий в Go</a></li><li class="toc-item toc-h2"><a href="#6-system-design-opentelemetry-i-critical-path-v-dereve-spanov">6. System Design: OpenTelemetry и Critical Path в дереве спанов</a></li><li class="toc-item toc-h2"><a href="#7-rezyume">7. Резюме</a></li>
   </ul>
 </aside>
 

@@ -2171,37 +2171,129 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
+              <span class="meta-tag read-time">⏱ ~19 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">1. Теория. Динамическое программирование 1D</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Динамическое программирование (Dynamic Programming, DP) — это один из самых пугающих паттернов на собеседованиях, который часто ассоциируется с зубрежкой сложных таблиц. Но для инженера DP — это не магия, а строгий математический аппарат для оптимизации вычислений, основанный на свойствах <strong>оптимальной подструктуры</strong> и <strong>пересекающихся подзадач</strong>.</p>
-<p>Одномерное DP (1D DP) — это фундамент, где состояние системы описывается одним параметром (обычно индексом <code>i</code> или шагом <code>n</code>). Мы не строим двумерные матрицы, а вычисляем значения на числовой прямой, опираясь на уже вычисленные предыдущие точки.</p>
-<h2 id="ot-rekursii-k-dp-inversiya-myshleniya">От рекурсии к DP: Инверсия мышления</h2>
+            <blockquote>
+<p><em>«Те, кто не помнит своего прошлого, обречены повторять его».</em><br />
+— Джордж Сантаяна</p>
+</blockquote>
+<p>Динамическое программирование (Dynamic Programming, DP) — один из самых окутанных мифами разделов Computer Science. На собеседованиях оно нередко превращается в пугалку с многомерными матрицами и неочевидными формулами. Но для думающего инженера в DP нет никакой эзотерики: это строгий, прагматичный метод оптимизации вычислений, превращающий нежизнеспособный экспоненциальный перебор в быстрый полиномиальный или линейный алгоритм.</p>
+<p>Сам термин «динамическое программирование» ввел в 1950-х годах американский математик Ричард Беллман (Richard Bellman), работая в корпорации RAND. В те годы слово <em>«programming»</em> означало не написание машинного кода, а составление оптимальных планов и таблиц (как в «линейном программировании»), а эпитет <em>«dynamic»</em> подчеркивал принятие последовательных решений во времени.</p>
+<p>Одномерное DP (1D DP) — это фундамент метода. Здесь состояние системы на каждом шаге однозначно описывается одним-единственным параметром (индексом <code>i</code>, величиной суммы, шагом процесса), а вычисления разворачиваются вдоль одномерной числовой шкалы.</p>
+<hr />
+<h2 id="1-dva-stolpa-dinamicheskogo-programmirovaniya">1. Два столпа динамического программирования</h2>
 
-<p>В классических ООП-языках разработчики часто мыслят задачами "сверху вниз" (Top-Down): "чтобы решить проблему размера N, мне нужно решить N-1, а для этого N-2". Это порождает глубокую рекурсию.</p>
-<p>В Go (как и в C) рекурсия — это не просто оверх на вызов функции. Это рост стека горутины. Изначально горутина получает стек в 2-8 КБ. При глубокой рекурсии рантайм Go вынужден делать <strong>копирование стека (stack growth)</strong>, выделяя новый участок памяти в куче и перенося туда кадры вызовов. Для DP-задач с $N=10^5$ это приведет к фатальному <code>stack overflow</code>.</p>
-<p>Поэтому в Go парадигма DP смещается в сторону <strong>Bottom-Up (восходящее DP)</strong>. Мы начинаем с базы (0 или 1) и итеративно заполняем массив состояний до достижения N. Никакого роста стека, только предсказуемый цикл.</p>
-<h2 id="anatomiya-1d-dp-slays-kak-mashina-sostoyaniy">Анатомия 1D DP: Слайс как машина состояний</h2>
+<p>Любая задача поддается решению через DP тогда и только тогда, когда она обладает двумя фундаментальными свойствами:</p>
+<ol>
+<li>
+<p><strong>Оптимальная подструктура (Optimal Substructure):</strong><br />
+   Глобально оптимальное решение задачи размера $N$ строится из оптимальных решений её меньших подзадач ($N-1$, $N-2$ и т.д.).<br />
+<em>Пример:</em> кратчайший маршрут из города $A$ в город $C$ через $B$ складывается из кратчайшего маршрута от $A$ до $B$ и кратчайшего от $B$ до $C$.</p>
+</li>
+<li>
+<p><strong>Перекрывающиеся подзадачи (Overlapping Subproblems):</strong><br />
+   При наивном рекурсивном дроблении одна и та же меньшая подзадача решается миллионы раз заново.<br />
+<em>Пример:</em> при вычислении $F(5)$ через рекурсию $F(n-1) + F(n-2)$ значение $F(3)$ будет вычислено дважды, $F(2)$ — трижды, а $F(1)$ — пять раз. Экспоненциальный взрыв $O(2^N)$!</p>
+</li>
+</ol>
 
-<p>В 1D DP мы обычно храним состояния в слайсе: <code>dp := make([]int, n+1)</code>.<br />
-Значение <code>dp[i]</code> — это оптимальный ответ для префикса задачи длины <code>i</code>. А переход (recurrence relation) выражается через предыдущие значения, например: <code>dp[i] = dp[i-1] + dp[i-2]</code>.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
+<div class="mermaid-wrapper">
+  <div class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p>Когда вы создаете <code>make([]int, n+1)</code>, рантайм Go выделяет непрерывный блок памяти в куче. Компилятор знает, что вы работаете с линейным массивом фиксированного размера элементов. Процессор (Prefetcher) видит последовательный доступ <code>dp[i-1]</code>, <code>dp[i]</code>, <code>dp[i+1]</code> и заранее подгружает кэш-линии (по 64 байта, вмещающие 8 значений <code>int64</code>). Это делает Bottom-Up DP невероятно дружелюбным к архитектуре CPU (Data Locality).</p>
-  </div>
+  <pre class="mermaid">
+flowchart TD
+classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+F5[&quot;F(5)&quot;]:::entry --&gt; F4[&quot;F(4)&quot;]:::process
+F5 --&gt; F3a[&quot;F(3) [Дубль!]&quot;]:::error
+F4 --&gt; F3b[&quot;F(3) [Дубль!]&quot;]:::error
+F4 --&gt; F2a[&quot;F(2) [Дубль!]&quot;]:::warning
+F3a --&gt; F2b[&quot;F(2) [Дубль!]&quot;]:::warning
+F3a --&gt; F1a[&quot;F(1)&quot;]:::success
+  </pre>
 </div>
 
-<h2 id="mechanical-sympathy-on-pamyati-vs-o1-pamyati">Mechanical Sympathy: O(N) памяти vs O(1) памяти</h2>
 
-<p>Наивная реализация 1D DP требует $O(N)$ памяти под слайс. Но особенность 1D переходов в том, что текущее состояние часто зависит только от 1-2 предыдущих.</p>
+<p>DP просто запоминает результат каждого вычисления в таблице (кэше) или строит ответ снизу вверх, гарантируя, что каждая подзадача решается ровно <strong>один раз</strong>.</p>
+<hr />
+<h2 id="2-top-down-vs-bottom-up-inzhenernyy-vybor-v-go">2. Top-Down vs Bottom-Up: Инженерный выбор в Go</h2>
+
+<p>Существует два принципиальных подхода к реализации DP:</p>
+<div class="table-container"><table>
+<thead>
+<tr>
+<th>Подход</th>
+<th>Суть</th>
+<th>Механизм</th>
+<th>Плюсы</th>
+<th>Минусы в Go</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Top-Down (Мемоизация)</strong></td>
+<td>Сверху вниз: от $N$ к базе</td>
+<td>Рекурсия + кэш (хэш-таблица или слайс)</td>
+<td>Интуитивно пишется прямо из условия задачи</td>
+<td>Оверхед на вызовы, риск роста стека горутины, аллокации <code>map</code></td>
+</tr>
+<tr>
+<td><strong>Bottom-Up (Табуляция)</strong></td>
+<td>Снизу вверх: от базы к $N$</td>
+<td>Простой итеративный цикл <code>for</code></td>
+<td>Максимальная скорость CPU, zero-alloc, сжатие памяти до $O(1)$</td>
+<td>Требует заранее определить порядок вычисления состояний</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="stek-gorutiny-i-risk-stack-overflow">Стек горутины и риск Stack Overflow</h3>
+
+<p>В академических курсах часто пропагандируют Top-Down с мемоизацией. Однако в Go глубокая рекурсия таит в себе системную опасность.</p>
+<p>Изначально рантайм Go выделяет горутине микростек размером всего <strong>2 КБ</strong> (в отличие от 1–8 МБ системного потока в OS threads). Когда глубина вызовов растет, рантайм вынужден динамически расширять стек:<br />
+1. Выделяется новый кусок памяти вдвое большего размера.<br />
+2. Все стек-фреймы копируются на новое место (<code>runtime.copystack</code>).<br />
+3. Все указатели на переменные стека корректируются.</p>
+<p>При $N = 10^5$ рекурсивный Top-Down не только потратит десятки миллисекунд на постоянное перевыделение и копирование памяти стека, но при достижении системного лимита <code>maxstacksize</code> (по умолчанию 1 ГБ на 64-битных системах, но на микросервисах лимит может быть сильно урезан) приведет к аварийной панике: <code>runtime: goroutine stack exceeds limit</code>.</p>
+<p><strong>Вывод:</strong> Идиоматичный Go-код для 1D DP всегда пишется в стиле <strong>Bottom-Up</strong>.</p>
+<hr />
+<h2 id="3-anatomiya-1d-dp-mashina-sostoyaniy-v-pamyati">3. Анатомия 1D DP: Машина состояний в памяти</h2>
+
+<p>В Bottom-Up DP мы начинаем с базового случая и заполняем слайс:<br />
+<code>dp := make([]int, n+1)</code></p>
+<p>Элемент <code>dp[i]</code> представляет собой оптимальный ответ для префикса размера <code>i</code>.<br />
+Переход состояний (Recurrence Relation) связывает текущее состояние с предыдущими:<br />
+$$dp[i] = f(dp[i-1], dp[i-2], \dots)$$</p>
+<h3 id="mechanical-sympathy-lineynaya-pamyat-i-prefetcher-cpu">Mechanical Sympathy: Линейная память и префетчер CPU</h3>
+
+<p>Когда вы создаете плоский срез <code>make([]int, n+1)</code> и читаете его последовательно в цикле:<br />
+1. Элементы лежат в строго непрерывном диапазоне виртуальной памяти.<br />
+2. Процессорный аппаратный префетчер (Hardware Stream Prefetcher) мгновенно распознает линейный шаблон доступа и предварительно загружает кэш-линии (по 64 байта — ровно 8 чисел <code>int64</code>) из оперативной памяти в L1/L2 кэш еще до того, как инструкция запросит данные.<br />
+3. Промах мимо кэша (Cache Miss) происходит лишь один раз на 8 итераций, а латентность доступа составляет ~1 нс (вместо 50–100 нс при обращении к RAM через узлы дерева или хэш-таблицы).</p>
+<hr />
+<h2 id="4-optimizatsiya-pamyati-ot-on-k-o1">4. Оптимизация памяти: От $O(N)$ к $O(1)$</h2>
+
+<p>Часто разработчик останавливается на $O(N)$ по памяти. Но взгляните на формулу перехода:<br />
+$$dp[i] = dp[i-1] + dp[i-2]$$</p>
+<p>Для вычисления $dp[i]$ нам совершенно не нужны значения $dp[i-3], dp[i-4], \dots, dp[0]$! Они стали историей.</p>
+<h3 id="sravnenie-realizatsiy-fibonachchi">Сравнение реализаций: Фибоначчи</h3>
+
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2211,55 +2303,32 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// Наивный подход: O(N) памяти, выделение в куче
-func fibNaive(n int) int {
+  <pre class="language-go"><code class="language-go">// 1. Наивный слайс: O(N) памяти в куче (Heap Allocation)
+func fibSlice(n int) int {
     if n &lt;= 1 {
         return n
     }
-    dp := make([]int, n+1) // Аллокация в куче, работа GC
+    dp := make([]int, n+1) // Аллокация, нагрузка на GC
     dp[0], dp[1] = 0, 1
     for i := 2; i &lt;= n; i++ {
         dp[i] = dp[i-1] + dp[i-2]
     }
     return dp[n]
 }
-</code></pre>
-</div>
 
-<p>Для бэкенд-сервиса, обрабатывающего тысячи запросов в секунду, каждый из которых требует DP-вычисления, аллокация слайса на каждый запрос — это преступление против GC. </p>
-<p><strong>Оптимизация:</strong> так как нам нужны только <code>i-1</code> и <code>i-2</code>, мы можем использовать переменные на стеке, уменьшив память до $O(1)$ и полностью исключив аллокации.</p>
-
-<div class="code-block" data-lang="go">
-  <div class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </div>
-  <pre class="language-go"><code class="language-go">// Идиоматичный подход: O(1) памяти, нулевые аллокации
+// 2. Идиоматичный Go: O(1) памяти, регистры CPU (Zero Allocations)
 func fibOptimized(n int) int {
     if n &lt;= 1 {
         return n
     }
-    var prev2, prev1 int64 = 0, 1 // Лежат на стеке горутины
+    prev2, prev1 := 0, 1 // Размещаются в регистрах процессора
     for i := 2; i &lt;= n; i++ {
         curr := prev1 + prev2
-        prev2, prev1 = prev1, curr // Сдвигаем окно
+        prev2, prev1 = prev1, curr // Скользящее окно двух переменных
     }
-    return int(prev1)
+    return prev1
 }
 </code></pre>
-</div>
-
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Переменные <code>prev2</code>, <code>prev1</code> и <code>curr</code> не escapе-ят в кучу. Компилятор Go разместит их в регистрах процессора (если это возможно) или на стеке. Доступ к регистрам занимает 0 тактов памяти (в отличие от чтения из L1 кэша, которое занимает ~4 такта). Это максимально возможная производительность. Кроме того, мы полностью избавляем Garbage Collector от необходимости сканировать и очищать слайс <code>dp</code>.</p>
-  </div>
 </div>
 
 
@@ -2278,26 +2347,33 @@ func fibOptimized(n int) int {
 flowchart LR
 classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
 classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
-classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
 classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
 classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Состояние i-2&quot;]:::process --&gt; C[&quot;Текущее состояние i&quot;]
-B[&quot;Состояние i-1&quot;] --&gt; C
-C --&gt; D[&quot;Сдвиг окна&quot;]
-D --&gt; E[&quot;Состояние i-1 становится i-2&lt;br&gt;Текущее становится i-1&quot;]
+
+P2[&quot;prev2 (шаг i-2)&quot;]:::process --&gt; C[&quot;curr = prev1 + prev2&quot;]:::entry
+P1[&quot;prev1 (шаг i-1)&quot;]:::process --&gt; C
+C --&gt; Shift[&quot;Сдвиг скользящего окна:&lt;br/&gt;prev2 = prev1&lt;br/&gt;prev1 = curr&quot;]:::warning
+Shift --&gt; Next[&quot;Готово к шагу i+1&quot;]:::success
   </pre>
 </div>
 
 
-<h2 id="lovushki-initsializatsii-v-go">Ловушки инициализации в Go</h2>
+<div class="callout callout-tip">
+  <div class="callout-header">
+    <span class="callout-icon">💡</span>
+    <span class="callout-title">Регистровая оптимизация компилятора Go</span>
+  </div>
+  <div class="callout-body">
+    <p>Благодаря ABIInternal (регистровому ABI, появившемуся в Go 1.17+ для x86-64 и ARM64), переменные <code>prev2</code>, <code>prev1</code> и <code>curr</code> даже не касаются стека в оперативной памяти — они циркулируют исключительно в регистрах CPU (<code>RAX</code>, <code>RBX</code>, <code>RCX</code>). Латентность операции сложения в регистрах — ровно <strong>1 такт CPU</strong> (~0.3 нс). Нагрузка на GC равна абсолютному нулю.</p>
+  </div>
+</div>
 
-<p>В отличие от C++, где неинициализированный массив содержит мусор (garbage values), Go гарантирует <strong>Zero Values</strong>. Слайс, созданный через <code>make([]int, n)</code>, будет заполнен нулями.</p>
-<p>Это удобно, если база DP — это 0. Но если задача требует поиска минимума, и вы пишете:</p>
+<hr />
+<h2 id="5-podvodnye-kamni-initsializatsii-v-go">5. Подводные камни инициализации в Go</h2>
+
+<h3 id="zero-values-vs-poisk-minimuma">Zero Values vs Поиск минимума</h3>
+
+<p>В Go любой слайс гарантированно заполняется нулевыми значениями (<code>0</code> для чисел). Если вы ищете максимум, ноль часто подходит в качестве базы. Но если ваша задача — найти <strong>минимум</strong> (например, минимальное число монет в Coin Change), ноль сломает логику:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2307,15 +2383,15 @@ D --&gt; E[&quot;Состояние i-1 становится i-2&lt;br&gt;Тек
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">dp := make([]int, n+1) 
+  <pre class="language-go"><code class="language-go">// АНТИПАТТЕРН: Неинициализированный слайс при поиске минимума
+dp := make([]int, n+1) // все элементы равны 0!
 for i := 1; i &lt;= n; i++ {
-    dp[i] = min(dp[i], dp[i-1] + cost) // ОШИБКА!
+    dp[i] = min(dp[i], dp[i-coin] + 1) // min(0, ...) всегда вернет 0!
 }
 </code></pre>
 </div>
 
-<p>Вы будете сравнивать с нулем, что сломает логику поиска минимума (0 всегда меньше любого положительного числа).</p>
-<p>В Go для инициализации "бесконечностью" используйте константы из <code>math</code>:</p>
+<p>Для поиска минимума слайс необходимо явно инициализировать условной бесконечностью:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2327,57 +2403,51 @@ for i := 1; i &lt;= n; i++ {
   </div>
   <pre class="language-go"><code class="language-go">import &quot;math&quot;
 
-dp := make([]int64, n+1)
+dp := make([]int, n+1)
 for i := 1; i &lt;= n; i++ {
-    dp[i] = math.MaxInt64 // Инициализация &quot;плюс бесконечностью&quot;
+    dp[i] = math.MaxInt32 // Защита от переполнения при + 1
 }
-dp[0] = 0 // Базовый случай
+dp[0] = 0 // Базовое состояние
 </code></pre>
 </div>
 
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Осторожно: Переполнение при `math.MaxInt64`</span>
   </div>
   <div class="callout-body">
-    <p>Если вы используете <code>math.MaxInt64</code> и затем прибавляете к нему число, произойдет переполнение (integer overflow), и значение станет отрицательным. В задачах, где возможны большие суммы, всегда оставляйте "зазор" или проверяйте границы перед сложением, либо используйте пакет <code>math/big</code> (что редко нужно в алгоритмических интервью, но критично в финансах на продакшене).</p>
+    <p>Если инициализировать массив предельным значением <code>math.MaxInt64</code>, то при попытке прибавить даже единицу:<br />
+<code>math.MaxInt64 + 1</code><br />
+произойдет арифметическое знаковое переполнение, и число превратится в отрицательное <code>math.MinInt64</code> (-9223372036854775808)!<br />
+Функция <code>min()</code> тут же сочтет это отрицательное число «наилучшим минимумом», и весь алгоритм выдаст мусор. Выбирайте безопасную константу-страж (например, <code>math.MaxInt32</code> или <code>amount + 1</code>).</p>
   </div>
 </div>
 
-<h2 id="dp-na-bekende-system-design">DP на бэкенде: System Design</h2>
+<hr />
+<h2 id="6-chetyrekhshagovyy-freymvork-resheniya-1d-dp-na-sobesedovanii">6. Четырехшаговый фреймворк решения 1D DP на собеседовании</h2>
 
-<p>Зачем Senior/Lead разработнику DP?</p>
+<p>Когда на собеседовании перед вами возникает задача на оптимизацию, не бросайтесь писать код. Примените строгий инженерный алгоритм из 4 шагов:</p>
 <ol>
-<li><strong>Маршрутизация и графы:</strong> Задача поиска кратчайшего пути (алгоритм Беллмана-Форда или Дейкстры с 1D массивом расстояний <code>dist[]</code>) — это чистое 1D DP.</li>
-<li><strong>Финансовые системы:</strong> Расчет максимальной прибыли от транзакций с ограничениями (знаменитая задача Best Time to Buy and Sell Stock) — это 1D DP с конечным автоматом состояний (держим акцию / не держим).</li>
-<li><strong>Ограничение Rate Limiter:</strong> Алгоритм Leaky Bucket или Token Bucket можно рассматривать как DP-переход: <code>tokens[i] = min(capacity, tokens[i-1] + generated - consumed)</code>.</li>
-<li><strong>Секвенсинг ДНК / Diff-алгоритмы:</strong> Поиск наибольшей общей подпоследовательности (LCS) между конфигурационными файлами для генерации патчей.</li>
+<li><strong>Определение состояния (State Definition):</strong><br />
+   Сформулируйте вслух: <em>«Пусть <code>dp[i]</code> — это максимальная прибыль / минимальное число шагов для префикса массива длины <code>i</code>»</em>.</li>
+<li><strong>Вывод перехода (Recurrence Relation):</strong><br />
+   Определите последнее действие: <em>«Чтобы попасть в состояние <code>i</code>, я мог прийти либо из <code>i-1</code> сделав 1 шаг, либо из <code>i-2</code> сделав 2 шага. Следовательно, <code>dp[i] = dp[i-1] + dp[i-2]</code>»</em>.</li>
+<li><strong>Базовые случаи (Base Cases):</strong><br />
+   Чему равны тривиальные значения? $dp[0]$, $dp[1]$? Нужны ли граничные проверки на пустой ввод?</li>
+<li><strong>Оптимизация памяти (Space Optimization):</strong><br />
+   Покажите интервьюеру сжатие памяти: <em>«Мы видим, что <code>dp[i]</code> зависит только от двух предыдущих шагов. Мы можем заменить слайс $O(N)$ на две скалярные переменные $O(1)$, разгрузив GC»</em>.</li>
 </ol>
-<div class="callout callout-interview">
-  <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
-  </div>
-  <div class="callout-body">
-    <p>Если интервьюер просит решить задачу (например, прыжки по лестнице или максимальная сумма подмассива), всегда начинайте с определения состояния и перехода.<br />
-1. <em>"Что такое <code>dp[i]</code>? Это максимальная сумма, которую можно набрать, дойдя до i-го элемента."</em><br />
-2. <em>"Как переход? <code>dp[i] = max(dp[i-1], dp[i-2]) + nums[i]</code>"</em><br />
-3. <em>"Какова база? <code>dp[0] = nums[0]</code>, <code>dp[1] = max(nums[0], nums[1])</code>"</em><br />
-4. <em>"Можем ли мы оптимизировать память? Да, так как зависим только от i-1 и i-2, используем две переменные вместо массива."</em><br />
-Этот 4-шаговый фреймворк демонстрирует системный подход инженера, а не слепой перебор кода.</p>
-  </div>
-</div>
-
+<hr />
 <h2 id="itog">Итог</h2>
 
 <ol>
-<li><strong>Bottom-Up правит бал:</strong> В Go избегайте глубокой рекурсии (Top-Down с мемоизацией) из-за дорогого роста стеков горутин и оверхеда мап. Итеративное заполнение массива быстрее и дружелюбнее к CPU.</li>
-<li><strong>Оптимизация памяти:</strong> Если <code>dp[i]</code> зависит от константного числа предыдущих состояний, сжимайте массив до переменных. Это убирает аллокации в куче и давление на GC.</li>
-<li><strong>Zero Values:</strong> Помните, что Go инициализирует слайсы нулями. Для задач на минимум всегда явно инициализируйте <code>math.MaxInt64</code>.</li>
-<li><strong>Инженерный подход:</strong> DP — это не про код, а про вывод формулы перехода состояний. Код — это лишь её механическая реализация.</li>
+<li><strong>Суть DP:</strong> Оптимальная подструктура + перекрывающиеся подзадачи. Устраняем дублирование вычислений.</li>
+<li><strong>Bottom-Up в Go:</strong> Всегда отдаем предпочтение итеративным циклам, защищая стек горутины от исчерпания и помогая аппаратному префетчеру кэша CPU.</li>
+<li><strong>Сжатие памяти:</strong> Сводим массивы $O(N)$ к нескольким переменным $O(1)$ на регистрах процессора везде, где переход задействует ограниченное окно истории.</li>
+<li><strong>Корректные стражи:</strong> При поиске минимума остерегайтесь нулей Zero Values и переполнения знаковых целых при сложении с <code>math.MaxInt</code>.</li>
 </ol>
-<p>В следующей статье мы разберем конкретные базовые паттерны переходов состояний, которые покрывают 80% одномерных задач: <a href="2-bazovye-patterny.html" class="wikilink">2. Базовые паттерны</a>.</p>
+<p>В следующей лекции мы детально классифицируем ключевые базовые паттерны переходов 1D DP: <a href="2-bazovye-patterny.html" class="wikilink">2. Базовые паттерны</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2405,7 +2475,7 @@ dp[0] = 0 // Базовый случай
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#ot-rekursii-k-dp-inversiya-myshleniya">От рекурсии к DP: Инверсия мышления</a></li><li class="toc-item toc-h2"><a href="#anatomiya-1d-dp-slays-kak-mashina-sostoyaniy">Анатомия 1D DP: Слайс как машина состояний</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-on-pamyati-vs-o1-pamyati">Mechanical Sympathy: O(N) памяти vs O(1) памяти</a></li><li class="toc-item toc-h2"><a href="#lovushki-initsializatsii-v-go">Ловушки инициализации в Go</a></li><li class="toc-item toc-h2"><a href="#dp-na-bekende-system-design">DP на бэкенде: System Design</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-dva-stolpa-dinamicheskogo-programmirovaniya">1. Два столпа динамического программирования</a></li><li class="toc-item toc-h2"><a href="#2-top-down-vs-bottom-up-inzhenernyy-vybor-v-go">2. Top-Down vs Bottom-Up: Инженерный выбор в Go</a></li><li class="toc-item toc-h3"><a href="#stek-gorutiny-i-risk-stack-overflow">Стек горутины и риск Stack Overflow</a></li><li class="toc-item toc-h2"><a href="#3-anatomiya-1d-dp-mashina-sostoyaniy-v-pamyati">3. Анатомия 1D DP: Машина состояний в памяти</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-lineynaya-pamyat-i-prefetcher-cpu">Mechanical Sympathy: Линейная память и префетчер CPU</a></li><li class="toc-item toc-h2"><a href="#4-optimizatsiya-pamyati-ot-on-k-o1">4. Оптимизация памяти: От $O(N)$ к $O(1)$</a></li><li class="toc-item toc-h3"><a href="#sravnenie-realizatsiy-fibonachchi">Сравнение реализаций: Фибоначчи</a></li><li class="toc-item toc-h2"><a href="#5-podvodnye-kamni-initsializatsii-v-go">5. Подводные камни инициализации в Go</a></li><li class="toc-item toc-h3"><a href="#zero-values-vs-poisk-minimuma">Zero Values vs Поиск минимума</a></li><li class="toc-item toc-h2"><a href="#6-chetyrekhshagovyy-freymvork-resheniya-1d-dp-na-sobesedovanii">6. Четырехшаговый фреймворк решения 1D DP на собеседовании</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

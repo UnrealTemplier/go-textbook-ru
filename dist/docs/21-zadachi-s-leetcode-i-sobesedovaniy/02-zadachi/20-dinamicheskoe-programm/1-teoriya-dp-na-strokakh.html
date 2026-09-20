@@ -2172,18 +2172,27 @@
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
               <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
+              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">1. Теория. DP на строках</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Строковое динамическое программирование — это особый раздел DP, где в качестве состояний выступают индексы одного или двух строковых массивов. В отличие от числовых массивов, строки обладают уникальными свойствами: они иммутабельны, состоят из байт (или рун), и к ним применимы специфические оптимизации вроде откатов (rollback) и расширения из центра.</p>
-<p>Для бэкенд-инженера этот раздел критически важен. Поиск плагиата, системы контроля версий (diff-алгоритмы), обработка естественного языка (NLP) и даже синтаксический разбор конфигураций (парсинг) — всё это опирается на строковое DP.</p>
-<h2 id="anatomiya-strok-v-go-stringheader">Анатомия строк в Go: StringHeader</h2>
+            <blockquote>
+<p><em>«Слова состоят из букв, но смысл рождается лишь в их неизменном порядке».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>Строковое динамическое программирование — специализированный и один из самых востребованных разделов алгоритмической инженерии. В отличие от числовых массивов и геометрических матриц, строки в современных языках программирования обладают уникальной природой: они неизменяемы (immutable), состоят из байтовых последовательностей (UTF-8) и требуют аккуратного обращения с памятью.</p>
+<p>В архитектуре высоконагруженных систем строковое DP лежит в фундаменте:<br />
+- Систем контроля версий (Git diff, 3-way merge, алгоритм Майерса).<br />
+- Движков полнотекстового поиска и нечеткого матчинга (Elasticsearch, Lucene, BLEVE).<br />
+- Биоинформатики и геномики (сравнение ДНК/РНК последовательностей, BLAST).<br />
+- Лексических анализаторов, парсеров протоколов и компиляторов регулярных выражений.</p>
+<hr />
+<h2 id="1-anatomiya-strok-v-go-stringheader-i-strings-clone">1. Анатомия строк в Go: `StringHeader` и `strings.Clone`</h2>
 
-<p>Прежде чем писать алгоритмы, нужно понять, как Go видит строки на уровне железа и рантайма. В отличие от C++, где <code>std::string</code> — это сложный объект с кучей методов, строка в Go — это крайне примитивная структура из двух полей.</p>
-<p>В исходниках Go (<code>reflect/string.go</code>) строка представлена так:</p>
+<p>Чтобы писать строковые алгоритмы с максимальной производительностью, необходимо понимать внутреннее устройство строк в Go runtime.<br />
+Строка в Go — это не массив и не объект в стиле Java <code>String</code>. Это компактная 16-байтная структура:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2193,33 +2202,53 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">type StringHeader struct {
-    Data unsafe.Pointer // Указатель на начало массива байт
-    Len  int            // Длина строки в байтах
+  <pre class="language-go"><code class="language-go">type stringStruct struct {
+    str unsafe.Pointer // Указатель на непрерывный байтовый массив в куче/сегменте данных
+    len int            // Длина строки строго в БАЙТАХ
 }
 </code></pre>
 </div>
 
-<p>Строка в Go — это просто <strong>окно просмотра (view)</strong> в массив байт. Она неизменяема (immutable).</p>
+<p>Строка является <strong>неизменяемым представлением (read-only view)</strong> над базовым массивом байт.</p>
+
+<div class="mermaid-wrapper">
+  <div class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
+    </button>
+  </div>
+  <pre class="mermaid">
+flowchart LR
+classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+subgraph Memory[&quot;Базовый массив в куче (10 МБ HTTP Payload)&quot;]
+Raw[&quot;[ H e a d e r :   T o k e n ... 10 MB payload ... ]&quot;]:::process
+end
+
+Sub[&quot;Срез: token := payload[:10]&lt;br/&gt;(16 байт StringHeader)&quot;]:::warning --&gt; Raw
+GC[&quot;Garbage Collector: ЗАБЛОКИРОВАН!&lt;br/&gt;10 МБ удерживаются 16-байтным заголовком&quot;]:::error -.-&gt; Raw
+  </pre>
+</div>
+
+
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha (Memory Leak)</span>
+    <span class="callout-title">Production-ловушка: Скрытая утечка памяти (Memory Leak)</span>
   </div>
   <div class="callout-body">
-    <p>Поскольку строка — это лишь указатель и длина, операция взятия среза <code>s[l:r]</code> создает новую структуру <code>StringHeader</code>, но указатель <code>Data</code> всё ещё ссылается на оригинальный массив байт!</p>
-<p>Представьте, что вы парсите HTTP-запрос размером 1 МБ и берете из него маленький заголовок длиной 10 байт: <code>authToken := header[0:10]</code>. Этот слайс всё еще держит указатель на весь мегабайтный массив. Garbage Collector не сможет очистить 1 МБ, так как на него есть ссылка.</p>
-<p><strong>Решение в production:</strong> Всегда делайте копию, если извлекаете маленькие строки из больших данных: <code>authToken := string([]byte(header[0:10]))</code>. Это заставит рантайм аллоцировать новый массив в 10 байт и освободить мегабайтный оригинал.</p>
-  </div>
-</div>
-
-<h2 id="mechanical-sympathy-bayty-protiv-run">Mechanical Sympathy: Байты против Рун</h2>
-
-<p>Алгоритмы DP подразумевают индексацию за $O(1)$. В Go <code>s[i]</code> возвращает <code>byte</code> (uint8). Это работает мгновенно, так как процессор просто прибавляет смещение к указателю <code>Data</code>. Кэш процессора обожает такие последовательные чтения.</p>
-<p>Но если строка содержит UTF-8 (кириллицу, эмодзи), один символ (руна) может занимать от 1 до 4 байт. В таком случае <code>s[i]</code> вернет лишь часть символа, что сломает логику сравнения.</p>
-<p><strong>Дилемма на интервью:</strong><br />
-1. Если вы знаете, что строка ASCII (например, DNA-последовательности <code>ATGC</code> или логи) — работайте напрямую с <code>[]byte</code> или индексами. Это максимально быстро и дружелюбно к кэшу L1.<br />
-2. Если возможен Unicode — сконвертируйте строку в <code>[]rune</code> перед DP. Это стоит $O(N)$ времени и аллокации в куче, но гарантирует корректность.</p>
+    <p>Операция среза подстроки <code>sub := s[0:10]</code> <strong>не копирует данные</strong>. Она создает новый <code>StringHeader</code>, поле <code>str</code> которого ссылается на исходный большой массив.<br />
+Если вы распарсили 10-мегабайтный JSON-ответ и сохранили в кэш подстроку длиной 20 байт, весь 10-мегабайтный массив <strong>навсегда зависнет в памяти</strong>, потому что GC видит живой указатель!  </p>
+<p><strong>Решение (Go 1.20+):</strong> Используйте стандартную функцию <code>strings.Clone</code>:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2229,27 +2258,52 @@
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">// Для Unicode строк:
-runes1 := []rune(s1)
-runes2 := []rune(s2)
-// Дальше работаем с индексами runes[i]
+  <pre class="language-go"><code class="language-go">token := strings.Clone(payload[0:10]) // Выделяет ровно 10 байт и отпускает 10 МБ!
 </code></pre>
 </div>
 
-<h2 id="osnovnye-patterny-strokovogo-dp">Основные паттерны строкового DP</h2>
+  </div>
+</div>
 
-<p>Всё строковое DP можно разделить на три большие категории:</p>
-<h3 id="1-sravnenie-dvukh-strok-2d-dp">1. Сравнение двух строк (2D DP)</h3>
-<p>Это классика вроде наибольшей общей подпоследовательности (LCS) и редакционного расстояния (Edit Distance). Состояние <code>dp[i][j]</code> означает оптимальный ответ для префиксов <code>s1[0..i-1]</code> и <code>s2[0..j-1]</code>.<br />
-- <strong>Переход:</strong> Зависит от совпадения <code>s1[i-1] == s2[j-1]</code>.<br />
-- <strong>Память:</strong> Требует $O(M \cdot N)$, что для строк в 100 000 символов составит 10^10 операций и десятки гигабайт памяти. На бэкенде такие алгоритмы применяют только к коротким строкам (поиск опечаток), а для длинных используют алгоритмы Майерса (Myers diff) или суффиксные массивы.</p>
-<h3 id="2-palindromy-i-podstroki-2d-dp-s-sokrashcheniem">2. Палиндромы и подстроки (2D DP с сокращением)</h3>
-<p>Здесь состояние <code>dp[i][j]</code> обычно означает: "является ли подстрока с индекса <code>i</code> по <code>j</code> палиндромом?".<br />
-- <strong>Переход:</strong> <code>dp[i][j] = (s[i] == s[j]) &amp;&amp; dp[i+1][j-1]</code>.<br />
-- <strong>Особенность:</strong> Заполнение матрицы идет не слева направо, а по диагоналям (по длине подстроки), так как внутреннее состояние зависит от ячеек, находящихся ниже и левее.</p>
-<h3 id="3-parsing-i-regulyarnye-vyrazheniya-1d-dp">3. Парсинг и регулярные выражения (1D DP)</h3>
-<p>Задачи вроде "может ли строка быть разбита на слова из словаря" (Word Break). Состояние <code>dp[i]</code> означает: "можно ли собрать префикс длины <code>i</code>".<br />
-- <strong>Переход:</strong> Для каждого <code>i</code> мы перебираем слова из словаря и проверяем, заканчивается ли строка на это слово, и если да, смотрим на <code>dp[i - len(word)]</code>.</p>
+<hr />
+<h2 id="2-mechanical-sympathy-bayty-protiv-run-utf-8">2. Mechanical Sympathy: Байты против Рун (UTF-8)</h2>
+
+<p>В Go индексация <code>s[i]</code> обращается к $i$-му <strong>байту</strong>, а не к символу:<br />
+1. <strong>ASCII-текст (латиница, цифры, код):</strong> 1 символ = 1 байт. Индексация <code>s[i]</code> занимает ровно 1 такт CPU ($O(1)$ без накладных расходов).<br />
+2. <strong>UTF-8 (кириллица, китайские иероглифы, эмодзи):</strong> 1 символ (руна) занимает от 1 до 4 байт.</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">s := &quot;Привет&quot;
+println(len(s))    // 12 байт!
+println(s[0])      // 208 (первый байт префикса UTF-8 для 'П')
+</code></pre>
+</div>
+
+<p>Если алгоритм DP манипулирует многоязычным текстом, прямое обращение к байтам разорвет символы на части. В таких сценариях перед запуском матрицы строки приводятся к срезу рун:</p>
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">runes := []rune(s) // O(N) по времени и памяти, но 100% Unicode-safety
+</code></pre>
+</div>
+
+<hr />
+<h2 id="3-taksonomiya-patternov-strokovogo-dp">3. Таксономия паттернов строкового DP</h2>
+
+<p>Все строковые задачи динамического программирования делятся на три фундаментальных класса:</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2269,47 +2323,60 @@ classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
 classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
 classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
 classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Строковое DP&quot;]:::process --&gt; B[&quot;Две строки&lt;br&gt;2D DP&quot;]
-A --&gt; C[&quot;Палиндромы&lt;br&gt;2D DP по диагонали&quot;]
-A --&gt; D[&quot;Парсинг / Разбивка&lt;br&gt;1D DP + Hash Set&quot;]
 
-B --&gt; E[&quot;LCS, Edit Distance&lt;br&gt;Используется в diff алгоритмах&quot;]
-C --&gt; F[&quot;Longest Palindromic Substring&lt;br&gt;Или расширение из центра за O 1 памяти&quot;]
-D --&gt; G[&quot;Word Break, Regex&lt;br&gt;Нужно для маршрутизации и парсеров&quot;]
+Root[&quot;Строковое DP&quot;]:::entry --&gt; P1[&quot;1. Сравнение двух строк&lt;br/&gt;(2D Матрицы)&quot;]:::process
+Root --&gt; P2[&quot;2. Палиндромы и интервалы&lt;br/&gt;(Диагональное 2D DP)&quot;]:::process
+Root --&gt; P3[&quot;3. Парсинг и матчинг&lt;br/&gt;(1D DP + Matchers)&quot;]:::process
+
+P1 --&gt; E1[&quot;LCS, Edit Distance, Interleaving&lt;br/&gt;Сложность: O(M * N)&quot;]:::success
+P2 --&gt; E2[&quot;Longest Palindromic Subsequence&lt;br/&gt;Сложность: O(N^2)&quot;]:::warning
+P3 --&gt; E3[&quot;Word Break, Regex Matching, Wildcard&lt;br/&gt;Сложность: O(N * K)&quot;]:::success
   </pre>
 </div>
 
 
-<h2 id="system-design-algoritm-mayersa-i-git">System Design: Алгоритм Майерса и Git</h2>
+<h3 id="pattern-1-sopostavlenie-dvukh-strok-lcs-edit-distance">Паттерн 1: Сопоставление двух строк (LCS, Edit Distance)</h3>
+<p>Матрица $dp[i][j]$ связывает префикс $S[0 \dots i-1]$ с префиксом $T[0 \dots j-1]$.<br />
+Переход зависит от совпадения крайних символов: $S[i-1] == T[j-1]$.</p>
+<h3 id="pattern-2-intervalnoe-dp-na-palindromakh">Паттерн 2: Интервальное DP на палиндромах</h3>
+<p>Состояние $dp[i][j]$ отвечает за подстроку $S[i \dots j]$.<br />
+Переход разворачивается изнутри наружу: подстрока является палиндромом, если $S[i] == S[j]$ и внутренняя часть $dp[i+1][j-1]$ — палиндром. Обход выполняется по возрастанию длины подстроки.</p>
+<h3 id="pattern-3-prefiksnyy-parsing-word-break">Паттерн 3: Префиксный парсинг (Word Break)</h3>
+<p>Одномерный срез $dp[i]$ хранит булев флаг: можно ли разбить префикс $S[0 \dots i-1]$ на токены из словаря.</p>
+<hr />
+<h2 id="4-arkhitektura-i-system-design-algoritm-mayersa-myers-diff-v-git">4. Архитектура и System Design: Алгоритм Майерса (Myers Diff) в Git</h2>
 
-<p>В бэкенде мы постоянно сталкиваемся с задачей сравнения текстов: генерация патчей, синхронизация конфигов, мерж-реквесты в Git.</p>
-<p>Чистый 2D DP (Edit Distance) для файлов размером 10 000 строк потребует матрицу 10^8 ячеек. Это неприемлемо. </p>
-<p>В Git используется <strong>Алгоритм Майерса (Myers Diff Algorithm)</strong>. Он превращает задачу DP в поиск кратчайшего пути на графе редактирования с помощью BFS. Алгоритм отдает приоритет операциям удаления/вставки, которые не меняют контекст (то есть ищет "змеи" - совпадающие блоки). <br />
-Математически он всё еще опирается на концепции LCS, но эксплуатирует тот факт, что в реальном коде 90% строк не меняются, позволяя алгоритму "перепрыгивать" целые блоки за $O(1)$. Это уменьшает сложность с $O(N \cdot M)$ до $O((N+M) \cdot D)$, где $D$ — количество реальных изменений (часто $D \ll N$).</p>
+<p>Почему <code>git diff</code> для двух файлов по 100 000 строк не падает по таймауту, хотя классический LCS требует $O(N \cdot M) = 10^{10}$ операций и десятки гигабайт памяти?</p>
+<p>В 1986 году Юджин Майерс (Eugene Myers) предложил алгоритм, ставший мировым стандартом в системах контроля версий (GNU diff, Git):<br />
+1. <strong>Жадный обход «змей» (Snakes):</strong> В исходном коде программ 90–99% строк не меняются между коммитами. Совпадающие блоки символов образуют диагональные отрезки в матрице переходов.<br />
+2. <strong>Параметризация по числу правок $D$:</strong> Алгоритм ищет кратчайший путь на графе редактирования с помощью оптимизированного BFS, где сложность составляет не $O(N \cdot M)$, а:<br />
+   $$O\Big((N + M) \cdot D\Big)$$<br />
+   Где $D$ — реальное количество измененных строк! Если в файле из 50 000 строк изменилось 5 строк ($D = 5$), diff выполняется за доли миллисекунды.</p>
+<hr />
+<h2 id="5-voprosy-dlya-sobesedovaniya">5. Вопросы для собеседования</h2>
+
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопросы сеньорского уровня</span>
   </div>
   <div class="callout-body">
-    <p>Если вас просят реализовать LCS или Edit Distance, обязательно скажите: <em>"Для коротких строк я использую 2D DP с оптимизацией памяти до O(min(M,N)). Но если бы это были огромные логи, я бы перешел к алгоритму Майерса или использовал rolling hash (алгоритм Рабина-Карпа), так как квадратичная сложность положит бэкенд на больших данных"</em>.</p>
+    <p><strong>Вопрос 1:</strong> <em>Как оптимизировать строковое 2D DP по памяти, если нужен только числовой ответ?</em><br />
+<strong>Ответ:</strong> За счет сжатия до двух строк или одной строки со скалярной переменной <code>prevDiag</code> память сокращается с $O(M \cdot N)$ до $O(\min(M, N))$.</p>
+<p><strong>Вопрос 2:</strong> <em>Что эффективнее для проверки подстроки-палиндрома: 2D DP или алгоритм расширения из центра (Expand Around Center)?</em><br />
+<strong>Ответ:</strong> Расширение из центра (Expand Around Center) требует $O(N^2)$ времени, но строго <strong>$O(1)$ дополнительной памяти</strong> (0 аллокаций), тогда как 2D DP требует $O(N^2)$ памяти. Для поиска самой длинной подстроки-палиндрома расширение из центра (или алгоритм Манакера за $O(N)$) архитектурно предпочтительнее.</p>
   </div>
 </div>
 
+<hr />
 <h2 id="itog">Итог</h2>
 
 <ol>
-<li><strong>Иммутабельность строк:</strong> В Go строки — это <code>StringHeader</code> (указатель + длина). Операция среза <code>s[l:r]</code> не копирует данные, что может привести к утечке памяти (memory leak) в продакшене. Всегда копируйте маленькие подстроки через <code>string([]byte(...))</code>.</li>
-<li><strong>Кодировки:</strong> Для ASCII работайте с индексами <code>s[i]</code> (максимально быстро). Для Unicode конвертируйте в <code>[]rune</code> (корректно, но требует аллокации).</li>
-<li><strong>Три паттерна:</strong> Строковое DP делится на сравнение двух строк (2D), поиск подстрок/палиндромов (2D по диагонали) и парсинг (1D).</li>
-<li><strong>Масштабирование:</strong> Классический 2D DP не масштабируется на большие тексты. В System Design применяются специализированные алгоритмы (Myers, Rabin-Karp, Suffix Trees).</li>
+<li><strong>Модель памяти:</strong> Строка в Go — это <code>StringHeader</code> (16 байт). Для предотвращения утечек при удержании срезов используйте <code>strings.Clone</code> (Go 1.20+).</li>
+<li><strong>Байты vs Руны:</strong> ASCII обрабатывается байтами на полной скорости кэша L1; Unicode требует явной конвертации в <code>[]rune</code>.</li>
+<li><strong>Разделение сложности:</strong> Полный 2D DP подходит для коротких строк. Для мегабайтных текстов и файлов применяются эвристики и алгоритм Майерса $O((N+M) \cdot D)$.</li>
 </ol>
-<p>В следующей статье мы детально разберем самый известный паттерн сравнения двух строк и то, как он связан с редакционным расстоянием: <a href="2-lcs-i-edit-distance.html" class="wikilink">2. LCS и edit distance</a>.</p>
+<p>В следующей лекции мы разберем математическую дуальность двух ключевых строковых задач — LCS и Edit Distance: <a href="2-lcs-i-edit-distance.html" class="wikilink">2. LCS и edit distance</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2337,7 +2404,7 @@ D --&gt; G[&quot;Word Break, Regex&lt;br&gt;Нужно для маршрутиз
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#anatomiya-strok-v-go-stringheader">Анатомия строк в Go: StringHeader</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-bayty-protiv-run">Mechanical Sympathy: Байты против Рун</a></li><li class="toc-item toc-h2"><a href="#osnovnye-patterny-strokovogo-dp">Основные паттерны строкового DP</a></li><li class="toc-item toc-h3"><a href="#1-sravnenie-dvukh-strok-2d-dp">1. Сравнение двух строк (2D DP)</a></li><li class="toc-item toc-h3"><a href="#2-palindromy-i-podstroki-2d-dp-s-sokrashcheniem">2. Палиндромы и подстроки (2D DP с сокращением)</a></li><li class="toc-item toc-h3"><a href="#3-parsing-i-regulyarnye-vyrazheniya-1d-dp">3. Парсинг и регулярные выражения (1D DP)</a></li><li class="toc-item toc-h2"><a href="#system-design-algoritm-mayersa-i-git">System Design: Алгоритм Майерса и Git</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-anatomiya-strok-v-go-stringheader-i-strings-clone">1. Анатомия строк в Go: StringHeader и strings.Clone</a></li><li class="toc-item toc-h2"><a href="#2-mechanical-sympathy-bayty-protiv-run-utf-8">2. Mechanical Sympathy: Байты против Рун (UTF-8)</a></li><li class="toc-item toc-h2"><a href="#3-taksonomiya-patternov-strokovogo-dp">3. Таксономия паттернов строкового DP</a></li><li class="toc-item toc-h3"><a href="#pattern-1-sopostavlenie-dvukh-strok-lcs-edit-distance">Паттерн 1: Сопоставление двух строк (LCS, Edit Distance)</a></li><li class="toc-item toc-h3"><a href="#pattern-2-intervalnoe-dp-na-palindromakh">Паттерн 2: Интервальное DP на палиндромах</a></li><li class="toc-item toc-h3"><a href="#pattern-3-prefiksnyy-parsing-word-break">Паттерн 3: Префиксный парсинг (Word Break)</a></li><li class="toc-item toc-h2"><a href="#4-arkhitektura-i-system-design-algoritm-mayersa-myers-diff-v-git">4. Архитектура и System Design: Алгоритм Майерса (Myers Diff) в Git</a></li><li class="toc-item toc-h2"><a href="#5-voprosy-dlya-sobesedovaniya">5. Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

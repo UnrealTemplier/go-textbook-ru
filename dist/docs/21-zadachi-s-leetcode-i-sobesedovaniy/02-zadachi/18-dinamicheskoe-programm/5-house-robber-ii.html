@@ -2171,80 +2171,56 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~13 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~14 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">5. House Robber II</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Задача House Robber II (LeetCode 213) элегантно усложняет предыдущую <a href="4-house-robber.html" class="wikilink">4. House Robber</a>, замыкая массив в кольцо. Теперь первый и последний дома стали соседями. Это крошечное изменение условия ломает линейную логику DP и заставляет нас применять декомпозицию задачи — важнейший навык System Design.</p>
-<p><strong>Условие:</strong> Дан массив <code>nums</code>, представляющий деньги в домах. Дома расположены по кругу. Вы не можете грабить два соседних дома подряд. Какую максимальную сумму можно украсть?</p>
-<p>В бэкенде эта задача моделирует планирование задач (Scheduling) на кластере с кольцевой топологией (Ring Topology), где ноды $0$ и $N-1$ шарят один и тот же ресурс (например, сетевой интерфейс или БД), и их нельзя нагружать одновременно.</p>
-<h2 id="problema-zamykaniya-razryv-koltsa">Проблема замыкания: Разрыв кольца</h2>
+            <blockquote>
+<p><em>«Чтобы разрубить узел сложности, достаточно найти точку, в которой его можно разрезать».</em><br />
+— Эдсгер Дейкстра</p>
+</blockquote>
+<p>Задача <strong>House Robber II</strong> (LeetCode 213) элегантно развивает концепцию <a href="4-house-robber.html" class="wikilink">4. House Robber</a>, замыкая линейную улицу домов в кольцо. Теперь первый и последний дома стали непосредственными соседями.</p>
+<p>Это кажущееся незначительным изменение топологии мгновенно разрушает стандартную одномерную индукцию: мы больше не можем независимо принять решение для дома $n-1$, не зная, был ли ограблен дом $0$. Для думающего инженера это прекрасный повод продемонстрировать <strong>декомпозицию задачи</strong> — сведение сложной циклической системы к двум независимым линейным процессам.</p>
+<hr />
+<h2 id="1-postanovka-zadachi-i-konflikt-koltsevoy-topologii">1. Постановка задачи и конфликт кольцевой топологии</h2>
 
-<p>В линейной версии ответом был <code>dp[n-1]</code>. В кольцевой версии мы не можем просто взять <code>dp[n-1]</code>, потому что этот переход мог учесть ограбление дома <code>0</code>, а дом <code>n-1</code> теперь с ним конфликтует.</p>
-<p><strong>Инсайт:</strong> Поскольку дома $0$ и $N-1$ теперь соседние, мы <strong>никогда</strong> не сможем ограбить их оба. Оптимальное решение гарантированно попадает в один из двух взаимоисключающих сценариев:</p>
-<ol>
-<li><strong>Мы ограбили дом 0.</strong> Тогда дом $N-1$ строго запрещен. Задача сводится к поиску максимума на отрезке от $0$ до $N-2$.</li>
-<li><strong>Мы НЕ ограбили дом 0.</strong> Тогда дом $N-1$ доступен. Задача сводится к поиску максимума на отрезке от $1$ до $N-1$.</li>
-</ol>
-<p>Мы "разрываем" кольцо в конфликтующей точке, превращая одну кольцевую задачу в две классические линейные. Ответ — максимум из двух этих сценариев.</p>
-<h2 id="mechanical-sympathy-zero-copy-srezy-v-go">Mechanical Sympathy: Zero-copy срезы в Go</h2>
+<p><strong>Условие:</strong><br />
+Массив <code>nums</code> описывает ценности домов, расположенных по кругу. Дом <code>nums[0]</code> соседствует с <code>nums[n-1]</code>.<br />
+Нельзя грабить два соседних дома подряд.<br />
+Какую максимальную сумму можно украсть?</p>
 
-<p>Как передать подмассивы в нашу функцию <code>robLinear</code> из предыдущей статьи? В C++ или Java передача подмассива потребовала бы создания новой копии данных ($O(N)$ времени и памяти). </p>
-<p>В Go срезы (slices) работают иначе. Выражения <code>nums[:len(nums)-1]</code> и <code>nums[1:]</code> <strong>не копируют данные</strong>. Они создают лишь новую структуру <code>runtime.slice</code> (указатель, длина, capacity), которая указывает на тот же самый базовый массив (backing array) в памяти.</p>
-
-<div class="code-block" data-lang="go">
+<div class="code-block" data-lang="text">
   <div class="code-header">
-    <span class="code-lang-tag">Go</span>
+    <span class="code-lang-tag">TEXT</span>
     <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func rob(nums []int) int {
-    n := len(nums)
-    if n == 0 {
-        return 0
-    }
-    // Крайний случай: 1 дом. Иначе срезы дадут пустые массивы и ответ будет 0.
-    if n == 1 {
-        return nums[0]
-    }
-
-    // Сценарий 1: берем первый дом, недоступен последний
-    max1 := robLinear(nums[:n-1])
-
-    // Сценарий 2: не берем первый дом, доступен последний
-    max2 := robLinear(nums[1:])
-
-    return max(max1, max2)
-}
-
-// Таже самая O(1) реализация из предыдущей статьи
-func robLinear(nums []int) int {
-    var prev2, prev1 int = 0, 0
-    for _, num := range nums {
-        curr := max(prev1, prev2+num)
-        prev2, prev1 = prev1, curr
-    }
-    return prev1
-}
+  <pre class="language-text"><code class="language-text">Вход:  nums = [2, 3, 2]
+Выход: 3
+Пояснение: дома [0] и [2] соседствуют по кругу. Ограбить оба нельзя. Максимум — дом 1 со значением 3.
 </code></pre>
 </div>
 
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Когда вы делаете срез <code>nums[1:]</code>, рантайм Go просто сдвигает указатель <code>Data</code> в структуре <code>SliceHeader</code> на один элемент вперед и уменьшает <code>Len</code> и <code>Cap</code> на 1. </p>
-<p>Это означает, что обе функции <code>robLinear</code> будут читать <strong>одни и те же строки кэша (Cache Lines)</strong> из оперативной памяти. Процессор загрузит базовый массив в L1 кэш при первом вызове, и второй вызов <code>robLinear</code> отработает с нулевым количеством Cache Miss, даже не подозревая, что работает с "другим" массивом. Это классический пример того, как абстракции Go ложатся на архитектуру железа.</p>
-  </div>
-</div>
+<p>В реальных распределенных системах кольцевая топология встречается повсеместно:<br />
+1. <strong>Consistent Hashing кольца (Cassandra, DynamoDB):</strong> если две виртуальные ноды на кольце проецируются на один физический сервер, мы не можем одновременно назначать на них ресурсоемкие операции обслуживания.<br />
+2. <strong>Топологии Token Ring и циклические буферы (Disruptor):</strong> координация параллельных воркеров с гарантией взаимного исключения граничных слотов.<br />
+3. <strong>Разрешение циклических дедлоков:</strong> разрыв замкнутого графа ожидания ресурсов (Wait-For Graph).</p>
+<hr />
+<h2 id="2-arkhitekturnyy-insayt-razryv-koltsa-v-dvukh-tochkakh">2. Архитектурный инсайт: Разрыв кольца в двух точках</h2>
 
+<p>Поскольку дома $0$ и $n-1$ теперь соединены напрямую, мы <strong>физически не можем ограбить оба этих дома одновременно</strong>.</p>
+<p>Следовательно, любое глобально оптимальное решение гарантированно принадлежит одному из двух взаимоисключающих классов:<br />
+1. <strong>Сценарий 1: Мы НЕ грабим последний дом ($n-1$).</strong><br />
+   Тогда мы можем свободно рассматривать дома от $0$ до $n-2$. Последний дом исключен из рассмотрения, и кольцо разомкнуто!<br />
+2. <strong>Сценарий 2: Мы НЕ грабим первый дом ($0$).</strong><br />
+   Тогда мы можем свободно рассматривать дома от $1$ до $n-1$. Первый дом исключен, и кольцо снова превращается в прямую линию!</p>
+<p>$$\text{TotalMax} = \max(\text{RobLinear}(nums[0 : n-1]), \text{RobLinear}(nums[1 : n]))$$</p>
+<p>Мы разрываем порочный круг и сводим задачу к двум запускам нашей проверенной линейной функции <code>RobLinear</code> с памятью $O(1)$!</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2264,56 +2240,139 @@ classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
 classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
 classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
 classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A[&quot;Кольцевой массив 2, 3, 2&quot;]:::process --&gt; B{&quot;Разрываем кольцо&quot;}
-B --&gt; C[&quot;Сценарий 1 - от 0 до N-2&lt;br&gt;2, 3&quot;]
-B --&gt; D[&quot;Сценарий 2 - от 1 до N-1&lt;br&gt;3, 2&quot;]
 
-C --&gt; E[&quot;robLinear - ответ 3&quot;]
-D --&gt; F[&quot;robLinear - ответ 3&quot;]
+Ring[&quot;Кольцевой массив nums[0 .. n-1]&quot;]:::entry --&gt; Split{&quot;Разрыв кольца&quot;}:::warning
+Split -- &quot;Исключаем дом n-1&quot; --&gt; Scen1[&quot;Срез nums[:n-1]&lt;br/&gt;(дома 0 .. n-2)&quot;]:::process
+Split -- &quot;Исключаем дом 0&quot; --&gt; Scen2[&quot;Срез nums[1:]&lt;br/&gt;(дома 1 .. n-1)&quot;]:::process
 
-E --&gt; G[&quot;max из 3 и 3 = 3&quot;]
-F --&gt; G
+Scen1 --&gt; Rob1[&quot;Линейный DP: max1&quot;]:::success
+Scen2 --&gt; Rob2[&quot;Линейный DP: max2&quot;]:::success
+
+Rob1 --&gt; Ans[&quot;Итог: max(max1, max2)&quot;]:::entry
+Rob2 --&gt; Ans
   </pre>
 </div>
 
 
-<h2 id="lovushki-raboty-so-srezami-gotchas">Ловушки работы со срезами (Gotchas)</h2>
+<hr />
+<h2 id="3-mechanical-sympathy-zero-copy-srezy-v-go">3. Mechanical Sympathy: Zero-Copy срезы в Go</h2>
 
-<p>При использовании срезов в Go для декомпозиции массивов важно помнить о потенциальных проблемах:</p>
-<ol>
-<li><strong>Утечки памяти (Memory Leaks):</strong> Если базовый массив <code>nums</code> огромный (например, 10 МБ), а мы передаем в функцию маленький срез <code>nums[1:2]</code>, сборщик мусора Go не сможет удалить базовый массив, пока жив срез, потому что срез ссылается на его начало. В рамках алгоритмической задачи это не критично, но в production-коде (например, при парсинге логов) стоит делать явное копирование: <code>copy(subSlice, nums[1:])</code>.</li>
-<li><strong>Мутации:</strong> Если бы функция <code>robLinear</code> модифицировала переданный срез, она бы испортила исходные данные <code>nums</code>, так как они делят одну память. Наша реализация использует только чтение, поэтому мы в безопасности.</li>
-</ol>
-<h2 id="system-design-razdelenie-domain-i-boundary-usloviy">System Design: Разделение Domain и Boundary условий</h2>
+<p>В языках вроде Java или Python операция получения подмассива часто влечет за собой физическое копирование памяти ($O(N)$ аллокаций).</p>
+<p>В Go срез — это легковесный 24-байтный заголовок на стеке:</p>
 
-<p>Подход к решению House Robber II — это микрокосм архитектурного паттерна разделения граничных условий (Edge Cases) и основной бизнес-логики.</p>
-<p>В распределенных системах кольцевая топология часто реализуется через <strong>Consistent Hashing</strong> (хеш-кольцо). Если два виртуальных узла (VNodes) на кольце принадлежат одному физическому серверу, мы не можем назначать им тяжелые задачи одновременно. </p>
-<p>Вместо того чтобы писать сложный планировщик с циклическими проверками, мы "разрываем" кольцо по границам физического сервера и запускаем два независимых линейных планировщика. Это упрощает код, делает его детерминированным и легко масштабируемым. Такой же принцип применяется в сетевых протоколах (разрыв петли в STP - Spanning Tree Protocol) и в компиляторах при работе с циклическими графами зависимостей.</p>
-<div class="callout callout-interview">
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">type slice struct {
+    array unsafe.Pointer // указатель на базовый массив
+    len   int            // длина среза
+    cap   int            // вместимость
+}
+</code></pre>
+</div>
+
+<p>Когда мы пишем <code>nums[:n-1]</code> и <code>nums[1:]</code>:<br />
+1. <strong>0 байт аллокаций в куче:</strong> создаются лишь две структуры <code>slice</code> на регистрах/стеке.<br />
+2. <strong>L1-кэш дружелюбность:</strong> обе итерации читают один и тот же непрерывный кусок памяти. Процессор разогревает кэш L1 на первом проходе, и второй проход выполняется с практически 100% Cache Hit Rate.</p>
+<hr />
+<h2 id="4-realizatsiya-na-go-1-22">4. Реализация на Go 1.22+</h2>
+
+
+<div class="code-block" data-lang="go">
+  <div class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-go"><code class="language-go">package robber
+
+// RobCircle находит максимальную добычу в кольцевом массиве домов.
+// Временная сложность: O(N) — ровно два линейных прохода.
+// Пространственная сложность: O(1) — 0 аллокаций памяти.
+func RobCircle(nums []int) int {
+    n := len(nums)
+    if n == 0 {
+        return 0
+    }
+    // Крайний случай: если дом всего 1, разрыв срезов вернет пустые слайсы!
+    if n == 1 {
+        return nums[0]
+    }
+
+    // Сценарий 1: дома [0 .. n-2] (дом n-1 заведомо не тронут)
+    max1 := robLinearRange(nums[:n-1])
+    // Сценарий 2: дома [1 .. n-1] (дом 0 заведомо не тронут)
+    max2 := robLinearRange(nums[1:])
+
+    return max(max1, max2) // Встроенный max в Go 1.21+
+}
+
+// robLinearRange решает классическую линейную задачу House Robber за O(1) памяти.
+func robLinearRange(nums []int) int {
+    prev2, prev1 := 0, 0
+    for _, v := range nums {
+        curr := max(prev1, prev2+v)
+        prev2 = prev1
+        prev1 = curr
+    }
+    return prev1
+}
+</code></pre>
+</div>
+
+<div class="callout callout-warning">
   <div class="callout-header">
-    <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-icon">⚠️</span>
+    <span class="callout-title">Ловушка граничного случая: $N = 1$</span>
   </div>
   <div class="callout-body">
-    <p>Интервьюер может спросить: <em>"А что если дома стоят не по кругу, а образуют полноценный граф?"</em><br />
-Это переход к задаче Maximum Weight Independent Set (MWIS), которая для произвольного графа является NP-трудной. Но если граф является деревом (как в House Robber III), она решается за $O(N)$ с помощью Post-order DFS и конечного автомата (Hold/Skip). Озвучивание этого факта демонстрирует глубокое понимание теории графов.</p>
+    <p>Если на входе массив из одного элемента <code>nums = [5]</code>:<br />
+<code>nums[:0]</code> вернет пустой срез <code>[]</code>, и <code>nums[1:]</code> вернет пустой срез <code>[]</code>.<br />
+Функция <code>robLinearRange</code> для пустого среза вернет <code>0</code>, и алгоритм выдаст неверный ответ <code>0</code> вместо <code>5</code>!<br />
+Проверка <code>if n == 1 { return nums[0] }</code> обязательна перед вызовом декомпозиции.</p>
   </div>
 </div>
 
+<hr />
+<h2 id="5-sistemnye-analogii-razryv-petel-v-setevykh-protokolakh">5. Системные аналогии: Разрыв петель в сетевых протоколах</h2>
+
+<p>Идея «разорвать цикл и запустить линейный алгоритм» — базовый паттерн архитектуры распределенных систем:</p>
+<ol>
+<li><strong>STP (Spanning Tree Protocol) в сетях Ethernet:</strong> коммутаторы второго уровня (L2) не имеют TTL в заголовках кадров, и любая петля в кабелях вызывает лавинный широковещательный шторм (Broadcast Storm). Алгоритм STP блокирует один из линков, виртуально «разрывая кольцо», превращая топологию в бесконфликтное дерево.</li>
+<li><strong>Consensus в Raft / Paxos:</strong> раунд голосования разделяет кандидатов на изолированные кворумы. Поскольку два мажоритарных кворума обязаны пересекаться хотя бы по одному узлу, кольцевой конфликт нескольких лидеров исключается декомпозицией большинства.</li>
+</ol>
+<hr />
+<h2 id="6-voprosy-dlya-sobesedovaniya">6. Вопросы для собеседования</h2>
+
+<div class="callout callout-interview">
+  <div class="callout-header">
+    <span class="callout-icon">🎯</span>
+    <span class="callout-title">Вопросы сеньорского уровня</span>
+  </div>
+  <div class="callout-body">
+    <p><strong>Вопрос 1:</strong> <em>Увеличилась ли асимптотическая сложность по сравнению с линейной задачей?</em><br />
+<strong>Ответ:</strong> Нет. Временная сложность осталась строго $O(N)$, так как константа $2 \times N$ в нотации $O$ отбрасывается. Память по-прежнему $O(1)$, так как срезы в Go являются zero-copy представлениями.</p>
+<p><strong>Вопрос 2:</strong> <em>А что если мы не ограбим ни дом 0, ни дом n-1? Не потеряли ли мы этот вариант?</em><br />
+<strong>Ответ:</strong> Нет, не потеряли. Вариант «пропустить оба дома» полностью содержится как в первом сценарии (где дом $n-1$ запрещен, но дом $0$ не обязан быть взят), так и во втором сценарии. Объединение двух сценариев покрывает 100% пространства допустимых конфигураций.</p>
+  </div>
+</div>
+
+<hr />
 <h2 id="itog">Итог</h2>
 
 <ol>
-<li><strong>Декомпозиция:</strong> Замкнутый массив ломает линейный DP. Решение — свести задачу к двум линейным: исключить первый элемент и исключить последний элемент.</li>
-<li><strong>Zero-copy:</strong> Срезы в Go (<code>nums[:n-1]</code>, <code>nums[1:]</code>) не аллоцируют новую память. Они используют тот же базовый массив, что делает разрыв кольца операцией за $O(1)$ по памяти.</li>
-<li><strong>Кэш процессора:</strong> Обращение к разным срезам одного массива использует одни и те же кэш-линии CPU, минимизируя Cache Miss.</li>
-<li><strong>Edge Cases:</strong> Всегда обрабатывайте базу вручную. Если $N=1$, срезы дадут пустые массивы, и логика сломается.</li>
+<li><strong>Разрыв кольца:</strong> Кольцевое ограничение устраняется декомпозицией на два линейных подмассива: <code>[0 .. n-2]</code> и <code>[1 .. n-1]</code>.</li>
+<li><strong>Zero-Copy срезы:</strong> В Go нарезка базового массива не копирует данные и не дергает аллокатор кучи.</li>
+<li><strong>Граничный фильтр:</strong> Не забывайте обрабатывать массивы длины 1 вручную, чтобы срезы не схлопнулись в нули.</li>
 </ol>
-<p>В следующей статье мы перейдем к новому классу 1D DP — задачам на поиск минимума/максимума среди комбинаций, где нам потребуется не просто выбирать брать/не брать, а перебирать допустимые переходы: <a href="6-coin-change.html" class="wikilink">6. Coin Change</a>.</p>
+<p>В следующей лекции мы познакомимся с совершенно новым классом задач 1D DP — неограниченным рюкзаком (Unbounded Knapsack) и поиском комбинаторного минимума: <a href="6-coin-change.html" class="wikilink">6. Coin Change</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2341,7 +2400,7 @@ F --&gt; G
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#problema-zamykaniya-razryv-koltsa">Проблема замыкания: Разрыв кольца</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-zero-copy-srezy-v-go">Mechanical Sympathy: Zero-copy срезы в Go</a></li><li class="toc-item toc-h2"><a href="#lovushki-raboty-so-srezami-gotchas">Ловушки работы со срезами (Gotchas)</a></li><li class="toc-item toc-h2"><a href="#system-design-razdelenie-domain-i-boundary-usloviy">System Design: Разделение Domain и Boundary условий</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-postanovka-zadachi-i-konflikt-koltsevoy-topologii">1. Постановка задачи и конфликт кольцевой топологии</a></li><li class="toc-item toc-h2"><a href="#2-arkhitekturnyy-insayt-razryv-koltsa-v-dvukh-tochkakh">2. Архитектурный инсайт: Разрыв кольца в двух точках</a></li><li class="toc-item toc-h2"><a href="#3-mechanical-sympathy-zero-copy-srezy-v-go">3. Mechanical Sympathy: Zero-Copy срезы в Go</a></li><li class="toc-item toc-h2"><a href="#4-realizatsiya-na-go-1-22">4. Реализация на Go 1.22+</a></li><li class="toc-item toc-h2"><a href="#5-sistemnye-analogii-razryv-petel-v-setevykh-protokolakh">5. Системные аналогии: Разрыв петель в сетевых протоколах</a></li><li class="toc-item toc-h2"><a href="#6-voprosy-dlya-sobesedovaniya">6. Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

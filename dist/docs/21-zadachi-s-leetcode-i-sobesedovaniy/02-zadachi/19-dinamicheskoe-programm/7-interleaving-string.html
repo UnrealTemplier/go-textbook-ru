@@ -2172,24 +2172,69 @@
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
               <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
+              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">7. Interleaving String</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Задача Interleaving String (LeetCode 97: Перемежающаяся строка) — это одна из самых изящных и сложных задач двумерного DP. Если в <a href="6-edit-distance.html" class="wikilink">6. Edit Distance</a> мы могли заменять, удалять и вставлять символы, то здесь мы лишены этих привилегий. У нас есть две строки-источника, и мы должны собрать третью, сохраняя строгий порядок символов внутри каждого источника.</p>
-<p><strong>Условие:</strong> Даны строки <code>s1</code>, <code>s2</code> и <code>s3</code>. Необходимо проверить, можно ли получить <code>s3</code>, перемежая (interleaving) символы <code>s1</code> и <code>s2</code>. Порядок символов в <code>s1</code> и <code>s2</code> при этом менять нельзя.</p>
-<p>В бэкенде этот паттерн моделирует задачу слияния двух упорядоченных потоков данных (например, логов или транзакций из двух дата-центров) в один общий временной ряд, где относительный порядок событий каждого источника должен быть строго сохранен.</p>
-<h2 id="formulirovka-dp-dva-istochnika-istiny">Формулировка DP: Два источника истины</h2>
+            <blockquote>
+<p><em>«Два параллельных потока соединяются воедино лишь тогда, когда в них соблюден строгий порядок каждого шага».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>Задача о перемежающейся строке (<strong>Interleaving String</strong>, LeetCode 97) — одна из наиболее концептуальных задач двумерного динамического программирования на стыке матричной геометрии и строковых потоков.</p>
+<p>Если в <a href="6-edit-distance.html" class="wikilink">6. Edit Distance</a> мы свободно вставляли, удаляли и заменяли символы за определенную цену, то здесь правила строги: у нас есть два упорядоченных источника данных, и мы обязаны восстановить результирующий поток символ в символ, <strong>не нарушая относительный порядок</strong> ни в одном из источников.</p>
+<p>В архитектуре бэкенда это точная модель <strong>мультиплексирования и ресинхронизации параллельных потоков событий</strong>:<br />
+- Слияние логов двух независимых реплик БД в единый аудиторский след (Audit Log Reassembly).<br />
+- Демультиплексирование TCP/QUIC фреймов при агрегации каналов.<br />
+- Проверка согласованности репликации в системах с Event Sourcing.</p>
+<hr />
+<h2 id="1-postanovka-zadachi-i-rannyaya-filtratsiya">1. Постановка задачи и ранняя фильтрация</h2>
 
-<p>Мы создаем матрицу <code>dp</code>, где <code>dp[i][j]</code> означает: можно ли собрать префикс <code>s3</code> длиной <code>i+j</code>, используя первые <code>i</code> символов <code>s1</code> и первые <code>j</code> символов <code>s2</code>.</p>
-<p><strong>Переход:</strong><br />
-Чтобы собрать <code>s3[0..i+j-1]</code>, последний символ должен был прийти либо из <code>s1</code>, либо из <code>s2</code>.<br />
-1. <strong>Берем из s1:</strong> Если <code>s1[i-1] == s3[i+j-1]</code>, то результат зависит от того, могли ли мы собрать префикс без этого символа: <code>dp[i-1][j]</code>.<br />
-2. <strong>Берем из s2:</strong> Если <code>s2[j-1] == s3[i+j-1]</code>, то результат зависит от: <code>dp[i][j-1]</code>.</p>
-<p>Итоговая формула (логическое ИЛИ):<br />
-$$dp[i][j] = (dp[i-1][j] \land s1[i-1] == s3[i+j-1]) \lor (dp[i][j-1] \land s2[j-1] == s3[i+j-1])$$</p>
+<p><strong>Условие:</strong><br />
+Даны три строки: <code>s1</code>, <code>s2</code> и <code>s3</code>.<br />
+Определите, можно ли получить <code>s3</code> путем чередования (перемежения) символов из <code>s1</code> и <code>s2</code>.<br />
+Относительный порядок символов внутри <code>s1</code> и <code>s2</code> обязан строго сохраняться.</p>
+
+<div class="code-block" data-lang="text">
+  <div class="code-header">
+    <span class="code-lang-tag">TEXT</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-text"><code class="language-text">Вход:  s1 = &quot;aabcc&quot;, s2 = &quot;dbbca&quot;, s3 = &quot;aadbbcbcac&quot;
+Выход: true
+Пояснение: разбиение по источникам:
+s3 = &quot;aa&quot; (из s1) + &quot;dbbc&quot; (из s2) + &quot;bc&quot; (из s1) + &quot;a&quot; (из s2) + &quot;c&quot; (из s1)
+</code></pre>
+</div>
+
+<div class="callout callout-important">
+  <div class="callout-header">
+    <span class="callout-icon">⚡</span>
+    <span class="callout-title">Закон сохранения длины: $O(1)$ фильтр</span>
+  </div>
+  <div class="callout-body">
+    <p>Первое действие Senior-разработчика — проверить длины:<br />
+<code>if len(s1) + len(s2) != len(s3) { return false }</code><br />
+Если суммарная длина источников не совпадает с результирующей строкой, решение невозможно ни при каких обстоятельствах. Эта элементарная проверка отсекает массу невалидных запросов мгновенно.</p>
+  </div>
+</div>
+
+<hr />
+<h2 id="2-formulirovka-2d-dp-dva-istochnika-istiny">2. Формулировка 2D DP: Два источника истины</h2>
+
+<p>Определим состояние:<br />
+<strong>$dp[i][j]$</strong> — булево значение: можно ли составить префикс $s3$ длиной $i + j$, используя первые $i$ символов строки $s1$ и первые $j$ символов строки $s2$.</p>
+<p>Текущий символ $s3[i+j-1]$ мог поступить только из двух мест:<br />
+1. <strong>Из строки $s1$:</strong> если символ $s1[i-1]$ совпадает с $s3[i+j-1]$, и мы могли успешно собрать предыдущую часть без него:<br />
+   $dp[i-1][j] == \text{true}$<br />
+2. <strong>Из строки $s2$:</strong> если символ $s2[j-1]$ совпадает с $s3[i+j-1]$, и мы могли успешно собрать предыдущую часть без него:<br />
+   $dp[i][j-1] == \text{true}$</p>
+<p>Итоговое рекуррентное соотношение (дизъюнкция):</p>
+<p>$$dp[i][j] = \Big(dp[i-1][j] \land s1[i-1] == s3[i+j-1]\Big) \;\lor\; \Big(dp[i][j-1] \land s2[j-1] == s3[i+j-1]\Big)$$</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2204,24 +2249,63 @@ $$dp[i][j] = (dp[i-1][j] \land s1[i-1] == s3[i+j-1]) \lor (dp[i][j-1] \land s2[j
   </div>
   <pre class="mermaid">
 flowchart TD
-A[&quot;dp i-1, j&lt;br&gt;Взяли из s1&quot;] --&gt;|s1 i-1 == s3 i+j-1| D[&quot;dp i, j&quot;]
-B[&quot;dp i, j-1&lt;br&gt;Взяли из s2&quot;] --&gt;|s2 j-1 == s3 i+j-1| D
+classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
 
-style D fill:#78350f,stroke:#fb923c,stroke-width:2px,color:#f8fafc
-style A fill:#334155,stroke:#64748b,color:#f8fafc
-style B fill:#334155,stroke:#64748b,color:#f8fafc
+Top[&quot;dp[i-1][j]&lt;br/&gt;(Символ взят из s1)&quot;]:::process
+Left[&quot;dp[i][j-1]&lt;br/&gt;(Символ взят из s2)&quot;]:::process
+Target[&quot;dp[i][j] = true / false&quot;]:::entry
+
+Top -- &quot;s1[i-1] == s3[i+j-1]&quot; --&gt; Target
+Left -- &quot;s2[j-1] == s3[i+j-1]&quot; --&gt; Target
   </pre>
 </div>
 
 
-<p><strong>База:</strong><br />
-- <code>dp[0][0] = true</code> (две пустые строки образуют пустую строку).<br />
-- Первая строка: <code>dp[0][j]</code> — собираем <code>s3</code> только из <code>s2</code>.<br />
-- Первый столбец: <code>dp[i][0]</code> — собираем <code>s3</code> только из <code>s1</code>.</p>
-<h2 id="idiomatichnyy-go-1d-bulevyy-slays">Идиоматичный Go: 1D Булевый слайс</h2>
+<hr />
+<h2 id="3-dvoystvennost-predstavleniy-setka-kak-graf-perekhodov">3. Двойственность представлений: Сетка как граф переходов</h2>
 
-<p>Поскольку наше состояние зависит только от текущей и предыдущей строк, мы можем сжать 2D матрицу <code>[][]bool</code> до 1D слайса <code>[]bool</code>.</p>
-<p>В Go <code>bool</code> занимает 1 байт (а не 1 бит, как можно было бы подумать). Но даже так слайс <code>make([]bool, n+1)</code> ложится в кэш процессора гораздо лучше, чем матрица указателей. Кроме того, мы используем встроенную ленивую оценку (short-circuit evaluation) оператора <code>||</code>, что делает код лаконичным и безопасным.</p>
+<p>Матрицу $dp[i][j]$ можно рассматривать как <strong>ориентированный ациклический граф (DAG)</strong>:<br />
+- Стартовая вершина: $(0, 0)$ (обе строки пусты).<br />
+- Ребро вниз в $(i+1, j)$: берем символ из $s1$.<br />
+- Ребро вправо в $(i, j+1)$: берем символ из $s2$.<br />
+- Финишная вершина: $(m, n)$.</p>
+<p>Задача эквивалентна поиску пути из $(0, 0)$ в $(m, n)$ на графе, что делает возможным решение через BFS/DFS с мемоизацией!</p>
+
+<div class="mermaid-wrapper">
+  <div class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
+    </button>
+  </div>
+  <pre class="mermaid">
+flowchart LR
+classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success  fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
+classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+V00[&quot;(0,0): Start&quot;]:::entry --&gt;|Шаг вправо: s2| V01[&quot;(0,1)&quot;]:::process
+V00 --&gt;|Шаг вниз: s1| V10[&quot;(1,0)&quot;]:::process
+V01 --&gt; V11[&quot;(1,1)&quot;]:::warning
+V10 --&gt; V11
+V11 -.-&gt; Vmn[&quot;(m,n): Goal&quot;]:::success
+  </pre>
+</div>
+
+
+<hr />
+<h2 id="4-idiomatichnaya-realizatsiya-na-go-1-22-on-pamyati">4. Идиоматичная реализация на Go 1.22+ ($O(N)$ памяти)</h2>
+
+<p>Вместо полноразмерной матрицы <code>[][]bool</code> мы используем сжатый одномерный срез <code>[]bool</code> длиной $n+1$:</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2231,29 +2315,35 @@ style B fill:#334155,stroke:#64748b,color:#f8fafc
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func isInterleave(s1 string, s2 string, s3 string) bool {
+  <pre class="language-go"><code class="language-go">package interleaving
+
+// IsInterleave проверяет, является ли s3 корректным перемежением s1 и s2.
+// Временная сложность: O(M * N).
+// Пространственная сложность: O(N) — один компактный булевый срез.
+func IsInterleave(s1 string, s2 string, s3 string) bool {
     m, n := len(s1), len(s2)
 
-    // Критическая оптимизация: длина s3 должна быть равна сумме длин
+    // Быстрый отсев: закон сохранения длины
     if m+n != len(s3) {
         return false
     }
 
+    // dp[j] хранит истинность для префикса s1 длины i и s2 длины j
     dp := make([]bool, n+1)
 
     for i := 0; i &lt;= m; i++ {
         for j := 0; j &lt;= n; j++ {
             if i == 0 &amp;&amp; j == 0 {
-                dp[j] = true
+                dp[j] = true // Две пустые строки образуют пустую строку
             } else if i == 0 {
-                // Первая строка: берем только из s2
+                // Первая строка: берем символы строго из s2
                 dp[j] = dp[j-1] &amp;&amp; s2[j-1] == s3[j-1]
             } else if j == 0 {
-                // Первый столбец: берем только из s1
-                // dp[0] обновляется на основе своего старого значения (сверху)
-                dp[j] = dp[j] &amp;&amp; s1[i-1] == s3[i-1]
+                // Первый столбец: берем символы строго из s1
+                // dp[0] берет старое значение сверху (с предыдущего i)
+                dp[0] = dp[0] &amp;&amp; s1[i-1] == s3[i-1]
             } else {
-                // Общий случай: либо сверху (dp[j] до обновления), либо слева (dp[j-1])
+                // Общий случай: либо сверху (из s1), либо слева (из s2)
                 fromS1 := dp[j] &amp;&amp; s1[i-1] == s3[i+j-1]
                 fromS2 := dp[j-1] &amp;&amp; s2[j-1] == s3[i+j-1]
                 dp[j] = fromS1 || fromS2
@@ -2269,56 +2359,49 @@ style B fill:#334155,stroke:#64748b,color:#f8fafc
 <div class="callout callout-warning">
   <div class="callout-header">
     <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+    <span class="callout-title">Ловушка обновления нулевого столбца: `dp[0]`</span>
   </div>
   <div class="callout-body">
-    <p>При сжатии 2D матрицы до 1D слайса для обновления первого столбца (<code>j == 0</code>) мы обращаемся к <code>dp[0] = dp[0] &amp;&amp; ...</code>. Здесь левый <code>dp[0]</code> — это новое значение (строка <code>i</code>), а правый <code>dp[0]</code> — это старое значение (строка <code>i-1</code>). В Go выражение вычисляется слева направо, и старое значение <code>dp[0]</code> считывается до его перезаписи, так что логика работает корректно. Но если бы мы использовали параллельные присваивания или горутины, здесь могла бы возникнуть race condition.</p>
+    <p>В строке <code>dp[0] = dp[0] &amp;&amp; s1[i-1] == s3[i-1]</code> переменная <code>dp[0]</code> справа содержит старое значение строки $i-1$.<br />
+Если хотя бы один символ префикса $s1$ не совпал с $s3$, <code>dp[0]</code> навсегда становится <code>false</code> и больше никогда не сможет стать <code>true</code>, что математически строго изолирует все пути, пытающиеся стартовать только из $s1$.</p>
   </div>
 </div>
 
-<h2 id="mechanical-sympathy-branch-prediction-i-buleva-algebra">Mechanical Sympathy: Branch Prediction и Булева алгебра</h2>
+<hr />
+<h2 id="5-mechanical-sympathy-plotnost-upakovki-i-bitset-dp">5. Mechanical Sympathy: Плотность упаковки и Bitset DP</h2>
 
-<p>В отличие от числового DP, где процессор выполняет <code>CMOV</code> (условные пересылки), в булевом DP мы работаем с флагами. Операции <code>&amp;&amp;</code> и <code>||</code> в Go компилируются в инструкции, зависящие от предсказателя ветвлений (Branch Predictor).</p>
-<p>Если строки <code>s1</code> и <code>s2</code> состоят из одинаковых символов (например, <code>s1 = "aaa"</code>, <code>s2 = "aaa"</code>, <code>s3 = "aaaaaa"</code>), на каждом шаге оба условия <code>fromS1</code> и <code>fromS2</code> истинны. Процессор хорошо предсказывает такие паттерны.</p>
-<p>Но если строки сильно перемешаны и случайны, предсказатель будет часто ошибаться (Branch Misprediction), сбрасывая конвейер. В высоконагруженных системах для вероятностных вычислений иногда переходят на побитовую математику (используя <code>uint64</code> как 64 битовых поля), чтобы убрать ветвления вообще, но для этой задачи алгоритмическая сложность $O(M \cdot N)$ перевешивает микрооптимизации.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>В системе команд x86_64 есть инструкции <code>PTEST</code>, которые позволяют проверять битовые маски без условных переходов. Теоретически, если переписать этот алгоритм так, чтобы <code>dp</code> был слайсом <code>uint64</code>, где каждый бит — это состояние для 64 различных <code>j</code>, мы могли бы обрабатывать 64 столбца матрицы за один такт процессора (SIMD-подход). Это называется "Bitset DP" и используется в поисковых движках для супербыстрого approximate matching.</p>
-  </div>
-</div>
+<p>В Go значение типа <code>bool</code> занимает <strong>1 полный байт (8 бит)</strong> памяти, а не 1 бит.<br />
+Для $N = 1000$ булевый срез занимает 1000 байт — он легко помещается в L1D-кэш процессора.</p>
+<p>Однако на уровне ассемблера вычисления <code>&amp;&amp;</code> и <code>||</code> порождают ветвления. Если символы в строках чередуются хаотично, процессорный предсказатель ветвлений (Branch Predictor) сталкивается с частыми сбросами конвейера.</p>
+<h3 id="arkhitekturnyy-gorizont-bitset-dp-za-om-cdot-n-64">Архитектурный горизонт: Bitset DP за $O((M \cdot N) / 64)$</h3>
+<p>В высоконагруженных сетевых парсерах булевы срезы упаковывают в 64-битные числа <code>uint64</code>.<br />
+Один регистр процессора <code>RAX</code> хранит сразу 64 состояния таблицы, а логические операции <code>AND</code>, <code>OR</code> и битовые сдвиги <code>SHL</code> вычисляют <strong>64 ячейки матрицы за 1 такт CPU</strong>. Это фундаментальный паттерн, используемый в сетевых фильтрах BPF / eBPF для мгновенного матчинга заголовков пакетов.</p>
+<hr />
+<h2 id="6-voprosy-dlya-sobesedovaniya">6. Вопросы для собеседования</h2>
 
-<h2 id="system-design-multipleksirovanie-potokov">System Design: Мультиплексирование потоков</h2>
-
-<p>Задача перемежения строк — это точная модель <strong>мультиплексирования (Multiplexing)</strong> в сетевых протоколах и логировании.</p>
-<ol>
-<li><strong>Распределенный трейсинг:</strong> Представьте, что у вас есть логи от микросервиса A (<code>s1</code>) и микросервиса B (<code>s2</code>). Они отправляют свои логи в центральный коллектор, который складывает их в единый поток <code>s3</code> в порядке поступления (по timestamp). Проверка корректности сборки лога — это задача Interleaving String. Если относительный порядок событий внутри логов A или B нарушился, значит, коллектор работает некорректно.</li>
-<li><strong>TCP Segment Reassembly:</strong> Когда TCP-пакеты приходят из сети, они могут фрагментироваться. Сборка потока из двух TCP-потоков (например, при соединении данных из кэша и данных с диска) требует проверки, что фрагменты не перемешались внутри каждого потока.</li>
-<li><strong>Event Sourcing:</strong> Слияние веток в Git (Merge) по сути является задачей перемежения, но с обнаружением конфликтов (когда символы не совпадают ни с одним источником, нужен 3-way merge).</li>
-</ol>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопросы сеньорского уровня</span>
   </div>
   <div class="callout-body">
-    <p>На интервью часто спрашивают: <em>"А можно ли решить эту задачу без DP, через BFS/DFS?"</em><br />
-<strong>Ответ:</strong> Да! Матрицу <code>dp</code> можно рассматривать как ориентированный граф, где <code>dp[i][j]</code> — это узел. Если мы можем взять символ из <code>s1</code>, мы идем по ребру вниз. Если из <code>s2</code> — идем вправо. Задача сводится к проверке, достижима ли клетка <code>(m, n)</code> из <code>(0, 0)</code>. Это решается через BFS или DFS с мемоизацией посещенных клеток. Это отличный альтернативный ответ, который показывает гибкость вашего мышления.</p>
+    <p><strong>Вопрос 1:</strong> <em>Почему жадный алгоритм с двумя указателями (Two Pointers) здесь не работает?</em><br />
+<strong>Ответ:</strong> Если текущий символ $s3$ совпадает <strong>одновременно</strong> с символом из $s1$ и с символом из $s2$ (например, $s1 = \text{"a"}, s2 = \text{"a"}, s3 = \text{"aa"}$), жадный алгоритм не знает, из какого источника взять букву. Выбрав наугад, мы можем заблокировать будущее продвижение и получить ложный <code>false</code>. Динамическое программирование исследует оба пути параллельно за $O(M \cdot N)$.</p>
+<p><strong>Вопрос 2:</strong> <em>Можно ли решить задачу с помощью BFS?</em><br />
+<strong>Ответ:</strong> Да. Очередь хранит пары индексов <code>(i, j)</code>. Чтобы избежать повторного обхода одних и тех же состояний, используется <code>visited[i][j]</code> (хэш-таблица или матрица флагов). В худшем случае BFS просмотрит те же $O(M \cdot N)$ состояний.</p>
   </div>
 </div>
 
-<h2 id="itog">Итог</h2>
+<hr />
+<h2 id="itog-klastera-2d-dp">Итог кластера 2D DP</h2>
 
-<ol>
-<li><strong>Два источника:</strong> В отличие от Edit Distance, мы не модифицируем символы. Мы либо берем готовый символ из <code>s1</code>, либо из <code>s2</code>, сохраняя их внутренний порядок.</li>
-<li><strong>Логическое ИЛИ/И:</strong> Переход строится на логике: <code>(предыдущее состояние) И (совпадение символа)</code>.</li>
-<li><strong>Сжатие памяти:</strong> Булеву матрицу можно и нужно сжимать до 1D слайса, аккуратно обрабатывая обновление <code>dp[0]</code> (первого столбца).</li>
-<li><strong>Ранняя проверка:</strong> Всегда проверяйте <code>len(s1) + len(s2) == len(s3)</code> в самом начале. Это отсеивает целый класс невалидных входов за $O(1)$.</li>
-</ol>
-<p>На этом мы завершаем раздел двумерного динамического программирования. В следующей статье мы перейдем к задачам, где DP применяется не к матрицам, а к строкам, требуя поиска общих подпоследовательностей: <a href="../20-dinamicheskoe-programm/1-teoriya-dp-na-strokakh.html" class="wikilink">1. Теория. DP на строках</a>.</p>
+<p>Мы полностью завершили блок двумерного динамического программирования:<br />
+1. <strong>Теория:</strong> Понимание пространства состояний $(i, j)$, отказ от джаггед-слайсов в пользу непрерывных буферов и сжатие до Rolling Vector.<br />
+2. <strong>Сетки:</strong> Unique Paths I &amp; II — комбинаторика путей против преград и отсечение ветвлений.<br />
+3. <strong>Оптимальные пути:</strong> Minimum Path Sum — иммутабельность, кэш L1 и обратное восстановление маршрута.<br />
+4. <strong>Сравнение строк:</strong> Edit Distance — классическая матрица Левенштейна, диагональный <code>prevDiag</code> и масштабирование поиска.<br />
+5. <strong>Мультиплексирование:</strong> Interleaving String — слияние упорядоченных потоков и логические инварианты.</p>
+<p>В следующем кластере мы углубимся в тончайшие строковые алгоритмы: Longest Common Subsequence, Distinct Subsequences, а также регулярные выражения: <a href="../20-dinamicheskoe-programm/1-teoriya-dp-na-strokakh.html" class="wikilink">1. Теория. DP на строках</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2346,7 +2429,7 @@ style B fill:#334155,stroke:#64748b,color:#f8fafc
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#formulirovka-dp-dva-istochnika-istiny">Формулировка DP: Два источника истины</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-1d-bulevyy-slays">Идиоматичный Go: 1D Булевый слайс</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-branch-prediction-i-buleva-algebra">Mechanical Sympathy: Branch Prediction и Булева алгебра</a></li><li class="toc-item toc-h2"><a href="#system-design-multipleksirovanie-potokov">System Design: Мультиплексирование потоков</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-postanovka-zadachi-i-rannyaya-filtratsiya">1. Постановка задачи и ранняя фильтрация</a></li><li class="toc-item toc-h2"><a href="#2-formulirovka-2d-dp-dva-istochnika-istiny">2. Формулировка 2D DP: Два источника истины</a></li><li class="toc-item toc-h2"><a href="#3-dvoystvennost-predstavleniy-setka-kak-graf-perekhodov">3. Двойственность представлений: Сетка как граф переходов</a></li><li class="toc-item toc-h2"><a href="#4-idiomatichnaya-realizatsiya-na-go-1-22-on-pamyati">4. Идиоматичная реализация на Go 1.22+ ($O(N)$ памяти)</a></li><li class="toc-item toc-h2"><a href="#5-mechanical-sympathy-plotnost-upakovki-i-bitset-dp">5. Mechanical Sympathy: Плотность упаковки и Bitset DP</a></li><li class="toc-item toc-h3"><a href="#arkhitekturnyy-gorizont-bitset-dp-za-om-cdot-n-64">Архитектурный горизонт: Bitset DP за $O((M \cdot N) / 64)$</a></li><li class="toc-item toc-h2"><a href="#6-voprosy-dlya-sobesedovaniya">6. Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#itog-klastera-2d-dp">Итог кластера 2D DP</a></li>
   </ul>
 </aside>
 

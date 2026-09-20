@@ -2171,28 +2171,63 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 21</span>
-              <span class="meta-tag read-time">⏱ ~16 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
+              <span class="meta-tag read-time">⏱ ~15 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">5. Regular Expression Matching</h1>
           </header>
 
           <div class="article-markdown">
-            <p>Задача Regular Expression Matching (LeetCode 10) — это Эверест строкового динамического программирования. Если в <a href="4-distinct-subsequences.html" class="wikilink">4. Distinct Subsequences</a> мы просто считали комбинации, то здесь мы моделируем работу недетерминированного конечного автомата (НКА), обрабатывая квантификаторы (<code>*</code> — ноль или более вхождений).</p>
-<p><strong>Условие:</strong> Даны строки <code>s</code> и шаблон <code>p</code>. Реализовать поддержку <code>.</code> (один любой символ) и <code>*</code> (ноль или более предыдущего символа). Строка должна совпадать с шаблоном полностью.</p>
-<p>В бэкенде эта задача — основа библиотек маршрутизации (роутеров вроде <code>gorilla/mux</code> или <code>chi</code>), валидации входящих конфигураций и систем парсинга логов. Понимание того, как работают регулярки под капотом, отличает Senior-разработчика от того, кто просто вызывает <code>regexp.MatchString</code>.</p>
-<h2 id="formulirovka-dp-matritsa-sostoyaniy-nka">Формулировка DP: Матрица состояний НКА</h2>
+            <blockquote>
+<p><em>«Регулярные выражения — это либо элегантный скальпель инженера, либо граната в руках неосторожного программиста».</em><br />
+— Брайан Керниган</p>
+</blockquote>
+<p>Задача о сопоставлении с регулярным выражением (<strong>Regular Expression Matching</strong>, LeetCode 10) — признанный Эверест строкового динамического программирования.</p>
+<p>Если в предыдущих задачах символы сопоставлялись один к одному, то здесь мы моделируем фундаментальный концепт теории вычислений — <strong>недетерминированный конечный автомат (НКА / NFA)</strong> с квантификатором Клини (<code>*</code> — ноль или более повторений предшествующего символа) и метасимволом любого символа (<code>.</code>).</p>
+<p>В бэкенде эта задача открывает понимание того, почему стандартный пакет <code>regexp</code> в Go гарантированно защищен от катастрофических уязвимостей <strong>ReDoS (Regular Expression Denial of Service)</strong>, выводящих из строя целые кластеры на Python, Node.js или Java.</p>
+<hr />
+<h2 id="1-postanovka-zadachi-i-pravila-grammatiki">1. Постановка задачи и правила грамматики</h2>
 
-<p>Мы создаем матрицу <code>dp</code>, где <code>dp[i][j]</code> означает: совпадает ли префикс строки <code>s[0..i-1]</code> с префиксом паттерна <code>p[0..j-1]</code>.</p>
-<p><strong>База:</strong><br />
-- <code>dp[0][0] = true</code>: Пустая строка совпадает с пустым паттерном.<br />
-- <code>dp[i][0] = false</code>: Непустая строка не совпадает с пустым паттерном.<br />
-- <code>dp[0][j]</code>: Пустая строка может совпасть с паттерном, если он состоит из пар вида <code>X*</code> (которые могут отматывать себя до нуля). Например, <code>a*b*</code> совпадет с пустой строкой.</p>
-<p><strong>Переходы:</strong><br />
-1. <strong>Прямое совпадение или точка (<code>.</code>):</strong> Если <code>p[j-1] == s[i-1]</code> или <code>p[j-1] == '.'</code>, то состояние наследуется по диагонали: <code>dp[i][j] = dp[i-1][j-1]</code>.<br />
-2. <strong>Звездочка (<code>*</code>):</strong> Она всегда идет в паре с предыдущим символом (<code>p[j-2]</code>). У нас есть два выбора:<br />
-   - <strong>Ноль вхождений (Ignore):</strong> Мы игнорируем пару <code>X*</code>. Тогда <code>dp[i][j] = dp[i][j-2]</code>.<br />
-   - <strong>Одно или более вхождений (Consume):</strong> Если <code>p[j-2]</code> совпадает с <code>s[i-1]</code> (или это <code>.</code>), мы "съедаем" символ из <code>s</code>, но паттерн остается на месте (звездочка может съесть еще): <code>dp[i][j] = dp[i-1][j]</code>.</p>
+<p><strong>Условие:</strong><br />
+Даны строка <code>s</code> (текст) и строка <code>p</code> (шаблон регулярного выражения).<br />
+Реализовать функцию проверки полного совпадения строки с шаблоном со следующими правилами:<br />
+1. <code>.</code> — соответствует <strong>любому одиночному символу</strong>.<br />
+2. <code>*</code> — соответствует <strong>нулю или более повторений предшествующего символа</strong>.</p>
+
+<div class="code-block" data-lang="text">
+  <div class="code-header">
+    <span class="code-lang-tag">TEXT</span>
+    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </div>
+  <pre class="language-text"><code class="language-text">Вход:  s = &quot;aab&quot;, p = &quot;c*a*b&quot;
+Выход: true
+Пояснение: 'c*' берется 0 раз (&quot;&quot;), 'a*' берется 2 раза (&quot;aa&quot;), 'b' совпадает с 'b'. Итог: &quot;aab&quot;.
+</code></pre>
+</div>
+
+<hr />
+<h2 id="2-logika-perekhodov-modelirovanie-sostoyaniy-avtomata">2. Логика переходов: Моделирование состояний автомата</h2>
+
+<p>Определим состояние:<br />
+<strong>$dp[i][j]$</strong> — истинно, если префикс строки $s[0 \dots i-1]$ полностью матчится префиксом паттерна $p[0 \dots j-1]$.</p>
+<p>При вычислении ячейки $(i, j)$ смотрим на символ паттерна $p[j-1]$:</p>
+<h3 id="stsenariy-1-obychnyy-simvol-ili-tochka-pj-1">Сценарий 1: Обычный символ или точка (`p[j-1] != '*'`)</h3>
+<p>Символ паттерна сопоставляется ровно с одним символом строки:<br />
+$$dp[i][j] = dp[i-1][j-1] \quad \text{при условии, что} \quad (p[j-1] == s[i-1] \lor p[j-1] == '.')$$</p>
+<h3 id="stsenariy-2-kvantifikator-zvezdochka-pj-1">Сценарий 2: Квантификатор звездочка (`p[j-1] == '*'`)</h3>
+<p>Символ <code>*</code> никогда не стоит сам по себе — он модифицирует предшествующий символ $p[j-2]$.<br />
+Перед нами две альтернативы:<br />
+1. <strong>Ноль вхождений (Zero occurrences):</strong><br />
+   Мы полностью игнорируем блок $p[j-2] \ p[j-1]$ (например, <code>c*</code> превращается в пустую строку). Значение берется на 2 шага назад по паттерну:<br />
+   $$dp[i][j-2]$$<br />
+2. <strong>Одно или более вхождений (Consume one character):</strong><br />
+   Если символ $p[j-2]$ совпадает с текущим символом строки $s[i-1]$ (или $p[j-2] == '.'$), мы «поглощаем» символ строки $s[i-1]$, но <strong>оставляем паттерн на месте</strong>, так как <code>*</code> может поглотить следующий символ:<br />
+   $$dp[i-1][j]$$</p>
+<p>Итоговая дизъюнкция для <code>*</code>:<br />
+$$dp[i][j] = dp[i][j-2] \;\lor\; \Big((p[j-2] == s[i-1] \lor p[j-2] == '.') \land dp[i-1][j]\Big)$$</p>
 
 <div class="mermaid-wrapper">
   <div class="mermaid-header">
@@ -2208,32 +2243,29 @@
   <pre class="mermaid">
 flowchart TD
 classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
-classDef success  fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+classDef success  fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
 classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
 classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
 classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
-classDef aux      fill:#334155,stroke:#64748b,stroke-width:1px,color:#f8fafc
-classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
-classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
-classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
-classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-A{&quot;p j-1 == *&quot;}:::error -- &quot;Нет&quot; --&gt; B{&quot;Совпадение символов?&quot;}
-B -- &quot;Да s i-1 == p j-1 или .&quot; --&gt; C[&quot;dp i, j = dp i-1, j-1&quot;]
-B -- &quot;Нет&quot; --&gt; D[&quot;dp i, j = false&quot;]
 
-A -- &quot;Да&quot; --&gt; E{&quot;Ноль вхождений&lt;br&gt;Игнорируем X*&quot;}
-E --&gt; F[&quot;dp i, j = dp i, j-2&quot;]
-A --&gt; G{&quot;Одно или более&lt;br&gt;Совпадает p j-2 и s i-1?&quot;}
-G -- &quot;Да&quot; --&gt; H[&quot;dp i, j = dp i-1, j&quot;]
-G -- &quot;Нет&quot; --&gt; F
+Check{&quot;Символ p[j-1] == &#x27;*&#x27;?&quot;}:::warning
+
+Check -- &quot;Нет (Символ или точка)&quot; --&gt; CharMatch{&quot;p[j-1] == s[i-1]&lt;br/&gt;или p[j-1] == &#x27;.&#x27;?&quot;}:::process
+CharMatch -- &quot;Да&quot; --&gt; Diag[&quot;dp[i][j] = dp[i-1][j-1]&lt;br/&gt;(Диагональный шаг)&quot;]:::success
+CharMatch -- &quot;Нет&quot; --&gt; False1[&quot;dp[i][j] = false&quot;]:::error
+
+Check -- &quot;Да (Звездочка)&quot; --&gt; ZeroOcc[&quot;1. Ноль вхождений:&lt;br/&gt;dp[i][j-2] (срез без X*)&quot;]:::process
+ZeroOcc --&gt; StarMatch{&quot;2. Одно+ вхождений:&lt;br/&gt;p[j-2] совпал с s[i-1]?&quot;}:::process
+StarMatch -- &quot;Да&quot; --&gt; Consume[&quot;ИЛИ dp[i-1][j]&lt;br/&gt;(Съедаем символ из s)&quot;]:::success
+StarMatch -- &quot;Нет&quot; --&gt; OnlyZero[&quot;Остается только dp[i][j-2]&quot;]:::process
   </pre>
 </div>
 
 
-<h2 id="idiomatichnyy-go-dva-slaysa-vmesto-matritsy">Идиоматичный Go: Два слайса вместо матрицы</h2>
+<hr />
+<h2 id="3-idiomatichnaya-realizatsiya-na-go-1-22-on-pamyati">3. Идиоматичная реализация на Go 1.22+ ($O(N)$ памяти)</h2>
 
-<p>При $M, N \le 20$ (типичные лимиты LeetCode) полная матрица <code>[][]bool</code> займет всего 400 байт. Но в реальных системах (например, проверка HTTP-заголовков по сложному паттерну) длина может достигать тысяч символов.</p>
-<p>Мы можем сжать 2D матрицу до двух 1D слайсов (<code>prev</code> и <code>curr</code>), снизив память с $O(M \cdot N)$ до $O(N)$. Особенность перехода со звездочкой в том, что <code>dp[i][j-2]</code> ссылается на ту же строку <code>i</code> (то есть на уже вычисленный <code>curr[j-2]</code>), а <code>dp[i-1][j]</code> — на предыдущую строку (<code>prev[j]</code>). Это делает сжатие очень естественным.</p>
+<p>Так как текущая строка $i$ зависит только от значений в этой же строке со смещением назад ($dp[i][j-2]$) и от значений в предыдущей строке ($dp[i-1][j]$ и $dp[i-1][j-1]$), мы используем два чередующихся среза: <code>prev</code> и <code>curr</code>.</p>
 
 <div class="code-block" data-lang="go">
   <div class="code-header">
@@ -2243,16 +2275,21 @@ G -- &quot;Нет&quot; --&gt; F
       <span>Копировать</span>
     </button>
   </div>
-  <pre class="language-go"><code class="language-go">func isMatch(s string, p string) bool {
+  <pre class="language-go"><code class="language-go">package regex
+
+// IsMatch проверяет полное соответствие строки s шаблону p с поддержкой '.' и '*'.
+// Временная сложность: O(M * N).
+// Пространственная сложность: O(N) — два компактных булевых среза длины len(p)+1.
+func IsMatch(s string, p string) bool {
     m, n := len(s), len(p)
 
     prev := make([]bool, n+1)
     curr := make([]bool, n+1)
 
-    // База: пустая строка и пустой паттерн
+    // База: пустая строка s полностью совпадает с пустым шаблоном p
     prev[0] = true
 
-    // База: пустая строка и паттерн вида a*b*c*
+    // База для пустой строки: шаблоны вида a*, a*b*, a*b*c* могут свернуться в пустую строку
     for j := 2; j &lt;= n; j++ {
         if p[j-1] == '*' {
             prev[j] = prev[j-2]
@@ -2260,21 +2297,20 @@ G -- &quot;Нет&quot; --&gt; F
     }
 
     for i := 1; i &lt;= m; i++ {
-        // Непустая строка не совпадает с пустым паттерном
-        curr[0] = false 
+        // Непустая строка не может совпасть с пустым паттерном
+        curr[0] = false
 
         for j := 1; j &lt;= n; j++ {
             if p[j-1] == '*' {
-                // Вариант 1: ноль вхождений (откатываем паттерн на 2 символа)
+                // Вариант 1: ноль повторений (игнорируем блок p[j-2..j-1])
                 curr[j] = curr[j-2]
 
-                // Вариант 2: одно или более вхождений 
-                // (если предыдущий символ паттерна совпадает с текущим символом строки)
+                // Вариант 2: одно или более повторений
                 if p[j-2] == '.' || p[j-2] == s[i-1] {
                     curr[j] = curr[j] || prev[j]
                 }
             } else {
-                // Прямое совпадение
+                // Одиночный символ или точка
                 if p[j-1] == '.' || p[j-1] == s[i-1] {
                     curr[j] = prev[j-1]
                 } else {
@@ -2283,7 +2319,7 @@ G -- &quot;Нет&quot; --&gt; F
             }
         }
 
-        // Сдвигаем строки (swap)
+        // Swap срезов: смена поколений без дополнительных аллокаций
         prev, curr = curr, prev
     }
 
@@ -2292,55 +2328,75 @@ G -- &quot;Нет&quot; --&gt; F
 </code></pre>
 </div>
 
-<div class="callout callout-warning">
-  <div class="callout-header">
-    <span class="callout-icon">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha</span>
+<hr />
+<h2 id="4-system-design-arkhitektura-re2-protiv-pcre-i-ugroza-redos">4. System Design: Архитектура RE2 против PCRE и угроза ReDoS</h2>
+
+<p>Почему знание этого алгоритма обязательно для Senior Backend инженера?</p>
+<p>Большинство языков программирования (Python <code>re</code>, JavaScript RegExp, PHP, Perl, Ruby) используют для регулярных выражений движки на основе <strong>обратного слежения (Backtracking / PCRE)</strong>.<br />
+Если пользователь отправляет строку:<br />
+<code>aaaaaaaaaaaaaaaaaaaaaaaaaaaaa!</code><br />
+на паттерн вида <code>(a+)+$</code>, движок начинает экспоненциальный перебор всех возможных группировок.<br />
+Сложность взлетает до <strong>$O(2^N)$</strong>! Одно невинное регулярное выражение подвешивает CPU ядра на часы — сервис падает с отказом в обслуживании (уязвимость <strong>ReDoS — Regular Expression Denial of Service</strong>).</p>
+
+<div class="mermaid-wrapper">
+  <div class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
+    </button>
   </div>
-  <div class="callout-body">
-    <p>При использовании <code>swap</code> для сдвига строк (<code>prev, curr = curr, prev</code>), внутреннее содержимое слайса <code>curr</code> из предыдущей итерации никуда не девается, мы просто перезаписываем его нулевым индексом (<code>curr[0] = false</code>) и затем значениями по мере вычисления <code>j</code>. Это работает быстро, так как мы не аллоцируем новую память на каждой строке, а переиспользуем один и тот же буфер. В Go swap слайсов меняет местами только их заголовки (указатель, длина, capacity), что стоит ровно 3 присваивания.</p>
-  </div>
+  <pre class="mermaid">
+flowchart LR
+classDef process  fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+classDef success  fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc
+classDef error    fill:#7f1d1d,stroke:#f87171,stroke-width:1px,color:#f8fafc
+classDef warning  fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+classDef entry    fill:#1e3a5f,stroke:#38bdf8,stroke-width:2px,color:#f8fafc
+
+Input[&quot;Входные данные:&lt;br/&gt;&#x27;(a+)+$&#x27; на &#x27;aaaaa!&#x27;&quot;]:::entry
+
+Input --&gt; PCRE[&quot;PCRE / Backtracking (Python, JS):&lt;br/&gt;Экспоненциальный взрыв O(2^N)&quot;]:::error
+Input --&gt; RE2[&quot;RE2 / Thompson NFA (Go standard library):&lt;br/&gt;Гарантированное линейное время O(M * N)&quot;]:::success
+
+PCRE --&gt; ReDoS[&quot;💥 ReDoS: 100% CPU, падение сервиса&quot;]:::error
+RE2 --&gt; Safe[&quot;✅ Безопасно: предсказуемое время ответа&quot;]:::success
+  </pre>
 </div>
 
-<h2 id="mechanical-sympathy-vetvleniya-i-branch-misprediction">Mechanical Sympathy: Ветвления и Branch Misprediction</h2>
 
-<p>Алгоритм насыщен условиями <code>if p[j-1] == '*'</code>. Если паттерн содержит много звездочек вперемешку с обычными символами, предсказатель ветвлений (Branch Predictor) процессора будет страдать.</p>
-<p>В отличие от простых строковых DP, где доступ к памяти линейный, здесь логика ветвится. Современные компиляторы (включая Go compiler) пытаются конвертировать такие <code>if-else</code> в инструкции <code>CMOV</code> (Conditional Move), чтобы избежать сброса конвейера (Pipeline Flush). Однако, если логика сложная (как случай с <code>*</code> и двумя зависимостями), компилятор может не смочь оптимизировать код, и задержка будет определяться количеством Branch Mispredictions.</p>
-<div class="callout callout-info">
-  <div class="callout-header">
-    <span class="callout-icon">⚙️</span>
-    <span class="callout-title">Под капотом</span>
-  </div>
-  <div class="callout-body">
-    <p>Почему мы сравниваем <code>p[j-1] == '*'</code>, а не смотрим вперед? Потому что DP заполняется слева направо. Звездочка модифицирует состояние <em>предыдущего</em> символа. Анализ назад (<code>j-2</code>) в рамках вычисления текущей ячейки — это классический паттерн для регулярных выражений в DP, так как мы не знаем, будет ли текущий символ модифицирован звездочкой, пока не дойдем до нее.</p>
-  </div>
-</div>
+<h3 id="pochemu-go-ne-podverzhen-redos">Почему Go не подвержен ReDoS?</h3>
+<p>Стандартный пакет <code>regexp</code> в Go построен на библиотеке <strong>RE2</strong> (созданной Робом Пайком и Кеном Томпсоном в Google).<br />
+В ее основе лежит алгоритм Томпсона (Thompson NFA Construction, 1968 г.), который моделирует состояния параллельно — в точности так же, как наше DP!<br />
+Время работы регулярных выражений в Go <strong>строго ограничено $O(M \cdot N)$</strong>. Никакой злоумышленник не может положить ваш сервис каверзным вводом.</p>
+<hr />
+<h2 id="5-voprosy-dlya-sobesedovaniya">5. Вопросы для собеседования</h2>
 
-<h2 id="system-design-pochemu-go-regex-bezopasen-re2">System Design: Почему Go regex безопасен (RE2)</h2>
-
-<p>Если вы придете на собеседование по System Design и вас спросят, как реализовать сервис валидации пользовательского ввода по регуляркам, ваш ответ должен учитывать уязвимость <strong>ReDoS (Regular Expression Denial of Service)</strong>.</p>
-<p>В языках с поддержкой PCRE (Perl Compatible Regular Expressions — PHP, Python, Node.js) используется алгоритм с <em>обратным слежением (Backtracking)</em>. Паттерн вроде <code>(a+)+$</code> на строке <code>aaaaaaaaaaaaab</code> заставит интерпретатор перебирать миллионы комбинаций, забивая CPU на часы. Это классическая DDoS-атака на бэкенд.</p>
-<p>Go использует библиотеку <strong>RE2</strong> (разработанную Google). RE2 основана на НКА (Недетерминированных конечных автоматах) без обратного слежения — по сути, на том же DP, который мы только что написали, или на Thompson NFA. <br />
-Время работы RE2 <em>всегда</em> линейно зависит от длины строки ($O(M \cdot N)$). В Go невозможно написать регулярку, которая уйдет в экспоненциальный бэкtracking. За это Go платит отсутствием поддержки "жадных" lookahead/lookbehind assertions (операций <code>(?=...)</code>), которые требуют бэктрекинга.</p>
 <div class="callout callout-interview">
   <div class="callout-header">
     <span class="callout-icon">🎯</span>
-    <span class="callout-title">Собеседование</span>
+    <span class="callout-title">Вопросы сеньорского уровня</span>
   </div>
   <div class="callout-body">
-    <p>Решив задачу, добавьте: <em>"Этот алгоритм работает за O(M</em>N), что гарантированно защищает от ReDoS-атак. Именно так работает стандартный пакет regexp в Go — он использует Thompson NFA, отказываясь от бэктрекинга ради безопасности бэкенда. В высоконагруженных системах мы никогда не используем PCRE-библиотеки для парсинга внешнего ввода"*.</p>
+    <p><strong>Вопрос 1:</strong> <em>Какова плата за безопасность RE2 в Go по сравнению с PCRE?</em><br />
+<strong>Ответ:</strong> За гарантию линейного времени $O(M \cdot N)$ RE2 платит отказом от функций, требующих экспоненциального бэктрекинга: в Go <code>regexp</code> намеренно не поддерживаются обратные ссылки (Backreferences, <code>\1</code>) и произвольные опережающие/ретроспективные проверки (Lookahead/Lookbehind assertions).</p>
+<p><strong>Вопрос 2:</strong> <em>Почему при вычислении curr[j-2] мы обращаемся к текущей строке, а не к предыдущей?</em><br />
+<strong>Ответ:</strong> Потому что вариант «ноль повторений» (<code>curr[j] = curr[j-2]</code>) означает, что мы прямо сейчас, не поглотив ни одного символа из строки $s$, делаем вывод: блок $X*$ пропускается для текущей длины строки. Мы проверяем, мог ли тот же самый префикс строки $s$ совпасть с паттерном, в котором этого блока вообще не было.</p>
   </div>
 </div>
 
+<hr />
 <h2 id="itog">Итог</h2>
 
 <ol>
-<li><strong>Моделирование автомата:</strong> Звездочка (<code>*</code>) требует анализа двух вариантов: отбросить пару <code>X*</code> (взять значение <code>dp[i][j-2]</code>) или "съесть" символ (взять <code>dp[i-1][j]</code>).</li>
-<li><strong>База с пустой строкой:</strong> Пустая строка может совпадать с паттерном <code>a*b*</code>, это нужно инициализировать перед основным циклом.</li>
-<li><strong>Сжатие памяти:</strong> Мы можем использовать два 1D слайса и swap, так как зависимости текущей строки (<code>curr[j-2]</code>) и предыдущей (<code>prev[j]</code>) легко удовлетворяются.</li>
-<li><strong>RE2 против PCRE:</strong> Понимание того, что алгоритм DP/НКА защищает от ReDoS, — это прямой билет на Senior/Lead позицию, где безопасность инфраструктуры важнее синтаксического сахара.</li>
+<li><strong>Модель NFA:</strong> Квантификатор <code>*</code> ветвит состояние на пропуск двух символов паттерна (<code>curr[j-2]</code>) или поглощение символа строки (<code>prev[j]</code>).</li>
+<li><strong>Своп срезов:</strong> Использование пары <code>prev</code> и <code>curr</code> исключает аллокации в куче на каждом шаге цикла.</li>
+<li><strong>ReDoS иммунитет:</strong> Алгоритм работает с гарантированной сложностью $O(M \cdot N)$, что объясняет фундаментальную надежность пакета <code>regexp</code> в Go.</li>
 </ol>
-<p>В следующей статье мы разберем упрощенную версию этой задачи — шаблоны с <code>?</code> и <code>*</code> без экранирования предыдущего символа: <a href="6-wildcard-matching.html" class="wikilink">6. Wildcard Matching</a>.</p>
+<p>В следующей финальной лекции кластера строкового DP мы разберем задачу о сопоставлении с масками файлов (Glob / Wildcard): <a href="6-wildcard-matching.html" class="wikilink">6. Wildcard Matching</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -2368,7 +2424,7 @@ G -- &quot;Нет&quot; --&gt; F
     <span>На этой странице</span>
   </div>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#formulirovka-dp-matritsa-sostoyaniy-nka">Формулировка DP: Матрица состояний НКА</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-go-dva-slaysa-vmesto-matritsy">Идиоматичный Go: Два слайса вместо матрицы</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-vetvleniya-i-branch-misprediction">Mechanical Sympathy: Ветвления и Branch Misprediction</a></li><li class="toc-item toc-h2"><a href="#system-design-pochemu-go-regex-bezopasen-re2">System Design: Почему Go regex безопасен (RE2)</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-postanovka-zadachi-i-pravila-grammatiki">1. Постановка задачи и правила грамматики</a></li><li class="toc-item toc-h2"><a href="#2-logika-perekhodov-modelirovanie-sostoyaniy-avtomata">2. Логика переходов: Моделирование состояний автомата</a></li><li class="toc-item toc-h3"><a href="#stsenariy-1-obychnyy-simvol-ili-tochka-pj-1">Сценарий 1: Обычный символ или точка (p[j-1] != &#x27;&#x27;)</a></li><li class="toc-item toc-h3"><a href="#stsenariy-2-kvantifikator-zvezdochka-pj-1">Сценарий 2: Квантификатор звездочка (p[j-1] == &#x27;&#x27;)</a></li><li class="toc-item toc-h2"><a href="#3-idiomatichnaya-realizatsiya-na-go-1-22-on-pamyati">3. Идиоматичная реализация на Go 1.22+ ($O(N)$ памяти)</a></li><li class="toc-item toc-h2"><a href="#4-system-design-arkhitektura-re2-protiv-pcre-i-ugroza-redos">4. System Design: Архитектура RE2 против PCRE и угроза ReDoS</a></li><li class="toc-item toc-h3"><a href="#pochemu-go-ne-podverzhen-redos">Почему Go не подвержен ReDoS?</a></li><li class="toc-item toc-h2"><a href="#5-voprosy-dlya-sobesedovaniya">5. Вопросы для собеседования</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 
