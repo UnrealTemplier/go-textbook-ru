@@ -167,7 +167,7 @@ def render_article_page(
     reading_time = max(2, int(article.size_bytes / 800))
 
     return f"""<!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="paper">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -175,11 +175,12 @@ def render_article_page(
   <meta name="description" content="Полное руководство: {html.escape(article.title)}. Go, архитектура систем, computer science.">
   <link rel="icon" href="{rel_root}favicon.ico" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="{rel_root}favicon.svg" sizes="any">
+  <script>/* Theme anti-flicker */(function(){{var t=localStorage.getItem('go_encyclopedia_theme');if(t&&['paper','light','dark'].includes(t)){{document.documentElement.dataset.theme=t;}}}})();</script>
   <link rel="stylesheet" href="{rel_root}assets/style.css">
   <link rel="stylesheet" href="{rel_root}assets/vendor/prism-tomorrow.min.css">
   <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">
 </head>
-<body class="theme-dark">
+<body>
   <div class="reading-progress-bar" id="reading-progress"></div>
 
   <div class="app-layout">
@@ -213,7 +214,10 @@ def render_article_page(
 
       <div class="sidebar-footer">
         <span class="catalog-stat">Статей: <strong>{total_articles}</strong></span>
-        <span class="offline-badge">Offline First</span>
+        <span class="sidebar-footer-right">
+          <button id="theme-switcher-btn" class="btn-theme-switcher" title="Переключить тему (Paper / Light / Dark)">📄 Paper</button>
+          <span class="offline-badge">Offline First</span>
+        </span>
       </div>
     </aside>
 
@@ -335,22 +339,23 @@ def render_index_page(
 """)
 
     return f"""<!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="paper">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Инженерная веб-энциклопедия бэкенда (Go & Computer Science)</title>
+  <title>Инженерная веб-энциклопедия бэкенда (Go &amp; Computer Science)</title>
   <meta name="description" content="Фундаментальная энциклопедия бэкенда, распределенных систем и языка Go от Брайана Кернигана. 1 400+ статей, 1 400+ схем Mermaid.">
   <link rel="icon" href="{rel_root}favicon.ico" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="{rel_root}favicon.svg" sizes="any">
+  <script>/* Theme anti-flicker */(function(){{var t=localStorage.getItem('go_encyclopedia_theme');if(t&&['paper','light','dark'].includes(t)){{document.documentElement.dataset.theme=t;}}}})();</script>
   <link rel="stylesheet" href="{rel_root}assets/style.css">
   <link rel="stylesheet" href="{rel_root}assets/vendor/prism-tomorrow.min.css">
 </head>
-<body class="theme-dark index-page">
+<body class="index-page">
   <div class="index-container">
     <!-- Героическая секция -->
     <header class="index-hero">
-      <div class="hero-badge">Энциклопедия Computer Science & Backend</div>
+      <div class="hero-badge">Энциклопедия Computer Science &amp; Backend</div>
       <h1 class="hero-title">Фундаментальный бэкенд на Go: от кремния до распределенных систем</h1>
       <p class="hero-quote">
         <em>«Управление сложностью — вот суть программирования».</em>  
@@ -382,7 +387,7 @@ def render_index_page(
         </div>
         <div class="stat-box">
           <span class="stat-number">100%</span>
-          <span class="stat-desc">Offline & file:///</span>
+          <span class="stat-desc">Offline &amp; file:///</span>
         </div>
       </div>
     </header>
@@ -427,7 +432,7 @@ def render_index_page(
         <div class="roadmap-step">
           <div class="step-badge">Шаг 4</div>
           <div class="step-content">
-            <h4>Надежность, Performance & DSA (Модули 15–22)</h4>
+            <h4>Надежность, Performance &amp; DSA (Модули 15–22)</h4>
             <p>Профилирование pprof, trace, AppSec, алгоритмы, 218 задач LeetCode и глубокая подготовка к BigTech интервью.</p>
           </div>
         </div>
@@ -439,6 +444,8 @@ def render_index_page(
       <p>Полностью автономная сборка. Никаких трекеров, рекламы и внешних серверов.</p>
     </footer>
   </div>
+
+  <button id="theme-switcher-btn" class="btn-theme-switcher btn-theme-index" title="Переключить тему (Paper / Light / Dark)">📄 Paper</button>
 
   <script src="{rel_root}assets/search-data.js"></script>
   <script src="{rel_root}assets/main.js"></script>

@@ -12,23 +12,35 @@
   function initMermaid() {
     if (typeof mermaid !== 'undefined') {
       try {
+        var cs = getComputedStyle(document.documentElement);
+        var currentTheme = document.documentElement.dataset.theme || 'paper';
+        var isDark = currentTheme === 'dark';
+        var mermaidBg = cs.getPropertyValue('--mermaid-bg').trim() || (isDark ? '#0e1526' : '#f0ede8');
+        var bgCard = cs.getPropertyValue('--bg-card').trim() || (isDark ? '#131d33' : '#ffffff');
+        var accent = cs.getPropertyValue('--accent').trim() || (isDark ? '#6366f1' : '#4f46e5');
+        var textColor = cs.getPropertyValue('--text').trim() || (isDark ? '#f8fafc' : '#1a1714');
+        var textSecondary = cs.getPropertyValue('--text-secondary').trim() || (isDark ? '#cbd5e1' : '#2d2a25');
+        var borderStrong = cs.getPropertyValue('--border-strong').trim() || (isDark ? '#334155' : '#b5ada0');
+        var link = cs.getPropertyValue('--link').trim() || (isDark ? '#38bdf8' : '#0369a1');
+        var bgSurface = cs.getPropertyValue('--bg-surface').trim() || (isDark ? '#0f172a' : '#f5f3ef');
+
         mermaid.initialize({
           startOnLoad: true,
-          theme: 'dark',
+          theme: isDark ? 'dark' : 'base',
           securityLevel: 'loose',
           fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
           themeVariables: {
-            darkMode: true,
-            background: '#0e1526',
-            primaryColor: '#6366f1',
-            primaryTextColor: '#f8fafc',
-            primaryBorderColor: '#334155',
-            lineColor: '#38bdf8',
-            secondaryColor: '#1e293b',
-            tertiaryColor: '#0f172a',
-            noteBkgColor: '#131d33',
-            noteTextColor: '#cbd5e1',
-            noteBorderColor: '#38bdf8'
+            darkMode: isDark,
+            background: mermaidBg,
+            primaryColor: accent,
+            primaryTextColor: textColor,
+            primaryBorderColor: borderStrong,
+            lineColor: link,
+            secondaryColor: isDark ? '#1e293b' : bgSurface,
+            tertiaryColor: isDark ? '#0f172a' : bgSurface,
+            noteBkgColor: bgCard,
+            noteTextColor: textSecondary,
+            noteBorderColor: link
           }
         });
       } catch (err) {
@@ -272,12 +284,13 @@
     const textToCopy = codeEl.innerText || codeEl.textContent;
 
     navigator.clipboard.writeText(textToCopy).then(() => {
+      const successColor = getComputedStyle(document.documentElement).getPropertyValue('--success').trim() || '#10b981';
       const originalHTML = btn.innerHTML;
       btn.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-        <span style="color:#10b981; font-weight:600;">Скопировано!</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${successColor}" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        <span style="color:${successColor}; font-weight:600;">Скопировано!</span>
       `;
-      btn.style.borderColor = '#10b981';
+      btn.style.borderColor = successColor;
 
       setTimeout(() => {
         btn.innerHTML = originalHTML;
@@ -464,7 +477,7 @@
       matches.sort((a, b) => b.score - a.score);
 
       if (matches.length === 0) {
-        dropdown.innerHTML = '<div style="padding:16px; color:#94a3b8; font-size:0.9rem;">Ничего не найдено. Попробуйте другой запрос (например: GC, Raft, epoll, каналы).</div>';
+        dropdown.innerHTML = '<div style="padding:16px; color:inherit; opacity:0.6; font-size:0.9rem;">Ничего не найдено. Попробуйте другой запрос (например: GC, Raft, epoll, каналы).</div>';
         dropdown.classList.add('active');
         return;
       }
@@ -740,6 +753,41 @@
   }
 
   // -------------------------------------------------------------------------
+  // 10. Переключение тем (paper / light / dark)
+  // -------------------------------------------------------------------------
+  function initThemeSwitcher() {
+    const THEME_KEY = 'go_encyclopedia_theme';
+    const THEMES = ['paper', 'light', 'dark'];
+    const THEME_LABELS = { paper: '📄 Paper', light: '☀️ Light', dark: '🌑 Dark' };
+
+    // Restore saved theme on load (also done by inline script for anti-flicker)
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved && THEMES.includes(saved)) {
+      document.documentElement.dataset.theme = saved;
+    }
+
+    const btn = document.getElementById('theme-switcher-btn');
+    if (!btn) return;
+
+    function updateBtn() {
+      const current = document.documentElement.dataset.theme || 'paper';
+      btn.textContent = THEME_LABELS[current] || current;
+      btn.dataset.currentTheme = current;
+    }
+
+    updateBtn();
+
+    btn.addEventListener('click', function() {
+      const current = document.documentElement.dataset.theme || 'paper';
+      const idx = THEMES.indexOf(current);
+      const next = THEMES[(idx + 1) % THEMES.length];
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem(THEME_KEY, next);
+      updateBtn();
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Запуск при загрузке DOM
   // -------------------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', function () {
@@ -751,6 +799,7 @@
     initScrollProgress();
     initMobileMenu();
     initGlobalSearch();
+    initThemeSwitcher();
   });
 
 })();
