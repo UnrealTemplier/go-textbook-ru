@@ -3,7 +3,7 @@
 > *«Единственный способ создавать хорошее программное обеспечение — писать его просто, ясно и аккуратно».*  
 > — Брайан Керниган
 
-[![Release](https://img.shields.io/badge/Release-v1.0.0_Stable-6366f1?style=for-the-badge&logo=git)](https://github.com/UnrealTemplier/go-textbook/releases)
+[![Release](https://img.shields.io/badge/Release-v1.0.2_Stable-6366f1?style=for-the-badge&logo=git)](https://github.com/UnrealTemplier/go-textbook/releases)
 [![Go Versions](https://img.shields.io/badge/Go_Versions-1.22_--_1.27-00ADD8?style=for-the-badge&logo=go)](https://go.dev/)
 [![Offline First](https://img.shields.io/badge/Offline_First-100%25_Static-10b981?style=for-the-badge&logo=html5)](file:///dist/index.html)
 [![Mermaid](https://img.shields.io/badge/Mermaid_Diagrams-2486_схем-38bdf8?style=for-the-badge&logo=mermaid)](https://mermaid.js.org/)
@@ -196,6 +196,6 @@ python3 -m http.server 8080 -d dist
 
 ## 📜 Лицензия и статус
 
-* **Статус:** 🚀 **Релиз v1.0.0 (Стабильный)**
+* **Статус:** 🚀 **Релиз v1.0.2 (Стабильный)**
 * Все материалы энциклопедии распространяются для свободного обучения и повышения инженерной культуры сообщества.
 * Проект бережно сохраняет дух первопроходцев Bell Labs и направлен на подготовку высококлассных инженеров бэкенда и распределенных систем.
