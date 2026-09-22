@@ -177,7 +177,6 @@ def render_article_page(
   <link rel="icon" type="image/svg+xml" href="{rel_root}favicon.svg" sizes="any">
   <script>/* Theme anti-flicker */(function(){{var t=localStorage.getItem('go_encyclopedia_theme');if(t&&['paper','light','dark'].includes(t)){{document.documentElement.dataset.theme=t;}}}})();</script>
   <link rel="stylesheet" href="{rel_root}assets/style.css">
-  <link rel="stylesheet" href="{rel_root}assets/vendor/prism-tomorrow.min.css">
   <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">
 </head>
 <body>
@@ -349,7 +348,6 @@ def render_index_page(
   <link rel="icon" type="image/svg+xml" href="{rel_root}favicon.svg" sizes="any">
   <script>/* Theme anti-flicker */(function(){{var t=localStorage.getItem('go_encyclopedia_theme');if(t&&['paper','light','dark'].includes(t)){{document.documentElement.dataset.theme=t;}}}})();</script>
   <link rel="stylesheet" href="{rel_root}assets/style.css">
-  <link rel="stylesheet" href="{rel_root}assets/vendor/prism-tomorrow.min.css">
 </head>
 <body class="index-page">
   <div class="index-container">

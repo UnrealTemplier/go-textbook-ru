@@ -9,7 +9,17 @@
   // -------------------------------------------------------------------------
   // 1. Инициализация Mermaid.js
   // -------------------------------------------------------------------------
-  function initMermaid() {
+  function saveMermaidSources() {
+  document.querySelectorAll('pre.mermaid, .mermaid').forEach(function(el) {
+    if (!el.hasAttribute('data-mermaid-source')) {
+      // For elements already processed, we don't have their source here unless saved earlier.
+      // Assuming this runs before initMermaid.
+      el.setAttribute('data-mermaid-source', el.textContent);
+    }
+  });
+}
+
+function initMermaid() {
     if (typeof mermaid !== 'undefined') {
       try {
         var cs = getComputedStyle(document.documentElement);
@@ -729,7 +739,44 @@
   }
 
   // -------------------------------------------------------------------------
-  // 1.1. Инициализация KaTeX (математические формулы LaTeX)
+  
+  // -------------------------------------------------------------------------
+  // Mermaid re-render on theme change
+  // -------------------------------------------------------------------------
+  function rerenderMermaid() {
+    if (typeof mermaid === 'undefined') return;
+    
+    // Close modal if open
+    var modal = document.getElementById('mermaid-modal');
+    if (modal && modal.classList.contains('active') && typeof window.closeMermaidModal === 'function') {
+      window.closeMermaidModal();
+    }
+    
+    // Restore original mermaid source for all diagrams
+    document.querySelectorAll('pre.mermaid, .mermaid').forEach(function(el) {
+      var src = el.getAttribute('data-mermaid-source');
+      if (src) {
+        el.textContent = src;
+        el.removeAttribute('data-processed');
+      }
+    });
+    
+    // Re-initialize with new theme colors
+    initMermaid();
+    
+    // Re-run rendering
+    try {
+      mermaid.run({ querySelector: '.mermaid' });
+    } catch(e) {
+      try {
+        mermaid.init(undefined, document.querySelectorAll('.mermaid'));
+      } catch(e2) {
+        console.warn('Mermaid re-render failed:', e2);
+      }
+    }
+  }
+
+// 1.1. Инициализация KaTeX (математические формулы LaTeX)
   // -------------------------------------------------------------------------
   function initKaTeX() {
     if (typeof renderMathInElement === 'function') {
@@ -784,6 +831,7 @@
       document.documentElement.dataset.theme = next;
       localStorage.setItem(THEME_KEY, next);
       updateBtn();
+      setTimeout(rerenderMermaid, 80);
     });
   }
 
@@ -791,6 +839,7 @@
   // Запуск при загрузке DOM
   // -------------------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', function () {
+    saveMermaidSources();
     initMermaid();
     initKaTeX();
     initSidebarResize();
