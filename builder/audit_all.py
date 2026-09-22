@@ -236,6 +236,21 @@ class SiteAuditor:
                 })
                 continue
 
+            if "Syntax error in text" in clean_b or "<svg" in clean_b:
+                self.mermaid_errors.append({
+                    "file": page_path,
+                    "reason": "Блок Mermaid содержит остаточный SVG или текст ошибки"
+                })
+                continue
+
+            # Проверка на типичные опечатки синтаксиса class (запятая вместо пробела перед именем класса)
+            if re.search(r'^\s*class\s+[a-zA-Z0-9_-]+(?:,\s*[a-zA-Z0-9_-]+)*,\s*[a-zA-Z0-9_-]+\s*;', clean_b, re.MULTILINE):
+                self.mermaid_errors.append({
+                    "file": page_path,
+                    "reason": "Опечатка синтаксиса class (запятая вместо пробела перед именем класса)"
+                })
+                continue
+
             first_line = clean_b.splitlines()[0].strip()
             valid_headers = (
                 "flowchart", "graph", "sequencediagram", "classdiagram",

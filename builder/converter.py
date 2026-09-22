@@ -196,6 +196,12 @@ class MarkdownConverter:
                 label = m_db.group(2)
                 line = line.replace(f"{node_id}[({label})]", f'{node_id}[("{label}")]')
 
+            # Исправление опечатки назначения классов через запятую вместо пробела:
+            # class Domain,succ; -> class Domain succ;
+            m_class = re.match(r"^(\s*class\s+[a-zA-Z0-9_-]+(?:,\s*[a-zA-Z0-9_-]+)*),\s*([a-zA-Z0-9_-]+)\s*(;?)\s*$", line)
+            if m_class:
+                line = f"{m_class.group(1)} {m_class.group(2)}{m_class.group(3)}"
+
             sanitized_lines.append(line)
 
         return "\n".join(sanitized_lines)

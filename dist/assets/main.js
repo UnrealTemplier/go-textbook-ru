@@ -10,14 +10,12 @@
   // 1. Инициализация Mermaid.js
   // -------------------------------------------------------------------------
   function saveMermaidSources() {
-  document.querySelectorAll('pre.mermaid, .mermaid').forEach(function(el) {
-    if (!el.hasAttribute('data-mermaid-source')) {
-      // For elements already processed, we don't have their source here unless saved earlier.
-      // Assuming this runs before initMermaid.
-      el.setAttribute('data-mermaid-source', el.textContent);
-    }
-  });
-}
+    document.querySelectorAll('pre.mermaid').forEach(function (el) {
+      if (!el.hasAttribute('data-mermaid-source') && !el.hasAttribute('data-processed') && !el.querySelector('svg')) {
+        el.setAttribute('data-mermaid-source', el.textContent);
+      }
+    });
+  }
 
 function initMermaid() {
     if (typeof mermaid !== 'undefined') {
@@ -783,7 +781,7 @@ function initMermaid() {
     }
     
     // Restore original mermaid source for all diagrams
-    document.querySelectorAll('pre.mermaid, .mermaid').forEach(function(el) {
+    document.querySelectorAll('pre.mermaid').forEach(function (el) {
       var src = el.getAttribute('data-mermaid-source');
       if (src) {
         el.textContent = src;
@@ -796,11 +794,11 @@ function initMermaid() {
     
     // Re-run rendering
     try {
-      mermaid.run({ querySelector: '.mermaid' });
-    } catch(e) {
+      mermaid.run({ querySelector: 'pre.mermaid' });
+    } catch (e) {
       try {
-        mermaid.init(undefined, document.querySelectorAll('.mermaid'));
-      } catch(e2) {
+        mermaid.init(undefined, document.querySelectorAll('pre.mermaid'));
+      } catch (e2) {
         console.warn('Mermaid re-render failed:', e2);
       }
     }
