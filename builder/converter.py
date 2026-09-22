@@ -151,21 +151,21 @@ class MarkdownConverter:
             idx += 1
 
             wrapped_html = f"""
-<div class="mermaid-wrapper">
-  <div class="mermaid-header">
+<figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
+  <figcaption class="mermaid-header">
     <div class="mermaid-title">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
       <span>Архитектурная схема</span>
     </div>
-    <button class="btn-mermaid-fullscreen" onclick="toggleMermaidModal(this)" title="Развернуть на весь экран">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+    <button type="button" class="btn-mermaid-fullscreen" data-action="mermaid-fullscreen" title="Развернуть на весь экран" aria-label="Развернуть схему на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
       <span>На весь экран</span>
     </button>
-  </div>
+  </figcaption>
   <pre class="mermaid">
 {html.escape(clean_code)}
   </pre>
-</div>
+</figure>
 """
             placeholders[placeholder] = wrapped_html
             return f"\n\n{placeholder}\n\n"
@@ -289,15 +289,15 @@ class MarkdownConverter:
         self.md.reset()
 
         return f"""
-<div class="callout {cfg['class']}">
-  <div class="callout-header">
-    <span class="callout-icon">{cfg['icon']}</span>
+<aside class="callout {cfg['class']}" aria-label="{html.escape(title)}">
+  <header class="callout-header">
+    <span class="callout-icon" aria-hidden="true">{cfg['icon']}</span>
     <span class="callout-title">{html.escape(title)}</span>
-  </div>
+  </header>
   <div class="callout-body">
     {inner_html}
   </div>
-</div>
+</aside>
 """
 
     def _transform_wikilinks(self, text: str, current_article: Article) -> str:
@@ -368,7 +368,7 @@ class MarkdownConverter:
 
     def _wrap_tables(self, html_text: str) -> str:
         """Оборачивание <table> в адаптивный контейнер с горизонтальным скроллом."""
-        return re.sub(r"(<table>.*?</table>)", r'<div class="table-container">\1</div>', html_text, flags=re.DOTALL)
+        return re.sub(r"(<table>.*?</table>)", r'<div class="table-container" role="region" aria-label="Таблица данных" tabindex="0">\1</div>', html_text, flags=re.DOTALL)
 
     def _enhance_code_blocks(self, html_text: str) -> str:
         """
@@ -411,13 +411,13 @@ class MarkdownConverter:
 
             return f"""
 <div class="code-block" data-lang="{lang}">
-  <div class="code-header">
+  <header class="code-header">
     <span class="code-lang-tag">{display_lang}</span>
-    <button class="btn-code-copy" onclick="copyCodeBlock(this)" title="Скопировать">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
       <span>Копировать</span>
     </button>
-  </div>
+  </header>
   <pre class="language-{lang}"><code class="language-{lang}">{code_body}</code></pre>
 </div>
 """

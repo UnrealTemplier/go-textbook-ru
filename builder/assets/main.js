@@ -297,7 +297,7 @@ function initMermaid() {
       const successColor = getComputedStyle(document.documentElement).getPropertyValue('--success').trim() || '#10b981';
       const originalHTML = btn.innerHTML;
       btn.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${successColor}" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${successColor}" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
         <span style="color:${successColor}; font-weight:600;">Скопировано!</span>
       `;
       btn.style.borderColor = successColor;
@@ -310,6 +310,31 @@ function initMermaid() {
       console.error('Copy failed:', err);
     });
   };
+
+  // -------------------------------------------------------------------------
+  // 4.1. Делегирование событий пользовательского интерфейса (data-action)
+  // -------------------------------------------------------------------------
+  function initActionDelegation() {
+    document.addEventListener('click', function (e) {
+      const actionEl = e.target.closest('[data-action]');
+      if (!actionEl) return;
+
+      const action = actionEl.getAttribute('data-action');
+      if (action === 'copy-code') {
+        window.copyCodeBlock(actionEl);
+      } else if (action === 'mermaid-fullscreen') {
+        window.toggleMermaidModal(actionEl);
+      } else if (action === 'close-mermaid-modal') {
+        window.closeMermaidModal();
+      } else if (action === 'zoom-mermaid-in') {
+        window.zoomMermaid(0.2);
+      } else if (action === 'zoom-mermaid-out') {
+        window.zoomMermaid(-0.2);
+      } else if (action === 'zoom-mermaid-reset') {
+        window.resetMermaidZoom();
+      }
+    });
+  }
 
   // -------------------------------------------------------------------------
   // 5. Полноэкранный модальный просмотр диаграмм Mermaid и зумирование
@@ -334,6 +359,7 @@ function initMermaid() {
     clonedSvg.style.transform = `scale(${currentMermaidZoom})`;
 
     modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
   };
 
@@ -341,6 +367,7 @@ function initMermaid() {
     const modal = document.getElementById('mermaid-modal');
     if (!modal) return;
     modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
     document.body.style.overflow = '';
   };
 
@@ -394,6 +421,7 @@ function initMermaid() {
       if (progressEl && docHeight > 0) {
         const percent = Math.min(100, Math.max(0, (scrollTop / docHeight) * 100));
         progressEl.style.width = percent + '%';
+        progressEl.setAttribute('aria-valuenow', Math.round(percent));
       }
 
       if (btnScrollTop) {
@@ -423,6 +451,7 @@ function initMermaid() {
     toggleBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       const isOpen = sidebar.classList.toggle('open');
+      toggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
       if (isOpen) {
         setTimeout(function () {
           centerActiveLecture(false);
@@ -434,6 +463,7 @@ function initMermaid() {
       if (window.innerWidth <= 768 && sidebar.classList.contains('open')) {
         if (!sidebar.contains(e.target) && e.target !== toggleBtn) {
           sidebar.classList.remove('open');
+          toggleBtn.setAttribute('aria-expanded', 'false');
         }
       }
     });
@@ -497,7 +527,7 @@ function initMermaid() {
 
       topResults.forEach(({ item }) => {
         resHTML += `
-          <a href="${item.url}" class="search-result-item">
+          <a href="${item.url}" class="search-result-item" role="option">
             <div class="search-res-title">${escapeHtml(item.title)}</div>
             <div class="search-res-module">${escapeHtml(item.module)} ${item.sub ? '• ' + escapeHtml(item.sub) : ''}</div>
           </a>
@@ -842,6 +872,7 @@ function initMermaid() {
     saveMermaidSources();
     initMermaid();
     initKaTeX();
+    initActionDelegation();
     initSidebarResize();
     initSidebarFilter();
     initSidebarCentering();
