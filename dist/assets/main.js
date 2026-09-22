@@ -21,7 +21,7 @@
     if (typeof mermaid !== 'undefined') {
       try {
         var cs = getComputedStyle(document.documentElement);
-        var currentTheme = document.documentElement.dataset.theme || 'paper';
+        var currentTheme = document.documentElement.dataset.theme || 'dark';
         var isDark = currentTheme === 'dark';
         var isPaper = currentTheme === 'paper';
         var defaultBg = isDark ? '#0e0d0b' : (isPaper ? '#eae1cb' : '#f2f4f7');
@@ -849,14 +849,14 @@
   function updateThemeSwitcherBtn() {
     const btn = document.getElementById('theme-switcher-btn');
     if (!btn) return;
-    const current = document.documentElement.dataset.theme || 'paper';
+    const current = document.documentElement.dataset.theme || 'dark';
     btn.dataset.currentTheme = current;
     const currentName = THEME_NAMES[current] || current;
     btn.setAttribute('aria-label', `Текущая тема: ${currentName} (нажмите для смены)`);
   }
 
   function toggleTheme() {
-    const current = document.documentElement.dataset.theme || 'paper';
+    const current = document.documentElement.dataset.theme || 'dark';
     const idx = THEMES.indexOf(current);
     const next = THEMES[(idx + 1) % THEMES.length];
     document.documentElement.dataset.theme = next;
@@ -877,8 +877,14 @@
       const saved = localStorage.getItem(THEME_KEY);
       if (saved && THEMES.includes(saved)) {
         document.documentElement.dataset.theme = saved;
+      } else if (!document.documentElement.dataset.theme) {
+        document.documentElement.dataset.theme = 'dark';
       }
-    } catch (e) {}
+    } catch (e) {
+      if (!document.documentElement.dataset.theme) {
+        document.documentElement.dataset.theme = 'dark';
+      }
+    }
 
     updateThemeSwitcherBtn();
 

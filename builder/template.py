@@ -21,7 +21,7 @@ GO_LOGO_SVG = (
 FLOATING_THEME_SWITCHER_HTML = (
     '<button type="button" id="theme-switcher-btn" class="floating-theme-switcher" '
     'data-action="toggle-theme" '
-    'aria-label="Текущая тема: Paper (нажмите для смены)">\n'
+    'aria-label="Текущая тема: Dark (нажмите для смены)">\n'
     '    <span class="theme-icon-slot" aria-hidden="true">\n'
     '      <svg class="theme-icon theme-icon-paper" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">\n'
     '        <path d="M16 2H8a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"></path>\n'
@@ -198,7 +198,7 @@ def render_article_page(
     reading_time = max(2, int(article.size_bytes / 800))
 
     return f"""<!DOCTYPE html>
-<html lang="ru" data-theme="paper">
+<html lang="ru" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -206,7 +206,7 @@ def render_article_page(
   <meta name="description" content="Полное руководство: {html.escape(article.title)}. Go, архитектура систем, computer science.">
   <link rel="icon" href="{rel_root}favicon.ico" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="{rel_root}favicon.svg" sizes="any">
-  <script>/* Theme anti-flicker */(function(){{var t=localStorage.getItem('go_encyclopedia_theme');if(t&&['paper','light','dark'].includes(t)){{document.documentElement.dataset.theme=t;}}}})();</script>
+  <script>/* Theme anti-flicker */(function(){{var t=localStorage.getItem('go_encyclopedia_theme');if(t&&['paper','light','dark'].includes(t)){{document.documentElement.dataset.theme=t;}}else{{document.documentElement.dataset.theme='dark';}}}})();</script>
   <link rel="stylesheet" href="{rel_root}assets/style.css">
   <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">
 </head>
@@ -369,7 +369,7 @@ def render_index_page(
 """)
 
     return f"""<!DOCTYPE html>
-<html lang="ru" data-theme="paper">
+<html lang="ru" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -377,7 +377,7 @@ def render_index_page(
   <meta name="description" content="Фундаментальная энциклопедия бэкенда, распределенных систем и языка Go от Брайана Кернигана. 1 400+ статей, 1 400+ схем Mermaid.">
   <link rel="icon" href="{rel_root}favicon.ico" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="{rel_root}favicon.svg" sizes="any">
-  <script>/* Theme anti-flicker */(function(){{var t=localStorage.getItem('go_encyclopedia_theme');if(t&&['paper','light','dark'].includes(t)){{document.documentElement.dataset.theme=t;}}}})();</script>
+  <script>/* Theme anti-flicker */(function(){{var t=localStorage.getItem('go_encyclopedia_theme');if(t&&['paper','light','dark'].includes(t)){{document.documentElement.dataset.theme=t;}}else{{document.documentElement.dataset.theme='dark';}}}})();</script>
   <link rel="stylesheet" href="{rel_root}assets/style.css">
 </head>
 <body class="index-page">
