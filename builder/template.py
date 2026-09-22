@@ -26,18 +26,24 @@ def get_project_version(agents_path: Optional[str] = None) -> str:
         content = fp.read()
 
     pattern = re.compile(
-        r"^[>* -]*\*{0,2}(?:Current project version|Current version|Текущая версия проекта)[^:\n]*:\*{0,2}\s*`?([0-9A-Za-z.-]+)`?",
-        re.MULTILINE | re.IGNORECASE
+        r"^\s*[-*]?\s*\*\*Current project version:\*\*\s*`?([0-9A-Za-z.-]+)`?",
+        re.MULTILINE
     )
-    match = pattern.search(content)
+    matches = list(pattern.finditer(content))
 
-    if not match:
+    if len(matches) == 0:
         raise ValueError(
-            f"[VERSION ERROR] Failed to find project version definition in {agents_path}. "
-            "Expected entry such as: '- **Current project version:** `1.1.0`'"
+            f"[VERSION ERROR] Project version definition not found in {agents_path}. "
+            "Expected entry such as: '* **Current project version:** `1.1.0`'"
         )
 
-    version_raw = match.group(1).strip()
+    if len(matches) > 1:
+        raise ValueError(
+            f"[VERSION ERROR] Multiple canonical version declarations found in {agents_path} ({len(matches)} occurrences). "
+            "Exactly one canonical version declaration is allowed to prevent desynchronization."
+        )
+
+    version_raw = matches[0].group(1).strip()
 
     semver_pattern = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
     if not semver_pattern.match(version_raw):
