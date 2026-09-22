@@ -121,8 +121,7 @@ go-textbook/
 │   ├── scanner.py       # Парсер источников, wikilinks-резолвер, канонизация путей
 │   ├── converter.py     # AST-конвертер Markdown -> HTML5, Callouts, Mermaid, TOC
 │   ├── template.py      # HTML5 каркас, адаптивные стили, живой поиск, KaTeX
-│   ├── audit_all.py     # Сквозной QA-аудитор (ссылки, анкоры, кроссплатформенность)
-│   └── colorize_mermaid.py # Семантическая раскраска Mermaid-диаграмм
+│   └── audit_all.py     # Сквозной QA-аудитор (ссылки, анкоры, кроссплатформенность)
 ├── dist/                # Готовый скомпилированный сайт (1414 HTML страниц + ассеты)
 ├── AGENTS.md            # Единый регламент и Single Source of Truth для AI-агентов
 ├── favicon.ico / .svg   # Иконки портала
