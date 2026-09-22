@@ -5,9 +5,48 @@ HTML5 шаблоны, CSS стили в стиле Go Workout (Dark Theme) и JS
 """
 
 import os
+import re
 import html
 from typing import Dict, Any, List, Optional
 from builder.scanner import Article
+
+def get_project_version(agents_path: Optional[str] = None) -> str:
+    """
+    Считывание и строгая валидация версии проекта из AGENTS.md.
+    AGENTS.md является единственным источником правды для версии проекта (SemVer MAJOR.MINOR.PATCH).
+    """
+    if not agents_path:
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        agents_path = os.path.join(repo_root, "AGENTS.md")
+
+    if not os.path.isfile(agents_path):
+        raise FileNotFoundError(f"[VERSION ERROR] Canonical version file not found: {agents_path}")
+
+    with open(agents_path, "r", encoding="utf-8") as fp:
+        content = fp.read()
+
+    pattern = re.compile(
+        r"^[>* -]*\*{0,2}(?:Current project version|Current version|Текущая версия проекта)[^:\n]*:\*{0,2}\s*`?([0-9A-Za-z.-]+)`?",
+        re.MULTILINE | re.IGNORECASE
+    )
+    match = pattern.search(content)
+
+    if not match:
+        raise ValueError(
+            f"[VERSION ERROR] Failed to find project version definition in {agents_path}. "
+            "Expected entry such as: '- **Current project version:** `1.1.0`'"
+        )
+
+    version_raw = match.group(1).strip()
+
+    semver_pattern = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
+    if not semver_pattern.match(version_raw):
+        raise ValueError(
+            f"[VERSION ERROR] Invalid project version format '{version_raw}' found in {agents_path}. "
+            "Version must strictly comply with semantic versioning (MAJOR.MINOR.PATCH, e.g. 1.1.0)."
+        )
+
+    return version_raw
 
 GO_LOGO_SVG = (
     '<svg class="logo-go-icon" viewBox="0 42 165 82" fill="#00ADD8" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
@@ -142,9 +181,12 @@ def render_article_page(
     article_html: str,
     toc: List[Dict[str, Any]],
     modules_tree: List[Dict[str, Any]],
-    total_articles: int = 1413
+    total_articles: int = 1413,
+    version: Optional[str] = None
 ) -> str:
     """Генерация полной HTML-страницы статьи."""
+    if not version:
+        version = get_project_version()
     rel_root = get_rel_root(article.rel_output_path)
     sidebar_html = render_sidebar(modules_tree, article, rel_root)
     breadcrumbs_html = render_breadcrumbs(article, rel_root)
@@ -245,6 +287,7 @@ def render_article_page(
 
       <footer class="sidebar-footer">
         <span class="catalog-stat">Статей: <strong>{total_articles}</strong></span>
+        <span class="sidebar-version">v{version}</span>
       </footer>
     </aside>
 
@@ -331,9 +374,12 @@ def render_article_page(
 def render_index_page(
     modules_tree: List[Dict[str, Any]],
     total_articles: int,
-    total_mermaid: int
+    total_mermaid: int,
+    version: Optional[str] = None
 ) -> str:
     """Генерация главной страницы index.html (Интерактивный дашборд и каталог)."""
+    if not version:
+        version = get_project_version()
     rel_root = "./"
 
     cards_html = []
@@ -384,7 +430,10 @@ def render_index_page(
   <main class="index-container" id="main-content">
     <!-- Героическая секция -->
     <header class="index-hero">
-      <span class="hero-badge">Энциклопедия Computer Science &amp; Backend</span>
+      <div class="hero-top-meta">
+        <span class="hero-badge">Энциклопедия Computer Science &amp; Backend</span>
+        <span class="hero-version">v{version}</span>
+      </div>
       <h1 class="hero-title">Фундаментальный бэкенд на Go: от кремния до распределенных систем</h1>
       <blockquote class="hero-quote">
         <p><em>«Управление сложностью — вот суть программирования».</em></p>

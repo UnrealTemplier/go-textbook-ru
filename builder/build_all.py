@@ -15,7 +15,7 @@ from typing import List, Optional
 
 from builder.scanner import KnowledgeBaseScanner, Article
 from builder.converter import MarkdownConverter
-from builder.template import render_article_page, render_index_page
+from builder.template import render_article_page, render_index_page, get_project_version
 
 def copy_assets(builder_assets_dir: str, dist_assets_dir: str):
     """Копирование статических ассетов (CSS, JS, Vendor) в dist/assets/."""
@@ -61,9 +61,13 @@ def build(
     target_module: Optional[int] = None,
     is_pilot: bool = False
 ):
+    # 0. Чтение и валидация версии проекта из канонического источника (AGENTS.md)
+    project_version = get_project_version()
+
     start_time = time.time()
     print("=====================================================================")
     print("🚀 Старт сборки Инженерной веб-энциклопедии бэкенда (Go Workout Style)")
+    print(f"📌 Версия проекта (AGENTS.md): v{project_version}")
     print("=====================================================================")
 
     # 1. Сканирование базы знаний
@@ -123,7 +127,8 @@ def build(
             article_html=html_content,
             toc=toc,
             modules_tree=scanner.modules_tree,
-            total_articles=len(all_articles)
+            total_articles=len(all_articles),
+            version=project_version
         )
 
         with open(full_out_path, "w", encoding="utf-8") as fp:
@@ -140,7 +145,8 @@ def build(
     index_html = render_index_page(
         modules_tree=scanner.modules_tree,
         total_articles=len(all_articles),
-        total_mermaid=sum(a.mermaid_count for a in all_articles)
+        total_mermaid=sum(a.mermaid_count for a in all_articles),
+        version=project_version
     )
     index_path = os.path.join(dist_dir, "index.html")
     with open(index_path, "w", encoding="utf-8") as fp:
