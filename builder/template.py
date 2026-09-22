@@ -18,6 +18,35 @@ GO_LOGO_SVG = (
     '</svg>'
 )
 
+FLOATING_THEME_SWITCHER_HTML = (
+    '<button type="button" id="theme-switcher-btn" class="floating-theme-switcher" '
+    'data-action="toggle-theme" '
+    'aria-label="Текущая тема: Paper (нажмите для смены)">\n'
+    '    <span class="theme-icon-slot" aria-hidden="true">\n'
+    '      <svg class="theme-icon theme-icon-paper" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">\n'
+    '        <path d="M16 2H8a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"></path>\n'
+    '        <path d="M4 6v14a2 2 0 0 0 2 2h10"></path>\n'
+    '        <line x1="10" y1="7" x2="14" y2="7"></line>\n'
+    '        <line x1="10" y1="11" x2="14" y2="11"></line>\n'
+    '      </svg>\n'
+    '      <svg class="theme-icon theme-icon-light" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">\n'
+    '        <circle cx="12" cy="12" r="5"></circle>\n'
+    '        <line x1="12" y1="1" x2="12" y2="3"></line>\n'
+    '        <line x1="12" y1="21" x2="12" y2="23"></line>\n'
+    '        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>\n'
+    '        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>\n'
+    '        <line x1="1" y1="12" x2="3" y2="12"></line>\n'
+    '        <line x1="21" y1="12" x2="23" y2="12"></line>\n'
+    '        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>\n'
+    '        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>\n'
+    '      </svg>\n'
+    '      <svg class="theme-icon theme-icon-dark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">\n'
+    '        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>\n'
+    '      </svg>\n'
+    '    </span>\n'
+    '  </button>'
+)
+
 def get_rel_root(rel_path: str) -> str:
     """Вычисление пути к корню сайта из относительного пути файла."""
     depth = rel_path.count("/")
@@ -216,9 +245,6 @@ def render_article_page(
 
       <footer class="sidebar-footer">
         <span class="catalog-stat">Статей: <strong>{total_articles}</strong></span>
-        <span class="sidebar-footer-right">
-          <button type="button" id="theme-switcher-btn" class="btn-theme-switcher" title="Переключить тему (Paper / Light / Dark)" aria-label="Переключить тему оформления">📄 Paper</button>
-        </span>
       </footer>
     </aside>
 
@@ -288,6 +314,9 @@ def render_article_page(
   <button type="button" class="btn-scroll-top" id="btn-scroll-top" title="Наверх" aria-label="Наверх страницы">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="18 15 12 9 6 15"></polyline></svg>
   </button>
+
+  <!-- Единый плавающий переключатель темы -->
+  {FLOATING_THEME_SWITCHER_HTML}
 
   <!-- Скрипты -->
   <script src="{rel_root}assets/vendor/prism-bundle.min.js"></script>
@@ -448,7 +477,8 @@ def render_index_page(
     </footer>
   </main>
 
-  <button type="button" id="theme-switcher-btn" class="btn-theme-switcher btn-theme-index" title="Переключить тему (Paper / Light / Dark)" aria-label="Переключить тему оформления">📄 Paper</button>
+  <!-- Единый плавающий переключатель темы -->
+  {FLOATING_THEME_SWITCHER_HTML}
 
   <script src="{rel_root}assets/search-data.js"></script>
   <script src="{rel_root}assets/main.js"></script>

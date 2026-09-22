@@ -340,6 +340,8 @@
         window.zoomMermaid(-0.2);
       } else if (action === 'zoom-mermaid-reset') {
         window.resetMermaidZoom();
+      } else if (action === 'toggle-theme') {
+        window.toggleTheme();
       }
     });
   }
@@ -840,37 +842,50 @@
   // -------------------------------------------------------------------------
   // 10. Переключение тем (paper / light / dark)
   // -------------------------------------------------------------------------
-  function initThemeSwitcher() {
-    const THEME_KEY = 'go_encyclopedia_theme';
-    const THEMES = ['paper', 'light', 'dark'];
-    const THEME_LABELS = { paper: '📄 Paper', light: '☀️ Light', dark: '🌑 Dark' };
+  const THEME_KEY = 'go_encyclopedia_theme';
+  const THEMES = ['paper', 'light', 'dark'];
+  const THEME_NAMES = { paper: 'Paper', light: 'Light', dark: 'Dark' };
 
-    // Restore saved theme on load (also done by inline script for anti-flicker)
-    const saved = localStorage.getItem(THEME_KEY);
-    if (saved && THEMES.includes(saved)) {
-      document.documentElement.dataset.theme = saved;
-    }
-
+  function updateThemeSwitcherBtn() {
     const btn = document.getElementById('theme-switcher-btn');
     if (!btn) return;
+    const current = document.documentElement.dataset.theme || 'paper';
+    btn.dataset.currentTheme = current;
+    const currentName = THEME_NAMES[current] || current;
+    btn.setAttribute('aria-label', `Текущая тема: ${currentName} (нажмите для смены)`);
+  }
 
-    function updateBtn() {
-      const current = document.documentElement.dataset.theme || 'paper';
-      btn.textContent = THEME_LABELS[current] || current;
-      btn.dataset.currentTheme = current;
-    }
-
-    updateBtn();
-
-    btn.addEventListener('click', function() {
-      const current = document.documentElement.dataset.theme || 'paper';
-      const idx = THEMES.indexOf(current);
-      const next = THEMES[(idx + 1) % THEMES.length];
-      document.documentElement.dataset.theme = next;
+  function toggleTheme() {
+    const current = document.documentElement.dataset.theme || 'paper';
+    const idx = THEMES.indexOf(current);
+    const next = THEMES[(idx + 1) % THEMES.length];
+    document.documentElement.dataset.theme = next;
+    try {
       localStorage.setItem(THEME_KEY, next);
-      updateBtn();
+    } catch (e) {}
+    updateThemeSwitcherBtn();
+    if (typeof rerenderMermaid === 'function') {
       setTimeout(rerenderMermaid, 80);
-    });
+    }
+  }
+
+  window.toggleTheme = toggleTheme;
+
+  function initThemeSwitcher() {
+    // Restore saved theme on load (also done by inline script for anti-flicker)
+    try {
+      const saved = localStorage.getItem(THEME_KEY);
+      if (saved && THEMES.includes(saved)) {
+        document.documentElement.dataset.theme = saved;
+      }
+    } catch (e) {}
+
+    updateThemeSwitcherBtn();
+
+    const btn = document.getElementById('theme-switcher-btn');
+    if (btn && !btn.hasAttribute('data-action')) {
+      btn.addEventListener('click', toggleTheme);
+    }
   }
 
   // -------------------------------------------------------------------------
