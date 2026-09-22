@@ -218,7 +218,6 @@ def render_article_page(
         <span class="catalog-stat">Статей: <strong>{total_articles}</strong></span>
         <span class="sidebar-footer-right">
           <button type="button" id="theme-switcher-btn" class="btn-theme-switcher" title="Переключить тему (Paper / Light / Dark)" aria-label="Переключить тему оформления">📄 Paper</button>
-          <span class="offline-badge">Offline First</span>
         </span>
       </footer>
     </aside>
