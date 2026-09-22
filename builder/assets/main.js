@@ -17,20 +17,30 @@
     });
   }
 
-function initMermaid() {
+  function initMermaid() {
     if (typeof mermaid !== 'undefined') {
       try {
         var cs = getComputedStyle(document.documentElement);
         var currentTheme = document.documentElement.dataset.theme || 'paper';
         var isDark = currentTheme === 'dark';
-        var mermaidBg = cs.getPropertyValue('--mermaid-bg').trim() || (isDark ? '#0e1526' : '#f0ede8');
-        var bgCard = cs.getPropertyValue('--bg-card').trim() || (isDark ? '#131d33' : '#ffffff');
-        var accent = cs.getPropertyValue('--accent').trim() || (isDark ? '#6366f1' : '#4f46e5');
-        var textColor = cs.getPropertyValue('--text').trim() || (isDark ? '#f8fafc' : '#1a1714');
-        var textSecondary = cs.getPropertyValue('--text-secondary').trim() || (isDark ? '#cbd5e1' : '#2d2a25');
-        var borderStrong = cs.getPropertyValue('--border-strong').trim() || (isDark ? '#334155' : '#b5ada0');
-        var link = cs.getPropertyValue('--link').trim() || (isDark ? '#38bdf8' : '#0369a1');
-        var bgSurface = cs.getPropertyValue('--bg-surface').trim() || (isDark ? '#0f172a' : '#f5f3ef');
+        var isPaper = currentTheme === 'paper';
+        var defaultBg = isDark ? '#0e0d0b' : (isPaper ? '#eae1cb' : '#f2f4f7');
+        var defaultCard = isDark ? '#201d19' : (isPaper ? '#fbf7ec' : '#ffffff');
+        var defaultAccent = isDark ? '#d89b32' : (isPaper ? '#b45309' : '#1e5a96');
+        var defaultText = isDark ? '#ded8cc' : (isPaper ? '#26211a' : '#101828');
+        var defaultTextSec = isDark ? '#b8b0a2' : (isPaper ? '#3b342a' : '#242c38');
+        var defaultBorder = isDark ? '#4d4338' : (isPaper ? '#b2a184' : '#98a2b3');
+        var defaultLink = isDark ? '#e06b2d' : (isPaper ? '#8c3b12' : '#18528c');
+        var defaultSurface = isDark ? '#181613' : (isPaper ? '#eae0c8' : '#eef0f3');
+
+        var mermaidBg = cs.getPropertyValue('--mermaid-bg').trim() || defaultBg;
+        var bgCard = cs.getPropertyValue('--bg-card').trim() || defaultCard;
+        var accent = cs.getPropertyValue('--accent').trim() || defaultAccent;
+        var textColor = cs.getPropertyValue('--text').trim() || defaultText;
+        var textSecondary = cs.getPropertyValue('--text-secondary').trim() || defaultTextSec;
+        var borderStrong = cs.getPropertyValue('--border-strong').trim() || defaultBorder;
+        var link = cs.getPropertyValue('--link').trim() || defaultLink;
+        var bgSurface = cs.getPropertyValue('--bg-surface').trim() || defaultSurface;
 
         mermaid.initialize({
           startOnLoad: true,
@@ -43,12 +53,12 @@ function initMermaid() {
             primaryColor: accent,
             primaryTextColor: textColor,
             primaryBorderColor: borderStrong,
-            lineColor: link,
-            secondaryColor: isDark ? '#1e293b' : bgSurface,
-            tertiaryColor: isDark ? '#0f172a' : bgSurface,
+            lineColor: borderStrong,
+            secondaryColor: bgSurface,
+            tertiaryColor: bgSurface,
             noteBkgColor: bgCard,
             noteTextColor: textSecondary,
-            noteBorderColor: link
+            noteBorderColor: borderStrong
           }
         });
       } catch (err) {
