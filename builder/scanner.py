@@ -389,10 +389,23 @@ class KnowledgeBaseScanner:
             else:
                 # '#' — разделитель anchor
                 target_name = candidate_name
-                anchor_slug = "#" + slugify(anchor_name) if anchor_name else ""
+                if anchor_name:
+                    clean_anchor = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", anchor_name)
+                    clean_anchor = re.sub(r"[`*_]", "", clean_anchor)
+                    anchor_slug = "#" + slugify(clean_anchor, 80)
+                else:
+                    anchor_slug = ""
 
         if not target_name:
             clean_display = display_text.lstrip("#")
+            art = self.articles_by_path.get(current_output_rel)
+            if art and anchor_slug and art.headings:
+                raw_anchor = anchor_slug.lstrip("#")
+                known_anchors = {h[2] for h in art.headings}
+                if raw_anchor not in known_anchors:
+                    suffix_matches = [h[2] for h in art.headings if h[2].endswith("-" + raw_anchor)]
+                    if len(suffix_matches) == 1:
+                        anchor_slug = "#" + suffix_matches[0]
             return anchor_slug, clean_display
 
         art = self.wikilink_index.get(target_name)
@@ -405,6 +418,14 @@ class KnowledgeBaseScanner:
                 art = self.wikilink_index.get(normalize_key(m.group(1)))
 
         if art:
+            if anchor_slug and art.headings:
+                raw_anchor = anchor_slug.lstrip("#")
+                known_anchors = {h[2] for h in art.headings}
+                if raw_anchor not in known_anchors:
+                    suffix_matches = [h[2] for h in art.headings if h[2].endswith("-" + raw_anchor)]
+                    if len(suffix_matches) == 1:
+                        anchor_slug = "#" + suffix_matches[0]
+
             curr_dir = os.path.dirname(current_output_rel)
             rel_href = os.path.relpath(art.rel_output_path, curr_dir).replace("\\", "/")
             full_href = rel_href + anchor_slug
