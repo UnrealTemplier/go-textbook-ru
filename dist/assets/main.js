@@ -901,7 +901,7 @@
 
   const DEFAULT_RETRO_STATE = {
     version: 1,
-    trail: { enabled: false },
+    trail: { enabled: false, strength: 100 },
     site: {
       vhs: { enabled: false, strength: 30 },
       crt: { enabled: false, strength: 30 },
@@ -926,6 +926,10 @@
       if (parsed.trail && typeof parsed.trail === 'object') {
         if (typeof parsed.trail.enabled === 'boolean') {
           retroState.trail.enabled = parsed.trail.enabled;
+        }
+        const str = Number(parsed.trail.strength);
+        if (!isNaN(str)) {
+          retroState.trail.strength = Math.max(0, Math.min(100, Math.round(str)));
         }
       }
 
@@ -962,10 +966,12 @@
     const style = root.style;
 
     // Global phosphor trail
-    if (retroState.trail && retroState.trail.enabled) {
+    if (retroState.trail && retroState.trail.enabled && retroState.trail.strength > 0) {
       root.dataset.retroTrail = 'on';
+      style.setProperty('--retro-trail', (retroState.trail.strength / 100).toFixed(2));
     } else {
       delete root.dataset.retroTrail;
+      style.setProperty('--retro-trail', '0');
     }
 
     // Site effects
@@ -1027,8 +1033,21 @@
 
   function syncRetroUI() {
     const trailToggle = document.getElementById('retro-trail-toggle');
+    const trailSlider = document.getElementById('retro-trail-slider');
+    const trailVal = document.getElementById('retro-trail-val');
+    const trailWrap = document.getElementById('retro-trail-slider-wrap');
+
     if (trailToggle) {
       trailToggle.checked = !!(retroState.trail && retroState.trail.enabled);
+    }
+    if (trailSlider) {
+      trailSlider.value = (retroState.trail && retroState.trail.strength !== undefined) ? retroState.trail.strength : 100;
+    }
+    if (trailVal) {
+      trailVal.textContent = `${(retroState.trail && retroState.trail.strength !== undefined) ? retroState.trail.strength : 100}%`;
+    }
+    if (trailWrap) {
+      trailWrap.classList.toggle('visible', !!(retroState.trail && retroState.trail.enabled));
     }
 
     ['site', 'code'].forEach(scope => {
@@ -1127,8 +1146,12 @@
         toggle.addEventListener('change', function () {
           const scope = this.dataset.scope;
           if (scope === 'trail') {
-            if (!retroState.trail) retroState.trail = { enabled: false };
+            if (!retroState.trail) retroState.trail = { enabled: false, strength: 100 };
             retroState.trail.enabled = this.checked;
+            const wrap = document.getElementById('retro-trail-slider-wrap');
+            if (wrap) {
+              wrap.classList.toggle('visible', this.checked);
+            }
             applyRetroEffects();
             saveRetroState();
             return;
@@ -1151,6 +1174,19 @@
       popover.querySelectorAll('input[type="range"]').forEach(slider => {
         slider.addEventListener('input', function () {
           const scope = this.dataset.scope;
+          if (scope === 'trail') {
+            if (!retroState.trail) retroState.trail = { enabled: false, strength: 100 };
+            const strength = Math.max(0, Math.min(100, Math.round(Number(this.value))));
+            retroState.trail.strength = strength;
+            const valLabel = document.getElementById('retro-trail-val');
+            if (valLabel) {
+              valLabel.textContent = `${strength}%`;
+            }
+            applyRetroEffects();
+            saveRetroState();
+            return;
+          }
+
           const effect = this.dataset.effect;
           if (!scope || !effect || !retroState[scope] || !retroState[scope][effect]) return;
 
