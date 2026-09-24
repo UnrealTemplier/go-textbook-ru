@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 1</span>
-              <span class="meta-tag read-time">⏱ ~32 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~34 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 4 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">10. ABI, Calling Convention и стек вызовов</h1>
@@ -2403,10 +2403,19 @@ func ProcessUser(u User) {
 </code></pre>
 </div>
 
-<p>При передаче структуры <code>User</code> по значению компилятор распаковывает ее поля на составляющие:<br />
-- Первые 9 полей (<code>ID</code> ... <code>RegionID</code>) займут все 9 доступных регистров: <code>RAX</code>, <code>RBX</code>, <code>RCX</code>, <code>RDI</code>, <code>RSI</code>, <code>R8</code>, <code>R9</code>, <code>R10</code>, <code>R11</code>.<br />
-- Для 10-го поля <code>ZipCode</code> регистров физически не осталось!</p>
-<p>В этот миг компилятор вынужден прибегнуть к процедуре <strong>Spill (проливание аргументов на стек)</strong>. Все избыточные поля копируются в память текущего фрейма стека через инструкции <code>MOVQ ... (SP)</code>.</p>
+<p>При передаче <code>User</code> по значению компилятор подсчитывает: для 10 полей-<code>int</code> (10 × 8 байт = 80 байт) нужно 10 целочисленных регистров-аргументов. В пуле ABIInternal для <code>amd64</code> их только <strong>9</strong> (<code>RAX</code>, <code>RBX</code>, <code>RCX</code>, <code>RDI</code>, <code>RSI</code>, <code>R8</code>, <code>R9</code>, <code>R10</code>, <code>R11</code>). Структура <strong>не вмещается полностью</strong>.</p>
+<aside class="callout callout-important" aria-label="Ключевое правило ABIInternal: атомарность назначения аргументов">
+  <header class="callout-header">
+    <span class="callout-icon" aria-hidden="true">⚡</span>
+    <span class="callout-title">Ключевое правило ABIInternal: атомарность назначения аргументов</span>
+  </header>
+  <div class="callout-body">
+    <p>Согласно спецификации Go ABI (<code>src/cmd/compile/abi-internal.md</code>), если аргумент — составной тип (структура, слайс и т.д.) — <strong>не умещается целиком в оставшихся свободных регистрах</strong>, компилятор Go <strong>никогда не расщепляет его</strong>, отдавая часть полей в регистры, а часть — на стек. Вместо этого вся структура целиком передается на стеке.</p>
+<p>Причина: если бы поля одного аргумента разместились и в регистрах, и в памяти одновременно, а вызываемая функция взяла адрес <code>&amp;u</code>, ей пришлось бы воссоздавать объект целиком в памяти — копируя данные из регистров обратно на стек. Стоимость такой реконструкции пропорциональна размеру структуры, что хуже простой передачи по стеку.</p>
+  </div>
+</aside>
+
+<p>Таким образом, для нашей <code>User</code> со всеми 10 полями компилятор Go полностью передает структуру через стек:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -2421,21 +2430,21 @@ func ProcessUser(u User) {
   </figcaption>
   <pre class="mermaid">
 flowchart LR
-subgraph RegPass [&quot;Первые 9 полей: Регистры (0 ns)&quot;]
-F1[&quot;Field 1 -&gt; RAX&quot;]
-F2[&quot;Field 2 -&gt; RBX&quot;]
-F9[&quot;Field 9 -&gt; R11&quot;]
+subgraph CallerStack [&quot;Стек caller&#x27;а: все 10 полей (80 байт)&quot;]
+F1[&quot;Field 1 (ID)   -&gt; 0(SP)&quot;]
+F2[&quot;Field 2 (RoleID) -&gt; 8(SP)&quot;]
+F3[&quot;...&quot;]
+F10[&quot;Field 10 (ZipCode) -&gt; 72(SP)&quot;]
 end
 
-subgraph StackSpill [&quot;10+ поля: Проливание на стек (Spill, Память)&quot;]
-F10[&quot;Field 10 -&gt; 0(SP)&quot;]
-F11[&quot;Field 11 -&gt; 8(SP)&quot;]
+subgraph Note [&quot;Регистры аргументов&quot;]
+R[&quot;RAX..R11: свободны,\nне использованы для u&quot;]
 end
 
-classDef fast fill:#1e293b,stroke:#10b981,stroke-width:1px,color:#f8fafc;
 classDef slow fill:#1e293b,stroke:#f59e0b,stroke-width:1px,color:#f8fafc;
-class RegPass,F1,F2,F9 fast;
-class StackSpill,F10,F11 slow;
+classDef note fill:#1e293b,stroke:#475569,stroke-width:1px,color:#94a3b8;
+class CallerStack,F1,F2,F3,F10 slow;
+class Note,R note;
   </pre>
 </figure>
 
@@ -2518,7 +2527,7 @@ Note over CPU, Code: Накладные расходы: 2 чтения памя�
 <li><strong>Стек вызовов и фрейм:</strong> стек растет вниз (к младшим адресам). Границы фрейма определяются регистрами <code>BP</code> (база фрейма) и <code>SP</code> (вершина стека). Память под локальные переменные выделяется мгновенно — одной инструкцией вычитания <code>SUBQ $N, SP</code>.</li>
 <li><strong>Эпоха ABI0 (до Go 1.17):</strong> все аргументы и возвращаемые значения передавались через стек памяти, создавая избыточную нагрузку на кэш L1.</li>
 <li><strong>Эпоха ABIInternal (Go 1.17+):</strong> революция регистровых вызовов. Аргументы (до 9 целых чисел и до 15 <code>float</code>) и мульти-возвраты передаются напрямую через регистры CPU, обеспечив ускорение кода на 5–12%.</li>
-<li><strong>Spilling аргументов:</strong> если параметров больше 9 или структура слишком велика, компилятор сбрасывает излишки на стек. Большие структуры выгоднее передавать по указателю <code>*User</code>.</li>
+<li><strong>Передача структур на стеке:</strong> если составной аргумент (структура) не умещается <strong>целиком</strong> в доставшихся ему свободных регистрах, Go ABIInternal передает <strong>всю структуру целиком</strong> через стек — без частичного размещения полей в регистрах. Это гарантирует корректную работу при взятии адреса <code>&amp;arg</code> внутри вызываемой функции. Большие структуры выгоднее передавать по указателю <code>*User</code>.</li>
 <li><strong>Вызовы через интерфейсы:</strong> требуют чтения структуры <code>itab</code> в памяти и косвенного прыжка (<code>CALL *AX</code>), что не позволяет заинлайнить вызов и создает дополнительную нагрузку на Branch Target Buffer.</li>
 </ol>
 <p>Мы изучили, как процессор последовательно исполняет инструкции, прыгает по адресам памяти через <code>CALL</code> и возвращается через <code>RET</code>. Но почему же современные процессоры с тактовой частотой 4–5 ГГц работают с такой поразительной скоростью? Неужели они действительно ждут окончания предыдущей команды, прежде чем приступить к следующей?</p>

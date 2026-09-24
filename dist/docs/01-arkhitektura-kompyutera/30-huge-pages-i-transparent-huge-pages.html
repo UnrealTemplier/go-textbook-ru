@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 1</span>
-              <span class="meta-tag read-time">⏱ ~28 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~30 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">30. Huge Pages и Transparent Huge Pages</h1>
@@ -2323,24 +2323,18 @@ PD --&gt;|бит PS равен 1 (Huge Page)| RAM2M[&quot;Физический �
 <p>Какова позиция создателей Go относительно работы с большими страницами?</p>
 <p>Архитектура аллокатора Go (<code>mheap</code>) управляет памятью укрупненными модулями — <strong>Аренами (Memory Arenas)</strong>. На 64-битных операционных системах размер одной арены Go составляет ровно <strong>64 Мегабайта</strong>. Более того, рантайм Go аппаратно выравнивает эти арены по адресам, строго кратным 2 Мегабайтам!</p>
 <p>Таким образом, внутренняя структура кучи Go <strong>идеально и нативно гармонирует с 2 МБ Huge Pages</strong>.</p>
-<p>Начиная с версии Go 1.21, в стандартный рантайм внедрили поддержку THP на основе принципа Mechanical Sympathy. Go не надеется на опасный глобальный режим <code>always</code>. Вместо этого рантайм использует тонкую точечную подсказку ядру: при выделении крупных фрагментов памяти под арены Go самостоятельно вызывает системный вызов <code>madvise</code> с флагом <code>MADV_HUGEPAGE</code>:</p>
-
-<div class="code-block" data-lang="c">
-  <header class="code-header">
-    <span class="code-lang-tag">C</span>
-    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
+<aside class="callout callout-info" aria-label="Под капотом: что реально делает Go runtime с THP">
+  <header class="callout-header">
+    <span class="callout-icon" aria-hidden="true">⚙️</span>
+    <span class="callout-title">Под капотом: что реально делает Go runtime с THP</span>
   </header>
-  <pre class="language-c"><code class="language-c">// Псевдокод системной логики рантайма Go (src/runtime/mem_linux.go):
-void* mem = mmap(NULL, 64 * 1024 * 1024, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
-// Go вежливо подсказывает ОС: используй THP исключительно для этой 64-мегабайтной арены!
-madvise(mem, 64 * 1024 * 1024, MADV_HUGEPAGE);
-</code></pre>
-</div>
+  <div class="callout-body">
+    <p>Рантайм Go <strong>не вызывает</strong> <code>madvise(MADV_HUGEPAGE)</code> для пользовательских арен кучи (<code>mheap</code>). При выделении памяти через <code>sysMapOS</code> Go использует обычный <code>mmap</code> без указания режима огромных страниц. Точечные вызовы <code>sysHugePageOS</code> (<code>MADV_HUGEPAGE</code>) применяются только к <strong>структурам метаданных сборщика мусора</strong> (например, к массиву <code>pageAlloc.chunks</code>), занимающим непрерывные блоки, у которых высока арифметическая плотность доступа при сканировании.</p>
+<p>Это означает, что на сервере с THP в режиме <code>madvise</code> (рекомендованный промышленный стандарт) пользовательская куча Go получает обычные 4 КБ страницы. Это штатное, корректное поведение: демон <code>khugepaged</code> не трогает арены и не вызывает синхронной компактизации.</p>
+  </div>
+</aside>
 
-<p>Если на ваших серверах активирован промышленный стандарт настройки:</p>
+<p>Проблема возникает в тех производственных средах, где системный администратор включил THP в режиме <code>always</code>:</p>
 
 <div class="code-block" data-lang="bash">
   <header class="code-header">
@@ -2350,15 +2344,36 @@ madvise(mem, 64 * 1024 * 1024, MADV_HUGEPAGE);
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-bash"><code class="language-bash">echo madvise &gt; /sys/kernel/mm/transparent_hugepage/enabled
+  <pre class="language-bash"><code class="language-bash">echo always &gt; /sys/kernel/mm/transparent_hugepage/enabled
 </code></pre>
 </div>
 
-<p>то ядро Linux будет объединять страницы в 2 МБ Huge Pages <strong>только для арен рантайма Go</strong>, полностью исключая блокировки на мелких объектах и устраняя риск синхронной компактизации для остальной системы!</p>
-<h3 id="kogda-otklyuchat-thp-dlya-go">Когда отключать THP для Go?</h3>
+<p>В этом режиме ядро Linux агрессивно пытается объединить страницы Go-куч в 2 МБ блоки через демон <code>khugepaged</code>. При фрагментированной памяти сервера это создает паузы синхронной компактизации и вызывает <strong>аномальный рост RSS-памяти</strong>: рантайм Go периодически возвращает арены ядру через <code>MADV_DONTNEED</code> (scavenger), а <code>khugepaged</code> тут же начинает заново собирать их в 2 МБ страницы — бесконечный и затратный цикл.</p>
+<h3 id="peremennaya-godebugdisablethp1">Переменная `GODEBUG=disablethp=1`</h3>
 
-<p>В редких сценариях (например, в высоконагруженных мультиарендных средах Kubernetes с сильной деградацией памяти), фоновый демон <code>khugepaged</code> может создавать паразитную нагрузку на ядра процессора.</p>
-<p>В рантайме Go предусмотрен специальный аварийный выключатель. Если вы фиксируете необъяснимую деградацию latency, поведение можно проверить запуском приложения с флагом:</p>
+<p>Именно для защиты от этого сценария в Go 1.21.6 / Go 1.22 появился специальный аварийный выключатель. При активации он принудительно вызывает <code>madvise(..., MADV_NOHUGEPAGE)</code> для каждой арены кучи, явно запрещая ядру объединять страницы:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">// src/runtime/mem_linux.go — при маппировании новой арены:
+func sysMapOS(v unsafe.Pointer, n uintptr, vmaName string) {
+    // ...
+    // Disable huge pages if the GODEBUG for it is set.
+    // Note that there are a few sysHugePage calls that can override this,
+    // but they're all for GC metadata.
+    if debug.disablethp != 0 {
+        sysNoHugePageOS(v, n) // madvise(_MADV_NOHUGEPAGE)
+    }
+}
+</code></pre>
+</div>
+
 
 <div class="code-block" data-lang="bash">
   <header class="code-header">
@@ -2372,7 +2387,7 @@ madvise(mem, 64 * 1024 * 1024, MADV_HUGEPAGE);
 </code></pre>
 </div>
 
-<p>Эта переменная окружения инструктирует рантайм Go не отправлять запросы <code>madvise(MADV_HUGEPAGE)</code> ядру Linux. Если микро-фризы исчезли — значит, сервер страдает от фрагментации памяти операционной системы.</p>
+<p>Эта переменная окружения <strong>не отключает запросы <code>MADV_HUGEPAGE</code></strong> (Go и так их не делает для пользовательской кучи). Её истинная роль — активно запросить <code>MADV_NOHUGEPAGE</code>, чтобы защитить сервисы от катастрофического раздувания RSS при глобально включенном режиме <code>always</code>. Если после включения <code>disablethp=1</code> микро-фризы исчезли — значит, сервер страдал именно от агрессивного <code>khugepaged</code> в режиме <code>always</code>.</p>
 <hr />
 <h2 id="itogi">Итоги</h2>
 
@@ -2380,7 +2395,8 @@ madvise(mem, 64 * 1024 * 1024, MADV_HUGEPAGE);
 <li><strong>Huge Pages (2 МБ и 1 ГБ)</strong> кардинально решают проблему емкости TLB: один буфер начинает покрывать гигабайты памяти вместо мегабайтов.</li>
 <li><strong>Бит PS</strong> в записях таблиц страниц позволяет блоку MMU срезать последний уровень трансляции, ускоряя аппаратный обход дерева страниц.</li>
 <li><strong>Transparent Huge Pages (THP)</strong> автоматизируют сборку больших страниц, но в режиме <code>always</code> несут скрытую угрозу в виде задержек синхронной компактизации (<strong>Direct Compaction</strong>) и CoW-амплификации.</li>
-<li><strong>Рантайм Go</strong> идеально оптимизирован под большие страницы: 64 МБ арены выровнены по 2 МБ границам и точечно маркируются через <code>MADV_HUGEPAGE</code>.</li>
+<li><strong>Рантайм Go</strong> идеально оптимизирован под большие страницы: 64 МБ арены выровнены по 2 МБ границам. Рантайм использует <code>MADV_HUGEPAGE</code> точечно только для метаданных GC. Для пользовательских арен кучи огромные страницы не запрашиваются принудительно — рекомендованный режим THP <code>madvise</code> уже обеспечивает правильное поведение.</li>
+<li><strong><code>GODEBUG=disablethp=1</code></strong> (Go 1.21.6+) — выключатель не для запроса THP, а для его <strong>запрета</strong>: при активации рантайм посылает ядру <code>MADV_NOHUGEPAGE</code> для каждой арены, защищая от аномального раздувания RSS на серверах с THP в режиме <code>always</code>.</li>
 <li><strong>Золотой стандарт настройки серверов</strong> — перевод THP в режим <code>madvise</code>.</li>
 </ol>
 <p>Мы завершили изучение того, как процессор адресует, кэширует и масштабирует память на уровне одного вычислительного узла.<br />
@@ -2414,7 +2430,7 @@ madvise(mem, 64 * 1024 * 1024, MADV_HUGEPAGE);
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#matematika-promakhov-pochemu-4-kb-eto-slishkom-malo">Математика промахов: Почему 4 КБ — это слишком мало?</a></li><li class="toc-item toc-h2"><a href="#huge-pages-bolshie-stranitsy">Huge Pages: Большие страницы</a></li><li class="toc-item toc-h3"><a href="#kak-eto-vyglyadit-pod-kapotom-mmu">Как это выглядит &quot;под капотом&quot; MMU?</a></li><li class="toc-item toc-h2"><a href="#problema-explicit-huge-pages">Проблема Explicit Huge Pages</a></li><li class="toc-item toc-h2"><a href="#transparent-huge-pages-thp">Transparent Huge Pages (THP)</a></li><li class="toc-item toc-h3"><a href="#tyomnaya-storona-thp-sinkhronnaya-kompaktizatsiya-i-latency-spikes">Тёмная сторона THP: Синхронная компактизация и Latency Spikes</a></li><li class="toc-item toc-h2"><a href="#rantaym-go-i-huge-pages">Рантайм Go и Huge Pages</a></li><li class="toc-item toc-h3"><a href="#kogda-otklyuchat-thp-dlya-go">Когда отключать THP для Go?</a></li><li class="toc-item toc-h2"><a href="#itogi">Итоги</a></li>
+    <li class="toc-item toc-h2"><a href="#matematika-promakhov-pochemu-4-kb-eto-slishkom-malo">Математика промахов: Почему 4 КБ — это слишком мало?</a></li><li class="toc-item toc-h2"><a href="#huge-pages-bolshie-stranitsy">Huge Pages: Большие страницы</a></li><li class="toc-item toc-h3"><a href="#kak-eto-vyglyadit-pod-kapotom-mmu">Как это выглядит &quot;под капотом&quot; MMU?</a></li><li class="toc-item toc-h2"><a href="#problema-explicit-huge-pages">Проблема Explicit Huge Pages</a></li><li class="toc-item toc-h2"><a href="#transparent-huge-pages-thp">Transparent Huge Pages (THP)</a></li><li class="toc-item toc-h3"><a href="#tyomnaya-storona-thp-sinkhronnaya-kompaktizatsiya-i-latency-spikes">Тёмная сторона THP: Синхронная компактизация и Latency Spikes</a></li><li class="toc-item toc-h2"><a href="#rantaym-go-i-huge-pages">Рантайм Go и Huge Pages</a></li><li class="toc-item toc-h3"><a href="#peremennaya-godebugdisablethp1">Переменная GODEBUG=disablethp=1</a></li><li class="toc-item toc-h2"><a href="#itogi">Итоги</a></li>
   </ul>
 </aside>
 

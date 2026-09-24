@@ -2292,7 +2292,15 @@ atomic.load(ready, std::memory_order_acquire);
   <div class="callout-body">
     <p>Компилятор Go генерирует машинный код барьеров с учетом микроархитектуры целевого процессора (<code>GOARCH</code>):</p>
 <ul>
-<li><strong>x86-64 (Intel / AMD):</strong> Благодаря строгой аппаратной модели TSO, барьеры Acquire/Release на x86 бесплатны на аппаратном уровне! Обычная инструкция <code>MOV</code> при записи уже аппаратно обладает семантикой Release (Store-Store не переставляются), а обычный <code>MOV</code> при чтении — семантикой Acquire (Load-Load не переставляются). Барьеры на x86 существуют преимущественно виртуально — в виде директив для оптимизатора компилятора Go, запрещающих перестановку фаз на уровне SSA. В ассемблерном коде для <code>atomic.Store</code> и <code>atomic.Load</code> вы увидите самые обычные <code>MOVQ</code>!</li>
+<li><strong>x86-64 (Intel / AMD):</strong> Модель TSO гарантирует порядок Store-Store и Load-Load. Обычный <code>MOV</code> при чтении уже обладает семантикой Acquire (Load-Load не переставляются), поэтому <code>atomic.Load</code> компилируется в обычный <code>MOVQ</code>. Однако TSO <strong>разрешает переупорядочивание Store-Load</strong>: запись может задержаться в Store Buffer относительно последующего чтения другого адреса. Для обеспечения полной <strong>Sequential Consistency</strong> (<code>sync/atomic</code> гарантирует SC по Go Memory Model 2022) <code>atomic.Store</code> компилируется <strong>не в обычный <code>MOV</code></strong>, а в инструкцию <strong><code>XCHGQ</code></strong>, которая несёт неявный префикс <code>LOCK</code> и сбрасывает Store Buffer:<br />
+<code>asm
+  // src/internal/runtime/atomic/atomic_amd64.s
+  TEXT ·Store64(SB), NOSPLIT, $0-16
+      MOVQ    ptr+0(FP), BX
+      MOVQ    val+8(FP), AX
+      XCHGQ   AX, 0(BX)   // не MOVQ — XCHG аппаратно атомарен и дренирует Store Buffer
+      RET</code><br />
+  Директивы компилятора (compiler fences / SSA memory barriers) дополнительно запрещают перестановку операций на уровне оптимизатора.</li>
 <li><strong>ARM64 (Apple Silicon / Graviton):</strong> На процессорах с архитектурой Weak Ordering кремний требует явных указаний. Компилятор Go генерирует специализированные инструкции барьеров ARMv8: инструкцию <code>STLR</code> (Store-Release Register) для атомарной записи и инструкцию <code>LDAR</code> (Load-Acquire Register) для атомарного чтения. Эти инструкции заставляют контроллер процессора синхронизировать конвейер на уровне кремния.</li>
 </ul>
   </div>
