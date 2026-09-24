@@ -425,6 +425,11 @@ class MarkdownConverter:
     </button>
   </header>
   <pre class="language-{lang}"><code class="language-{lang}">{code_body}</code></pre>
+  <div class="retro-code-effects" aria-hidden="true">
+    <div class="retro-code-vhs-layer"></div>
+    <div class="retro-code-crt-layer"></div>
+    <div class="retro-code-noise-layer"></div>
+  </div>
 </div>
 """
 

@@ -63,6 +63,30 @@ GO_LOGO_SVG = (
     '</svg>'
 )
 
+ANTI_FLICKER_SCRIPT = (
+    '<script>/* Theme & Retro anti-flicker */(function(){'
+    'try{'
+    "var t=localStorage.getItem('go_encyclopedia_theme');"
+    "if(t&&['paper','light','dark'].includes(t)){document.documentElement.dataset.theme=t;}else{document.documentElement.dataset.theme='dark';}"
+    "var r=localStorage.getItem('go_encyclopedia_retro_effects');"
+    "if(r){"
+    "var c=JSON.parse(r);"
+    "var s=document.documentElement.style;"
+    "if(c.site){"
+    "if(c.site.vhs&&c.site.vhs.enabled){s.setProperty('--retro-site-vhs',((c.site.vhs.strength||0)/100).toFixed(2));}"
+    "if(c.site.crt&&c.site.crt.enabled){s.setProperty('--retro-site-crt',((c.site.crt.strength||0)/100).toFixed(2));}"
+    "if(c.site.noise&&c.site.noise.enabled){s.setProperty('--retro-site-noise',((c.site.noise.strength||0)/100).toFixed(2));}"
+    "}"
+    "if(c.code){"
+    "if(c.code.vhs&&c.code.vhs.enabled){s.setProperty('--retro-code-vhs',((c.code.vhs.strength||0)/100).toFixed(2));}"
+    "if(c.code.crt&&c.code.crt.enabled){s.setProperty('--retro-code-crt',((c.code.crt.strength||0)/100).toFixed(2));}"
+    "if(c.code.noise&&c.code.noise.enabled){s.setProperty('--retro-code-noise',((c.code.noise.strength||0)/100).toFixed(2));}"
+    "}"
+    "}"
+    "}catch(e){}"
+    '})();</script>'
+)
+
 FLOATING_THEME_SWITCHER_HTML = (
     '<button type="button" id="theme-switcher-btn" class="floating-theme-switcher" '
     'data-action="toggle-theme" '
@@ -90,6 +114,130 @@ FLOATING_THEME_SWITCHER_HTML = (
     '      </svg>\n'
     '    </span>\n'
     '  </button>'
+)
+
+RETRO_SITE_EFFECTS_HTML = (
+    '<div id="retro-site-effects" class="retro-site-effects" aria-hidden="true">\n'
+    '  <div class="retro-site-vhs-layer"></div>\n'
+    '  <div class="retro-site-crt-layer"></div>\n'
+    '  <div class="retro-site-noise-layer"></div>\n'
+    '</div>'
+)
+
+RETRO_CONTROLS_HTML = (
+    '<button type="button" id="retro-btn" class="floating-retro-btn" '
+    'aria-label="Ретро-эффекты" aria-haspopup="dialog" aria-expanded="false" aria-controls="retro-popover">\n'
+    '  <svg class="retro-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">\n'
+    '    <line x1="4" y1="21" x2="4" y2="14"></line>\n'
+    '    <line x1="4" y1="10" x2="4" y2="3"></line>\n'
+    '    <line x1="12" y1="21" x2="12" y2="12"></line>\n'
+    '    <line x1="12" y1="8" x2="12" y2="3"></line>\n'
+    '    <line x1="20" y1="21" x2="20" y2="16"></line>\n'
+    '    <line x1="20" y1="12" x2="20" y2="3"></line>\n'
+    '    <line x1="1" y1="14" x2="7" y2="14"></line>\n'
+    '    <line x1="9" y1="8" x2="15" y2="8"></line>\n'
+    '    <line x1="17" y1="16" x2="23" y2="16"></line>\n'
+    '  </svg>\n'
+    '</button>\n'
+    '<div id="retro-popover" class="retro-popover" role="dialog" aria-label="Ретро-эффекты" aria-hidden="true">\n'
+    '  <header class="retro-popover-header">\n'
+    '    <div class="retro-popover-title">\n'
+    '      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">\n'
+    '        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>\n'
+    '        <line x1="8" y1="21" x2="16" y2="21"></line>\n'
+    '        <line x1="12" y1="17" x2="12" y2="21"></line>\n'
+    '      </svg>\n'
+    '      <span>Ретро-эффекты</span>\n'
+    '    </div>\n'
+    '    <button type="button" class="btn-retro-close" id="retro-close-btn" aria-label="Закрыть настройки ретро-эффектов">&times;</button>\n'
+    '  </header>\n'
+    '  <div class="retro-popover-body">\n'
+    '    <fieldset class="retro-group">\n'
+    '      <legend class="retro-group-legend">Весь сайт</legend>\n'
+    '      <div class="retro-control-row" data-scope="site" data-effect="vhs">\n'
+    '        <div class="retro-row-header">\n'
+    '          <label class="retro-switch" for="retro-site-vhs-toggle">\n'
+    '            <input type="checkbox" id="retro-site-vhs-toggle" data-scope="site" data-effect="vhs">\n'
+    '            <span class="retro-switch-slider"></span>\n'
+    '            <span class="retro-switch-label">VHS / Scanlines</span>\n'
+    '          </label>\n'
+    '        </div>\n'
+    '        <div class="retro-slider-wrap" id="retro-site-vhs-slider-wrap">\n'
+    '          <input type="range" class="retro-slider" id="retro-site-vhs-slider" data-scope="site" data-effect="vhs" min="0" max="100" step="1" value="30" aria-label="Сила VHS для всего сайта">\n'
+    '          <span class="retro-slider-val" id="retro-site-vhs-val">30%</span>\n'
+    '        </div>\n'
+    '      </div>\n'
+    '      <div class="retro-control-row" data-scope="site" data-effect="crt">\n'
+    '        <div class="retro-row-header">\n'
+    '          <label class="retro-switch" for="retro-site-crt-toggle">\n'
+    '            <input type="checkbox" id="retro-site-crt-toggle" data-scope="site" data-effect="crt">\n'
+    '            <span class="retro-switch-slider"></span>\n'
+    '            <span class="retro-switch-label">CRT</span>\n'
+    '          </label>\n'
+    '        </div>\n'
+    '        <div class="retro-slider-wrap" id="retro-site-crt-slider-wrap">\n'
+    '          <input type="range" class="retro-slider" id="retro-site-crt-slider" data-scope="site" data-effect="crt" min="0" max="100" step="1" value="30" aria-label="Сила CRT для всего сайта">\n'
+    '          <span class="retro-slider-val" id="retro-site-crt-val">30%</span>\n'
+    '        </div>\n'
+    '      </div>\n'
+    '      <div class="retro-control-row" data-scope="site" data-effect="noise">\n'
+    '        <div class="retro-row-header">\n'
+    '          <label class="retro-switch" for="retro-site-noise-toggle">\n'
+    '            <input type="checkbox" id="retro-site-noise-toggle" data-scope="site" data-effect="noise">\n'
+    '            <span class="retro-switch-slider"></span>\n'
+    '            <span class="retro-switch-label">Noise</span>\n'
+    '          </label>\n'
+    '        </div>\n'
+    '        <div class="retro-slider-wrap" id="retro-site-noise-slider-wrap">\n'
+    '          <input type="range" class="retro-slider" id="retro-site-noise-slider" data-scope="site" data-effect="noise" min="0" max="100" step="1" value="20" aria-label="Сила Noise для всего сайта">\n'
+    '          <span class="retro-slider-val" id="retro-site-noise-val">20%</span>\n'
+    '        </div>\n'
+    '      </div>\n'
+    '    </fieldset>\n'
+    '    <fieldset class="retro-group">\n'
+    '      <legend class="retro-group-legend">Блоки кода</legend>\n'
+    '      <div class="retro-control-row" data-scope="code" data-effect="vhs">\n'
+    '        <div class="retro-row-header">\n'
+    '          <label class="retro-switch" for="retro-code-vhs-toggle">\n'
+    '            <input type="checkbox" id="retro-code-vhs-toggle" data-scope="code" data-effect="vhs">\n'
+    '            <span class="retro-switch-slider"></span>\n'
+    '            <span class="retro-switch-label">VHS / Scanlines</span>\n'
+    '          </label>\n'
+    '        </div>\n'
+    '        <div class="retro-slider-wrap" id="retro-code-vhs-slider-wrap">\n'
+    '          <input type="range" class="retro-slider" id="retro-code-vhs-slider" data-scope="code" data-effect="vhs" min="0" max="100" step="1" value="30" aria-label="Сила VHS для блоков кода">\n'
+    '          <span class="retro-slider-val" id="retro-code-vhs-val">30%</span>\n'
+    '        </div>\n'
+    '      </div>\n'
+    '      <div class="retro-control-row" data-scope="code" data-effect="crt">\n'
+    '        <div class="retro-row-header">\n'
+    '          <label class="retro-switch" for="retro-code-crt-toggle">\n'
+    '            <input type="checkbox" id="retro-code-crt-toggle" data-scope="code" data-effect="crt">\n'
+    '            <span class="retro-switch-slider"></span>\n'
+    '            <span class="retro-switch-label">CRT</span>\n'
+    '          </label>\n'
+    '        </div>\n'
+    '        <div class="retro-slider-wrap" id="retro-code-crt-slider-wrap">\n'
+    '          <input type="range" class="retro-slider" id="retro-code-crt-slider" data-scope="code" data-effect="crt" min="0" max="100" step="1" value="40" aria-label="Сила CRT для блоков кода">\n'
+    '          <span class="retro-slider-val" id="retro-code-crt-val">40%</span>\n'
+    '        </div>\n'
+    '      </div>\n'
+    '      <div class="retro-control-row" data-scope="code" data-effect="noise">\n'
+    '        <div class="retro-row-header">\n'
+    '          <label class="retro-switch" for="retro-code-noise-toggle">\n'
+    '            <input type="checkbox" id="retro-code-noise-toggle" data-scope="code" data-effect="noise">\n'
+    '            <span class="retro-switch-slider"></span>\n'
+    '            <span class="retro-switch-label">Noise</span>\n'
+    '          </label>\n'
+    '        </div>\n'
+    '        <div class="retro-slider-wrap" id="retro-code-noise-slider-wrap">\n'
+    '          <input type="range" class="retro-slider" id="retro-code-noise-slider" data-scope="code" data-effect="noise" min="0" max="100" step="1" value="20" aria-label="Сила Noise для блоков кода">\n'
+    '          <span class="retro-slider-val" id="retro-code-noise-val">20%</span>\n'
+    '        </div>\n'
+    '      </div>\n'
+    '    </fieldset>\n'
+    '  </div>\n'
+    '</div>'
 )
 
 def get_rel_root(rel_path: str) -> str:
@@ -254,7 +402,7 @@ def render_article_page(
   <meta name="description" content="Полное руководство: {html.escape(article.title)}. Go, архитектура систем, computer science.">
   <link rel="icon" href="{rel_root}favicon.ico" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="{rel_root}favicon.svg" sizes="any">
-  <script>/* Theme anti-flicker */(function(){{var t=localStorage.getItem('go_encyclopedia_theme');if(t&&['paper','light','dark'].includes(t)){{document.documentElement.dataset.theme=t;}}else{{document.documentElement.dataset.theme='dark';}}}})();</script>
+  {ANTI_FLICKER_SCRIPT}
   <link rel="stylesheet" href="{rel_root}assets/style.css">
   <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">
 </head>
@@ -367,6 +515,10 @@ def render_article_page(
   <!-- Единый плавающий переключатель темы -->
   {FLOATING_THEME_SWITCHER_HTML}
 
+  <!-- Плавающие элементы ретро-эффектов -->
+  {RETRO_SITE_EFFECTS_HTML}
+  {RETRO_CONTROLS_HTML}
+
   <!-- Скрипты -->
   <script src="{rel_root}assets/vendor/prism-bundle.min.js"></script>
   <script src="{rel_root}assets/vendor/mermaid.min.js"></script>
@@ -429,7 +581,7 @@ def render_index_page(
   <meta name="description" content="Фундаментальная энциклопедия бэкенда, распределенных систем и языка Go от Брайана Кернигана. 1 400+ статей, 1 400+ схем Mermaid.">
   <link rel="icon" href="{rel_root}favicon.ico" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="{rel_root}favicon.svg" sizes="any">
-  <script>/* Theme anti-flicker */(function(){{var t=localStorage.getItem('go_encyclopedia_theme');if(t&&['paper','light','dark'].includes(t)){{document.documentElement.dataset.theme=t;}}else{{document.documentElement.dataset.theme='dark';}}}})();</script>
+  {ANTI_FLICKER_SCRIPT}
   <link rel="stylesheet" href="{rel_root}assets/style.css">
 </head>
 <body class="index-page">
@@ -534,6 +686,10 @@ def render_index_page(
 
   <!-- Единый плавающий переключатель темы -->
   {FLOATING_THEME_SWITCHER_HTML}
+
+  <!-- Плавающие элементы ретро-эффектов -->
+  {RETRO_SITE_EFFECTS_HTML}
+  {RETRO_CONTROLS_HTML}
 
   <script src="{rel_root}assets/search-data.js"></script>
   <script src="{rel_root}assets/main.js"></script>

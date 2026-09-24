@@ -895,6 +895,269 @@
   }
 
   // -------------------------------------------------------------------------
+  // 11. Управление ретро-эффектами (VHS, CRT, Noise)
+  // -------------------------------------------------------------------------
+  const RETRO_STORAGE_KEY = 'go_encyclopedia_retro_effects';
+
+  const DEFAULT_RETRO_STATE = {
+    version: 1,
+    site: {
+      vhs: { enabled: false, strength: 30 },
+      crt: { enabled: false, strength: 30 },
+      noise: { enabled: false, strength: 20 }
+    },
+    code: {
+      vhs: { enabled: false, strength: 30 },
+      crt: { enabled: false, strength: 40 },
+      noise: { enabled: false, strength: 20 }
+    }
+  };
+
+  let retroState = JSON.parse(JSON.stringify(DEFAULT_RETRO_STATE));
+
+  function loadRetroState() {
+    try {
+      const raw = localStorage.getItem(RETRO_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object') return;
+
+      ['site', 'code'].forEach(scope => {
+        if (parsed[scope] && typeof parsed[scope] === 'object') {
+          ['vhs', 'crt', 'noise'].forEach(effect => {
+            if (parsed[scope][effect] && typeof parsed[scope][effect] === 'object') {
+              if (typeof parsed[scope][effect].enabled === 'boolean') {
+                retroState[scope][effect].enabled = parsed[scope][effect].enabled;
+              }
+              const str = Number(parsed[scope][effect].strength);
+              if (!isNaN(str)) {
+                retroState[scope][effect].strength = Math.max(0, Math.min(100, Math.round(str)));
+              }
+            }
+          });
+        }
+      });
+    } catch (e) {
+      console.warn('Failed to load retro effects state:', e);
+    }
+  }
+
+  function saveRetroState() {
+    try {
+      localStorage.setItem(RETRO_STORAGE_KEY, JSON.stringify(retroState));
+    } catch (e) {
+      console.warn('Failed to save retro effects state:', e);
+    }
+  }
+
+  function applyRetroEffects() {
+    const root = document.documentElement;
+    const style = root.style;
+
+    // Site effects
+    const siteVhs = retroState.site.vhs;
+    if (siteVhs.enabled && siteVhs.strength > 0) {
+      root.dataset.siteVhs = 'on';
+      style.setProperty('--retro-site-vhs', (siteVhs.strength / 100).toFixed(2));
+    } else {
+      delete root.dataset.siteVhs;
+      style.setProperty('--retro-site-vhs', '0');
+    }
+
+    const siteCrt = retroState.site.crt;
+    if (siteCrt.enabled && siteCrt.strength > 0) {
+      root.dataset.siteCrt = 'on';
+      style.setProperty('--retro-site-crt', (siteCrt.strength / 100).toFixed(2));
+    } else {
+      delete root.dataset.siteCrt;
+      style.setProperty('--retro-site-crt', '0');
+    }
+
+    const siteNoise = retroState.site.noise;
+    if (siteNoise.enabled && siteNoise.strength > 0) {
+      root.dataset.siteNoise = 'on';
+      style.setProperty('--retro-site-noise', (siteNoise.strength / 100).toFixed(2));
+    } else {
+      delete root.dataset.siteNoise;
+      style.setProperty('--retro-site-noise', '0');
+    }
+
+    // Code effects
+    const codeVhs = retroState.code.vhs;
+    if (codeVhs.enabled && codeVhs.strength > 0) {
+      root.dataset.codeVhs = 'on';
+      style.setProperty('--retro-code-vhs', (codeVhs.strength / 100).toFixed(2));
+    } else {
+      delete root.dataset.codeVhs;
+      style.setProperty('--retro-code-vhs', '0');
+    }
+
+    const codeCrt = retroState.code.crt;
+    if (codeCrt.enabled && codeCrt.strength > 0) {
+      root.dataset.codeCrt = 'on';
+      style.setProperty('--retro-code-crt', (codeCrt.strength / 100).toFixed(2));
+    } else {
+      delete root.dataset.codeCrt;
+      style.setProperty('--retro-code-crt', '0');
+    }
+
+    const codeNoise = retroState.code.noise;
+    if (codeNoise.enabled && codeNoise.strength > 0) {
+      root.dataset.codeNoise = 'on';
+      style.setProperty('--retro-code-noise', (codeNoise.strength / 100).toFixed(2));
+    } else {
+      delete root.dataset.codeNoise;
+      style.setProperty('--retro-code-noise', '0');
+    }
+  }
+
+  function syncRetroUI() {
+    ['site', 'code'].forEach(scope => {
+      ['vhs', 'crt', 'noise'].forEach(effect => {
+        const item = retroState[scope][effect];
+        const toggle = document.getElementById(`retro-${scope}-${effect}-toggle`);
+        const slider = document.getElementById(`retro-${scope}-${effect}-slider`);
+        const valLabel = document.getElementById(`retro-${scope}-${effect}-val`);
+        const wrap = document.getElementById(`retro-${scope}-${effect}-slider-wrap`);
+
+        if (toggle) {
+          toggle.checked = item.enabled;
+        }
+        if (slider) {
+          slider.value = item.strength;
+        }
+        if (valLabel) {
+          valLabel.textContent = `${item.strength}%`;
+        }
+        if (wrap) {
+          wrap.classList.toggle('visible', item.enabled);
+        }
+      });
+    });
+  }
+
+  function openRetroPopover() {
+    const popover = document.getElementById('retro-popover');
+    const btn = document.getElementById('retro-btn');
+    if (!popover || !btn) return;
+
+    popover.classList.add('open');
+    popover.setAttribute('aria-hidden', 'false');
+    btn.setAttribute('aria-expanded', 'true');
+
+    const firstFocusable = popover.querySelector('button, input');
+    if (firstFocusable) {
+      firstFocusable.focus();
+    }
+  }
+
+  function closeRetroPopover() {
+    const popover = document.getElementById('retro-popover');
+    const btn = document.getElementById('retro-btn');
+    if (!popover || !btn) return;
+
+    if (popover.classList.contains('open')) {
+      popover.classList.remove('open');
+      popover.setAttribute('aria-hidden', 'true');
+      btn.setAttribute('aria-expanded', 'false');
+      btn.focus();
+    }
+  }
+
+  function toggleRetroPopover() {
+    const popover = document.getElementById('retro-popover');
+    if (!popover) return;
+    if (popover.classList.contains('open')) {
+      closeRetroPopover();
+    } else {
+      openRetroPopover();
+    }
+  }
+
+  function initRetroEffects() {
+    loadRetroState();
+    applyRetroEffects();
+    syncRetroUI();
+
+    const btn = document.getElementById('retro-btn');
+    const popover = document.getElementById('retro-popover');
+    const closeBtn = document.getElementById('retro-close-btn');
+
+    if (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        toggleRetroPopover();
+      });
+    }
+
+    if (closeBtn) {
+      closeBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closeRetroPopover();
+      });
+    }
+
+    if (popover) {
+      // Prevent clicks inside popover from closing it
+      popover.addEventListener('click', function (e) {
+        e.stopPropagation();
+      });
+
+      // Toggles change event
+      popover.querySelectorAll('input[type="checkbox"]').forEach(toggle => {
+        toggle.addEventListener('change', function () {
+          const scope = this.dataset.scope;
+          const effect = this.dataset.effect;
+          if (!scope || !effect || !retroState[scope] || !retroState[scope][effect]) return;
+
+          retroState[scope][effect].enabled = this.checked;
+          const wrap = document.getElementById(`retro-${scope}-${effect}-slider-wrap`);
+          if (wrap) {
+            wrap.classList.toggle('visible', this.checked);
+          }
+          applyRetroEffects();
+          saveRetroState();
+        });
+      });
+
+      // Sliders input event
+      popover.querySelectorAll('input[type="range"]').forEach(slider => {
+        slider.addEventListener('input', function () {
+          const scope = this.dataset.scope;
+          const effect = this.dataset.effect;
+          if (!scope || !effect || !retroState[scope] || !retroState[scope][effect]) return;
+
+          const strength = Math.max(0, Math.min(100, Math.round(Number(this.value))));
+          retroState[scope][effect].strength = strength;
+
+          const valLabel = document.getElementById(`retro-${scope}-${effect}-val`);
+          if (valLabel) {
+            valLabel.textContent = `${strength}%`;
+          }
+
+          applyRetroEffects();
+          saveRetroState();
+        });
+      });
+    }
+
+    // Close on click outside
+    document.addEventListener('click', function (e) {
+      if (!popover || !popover.classList.contains('open')) return;
+      if (!popover.contains(e.target) && (!btn || !btn.contains(e.target))) {
+        closeRetroPopover();
+      }
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && popover && popover.classList.contains('open')) {
+        closeRetroPopover();
+      }
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Запуск при загрузке DOM
   // -------------------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', function () {
@@ -909,6 +1172,7 @@
     initMobileMenu();
     initGlobalSearch();
     initThemeSwitcher();
+    initRetroEffects();
   });
 
 })();
