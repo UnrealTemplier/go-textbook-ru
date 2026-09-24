@@ -66,21 +66,22 @@ GO_LOGO_SVG = (
 ANTI_FLICKER_SCRIPT = (
     '<script>/* Theme & Retro anti-flicker */(function(){'
     'try{'
+    "var d=document.documentElement;"
     "var t=localStorage.getItem('go_encyclopedia_theme');"
-    "if(t&&['paper','light','dark'].includes(t)){document.documentElement.dataset.theme=t;}else{document.documentElement.dataset.theme='dark';}"
+    "if(t&&['paper','light','dark'].includes(t)){d.dataset.theme=t;}else{d.dataset.theme='dark';}"
     "var r=localStorage.getItem('go_encyclopedia_retro_effects');"
     "if(r){"
     "var c=JSON.parse(r);"
-    "var s=document.documentElement.style;"
+    "var s=d.style;"
     "if(c.site){"
-    "if(c.site.vhs&&c.site.vhs.enabled){s.setProperty('--retro-site-vhs',((c.site.vhs.strength||0)/100).toFixed(2));}"
-    "if(c.site.crt&&c.site.crt.enabled){s.setProperty('--retro-site-crt',((c.site.crt.strength||0)/100).toFixed(2));}"
-    "if(c.site.noise&&c.site.noise.enabled){s.setProperty('--retro-site-noise',((c.site.noise.strength||0)/100).toFixed(2));}"
+    "if(c.site.vhs&&c.site.vhs.enabled){d.dataset.siteVhs='on';s.setProperty('--retro-site-vhs',((c.site.vhs.strength||0)/100).toFixed(2));}"
+    "if(c.site.crt&&c.site.crt.enabled){d.dataset.siteCrt='on';s.setProperty('--retro-site-crt',((c.site.crt.strength||0)/100).toFixed(2));}"
+    "if(c.site.noise&&c.site.noise.enabled){d.dataset.siteNoise='on';s.setProperty('--retro-site-noise',((c.site.noise.strength||0)/100).toFixed(2));}"
     "}"
     "if(c.code){"
-    "if(c.code.vhs&&c.code.vhs.enabled){s.setProperty('--retro-code-vhs',((c.code.vhs.strength||0)/100).toFixed(2));}"
-    "if(c.code.crt&&c.code.crt.enabled){s.setProperty('--retro-code-crt',((c.code.crt.strength||0)/100).toFixed(2));}"
-    "if(c.code.noise&&c.code.noise.enabled){s.setProperty('--retro-code-noise',((c.code.noise.strength||0)/100).toFixed(2));}"
+    "if(c.code.vhs&&c.code.vhs.enabled){d.dataset.codeVhs='on';s.setProperty('--retro-code-vhs',((c.code.vhs.strength||0)/100).toFixed(2));}"
+    "if(c.code.crt&&c.code.crt.enabled){d.dataset.codeCrt='on';s.setProperty('--retro-code-crt',((c.code.crt.strength||0)/100).toFixed(2));}"
+    "if(c.code.noise&&c.code.noise.enabled){d.dataset.codeNoise='on';s.setProperty('--retro-code-noise',((c.code.noise.strength||0)/100).toFixed(2));}"
     "}"
     "}"
     "}catch(e){}"
@@ -155,39 +156,33 @@ RETRO_CONTROLS_HTML = (
     '    <fieldset class="retro-group">\n'
     '      <legend class="retro-group-legend">Весь сайт</legend>\n'
     '      <div class="retro-control-row" data-scope="site" data-effect="vhs">\n'
-    '        <div class="retro-row-header">\n'
-    '          <label class="retro-switch" for="retro-site-vhs-toggle">\n'
-    '            <input type="checkbox" id="retro-site-vhs-toggle" data-scope="site" data-effect="vhs">\n'
-    '            <span class="retro-switch-slider"></span>\n'
-    '            <span class="retro-switch-label">VHS / Scanlines</span>\n'
-    '          </label>\n'
-    '        </div>\n'
+    '        <label class="retro-switch" for="retro-site-vhs-toggle">\n'
+    '          <input type="checkbox" id="retro-site-vhs-toggle" data-scope="site" data-effect="vhs">\n'
+    '          <span class="retro-switch-slider"></span>\n'
+    '          <span class="retro-switch-label">VHS / Scanlines</span>\n'
+    '        </label>\n'
     '        <div class="retro-slider-wrap" id="retro-site-vhs-slider-wrap">\n'
     '          <input type="range" class="retro-slider" id="retro-site-vhs-slider" data-scope="site" data-effect="vhs" min="0" max="100" step="1" value="30" aria-label="Сила VHS для всего сайта">\n'
     '          <span class="retro-slider-val" id="retro-site-vhs-val">30%</span>\n'
     '        </div>\n'
     '      </div>\n'
     '      <div class="retro-control-row" data-scope="site" data-effect="crt">\n'
-    '        <div class="retro-row-header">\n'
-    '          <label class="retro-switch" for="retro-site-crt-toggle">\n'
-    '            <input type="checkbox" id="retro-site-crt-toggle" data-scope="site" data-effect="crt">\n'
-    '            <span class="retro-switch-slider"></span>\n'
-    '            <span class="retro-switch-label">CRT</span>\n'
-    '          </label>\n'
-    '        </div>\n'
+    '        <label class="retro-switch" for="retro-site-crt-toggle">\n'
+    '          <input type="checkbox" id="retro-site-crt-toggle" data-scope="site" data-effect="crt">\n'
+    '          <span class="retro-switch-slider"></span>\n'
+    '          <span class="retro-switch-label">CRT</span>\n'
+    '        </label>\n'
     '        <div class="retro-slider-wrap" id="retro-site-crt-slider-wrap">\n'
     '          <input type="range" class="retro-slider" id="retro-site-crt-slider" data-scope="site" data-effect="crt" min="0" max="100" step="1" value="30" aria-label="Сила CRT для всего сайта">\n'
     '          <span class="retro-slider-val" id="retro-site-crt-val">30%</span>\n'
     '        </div>\n'
     '      </div>\n'
     '      <div class="retro-control-row" data-scope="site" data-effect="noise">\n'
-    '        <div class="retro-row-header">\n'
-    '          <label class="retro-switch" for="retro-site-noise-toggle">\n'
-    '            <input type="checkbox" id="retro-site-noise-toggle" data-scope="site" data-effect="noise">\n'
-    '            <span class="retro-switch-slider"></span>\n'
-    '            <span class="retro-switch-label">Noise</span>\n'
-    '          </label>\n'
-    '        </div>\n'
+    '        <label class="retro-switch" for="retro-site-noise-toggle">\n'
+    '          <input type="checkbox" id="retro-site-noise-toggle" data-scope="site" data-effect="noise">\n'
+    '          <span class="retro-switch-slider"></span>\n'
+    '          <span class="retro-switch-label">Noise</span>\n'
+    '        </label>\n'
     '        <div class="retro-slider-wrap" id="retro-site-noise-slider-wrap">\n'
     '          <input type="range" class="retro-slider" id="retro-site-noise-slider" data-scope="site" data-effect="noise" min="0" max="100" step="1" value="20" aria-label="Сила Noise для всего сайта">\n'
     '          <span class="retro-slider-val" id="retro-site-noise-val">20%</span>\n'
@@ -197,39 +192,33 @@ RETRO_CONTROLS_HTML = (
     '    <fieldset class="retro-group">\n'
     '      <legend class="retro-group-legend">Блоки кода</legend>\n'
     '      <div class="retro-control-row" data-scope="code" data-effect="vhs">\n'
-    '        <div class="retro-row-header">\n'
-    '          <label class="retro-switch" for="retro-code-vhs-toggle">\n'
-    '            <input type="checkbox" id="retro-code-vhs-toggle" data-scope="code" data-effect="vhs">\n'
-    '            <span class="retro-switch-slider"></span>\n'
-    '            <span class="retro-switch-label">VHS / Scanlines</span>\n'
-    '          </label>\n'
-    '        </div>\n'
+    '        <label class="retro-switch" for="retro-code-vhs-toggle">\n'
+    '          <input type="checkbox" id="retro-code-vhs-toggle" data-scope="code" data-effect="vhs">\n'
+    '          <span class="retro-switch-slider"></span>\n'
+    '          <span class="retro-switch-label">VHS / Scanlines</span>\n'
+    '        </label>\n'
     '        <div class="retro-slider-wrap" id="retro-code-vhs-slider-wrap">\n'
     '          <input type="range" class="retro-slider" id="retro-code-vhs-slider" data-scope="code" data-effect="vhs" min="0" max="100" step="1" value="30" aria-label="Сила VHS для блоков кода">\n'
     '          <span class="retro-slider-val" id="retro-code-vhs-val">30%</span>\n'
     '        </div>\n'
     '      </div>\n'
     '      <div class="retro-control-row" data-scope="code" data-effect="crt">\n'
-    '        <div class="retro-row-header">\n'
-    '          <label class="retro-switch" for="retro-code-crt-toggle">\n'
-    '            <input type="checkbox" id="retro-code-crt-toggle" data-scope="code" data-effect="crt">\n'
-    '            <span class="retro-switch-slider"></span>\n'
-    '            <span class="retro-switch-label">CRT</span>\n'
-    '          </label>\n'
-    '        </div>\n'
+    '        <label class="retro-switch" for="retro-code-crt-toggle">\n'
+    '          <input type="checkbox" id="retro-code-crt-toggle" data-scope="code" data-effect="crt">\n'
+    '          <span class="retro-switch-slider"></span>\n'
+    '          <span class="retro-switch-label">CRT</span>\n'
+    '        </label>\n'
     '        <div class="retro-slider-wrap" id="retro-code-crt-slider-wrap">\n'
     '          <input type="range" class="retro-slider" id="retro-code-crt-slider" data-scope="code" data-effect="crt" min="0" max="100" step="1" value="40" aria-label="Сила CRT для блоков кода">\n'
     '          <span class="retro-slider-val" id="retro-code-crt-val">40%</span>\n'
     '        </div>\n'
     '      </div>\n'
     '      <div class="retro-control-row" data-scope="code" data-effect="noise">\n'
-    '        <div class="retro-row-header">\n'
-    '          <label class="retro-switch" for="retro-code-noise-toggle">\n'
-    '            <input type="checkbox" id="retro-code-noise-toggle" data-scope="code" data-effect="noise">\n'
-    '            <span class="retro-switch-slider"></span>\n'
-    '            <span class="retro-switch-label">Noise</span>\n'
-    '          </label>\n'
-    '        </div>\n'
+    '        <label class="retro-switch" for="retro-code-noise-toggle">\n'
+    '          <input type="checkbox" id="retro-code-noise-toggle" data-scope="code" data-effect="noise">\n'
+    '          <span class="retro-switch-slider"></span>\n'
+    '          <span class="retro-switch-label">Noise</span>\n'
+    '        </label>\n'
     '        <div class="retro-slider-wrap" id="retro-code-noise-slider-wrap">\n'
     '          <input type="range" class="retro-slider" id="retro-code-noise-slider" data-scope="code" data-effect="noise" min="0" max="100" step="1" value="20" aria-label="Сила Noise для блоков кода">\n'
     '          <span class="retro-slider-val" id="retro-code-noise-val">20%</span>\n'
