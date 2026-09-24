@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~23 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~24 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">22. Системные вызовы. Как программа просит ОС что-то сделать</h1>
@@ -2366,46 +2366,22 @@ style Good fill:#064e3b,stroke:#34d399,color:#fff
 <h2 id="go-runtime-i-blokiruyushchie-sistemnye-vyzovy">Go runtime и блокирующие системные вызовы</h2>
 
 <p>В Go системные вызовы обрабатываются особенно интересно из-за планировщика горутин (G-M-P).</p>
-<p>Когда горутина делает <strong>блокирующий</strong> syscall (например, чтение с диска или TCP-сокета), она блокирует весь системный тред (M), на котором работает. Если бы планировщик просто "ждал", остальные горутины на этом треде простаивали бы.</p>
-<h3 id="mekhanizm-hand-off-i-pinning">Механизм Hand-off и Pinning</h3>
+<p>Когда горутина делает <strong>блокирующий</strong> syscall (например, прямое чтение с диска через <code>os.File</code> или CGO-вызов), системный поток операционной системы (<code>M</code>), на котором она исполняется, входит в ядро и переходит в состояние сна. Если бы планировщик ничего не предпринимал, логический процессор (<code>P</code>) и все остальные горутины в его очереди простаивали бы вместе с заблокированным потоком.</p>
+<h3 id="mekhanizm-hand-off-protsessora-p">Механизм Hand-off процессора (P)</h3>
 <ol>
-<li><strong>Pinning:</strong> В момент входа в syscall Go runtime "прибивает" (pin) горутину к текущему треду M. Это гарантирует, что ядро не потеряет дескрипторы и контекст.</li>
-<li><strong>Detection:</strong> Планировщик (в отдельном тредe <code>sched</code>) видит, что тред M ушел в blocking syscall.</li>
-<li><strong>Hand-off:</strong> Планировщик "отцепляет" горутину от треда, переводит её в состояние <code>Gwaiting</code> (вызывает <code>gopark</code>), и передает управление другой горутине на этом же треду. Если тредов не хватает, он создает новый тред ОС (<code>mksyscall</code> -&gt; <code>newm</code>).</li>
-<li><strong>Wake-up:</strong> Когда syscall завершается, ядро возвращает управление. Go runtime видит это, переводит горутину в <code>Grunnable</code> (<code>goready</code>), и добавляет её в очередь планировщика (P).</li>
+<li><strong>Вход в syscall (<code>entersyscall</code>):</strong> Рантайм сохраняет регистры горутины (PC, SP), переводит её статус в <code>_Gsyscall</code> и отвязывает логический процессор <code>P</code> от потока <code>M</code> (с сохранением временной ассоциации). Поток <code>M</code> продолжает удерживать горутину <code>G</code> и уходит в блокирующий системный вызов ядра.</li>
+<li><strong>Детекция и Hand-off (<code>handoffp</code>):</strong> Если вызов заведомо блокирующий (<code>entersyscallblock</code>), <code>P</code> отвязывается немедленно. В стандартном случае фоновый системный монитор (<code>sysmon</code>), работающий без собственного <code>P</code>, каждые 20 мкс — 10 мс опрашивает потоки <code>M</code>. Если поток <code>M</code> застрял в системном вызове дольше одного такта (~10 мс), <code>sysmon</code> принудительно отбирает у него контекст <code>P</code> (<code>handoffp</code>).</li>
+<li><strong>Исполнение готовых горутин:</strong> Освободившийся процессор <code>P</code> подхватывается другим свободным потоком ОС (<code>M2</code>) из пула ожидания либо создается новый поток (<code>newm</code>). Поток <code>M2</code> продолжает исполнять очередь горутин без задержек.</li>
+<li><strong>Выход из syscall (<code>exitsyscall</code>):</strong> Когда ядро возвращает результат, поток <code>M</code> пытается вернуть свой старый <code>P</code> или захватить любой свободный <code>P</code>. Если свободного <code>P</code> нет, горутина переводится в статус <code>_Grunnable</code> и отправляется в глобальную очередь (<code>sched.runqput</code>), а сам поток <code>M</code> паркуется (<code>mPark</code> / <code>notesleep</code>) до востребования.</li>
 </ol>
-
-<div class="code-block" data-lang="go">
-  <header class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
-    </button>
-  </header>
-  <pre class="language-go"><code class="language-go">// Псевдокод внутреннего устройства runtime в Go 1.14+
-// Когда горутина делает blocking syscall:
-if isBlockingSyscall() {
-    runtime.gopark(lockAddr, waitReason, traceEv) // Усыпляем горутину
-    runtime.munpin() // Отцепляем от треда M
-    // Планировщик может создать новый тред или переназначить P
-}
-
-// Когда syscall возвращается:
-if syscallRet &gt; 0 || (syscallRet == -1 &amp;&amp; errno != EAGAIN) {
-    runtime.goready(g, 0) // Будим горутину
-}
-</code></pre>
-</div>
-
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
     <span class="callout-title">Собеседование</span>
   </header>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Что произойдет, если горутина сделает блокирующий syscall и не вернется (зависнет в ядре)?<br />
-<strong>Ответ:</strong> Тред M будет заблокирован навсегда. Планировщик Go не может его убить. Это приведет к утечке тредов ОС и падению производительности всей программы, так как другие горутины не смогут исполняться на этом треде. Именно поэтому в Go принято использовать неблокирующие сокеты (<code>SetDeadline</code>, <code>SetReadDeadline</code>) или <code>io_uring</code>/<code>epoll</code> для управления временем ожидания на уровне приложения, а не ядра.</p>
+    <p><strong>Вопрос:</strong> Что произойдет, если горутина сделает блокирующий syscall и зависнет в ядре?<br />
+<strong>Ответ:</strong> Тред M будет заблокирован в ядре навсегда вместе с этой горутиной. Планировщик Go не может принудительно прервать или убить системный поток ОС, застрявший в ядре. Однако благодаря механизму Hand-off контекст <code>P</code> будет отобран и передан другому треду <code>M</code>, поэтому остальные горутины продолжат работу. Для сетевых операций в Go используется неблокирующий ввод-вывод через netpoller (<code>epoll</code>), поэтому сетевые чтения не приводят к блокировке тредов ОС в ядре.</p>
   </div>
 </aside>
 
@@ -2415,7 +2391,7 @@ if syscallRet &gt; 0 || (syscallRet == -1 &amp;&amp; errno != EAGAIN) {
 <ol>
 <li><strong>Минимизация syscall:</strong> Используйте <code>bufio</code>, <code>bytes.Buffer</code>, <code>sync.Pool</code> для буферов. Избегайте мелких аллокаций и чтений.</li>
 <li><strong><code>mmap</code> вместо <code>Read/Write</code>:</strong> Для больших файлов или часто читаемых данных используйте <code>mmap</code>. Он создает отображение файла в виртуальную память. Чтение работает как доступ к RAM. Запись происходит через Page Fault (lazy allocation) и write-back ядром. Это убирает syscall на каждый байт.</li>
-<li><strong><code>io_uring</code> (Linux 5.1+):</strong> Современная замена <code>epoll</code> + <code>readv/writev</code>. Позволяет отправлять I/O запросы в ядро один раз, а результаты получать асинхронно. Go 1.21+ активно внедряет <code>io_uring</code> в <code>netpoller</code> и <code>os</code> пакеты.</li>
+<li><strong><code>io_uring</code> (Linux 5.1+):</strong> Современный асинхронный интерфейс ввода-вывода ядра Linux на разделяемых кольцевых буферах (SQ/CQ). Позволяет отправлять пачки I/O запросов в ядро без системного вызова на каждый чих. В стандартной библиотеке Go сетевой поллер опирается на проверенный <code>epoll</code>/<code>kqueue</code>, а поддержка <code>io_uring</code> доступна через сторонние специализированные библиотеки (например, Gain или go-uring).</li>
 <li><strong>CGO и syscall:</strong> Каждый переход в CGO (<code>#cgo</code>) и обратно — это отдельный syscall и контекстный переход. Избегайте частых вызовов CGO в hot-path.</li>
 </ol>
 <aside class="callout callout-info" aria-label="Под капотом">
@@ -2424,7 +2400,7 @@ if syscallRet &gt; 0 || (syscallRet == -1 &amp;&amp; errno != EAGAIN) {
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p>В Go 1.22+ планировщик научился "предугадывать" завершение syscall. Если горутина сделала non-blocking syscall (например, <code>epoll_wait</code> с таймаутом), runtime может использовать <code>futex</code> (Fast Userspace Mutex) для оптимизации ожидания, избегая лишних переключений в ядро, если событие уже наступило.</p>
+    <p>Фоновый системный монитор рантайма Go (<code>sysmon</code>) работает в отдельном потоке ОС без собственного <code>P</code>. Каждые 20 мкс — 10 мс <code>sysmon</code> обходит потоки <code>M</code>: если поток находится в системном вызове дольше ~10 мс и в локальной очереди есть готовые задачи, <code>sysmon</code> принудительно забирает у него контекст <code>P</code> (<code>handoffp</code>) и запускает другой поток <code>M</code> для продолжения работы.</p>
   </div>
 </aside>
 
@@ -2445,7 +2421,7 @@ if syscallRet &gt; 0 || (syscallRet == -1 &amp;&amp; errno != EAGAIN) {
 </tr>
 <tr>
 <td>Как Go scheduler справляется с блокирующим syscall?</td>
-<td>Pinning goroutine to M, hand-off к другому M, gopark/goready, создание новых M при нехватке.</td>
+<td>Поток M блокируется в ядре вместе с G, но логический процессор P отвязывается (<code>handoffp</code>) и передается другому M для исполнения готовых горутин.</td>
 </tr>
 <tr>
 <td>Как отличить blocking от non-blocking syscall?</td>
@@ -2457,7 +2433,7 @@ if syscallRet &gt; 0 || (syscallRet == -1 &amp;&amp; errno != EAGAIN) {
 </tr>
 <tr>
 <td>Как оптимизировать сетевой бэкенд?</td>
-<td><code>io_uring</code>, <code>TCP_NODELAY</code>, <code>SO_REUSEPORT</code>, пулинг соединений, <code>bufio</code>, отказ от мелких аллокаций, tuning <code>net.core.somaxconn</code>.</td>
+<td>Неблокирующий ввод-вывод (netpoller), <code>TCP_NODELAY</code>, <code>SO_REUSEPORT</code>, пулинг буферов (<code>sync.Pool</code>), <code>bufio</code>, tuning <code>net.core.somaxconn</code>.</td>
 </tr>
 </tbody>
 </table></div>
@@ -2467,8 +2443,8 @@ if syscallRet &gt; 0 || (syscallRet == -1 &amp;&amp; errno != EAGAIN) {
 <ol>
 <li><strong>Системные вызовы</strong> — это контролируемый переход из User Space (Ring 3) в Kernel Space (Ring 0) для доступа к привилегированным ресурсам.</li>
 <li><strong>Стоимость</strong> огромна из-за сброса конвейера CPU, инвалидации TLB и смены контекста. Каждый syscall должен быть оправдан.</li>
-<li><strong>Go runtime</strong> интеллектуально обрабатывает блокирующие вызовы через механизм pinning/hand-off, чтобы не терять производительность планировщика.</li>
-<li><strong>Оптимизация</strong> строится на буферизации, <code>mmap</code>, <code>io_uring</code> и агрегации запросов.</li>
+<li><strong>Go runtime</strong> интеллектуально обрабатывает блокирующие вызовы через механизм hand-off процессоров <code>P</code>, чтобы не терять общую пропускную способность планировщика.</li>
+<li><strong>Оптимизация</strong> строится на буферизации, <code>mmap</code>, неблокирующем вводе-выводе и агрегации запросов.</li>
 </ol>
 <p>Мы разобрали сам механизм запроса ресурсов у ядра. В следующей статье мы детально пройдемся по конкретным системным вызовам, которые бэкенд-разработчик использует ежедневно: <code>read</code>, <code>write</code>, <code>accept</code>, <code>mmap</code>, <code>epoll_ctl</code>, <code>clone</code> и другим: <code>&lt;a href="23-osnovnye-sistemnye-vyzovy-linux-dlya-bekend-razrabot.html" class="wikilink"&gt;23. Основные системные вызовы Linux для бэкенд-разработчика&lt;/a&gt;</code>.</p>
           </div>
@@ -2498,7 +2474,7 @@ if syscallRet &gt; 0 || (syscallRet == -1 &amp;&amp; errno != EAGAIN) {
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#granitsa-mezhdu-user-space-i-kernel-space">Граница между User Space и Kernel Space</a></li><li class="toc-item toc-h2"><a href="#mekhanizm-perekhoda-v-yadro-under-the-hood">Механизм перехода в ядро (Under the Hood)</a></li><li class="toc-item toc-h3"><a href="#1-argumenty-i-registry-cpu">1. Аргументы и регистры CPU</a></li><li class="toc-item toc-h3"><a href="#2-instruktsii-perekhoda">2. Инструкции перехода</a></li><li class="toc-item toc-h2"><a href="#mekhanika-i-tsena-perekhoda-mechanical-sympathy">Механика и цена перехода (Mechanical Sympathy)</a></li><li class="toc-item toc-h2"><a href="#go-runtime-i-blokiruyushchie-sistemnye-vyzovy">Go runtime и блокирующие системные вызовы</a></li><li class="toc-item toc-h3"><a href="#mekhanizm-hand-off-i-pinning">Механизм Hand-off и Pinning</a></li><li class="toc-item toc-h2"><a href="#lovushki-i-praktiki-optimizatsii">Ловушки и практики оптимизации</a></li><li class="toc-item toc-h2"><a href="#sobesedovanie-na-chto-smotryat-na-intervyu">Собеседование: На что смотрят на интервью</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#granitsa-mezhdu-user-space-i-kernel-space">Граница между User Space и Kernel Space</a></li><li class="toc-item toc-h2"><a href="#mekhanizm-perekhoda-v-yadro-under-the-hood">Механизм перехода в ядро (Under the Hood)</a></li><li class="toc-item toc-h3"><a href="#1-argumenty-i-registry-cpu">1. Аргументы и регистры CPU</a></li><li class="toc-item toc-h3"><a href="#2-instruktsii-perekhoda">2. Инструкции перехода</a></li><li class="toc-item toc-h2"><a href="#mekhanika-i-tsena-perekhoda-mechanical-sympathy">Механика и цена перехода (Mechanical Sympathy)</a></li><li class="toc-item toc-h2"><a href="#go-runtime-i-blokiruyushchie-sistemnye-vyzovy">Go runtime и блокирующие системные вызовы</a></li><li class="toc-item toc-h3"><a href="#mekhanizm-hand-off-protsessora-p">Механизм Hand-off процессора (P)</a></li><li class="toc-item toc-h2"><a href="#lovushki-i-praktiki-optimizatsii">Ловушки и практики оптимизации</a></li><li class="toc-item toc-h2"><a href="#sobesedovanie-na-chto-smotryat-na-intervyu">Собеседование: На что смотрят на интервью</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

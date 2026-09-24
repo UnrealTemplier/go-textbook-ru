@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~20 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~21 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">30. systemd. Управление сервисами в Linux</h1>
@@ -2355,19 +2355,23 @@ App-&gt;&gt;Client: Обработка HTTP-запроса
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-go"><code class="language-go">// Пример получения FD от systemd
+  <pre class="language-go"><code class="language-go">// Пример получения сокета от systemd (Socket Activation)
 func getListenFD() (net.Listener, error) {
-    if fdStr, ok := os.LookupEnv(&quot;LISTEN_FDS&quot;); ok {
-        fd, err := strconv.Atoi(fdStr)
-        if err != nil {
-            return nil, fmt.Errorf(&quot;invalid LISTEN_FDS: %w&quot;, err)
+    // systemd передает PID процесса в LISTEN_PID и количество дескрипторов в LISTEN_FDS
+    if pidStr, ok := os.LookupEnv(&quot;LISTEN_PID&quot;); ok &amp;&amp; pidStr == strconv.Itoa(os.Getpid()) {
+        if fdStr, ok := os.LookupEnv(&quot;LISTEN_FDS&quot;); ok {
+            nfds, err := strconv.Atoi(fdStr)
+            if err != nil {
+                return nil, fmt.Errorf(&quot;invalid LISTEN_FDS: %w&quot;, err)
+            }
+            if nfds &gt; 0 {
+                // Дескрипторы от systemd всегда начинаются с FD 3 (SD_LISTEN_FDS_START)
+                const sdListenFdsStart = 3
+                f := os.NewFile(uintptr(sdListenFdsStart), &quot;systemd-listen-socket&quot;)
+                defer f.Close() // net.FileListener выполняет dup(fd); исходный os.File нужно закрыть
+                return net.FileListener(f)
+            }
         }
-        f := os.NewFile(uintptr(fd), &quot;&quot;)
-        conn, err := net.FileConn(f)
-        if err != nil {
-            return nil, fmt.Errorf(&quot;net.FileConn failed: %w&quot;, err)
-        }
-        return conn, nil
     }
     return net.Listen(&quot;tcp&quot;, &quot;:8080&quot;)
 }
@@ -2380,7 +2384,10 @@ func getListenFD() (net.Listener, error) {
     <span class="callout-title">Ловушка / Gotcha</span>
   </header>
   <div class="callout-body">
-    <p>Не используйте <code>os.NewFile(uintptr(fd), "").Close()</code> после получения <code>net.FileConn</code>. <code>net.FileConn</code> создает обертку, которая <strong>не закроет</strong> базовый FD при <code>Close()</code>. Это намеренно: systemd должен контролировать жизненный цикл сокета. Закрывать сокет должен только systemd или явный <code>systemctl stop</code>.</p>
+    <ol>
+<li>Переменная окружения <code>LISTEN_FDS</code> хранит <strong>количество</strong> переданных дескрипторов, а не сам номер FD. Переданные сокеты в протоколе systemd всегда начинаются с <strong>FD 3</strong> (<code>SD_LISTEN_FDS_START</code>), так как дескрипторы 0, 1, 2 закреплены за <code>stdin</code>, <code>stdout</code>, <code>stderr</code>.</li>
+<li>Функция <code>net.FileListener(f)</code> (как и <code>net.FileConn(f)</code>) внутренне вызывает <code>dup()</code> для создания собственного дескриптора в неблокирующем режиме. Поэтому исходный <code>*os.File</code> <strong>необходимо закрыть</strong> (<code>f.Close()</code>), иначе в приложении возникнет утечка файловых дескрипторов при инициализации.</li>
+</ol>
   </div>
 </aside>
 

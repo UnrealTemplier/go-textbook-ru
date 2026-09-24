@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~22 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~23 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">23. Основные системные вызовы Linux для бэкенд-разработчика</h1>
@@ -2281,12 +2281,12 @@ style ZeroCopy fill:#064e3b,stroke:#34d399,color:#fff
   </div>
 </aside>
 
-<h3 id="futex-i-primitivy-sinkhronizatsii">Futex и примитивы синхронизации</h3>
-<p><code>sync.Mutex</code> в Go реализует гибридную модель:<br />
-1. <strong>Fast path:</strong> Атомарная операция <code>CMPXCHG</code> в user space. Если мьютекс свободен, блокировка берётся за несколько тактов CPU без syscall.<br />
-2. <strong>Slow path:</strong> Если мьютекс занят, вызывается <code>futex(FUTEX_WAIT, addr, val, timeout)</code>. Ядро помещает горутину в очередь ожидания и переключает контекст.<br />
-3. <strong>Wake:</strong> При освобождении мьютекса вызывается <code>futex(FUTEX_WAKE, addr, n)</code>. Ядро разбудит нужное количество горутин.</p>
-<p>Это объясняет, почему <code>sync.Mutex</code> в Go так быстр: 90%+ операций проходят без участия ядра.</p>
+<h3 id="futex-i-primitivy-sinkhronizatsii-v-rantayme-go">Futex и примитивы синхронизации в рантайме Go</h3>
+<p>Для синхронизации потоков ОС ядро Linux предоставляет системный вызов <code>futex</code> (Fast Userspace Mutex). В Go разделяются синхронизация горутин и системных потоков:<br />
+1. <strong>Синхронизация горутин (<code>sync.Mutex</code>):</strong> Работает полностью в пространстве пользователя.<br />
+   - <strong>Fast path:</strong> Атомарный <code>CAS</code> (<code>CMPXCHG</code>). Если мьютекс свободен, захват происходит за несколько наносекунд (0 системных вызовов).<br />
+   - <strong>Slow path:</strong> При конфликте горутина после кратковременного спин-цикла уходит в <code>runtime_SemacquireMutex</code>. Рантайм Go помещает горутину в очередь ожидания семафора и переводит в <code>_Gwaiting</code> (<code>gopark</code>). <strong>Системный вызов futex не вызывается</strong> — системный тред <code>M</code> не блокируется в ядре, а сразу берёт на исполнение другую готовую горутину!<br />
+2. <strong>Синхронизация тредов ядра (<code>M</code>):</strong> Если у треда <code>M</code> нет готовых горутин или рантайм захватывает низкоуровневые внутренние локи (<code>runtime.mutex</code>, <code>notesleep</code>), рантайм Go обращается к <code>futex(FUTEX_WAIT)</code> и <code>futex(FUTEX_WAKE)</code> для парковки и пробуждения самого треда ОС.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -2305,16 +2305,16 @@ Lock[&quot;sync.Mutex.Lock()&quot;] --&gt; CAS{&quot;Атомарный CAS (CMP
 CAS -- &quot;Успех (мьютекс свободен)&quot; --&gt; Acquired[&quot;Захвачен за 1 такт CPU (0 syscalls)&quot;]
 CAS -- &quot;Конфликт (занят)&quot; --&gt; Spin{&quot;Краткий spin-wait?&quot;}
 Spin -- &quot;Освободился&quot; --&gt; Acquired
-Spin -- &quot;Все еще занят&quot; --&gt; FutexWait[&quot;Syscall: futex(FUTEX_WAIT)&lt;br/&gt;Усыпление горутины в ядре&quot;]
+Spin -- &quot;Все еще занят&quot; --&gt; SemWait[&quot;runtime_SemacquireMutex&lt;br/&gt;gopark(): сон горутины в userspace (0 syscalls)&quot;]
 
 Unlock[&quot;sync.Mutex.Unlock()&quot;] --&gt; FastUn{&quot;Мьютекс освобожден без очереди?&quot;}
 FastUn -- &quot;Да&quot; --&gt; Released[&quot;Сброс бита в User Space (0 syscalls)&quot;]
-FastUn -- &quot;Есть ожидающие&quot; --&gt; FutexWake[&quot;Syscall: futex(FUTEX_WAKE)&lt;br/&gt;Пробуждение горутины ядром&quot;]
+FastUn -- &quot;Есть ожидающие&quot; --&gt; SemWake[&quot;runtime_Semrelease&lt;br/&gt;goready(): пробуждение горутины планировщиком Go&quot;]
 
 style Acquired fill:#064e3b,stroke:#34d399,color:#fff
 style Released fill:#064e3b,stroke:#34d399,color:#fff
-style FutexWait fill:#4b1d1d,stroke:#f87171,color:#fff
-style FutexWake fill:#1e3a5f,stroke:#38bdf8,color:#fff
+style SemWait fill:#4b1d1d,stroke:#f87171,color:#fff
+style SemWake fill:#1e3a5f,stroke:#38bdf8,color:#fff
   </pre>
 </figure>
 
@@ -2436,7 +2436,7 @@ style FutexWake fill:#1e3a5f,stroke:#38bdf8,color:#fff
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#vvedenie-sistemnye-vyzovy-kak-fundament-proizvoditelnosti">Введение: Системные вызовы как фундамент производительности</a></li><li class="toc-item toc-h2"><a href="#kriticheski-vazhnye-sistemnye-vyzovy-dlya-bekenda">Критически важные системные вызовы для бэкенда</a></li><li class="toc-item toc-h3"><a href="#1-setevoy-i-faylovyy-io">1. Сетевой и файловый IO</a></li><li class="toc-item toc-h3"><a href="#2-protsessy-potoki-i-sinkhronizatsiya">2. Процессы, потоки и синхронизация</a></li><li class="toc-item toc-h3"><a href="#3-vremya-i-taymery">3. Время и таймеры</a></li><li class="toc-item toc-h2"><a href="#pod-kapotom-kak-go-runtime-vyzyvaet-yadro">Под капотом: как Go runtime вызывает ядро</a></li><li class="toc-item toc-h3"><a href="#pryamoy-vyzov-yadra-vs-libc-obyortka">Прямой вызов ядра vs libc-обёртка</a></li><li class="toc-item toc-h3"><a href="#futex-i-primitivy-sinkhronizatsii">Futex и примитивы синхронизации</a></li><li class="toc-item toc-h3"><a href="#epyul-epoll-i-setevoy-stek">Эпюл (epoll) и сетевой стек</a></li><li class="toc-item toc-h2"><a href="#proizvoditelnost-optimizatsiya-i-tipichnye-lovushki">Производительность, оптимизация и типичные ловушки</a></li><li class="toc-item toc-h3"><a href="#stoimost-sistemnogo-vyzova">Стоимость системного вызова</a></li><li class="toc-item toc-h3"><a href="#buferizatsiya-i-zero-copy">Буферизация и Zero-Copy</a></li><li class="toc-item toc-h3"><a href="#blokiruyushchie-vs-neblokiruyushchie-vyzovy">Блокирующие vs неблокирующие вызовы</a></li><li class="toc-item toc-h2"><a href="#voprosy-na-sobesedovaniyakh-i-prakticheskie-insayty">Вопросы на собеседованиях и практические инсайты</a></li><li class="toc-item toc-h3"><a href="#diagnostika-i-otladka">Диагностика и отладка</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#vvedenie-sistemnye-vyzovy-kak-fundament-proizvoditelnosti">Введение: Системные вызовы как фундамент производительности</a></li><li class="toc-item toc-h2"><a href="#kriticheski-vazhnye-sistemnye-vyzovy-dlya-bekenda">Критически важные системные вызовы для бэкенда</a></li><li class="toc-item toc-h3"><a href="#1-setevoy-i-faylovyy-io">1. Сетевой и файловый IO</a></li><li class="toc-item toc-h3"><a href="#2-protsessy-potoki-i-sinkhronizatsiya">2. Процессы, потоки и синхронизация</a></li><li class="toc-item toc-h3"><a href="#3-vremya-i-taymery">3. Время и таймеры</a></li><li class="toc-item toc-h2"><a href="#pod-kapotom-kak-go-runtime-vyzyvaet-yadro">Под капотом: как Go runtime вызывает ядро</a></li><li class="toc-item toc-h3"><a href="#pryamoy-vyzov-yadra-vs-libc-obyortka">Прямой вызов ядра vs libc-обёртка</a></li><li class="toc-item toc-h3"><a href="#futex-i-primitivy-sinkhronizatsii-v-rantayme-go">Futex и примитивы синхронизации в рантайме Go</a></li><li class="toc-item toc-h3"><a href="#epyul-epoll-i-setevoy-stek">Эпюл (epoll) и сетевой стек</a></li><li class="toc-item toc-h2"><a href="#proizvoditelnost-optimizatsiya-i-tipichnye-lovushki">Производительность, оптимизация и типичные ловушки</a></li><li class="toc-item toc-h3"><a href="#stoimost-sistemnogo-vyzova">Стоимость системного вызова</a></li><li class="toc-item toc-h3"><a href="#buferizatsiya-i-zero-copy">Буферизация и Zero-Copy</a></li><li class="toc-item toc-h3"><a href="#blokiruyushchie-vs-neblokiruyushchie-vyzovy">Блокирующие vs неблокирующие вызовы</a></li><li class="toc-item toc-h2"><a href="#voprosy-na-sobesedovaniyakh-i-prakticheskie-insayty">Вопросы на собеседованиях и практические инсайты</a></li><li class="toc-item toc-h3"><a href="#diagnostika-i-otladka">Диагностика и отладка</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

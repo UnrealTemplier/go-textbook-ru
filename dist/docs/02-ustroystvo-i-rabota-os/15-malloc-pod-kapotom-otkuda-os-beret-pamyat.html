@@ -2256,8 +2256,8 @@
 <ol>
 <li><strong>Arenas (Арены):</strong> Чтобы потоки не блокировали друг друга на общем мьютексе кучи, glibc создает независимые пулы памяти — арены (обычно до 8 x число ядер CPU).</li>
 <li><strong>Chunks (Куски памяти):</strong> Вся память арены нарезана на чанки (<code>chunks</code>). Каждый чанк несет служебный заголовок: размер блока и битовые флаги (занят/свободен). Свободные чанки организуются в циклические двусвязные списки — <code>free lists</code> (fastbins, small bins, large bins, unsorted bin).</li>
-<li><strong>TCache (Thread-Cache):</strong> Начиная с glibc 2.26, каждый системный поток получает собственный ультрабыстрый локальный кэш <code>tcache</code> на 64 класса размеров. Запросы до 128 КБ обслуживаются мгновенно без захвата мьютексов арены.</li>
-<li><strong>Порог mmap (Mmap Threshold):</strong> Если запрашиваемый размер превышает динамический порог <code>mmap_threshold</code> (по умолчанию от 128 КБ до нескольких мегабайт), <code>malloc</code> вообще не лезет в арены, а обращается напрямую к ядру через системный вызов <code>mmap</code>.</li>
+<li><strong>TCache (Thread-Cache):</strong> Начиная с glibc 2.26, каждый системный поток получает собственный ультрабыстрый локальный кэш <code>tcache</code> на 64 класса размеров (для мелких блоков до ~1 КБ). Мелкие запросы обслуживаются мгновенно без захвата мьютексов арены.</li>
+<li><strong>Арены и порог mmap:</strong> Запросы среднего размера (до 128 КБ) обслуживаются списками арены (fastbins, smallbins, largebins), пополняемыми через <code>brk</code> (или суб-арены). Если запрашиваемый размер превышает порог <code>mmap_threshold</code> (по умолчанию от 128 КБ), <code>malloc</code> выделяет память напрямую у ядра через системный вызов <code>mmap</code>.</li>
 </ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -2284,13 +2284,13 @@ classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
 classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
 classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
 App[&quot;Приложение (C / C++):::process&quot;] --&gt;|malloc| Libc[&quot;glibc malloc (ptmalloc)&quot;]
-Libc --&gt;|&lt; 128KB| Tcache[&quot;TCache
+Libc --&gt;|До ~1032 байт| Tcache[&quot;TCache
 Локальный кэш потока&quot;]
-Libc --&gt;|&gt; 128KB| Mmap[&quot;Системный вызов mmap
+Tcache -.-&gt;|Если пуст| Arena[&quot;Арена потока (bins)&quot;]
+Libc --&gt;|До 128KB| Arena
+Arena --&gt;|Рост кучи арены| Brk[&quot;Системный вызов brk / sbrk&quot;]
+Libc --&gt;|Свыше 128KB (mmap threshold)| Mmap[&quot;Системный вызов mmap
 (Анонимное отображение)&quot;]
-Libc --&gt;|Пул арены| Brk[&quot;Системный вызов sbrk
-(Сдвиг program break)&quot;]
-Tcache -.-&gt;|Если пуст| Libc
 Mmap --&gt; PageTable[&quot;Ядро Linux:
 Таблица страниц и VMA&quot;]
 Brk --&gt; PageTable

@@ -2575,7 +2575,7 @@ participant K as Ядро Linux (epoll)
 G-&gt;&gt;M: net.Conn.Read(buf)
 Note over M: syscall read() -&gt; EAGAIN (нет данных)
 M-&gt;&gt;NP: Регистрация сокета в netpoll
-NP-&gt;&gt;K: epoll_ctl(EPOLL_CTL_ADD, fd, EPOLLONESHOT)
+NP-&gt;&gt;K: epoll_ctl(EPOLL_CTL_ADD, fd, EPOLLET | ...)
 M-&gt;&gt;G: runtime.gopark() (Горутина засыпает: _Gwaiting)
 Note over M: Тред M свободен! Берет другую горутину.
 
@@ -2602,7 +2602,7 @@ Note over G: Горутина продолжает Read(buf) без ошибок
   </header>
   <div class="callout-body">
     <p>В исходном коде рантайма Go (<code>src/runtime/netpoll_epoll.go</code>) реализована прямая и предельно оптимизированная работа с системными вызовами <code>epoll_create1</code>, <code>epoll_ctl</code> и <code>epoll_wait</code>. </p>
-<p>Чтобы исключить состояние гонки (Race Condition), когда два системных потока одновременно просыпаются по событию одного и того же сокета, Go регистрирует дескрипторы с флагом <code>EPOLLONESHOT</code>. Это заставляет ядро отключать уведомления после первого же события, передавая контроль над повторной активацией дескриптора в руки рантайма Go.</p>
+<p>Go регистрирует дескрипторы сокетов один раз при инициализации с флагом <code>EPOLLET</code> (Edge-Triggered) в комбинации с <code>EPOLLIN | EPOLLOUT | EPOLLRDHUP</code>. В отличие от флага <code>EPOLLONESHOT</code>, требующего постоянного повторного включения через <code>epoll_ctl(EPOLL_CTL_MOD)</code>, edge-triggered режим избавляет рантайм от лишних системных вызовов модификации, а синхронизация и защита от гонок возлагаются на атомарные флаги в структуре <code>pollDesc</code> самого рантайма.</p>
   </div>
 </aside>
 

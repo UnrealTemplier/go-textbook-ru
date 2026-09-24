@@ -2511,8 +2511,8 @@ func writeDirectIO(path string, data []byte) error {
     aligned := make([]byte, len(data)+4096)
     copy(aligned, data)
 
-    // 2. Открытие файла с флагом O_DIRECT
-    f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC|os.O_DIRECT, 0644)
+    // 2. Открытие файла с флагом syscall.O_DIRECT
+    f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC|syscall.O_DIRECT, 0644)
     if err != nil {
         return err
     }
@@ -2531,8 +2531,8 @@ func writeDirectIO(path string, data []byte) error {
     <span class="callout-title">Ловушка / Gotcha</span>
   </header>
   <div class="callout-body">
-    <p>В современном Go флаг <code>O_DIRECT</code> доступен через <code>os.O_DIRECT</code> (или платформенный <code>syscall.O_DIRECT</code>). </p>
-<p>Помните, что <code>O_DIRECT</code> — это системная специфика Linux. Операционные системы macOS и Windows не поддерживают этот флаг в таком виде: сборка под macOS завершится ошибкой или флаг будет проигнорирован. Всегда защищайте подобный код директивами сборки <code>//go:build linux</code>.</p>
+    <p>В стандартной библиотеке Go константа <code>O_DIRECT</code> не входит в пакет <code>os</code>, а объявляется в системном пакете <code>syscall.O_DIRECT</code> (или <code>golang.org/x/sys/unix.O_DIRECT</code>).</p>
+<p>Помните, что <code>O_DIRECT</code> — это системная специфика Linux. Операционные системы macOS и Windows не поддерживают этот флаг в таком виде: сборка под macOS завершится ошибкой компиляции (неопределенная константа). Всегда защищайте подобный код директивами сборки <code>//go:build linux</code>.</p>
   </div>
 </aside>
 
@@ -2561,7 +2561,7 @@ func writeDirectIO(path string, data []byte) error {
 
 <ol>
 <li><strong>Классический I/O</strong> прост и надежен, но оплачивается двойным копированием процессором (<code>memcpy</code>) и вымыванием кэшей L1/L2/L3.</li>
-<li><strong>Direct IO (<code>os.O_DIRECT</code>)</strong> исключает Page Cache ядра, соединяя буфер приложения напрямую с диском через DMA. Требует строгого выравнивания по 4096 байт и незаменим для СУБД.</li>
+<li><strong>Direct IO (<code>syscall.O_DIRECT</code>)</strong> исключает Page Cache ядра, соединяя буфер приложения напрямую с диском через DMA. Требует строгого выравнивания по 4096 байт и незаменим для СУБД.</li>
 <li><strong>Zero Copy (<code>sendfile()</code>, <code>splice()</code>, <code>mmap</code>)</strong> устраняет перекладывание байт в User Space. Данные передаются внутри ядра через дескрипторы страниц, обеспечивая максимальную пропускную способность сетевых сервисов.</li>
 <li>В экосистеме Go эти механизмы встроены в ядро стандартной библиотеки: <code>io.Copy</code> и <code>net/http</code> автоматически применяют <code>sendfile</code> на Linux.</li>
 </ol>
