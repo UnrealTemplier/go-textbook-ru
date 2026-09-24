@@ -901,7 +901,7 @@
 
   const DEFAULT_RETRO_STATE = {
     version: 1,
-    trail: { enabled: false, strength: 100 },
+    trail: { enabled: false, strength: 20 },
     site: {
       vhs: { enabled: false, strength: 30 },
       crt: { enabled: false, strength: 30 },
@@ -927,10 +927,7 @@
         if (typeof parsed.trail.enabled === 'boolean') {
           retroState.trail.enabled = parsed.trail.enabled;
         }
-        const str = Number(parsed.trail.strength);
-        if (!isNaN(str)) {
-          retroState.trail.strength = Math.max(0, Math.min(100, Math.round(str)));
-        }
+        // strength is hardcoded at 20 — no slider
       }
 
       ['site', 'code'].forEach(scope => {
@@ -1033,21 +1030,9 @@
 
   function syncRetroUI() {
     const trailToggle = document.getElementById('retro-trail-toggle');
-    const trailSlider = document.getElementById('retro-trail-slider');
-    const trailVal = document.getElementById('retro-trail-val');
-    const trailWrap = document.getElementById('retro-trail-slider-wrap');
 
     if (trailToggle) {
       trailToggle.checked = !!(retroState.trail && retroState.trail.enabled);
-    }
-    if (trailSlider) {
-      trailSlider.value = (retroState.trail && retroState.trail.strength !== undefined) ? retroState.trail.strength : 100;
-    }
-    if (trailVal) {
-      trailVal.textContent = `${(retroState.trail && retroState.trail.strength !== undefined) ? retroState.trail.strength : 100}%`;
-    }
-    if (trailWrap) {
-      trailWrap.classList.toggle('visible', !!(retroState.trail && retroState.trail.enabled));
     }
 
     ['site', 'code'].forEach(scope => {
@@ -1146,12 +1131,8 @@
         toggle.addEventListener('change', function () {
           const scope = this.dataset.scope;
           if (scope === 'trail') {
-            if (!retroState.trail) retroState.trail = { enabled: false, strength: 100 };
+            if (!retroState.trail) retroState.trail = { enabled: false, strength: 20 };
             retroState.trail.enabled = this.checked;
-            const wrap = document.getElementById('retro-trail-slider-wrap');
-            if (wrap) {
-              wrap.classList.toggle('visible', this.checked);
-            }
             applyRetroEffects();
             saveRetroState();
             return;
@@ -1175,15 +1156,7 @@
         slider.addEventListener('input', function () {
           const scope = this.dataset.scope;
           if (scope === 'trail') {
-            if (!retroState.trail) retroState.trail = { enabled: false, strength: 100 };
-            const strength = Math.max(0, Math.min(100, Math.round(Number(this.value))));
-            retroState.trail.strength = strength;
-            const valLabel = document.getElementById('retro-trail-val');
-            if (valLabel) {
-              valLabel.textContent = `${strength}%`;
-            }
-            applyRetroEffects();
-            saveRetroState();
+            // Phosphor trail strength is fixed at 20% — no slider
             return;
           }
 
