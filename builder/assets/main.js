@@ -901,6 +901,7 @@
 
   const DEFAULT_RETRO_STATE = {
     version: 1,
+    trail: { enabled: false },
     site: {
       vhs: { enabled: false, strength: 30 },
       crt: { enabled: false, strength: 30 },
@@ -921,6 +922,12 @@
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== 'object') return;
+
+      if (parsed.trail && typeof parsed.trail === 'object') {
+        if (typeof parsed.trail.enabled === 'boolean') {
+          retroState.trail.enabled = parsed.trail.enabled;
+        }
+      }
 
       ['site', 'code'].forEach(scope => {
         if (parsed[scope] && typeof parsed[scope] === 'object') {
@@ -953,6 +960,13 @@
   function applyRetroEffects() {
     const root = document.documentElement;
     const style = root.style;
+
+    // Global phosphor trail
+    if (retroState.trail && retroState.trail.enabled) {
+      root.dataset.retroTrail = 'on';
+    } else {
+      delete root.dataset.retroTrail;
+    }
 
     // Site effects
     const siteVhs = retroState.site.vhs;
@@ -1012,6 +1026,11 @@
   }
 
   function syncRetroUI() {
+    const trailToggle = document.getElementById('retro-trail-toggle');
+    if (trailToggle) {
+      trailToggle.checked = !!(retroState.trail && retroState.trail.enabled);
+    }
+
     ['site', 'code'].forEach(scope => {
       ['vhs', 'crt', 'noise'].forEach(effect => {
         const item = retroState[scope][effect];
@@ -1107,6 +1126,14 @@
       popover.querySelectorAll('input[type="checkbox"]').forEach(toggle => {
         toggle.addEventListener('change', function () {
           const scope = this.dataset.scope;
+          if (scope === 'trail') {
+            if (!retroState.trail) retroState.trail = { enabled: false };
+            retroState.trail.enabled = this.checked;
+            applyRetroEffects();
+            saveRetroState();
+            return;
+          }
+
           const effect = this.dataset.effect;
           if (!scope || !effect || !retroState[scope] || !retroState[scope][effect]) return;
 

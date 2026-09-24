@@ -73,6 +73,7 @@ ANTI_FLICKER_SCRIPT = (
     "if(r){"
     "var c=JSON.parse(r);"
     "var s=d.style;"
+    "if(c.trail&&c.trail.enabled){d.dataset.retroTrail='on';}"
     "if(c.site){"
     "if(c.site.vhs&&c.site.vhs.enabled){d.dataset.siteVhs='on';s.setProperty('--retro-site-vhs',((c.site.vhs.strength||0)/100).toFixed(2));}"
     "if(c.site.crt&&c.site.crt.enabled){d.dataset.siteCrt='on';s.setProperty('--retro-site-crt',((c.site.crt.strength||0)/100).toFixed(2));}"
@@ -122,6 +123,9 @@ RETRO_SITE_EFFECTS_HTML = (
     '  <div class="retro-site-vhs-layer"></div>\n'
     '  <div class="retro-site-crt-layer"></div>\n'
     '  <div class="retro-site-noise-layer"></div>\n'
+    '</div>\n'
+    '<div id="retro-phosphor-trail" class="retro-phosphor-trail" aria-hidden="true">\n'
+    '  <div class="retro-phosphor-beam"></div>\n'
     '</div>'
 )
 
@@ -153,6 +157,13 @@ RETRO_CONTROLS_HTML = (
     '    <button type="button" class="btn-retro-close" id="retro-close-btn" aria-label="Закрыть настройки ретро-эффектов">&times;</button>\n'
     '  </header>\n'
     '  <div class="retro-popover-body">\n'
+    '    <div class="retro-trail-card">\n'
+    '      <label class="retro-switch retro-switch-trail" for="retro-trail-toggle">\n'
+    '        <input type="checkbox" id="retro-trail-toggle" data-scope="trail">\n'
+    '        <span class="retro-switch-slider"></span>\n'
+    '        <span class="retro-switch-label">Phosphor trail</span>\n'
+    '      </label>\n'
+    '    </div>\n'
     '    <fieldset class="retro-group">\n'
     '      <legend class="retro-group-legend">Весь сайт</legend>\n'
     '      <div class="retro-control-row" data-scope="site" data-effect="vhs">\n'
