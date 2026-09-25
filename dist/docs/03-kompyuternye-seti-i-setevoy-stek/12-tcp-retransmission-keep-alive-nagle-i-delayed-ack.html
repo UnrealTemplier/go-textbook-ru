@@ -2330,8 +2330,8 @@ $$RTO = SRTT + \max(\mathbf{K}, \text{DELAYED_ACK_TIME}) \times 4$$<br />
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-bash"><code class="language-bash"># Минимальное значение RTO (по умолчанию 200 мс в Linux)
-$ sysctl -w net.ipv4.tcp_rto_min=200
+  <pre class="language-bash"><code class="language-bash"># Минимальное значение RTO задается per-route (константа TCP_RTO_MIN в ядре равна 200 мс)
+$ ip route change default via 192.168.1.1 dev eth0 rto_min 200ms
 
 # Максимальное количество повторных попыток перед разрывом сокета
 $ sysctl -w net.ipv4.tcp_retries2=15
@@ -2357,10 +2357,8 @@ $ sysctl -w net.ipv4.tcp_retries2=15
     if netErr.Timeout() {
         // Таймаут сетевой операции (сработал дедлайн Go или таймаут ядра)
     }
-    // Метод Temporary() исторически проверял временный характер ошибки
-    if netErr.Temporary() {
-        // Можно повторить попытку с прикладным backoff
-    }
+    // Внимание: метод netErr.Temporary() официально признан deprecated начиная с Go 1.18.
+    // Для надежной retry-логики проверяйте netErr.Timeout() или errors.Is(err, context.Canceled).
 }
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
@@ -2393,7 +2391,7 @@ $ sysctl -w net.ipv4.tcp_retries2=15
 <p>Механизм <strong><code>Delayed ACK</code> (RFC 1122)</strong> предписывает приемнику придержать отправку подтверждения:<br />
 1. Либо до прихода <strong>второго полноразмерного пакета данных</strong> (тогда один кумулятивный ACK подтвердит сразу оба сегмента);<br />
 2. Либо до момента, когда приложению понадобится отправить ответные данные (тогда флаг ACK будет бесплатно «подсажен» в исходящий пакет данных — техника Piggybacking);<br />
-3. Либо до истечения защитного системного таймера <strong><code>tcp_delack_max</code></strong> (в современных ядрах Linux он составляет около <strong>40 мс</strong>, хотя исторически в BSD достигал 400 мс).</p>
+3. Либо до истечения защитного системного таймера (в ядре Linux константа <code>TCP_DELACK_MAX</code> составляет около <strong>40 мс</strong>, хотя исторически в BSD достигала 200–500 мс).</p>
 <hr />
 <h3 id="stsenariy-zavisaniya-nagle-delayed-ack">Сценарий зависания (Nagle + Delayed ACK)</h3>
 

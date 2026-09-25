@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~41 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~42 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 4 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">17. DNS под капотом. Record Types, TTL, Recursive Resolver, кеширование</h1>
@@ -2461,7 +2461,7 @@ end
 <h3 id="mekhanika-keshirovaniya">Механика кэширования:</h3>
 <ol>
 <li>Клиент делает запрос к <code>api.example.com</code>, получает ответ со значением <strong><code>TTL: 300</code></strong> (5 минут).</li>
-<li>Записывает в локальный кэш (OS resolver cache или <code>netgo</code> cache) время получения и TTL.</li>
+<li>Записывает в локальный кэш (OS resolver cache или кэширующий DNS-прокси) время получения и TTL.</li>
 <li>При повторном запросе того же имени в течение 5 минут проверяет условие <code>now &lt; received_time + TTL</code>:<br />
    $$\text{now} &lt; \text{received_time} + \text{TTL}$$</li>
 <li>Если время не истекло — IP-адрес берется из памяти за наносекунды (<strong>Cache Hit</strong>).</li>
@@ -2491,10 +2491,10 @@ classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
 classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
 classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
 classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-REQ[&quot;Запрос LookupIP(&#x27;api.example.com&#x27;):::entry&quot;] --&gt; CHECK{&quot;Запись есть в кэше&lt;br&gt;и now &lt; expire_at?&quot;}
+REQ[&quot;Запрос LookupIP(&#x27;api.example.com&#x27;):::entry&quot;] --&gt; CHECK{&quot;Запись есть в кэше ОС/резолвера&lt;br&gt;и now &lt; expire_at?&quot;}
 CHECK --&gt;|Да: Cache Hit| RET[&quot;Мгновенный возврат IP (0 мс)&quot;]
-CHECK --&gt;|Нет: Cache Miss / TTL истек| NET[&quot;Сетевой запрос по UDP 53&quot;]
-NET --&gt; SAVE[&quot;Сохранить IP в кэш на время TTL&quot;]
+CHECK --&gt;|Нет: Cache Miss / TTL истек| NET[&quot;Сетевой запрос к DNS-серверу (UDP 53)&quot;]
+NET --&gt; SAVE[&quot;Сохранить IP в кэш ОС на время TTL&quot;]
 SAVE --&gt; RET
   </pre>
 </figure>
@@ -2506,8 +2506,8 @@ SAVE --&gt; RET
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p>В операционных системах Linux системный кэш DNS часто реализуется через локальные службы <strong><code>systemd-resolved</code></strong>, <code>dnsmasq</code> или устаревший демон <strong><code>nscd</code></strong>. <br />
-Чистый Go-рантайм (в режиме <strong><code>netgo</code></strong>) ведет собственный изолированный кэш в памяти процесса. Это значит, что разные Go-процессы на одной машине не делят DNS-кэш между собой. Для микросервисов это дает преимущество в виде полной изоляции, но приводит к дублированию сетевых запросов при масштабировании пула подов.</p>
+    <p>В операционных системах Linux системный кэш DNS часто реализуется через локальные службы <strong><code>systemd-resolved</code></strong>, <code>dnsmasq</code> или демон <strong><code>nscd</code></strong>. <br />
+В стандартной библиотеке Go резолвер <code>net.Resolver</code> (в режиме <strong><code>netgo</code></strong>) <strong>не имеет встроенного долгоживущего кэша DNS-записей</strong>! Для предотвращения шторма одновременных одинаковых запросов Go использует лишь внутренний механизм дедупликации <code>internal/singleflight</code>. Это означает, что последовательные вызовы <code>net.LookupIP</code> повторно обращаются к DNS-серверу, если кэширование не настроено на уровне ОС или самого приложения.</p>
   </div>
 </aside>
 
@@ -2656,7 +2656,7 @@ func main() {
 <li><strong>Транспорт:</strong> Быстрый UDP 53 по умолчанию. При превышении лимита сервер выставляет флаг <strong><code>TC</code></strong>, и клиент повторяет запрос по надежному TCP 53. Расширение <strong><code>EDNS0</code></strong> снимает старый лимит 512 байт, расширяя буфер до 4096 байт через опцию <strong><code>udp-max</code></strong>.</li>
 <li><strong>Иерархия:</strong> Иерархия <code>Stub -&gt; Recursive -&gt; Root -&gt; TLD -&gt; Auth</code> обеспечивает масштабируемость, но добавляет сетевые задержки. Запрос идет от клиентского <code>Stub Resolver</code> через кэширующий <code>Recursive Resolver</code> (8.8.8.8, 1.1.1.1) к корневым серверам (<code>Root</code>), зонам TLD и авторитетным серверам (<code>Authoritative</code>).</li>
 <li><strong>Типы записей:</strong> Фундаментальные <code>A</code> (IPv4) и <code>AAAA</code> (IPv6), канонические алиасы <code>CNAME</code>, почтовые <code>MX</code>, текстовые <code>TXT</code> (SPF/DKIM) и конфигурационные <code>SRV</code> (Service Discovery).</li>
-<li><strong>TTL и кэширование:</strong> Определяет актуальность записей и скорость переключения трафика при деплоях. Go ведет собственный in-memory кэш в процессе.</li>
+<li><strong>TTL и кэширование:</strong> Определяет актуальность записей и скорость переключения трафика при деплоях. стандартный <code>net.Resolver</code> в Go не кэширует DNS-ответы между последовательными запросами, полагаясь на системный кэш ОС или постоянные TCP-пулы <code>http.Transport</code>.</li>
 <li><strong>Go-резолвер:</strong> Чистый <strong><code>netgo</code></strong> парсит <code>/etc/resolv.conf</code>, поддерживает опции <code>rotate</code>, <code>single-request-reopen</code>, <code>use-vc</code>, не блокирует треды ОС и должен использоваться с <strong><code>PreferGo: true</code></strong> и контекстными таймаутами.</li>
 </ol>
 <p>Мы досконально изучили, как приложения находят IP-адрес нужного сервера. Но передача данных в открытом виде через кабель опасна: любой промежуточный маршрутизатор может подслушать или подменить пакеты. В следующей статье мы перейдем к фундаментальным механизмам безопасности и шифрования: <a href="18-tls-i-https-shifrovanie-poverkh-tcp.html" class="wikilink">18. TLS и HTTPS. Шифрование поверх TCP</a>.</p>
