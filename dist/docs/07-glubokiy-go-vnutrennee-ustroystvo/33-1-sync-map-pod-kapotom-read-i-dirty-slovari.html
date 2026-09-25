@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 7</span>
-              <span class="meta-tag read-time">⏱ ~27 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~29 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">33.1. sync.Map под капотом. Read и dirty словари</h1>
@@ -2183,10 +2183,21 @@
 <p>И тут начинается суровая проблема аппаратного уровня. Если 32 ядра процессора одновременно пытаются сделать <code>RLock()</code> для чтения из <code>map + sync.RWMutex</code>, они все пытаются атомарно инкрементировать один и тот же счетчик читателей (<code>readerCount</code>). </p>
 <p>Каждая такая атомарная инструкция (например, <code>LOCK XADD</code> на x86) требует перевода процессорной кэш-линии в эксклюзивное состояние <code>Modified</code> по протоколу MESI. В результате кэш-линия с мьютексом непрерывно «прыгает» между L1/L2 кэшами разных процессорных ядер (эффект Cacheline Bouncing / False Sharing), а ядра простаивают сотни тактов, ожидая арбитража шины памяти и межъядерной синхронизации (подробнее в <a href="15-mutex-i-rwmutex-pod-kapotom.html" class="wikilink">15. Mutex и RWMutex под капотом</a>). Высокая конкуренция читателей превращает «параллельное» чтение в тяжелейший аппаратный затор.</p>
 <p>Чтобы решить эту проблему, в Go 1.9 добавили <strong><code>sync.Map</code></strong> — специализированную структуру для конкурентных словарей, которая в определенных сценариях работает вообще без блокировок (lock-free) и без инвалидации разделяемых кэш-линий.</p>
-<hr />
-<h2 id="1-arkhitektura-dva-slovarya">1. Архитектура: Два словаря</h2>
+<aside class="callout callout-note" aria-label="Архитектурный контекст: Классическая модель Read/Dirty (Go 1.9–1.23) vs Hash Trie Map (Go 1.24+)">
+  <header class="callout-header">
+    <span class="callout-icon" aria-hidden="true">📝</span>
+    <span class="callout-title">Архитектурный контекст: Классическая модель Read/Dirty (Go 1.9–1.23) vs Hash Trie Map (Go 1.24+)</span>
+  </header>
+  <div class="callout-body">
+    <p>Начиная с версии <strong>Go 1.24</strong>, внутренняя архитектура <code>sync.Map</code> была полностью переработана: раздельные словари <code>read</code> и <code>dirty</code> заменены на конкурентный <strong>Hash Trie Map</strong> (пакет <code>internal/sync</code>), работающий на основе префиксного хэш-дерева. Это устранило тяжелый эффект «прогрева» и $O(N)$ копирование при добавлении новых ключей (режим с откатом доступен через <code>GOEXPERIMENT=nosynchashtriemap</code>).<br />
+Однако классическая архитектура двух словарей, разобранная ниже, является каноническим примером проектирования lock-free структур в Go и до сих пор составляет ядро вопросов на Senior-собеседованиях.</p>
+  </div>
+</aside>
 
-<p>Секрет <code>sync.Map</code> в том, что внутри нее находится не одна, а <strong>две</strong> мапы.</p>
+<hr />
+<h2 id="1-arkhitektura-dva-slovarya-go-1-91-23">1. Архитектура: Два словаря (Go 1.9–1.23)</h2>
+
+<p>Секрет классической <code>sync.Map</code> в том, что внутри нее находится не одна, а <strong>две</strong> мапы.</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2465,8 +2476,8 @@ Expunged --&gt; Value: Store() под мьютексом mu&lt;br&gt;(unexpungeL
 1. <strong>Append-only кэши (Read-Heavy):</strong> Ключи добавляются один раз (например, при инициализации или медленном прогреве), а затем читаются 99% времени. <code>dirty</code> быстро промовируется в <code>read</code>, и вся работа идет без блокировок.<br />
 2. <strong>Disjoint Keys (Разделенные ключи):</strong> Разные горутины работают с совершенно разными ключами (читают, пишут, удаляют). В этом случае <code>RWMutex</code> вызвал бы глобальную пробку, а <code>sync.Map</code> атомарно обновляет независимые <code>entry</code> в <code>read</code> словаре без взаимных блокировок.</p>
 <p>❌ <strong>Плохие сценарии (sync.Map медленнее обычного RWMutex):</strong><br />
-1. <strong>Write-Heavy (Частая запись НОВЫХ ключей):</strong> Если вы постоянно пишете новые (уникальные) ключи, вы постоянно промахиваетесь мимо <code>read</code>. Вы постоянно захватываете мьютекс для <code>dirty</code>, а главное — рантайм постоянно выполняет $O(N)$ копирование из <code>read</code> в <code>dirty</code>. Производительность упадет на дно.<br />
-2. <strong>Предсказуемый размер:</strong> <code>sync.Map</code> нельзя инициализировать с заранее заданным <code>capacity</code> (как <code>make(map, 1000)</code>). Она будет медленно расти через аллокации.</p>
+1. <strong>Write-Heavy в классической архитектуре (Частая запись НОВЫХ ключей):</strong> Если вы постоянно пишете новые (уникальные) ключи в классической <code>sync.Map</code> (Go 1.9–1.23), вы постоянно промахиваетесь мимо <code>read</code>. Вы постоянно захватываете мьютекс для <code>dirty</code>, а главное — рантайм регулярно выполняет $O(N)$ копирование из <code>read</code> в <code>dirty</code>. <em>(Примечание: в Go 1.24+ с внедрением Hash Trie Map это ограничение устранено — древовидная структура эффективно масштабирует параллельные записи).</em><br />
+2. <strong>Предсказуемый размер:</strong> <code>sync.Map</code> нельзя инициализировать с заранее заданным <code>capacity</code> (как <code>make(map, 1000)</code>). Она будет динамически расти через внутренние аллокации.</p>
 <aside class="callout callout-interview" aria-label="Собеседование. sync.Map vs map+Mutex">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2518,7 +2529,7 @@ Expunged --&gt; Value: Store() под мьютексом mu&lt;br&gt;(unexpungeL
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#1-arkhitektura-dva-slovarya">1. Архитектура: Два словаря</a></li><li class="toc-item toc-h2"><a href="#2-struktura-entry-ukazateli-povsyudu">2. Структура entry: Указатели повсюду</a></li><li class="toc-item toc-h2"><a href="#3-chtenie-load-zhizn-bez-blokirovok">3. Чтение (Load): Жизнь без блокировок</a></li><li class="toc-item toc-h2"><a href="#4-zapis-store-atomarnost-ili-myuteks">4. Запись (Store): Атомарность или Мьютекс</a></li><li class="toc-item toc-h2"><a href="#5-povyshenie-slovarey-promotion">5. Повышение словарей (Promotion)</a></li><li class="toc-item toc-h2"><a href="#6-tri-sostoyaniya-udaleniya-nil-i-expunged">6. Три состояния удаления: nil и expunged</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-kogda-ispolzovat-sync-map">Mechanical Sympathy: Когда использовать sync.Map?</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-arkhitektura-dva-slovarya-go-1-91-23">1. Архитектура: Два словаря (Go 1.9–1.23)</a></li><li class="toc-item toc-h2"><a href="#2-struktura-entry-ukazateli-povsyudu">2. Структура entry: Указатели повсюду</a></li><li class="toc-item toc-h2"><a href="#3-chtenie-load-zhizn-bez-blokirovok">3. Чтение (Load): Жизнь без блокировок</a></li><li class="toc-item toc-h2"><a href="#4-zapis-store-atomarnost-ili-myuteks">4. Запись (Store): Атомарность или Мьютекс</a></li><li class="toc-item toc-h2"><a href="#5-povyshenie-slovarey-promotion">5. Повышение словарей (Promotion)</a></li><li class="toc-item toc-h2"><a href="#6-tri-sostoyaniya-udaleniya-nil-i-expunged">6. Три состояния удаления: nil и expunged</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-kogda-ispolzovat-sync-map">Mechanical Sympathy: Когда использовать sync.Map?</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 7</span>
-              <span class="meta-tag read-time">⏱ ~25 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~26 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">14. Select под капотом</h1>
@@ -2240,9 +2240,9 @@ classDef system   fill:#312e81,stroke:#a78bfa,stroke-width:1px,color:#f8fafc
 classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
 classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
 classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-START[&quot;Вызов selectgo&quot;]:::process --&gt; LOCK[&quot;1. Сортировка по адресу памяти hchan&lt;br&gt;Атомарный захват мьютексов всех каналов&quot;]
-LOCK --&gt; SHUFFLE[&quot;2. Генерация случайного pollorder (fastrand)&quot;]
-SHUFFLE --&gt; POLL[&quot;3. Опрос каналов в порядке pollorder&quot;]
+START[&quot;Вызов selectgo&quot;]:::process --&gt; PREP[&quot;1. Генерация случайного pollorder (cheaprandn)&lt;br&gt;Сортировка lockorder по адресу памяти hchan&quot;]
+PREP --&gt; LOCK[&quot;2. Захват мьютексов всех каналов (sellock)&lt;br&gt;Строго в порядке возрастания lockorder&quot;]
+LOCK --&gt; POLL[&quot;3. Опрос каналов в порядке pollorder&quot;]
 
 POLL --&gt; READY{&quot;Найден готовый&lt;br&gt;канал?&quot;}
 READY --&gt;|&quot;Да&quot;| DO_OP[&quot;Выполнить recv/send&lt;br&gt;Освободить мьютексы всех каналов&quot;]
@@ -2257,20 +2257,27 @@ WAKE --&gt; CLEANUP[&quot;5. Захват lockorder&lt;br&gt;Удаление о
 </figure>
 
 
-<h3 id="faza-1-borba-s-deadlock-sortirovka">Фаза 1. Борьба с Deadlock (Сортировка)</h3>
+<h3 id="faza-1-podgotovka-spravedlivost-pollorder-i-poryadok-blokirovok-lockorder">Фаза 1. Подготовка: Справедливость (pollorder) и порядок блокировок (lockorder)</h3>
 
-<p>Каждый канал <code>hchan</code> защищен собственным встроенным мьютексом <code>lock</code>. Чтобы атомарно проверить состояние нескольких каналов, <code>select</code> обязан захватить блокировки каждого из них.</p>
-<p>Представим классическую ловушку:<br />
-- Горутина 1 выполняет <code>select</code>, опрашивающий сначала <code>ch1</code>, а затем <code>ch2</code>;<br />
-- Горутина 2 в ту же наносекунду выполняет <code>select</code>, опрашивающий <code>ch2</code>, а затем <code>ch1</code>.</p>
-<p>Если бы рантайм захватывал мьютексы в порядке их перечисления в исходном коде, возник бы мгновенный кольцевой Deadlock: Горутина 1 захватила бы <code>ch1</code> и ждала <code>ch2</code>, а Горутина 2 захватила бы <code>ch2</code> и ждала <code>ch1</code>.</p>
-<p>Инженеры Go применили классическое решение Дейкстры: <strong>рантайм сортирует все участвующие в select каналы по их физическому адресу в куче (heap address)</strong>, формируя массив <code>lockorder</code>.<br />
-Мьютексы всех каналов всегда блокируются <strong>строго в порядке возрастания адресов их структур <code>hchan</code> в памяти</strong>. Это математически делает циклические взаимоблокировки невозможными.</p>
-<h3 id="faza-2-spravedlivost-peremeshivanie">Фаза 2. Справедливость (Перемешивание)</h3>
+<p>Перед тем как захватывать блокировки каналов, рантайм Go выполняет подготовительные вычисления без удержания каких-либо мьютексов, минимизируя время нахождения в критической секции:</p>
+<ol>
+<li>
+<p><strong>Справедливость (Перемешивание <code>pollorder</code>):</strong><br />
+   Если бы каналы опрашивались строго сверху вниз по тексту программы, верхние ветки <code>case</code> получали бы колоссальное преимущество, а нижние каналы страдали бы от голодания (<strong>Starvation</strong>). Чтобы обеспечить строгую справедливость (<strong>fairness</strong>), рантайм использует быстрый генератор псевдослучайных чисел (<code>cheaprandn</code>) и генерирует массив <strong><code>pollorder</code></strong> — случайную перестановку индексов веток <code>case</code>.</p>
+</li>
+<li>
+<p><strong>Защита от Deadlock (Сортировка <code>lockorder</code>):</strong><br />
+   Каждый канал <code>hchan</code> защищен собственным встроенным мьютексом <code>lock</code>. Чтобы атомарно проверить состояние нескольких каналов, <code>select</code> обязан захватить блокировки каждого из них.<br />
+   Представим классическую ловушку:<br />
+   - Горутина 1 выполняет <code>select</code>, опрашивающий сначала <code>ch1</code>, а затем <code>ch2</code>;<br />
+   - Горутина 2 в ту же наносекунду выполняет <code>select</code>, опрашивающий <code>ch2</code>, а затем <code>ch1</code>.<br />
+   Если бы рантайм захватывал мьютексы в порядке их перечисления в коде, возник бы кольцевой Deadlock. Инженеры Go применили классическое решение Дейкстры: <strong>рантайм сортирует все участвующие в select каналы по их физическому адресу в куче (heap address)</strong> с помощью пирамидальной сортировки (heapsort), формируя массив <code>lockorder</code>.</p>
+</li>
+</ol>
+<h3 id="faza-2-zakhvat-blokirovok-sellock">Фаза 2. Захват блокировок (sellock)</h3>
 
-<p>После захвата всех мьютексов необходимо определить порядок проверки готовности каналов.<br />
-Если проверять каналы строго сверху вниз по тексту программы, верхние ветки <code>case</code> получали бы колоссальное несправедливое преимущество, а нижние каналы страдали бы от голодания (<strong>Starvation</strong>).</p>
-<p>Чтобы обеспечить строгую справедливость (<strong>fairness</strong>), рантайм использует быстрый генератор псевдослучайных чисел <code>fastrand</code> и генерирует массив <strong><code>pollorder</code></strong> — случайную перестановку индексов веток <code>case</code>.</p>
+<p>Только после завершения всех подготовительных расчетов рантайм вызывает функцию <code>sellock(scases, lockorder)</code>.<br />
+Мьютексы всех участвующих каналов блокируются <strong>строго в порядке возрастания адресов их структур <code>hchan</code> в памяти</strong>. Это исключает избыточное удержание блокировок во время генерации псевдослучайных чисел и сортировки, а также математически делает циклические взаимоблокировки невозможными.</p>
 <aside class="callout callout-interview" aria-label="Собеседование: Почему порядок выполнения веток select случаен?">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2427,7 +2434,7 @@ WAKE --&gt; CLEANUP[&quot;5. Захват lockorder&lt;br&gt;Удаление о
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#1-illyuziya-kompilyatora-sintaksicheskiy-sakhar">1. Иллюзия компилятора (Синтаксический сахар)</a></li><li class="toc-item toc-h2"><a href="#2-mekhanika-runtime-selectgo">2. Механика runtime.selectgo</a></li><li class="toc-item toc-h3"><a href="#faza-1-borba-s-deadlock-sortirovka">Фаза 1. Борьба с Deadlock (Сортировка)</a></li><li class="toc-item toc-h3"><a href="#faza-2-spravedlivost-peremeshivanie">Фаза 2. Справедливость (Перемешивание)</a></li><li class="toc-item toc-h3"><a href="#faza-3-opros-polling">Фаза 3. Опрос (Polling)</a></li><li class="toc-item toc-h3"><a href="#faza-4-glubokiy-son-mnozhestvennyy-sudog">Фаза 4. Глубокий сон (Множественный sudog)</a></li><li class="toc-item toc-h3"><a href="#faza-5-ochistka-posle-probuzhdeniya-cleanup">Фаза 5. Очистка после пробуждения (Cleanup)</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-tsena-select">Mechanical Sympathy. Цена Select</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-illyuziya-kompilyatora-sintaksicheskiy-sakhar">1. Иллюзия компилятора (Синтаксический сахар)</a></li><li class="toc-item toc-h2"><a href="#2-mekhanika-runtime-selectgo">2. Механика runtime.selectgo</a></li><li class="toc-item toc-h3"><a href="#faza-1-podgotovka-spravedlivost-pollorder-i-poryadok-blokirovok-lockorder">Фаза 1. Подготовка: Справедливость (pollorder) и порядок блокировок (lockorder)</a></li><li class="toc-item toc-h3"><a href="#faza-2-zakhvat-blokirovok-sellock">Фаза 2. Захват блокировок (sellock)</a></li><li class="toc-item toc-h3"><a href="#faza-3-opros-polling">Фаза 3. Опрос (Polling)</a></li><li class="toc-item toc-h3"><a href="#faza-4-glubokiy-son-mnozhestvennyy-sudog">Фаза 4. Глубокий сон (Множественный sudog)</a></li><li class="toc-item toc-h3"><a href="#faza-5-ochistka-posle-probuzhdeniya-cleanup">Фаза 5. Очистка после пробуждения (Cleanup)</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-tsena-select">Mechanical Sympathy. Цена Select</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 
