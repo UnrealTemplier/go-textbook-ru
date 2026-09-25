@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 4</span>
-              <span class="meta-tag read-time">⏱ ~22 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~23 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">23. Public и Private через экспортируемость имен</h1>
@@ -2188,9 +2188,9 @@
 
 <p>В Go не принято использовать термины «публичный» или «приватный». В спецификации языка и профессиональном сообществе принята строгая терминология — <strong>Экспортируемое (Exported)</strong> и <strong>Неэкспортируемое (Unexported)</strong> имя:</p>
 <ul>
-<li><strong>Начинается с заглавной буквы (<code>A-Z</code>):</strong> Идентификатор экспортируется. Он открыт и доступен любому внешнему пакету, который импортирует ваш модуль.<br />
+<li><strong>Начинается с заглавной буквы (в спецификации Go — категория Unicode Lu, обычно латинские буквы <code>A-Z</code>):</strong> Идентификатор экспортируется. Он открыт и доступен любому внешнему пакету, который импортирует ваш модуль.<br />
 <em>(Примеры: <code>User</code>, <code>ServeHTTP</code>, <code>DB</code>, <code>ErrNotFound</code>)</em></li>
-<li><strong>Начинается со строчной буквы (<code>a-z</code>) или знака подчеркивания (<code>_</code>):</strong> Идентификатор не экспортируется. Он надежно инкапсулирован и виден <strong>только внутри своего пакета</strong>.<br />
+<li><strong>Начинается со строчной буквы (категории Unicode Ll/Lm/Lo или <code>a-z</code>) либо знака подчеркивания (<code>_</code>):</strong> Идентификатор не экспортируется. Он надежно инкапсулирован и виден <strong>только внутри своего пакета</strong>.<br />
 <em>(Примеры: <code>user</code>, <code>calculateHash</code>, <code>dbConnection</code>)</em></li>
 </ul>
 
@@ -2203,8 +2203,8 @@
     </button>
   </header>
   <pre class="language-ascii"><code class="language-ascii">  Имя идентификатора:
-      User        ──&gt; Первая буква 'U' (A-Z) ──&gt; Экспортируемое (Public API)
-      password    ──&gt; Первая буква 'p' (a-z) ──&gt; Неэкспортируемое (Private to Package)
+      User        ──&gt; Заглавная буква 'U' (Unicode Lu) ──&gt; Экспортируемое (Public API)
+      password    ──&gt; Строчная буква 'p'               ──&gt; Неэкспортируемое (Private to Package)
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
     <div class="retro-code-vhs-layer"></div>
@@ -2213,14 +2213,14 @@
   </div>
 </div>
 
-<aside class="callout callout-info" aria-label="Под капотом: Компилятор и ASCII">
+<aside class="callout callout-info" aria-label="Под капотом: Компилятор и спецификация Unicode Lu">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
-    <span class="callout-title">Под капотом: Компилятор и ASCII</span>
+    <span class="callout-title">Под капотом: Компилятор и спецификация Unicode Lu</span>
   </header>
   <div class="callout-body">
-    <p>Отказ от ключевых слов <code>public/private</code> — это не только забота о локальности понимания кода человеком, но и аппаратная оптимизация лексического анализатора (<code>Lexer/Parser</code>) компилятора Go.</p>
-<p>В традиционных языках синтаксический анализатор вынужден поддерживать сложный автомат состояний, отслеживая модификаторы доступа перед ключевыми словами <code>class</code>, <code>fn</code>, <code>var</code> и полями структур. В Go компилятору (в частности, функции <code>ast.IsExported</code>) достаточно выполнить элементарную проверку ASCII-кода первого байта идентификатора:</p>
+    <p>Отказ от ключевых слов <code>public/private</code> — это не только забота о локальности понимания кода человеком, но и оптимизация лексического анализатора (<code>Lexer/Scanner</code>) компилятора Go.</p>
+<p>По спецификации Go экспортируемым является идентификатор, начинающийся с заглавной буквы Unicode (категория <code>Lu</code>). В компиляторе Go (<code>cmd/compile/internal/types</code>) и стандартном пакете <code>go/token</code> для подавляющего большинства ASCII-символов применяется молниеносный fast-path:</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2230,7 +2230,9 @@
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-go"><code class="language-go">'A' &lt;= c &amp;&amp; c &lt;= 'Z'
+  <pre class="language-go"><code class="language-go">if r := name[0]; r &lt; utf8.RuneSelf {
+    return 'A' &lt;= r &amp;&amp; r &lt;= 'Z'
+}
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
     <div class="retro-code-vhs-layer"></div>
@@ -2239,7 +2241,7 @@
   </div>
 </div>
 
-<p>Такая простейшая проверка экономит миллионы тактов CPU при парсинге гигантских кодовых баз, внося весомый вклад в легендарную скорость компиляции Go.</p>
+<p>И лишь при обнаружении многобайтового UTF-8 символа вызывается декодер <code>unicode.IsUpper</code>. В традиционных языках парсер вынужден поддерживать сложный автомат состояний, отслеживая модификаторы доступа перед ключевыми словами <code>class</code>, <code>fn</code>, <code>var</code> и полями структур. В Go проверка первого символа требует считанных машинных инструкций, внося вклад в скорость компиляции.</p>
   </div>
 </aside>
 
