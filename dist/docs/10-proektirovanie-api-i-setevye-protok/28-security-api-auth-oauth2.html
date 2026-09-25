@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 10</span>
-              <span class="meta-tag read-time">⏱ ~35 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~36 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">28. Security API. Auth, OAuth2</h1>
@@ -2312,9 +2312,9 @@ style R403 fill:#1e293b,stroke:#f43f5e,stroke-width:1px,color:#f8fafc
     <span class="callout-title">Ловушка / Gotcha: Атака Algorithm / Key Confusion</span>
   </header>
   <div class="callout-body">
-    <p>Представьте, что ваш сервис проверяет токены, подписанные асимметричным алгоритмом <strong>RS256</strong>. Для проверки подписи ваш сервис загружает открытый ключ <code>rsaPublicKey</code> (публичный PEM-сертификат, лежащий в открытом доступе на сервере или эндпоинте JWKS).<br />
-Злоумышленник берет ваш открытый ключ, конструирует произвольный токен с ролью <code>admin</code>, но в поле заголовка указывает симметричный алгоритм <code>alg: "HS256"</code>. В качестве симметричного HMAC-секрета злоумышленник подставляет байты вашего <strong>публичного ключа</strong>!<br />
-Если ваш Go-обработчик не проверяет тип алгоритма перед валидацией:</p>
+    <p>Представьте, что ваш сервис проверяет токены, подписанные асимметричным алгоритмом <strong>RS256</strong>. Для проверки подписи сервис использует открытый ключ (публичный PEM-сертификат, доступный в JWKS или на диске).<br />
+Злоумышленник берет ваш открытый ключ, конструирует произвольный токен с ролью <code>admin</code>, но в поле заголовка подменяет асимметричный алгоритм на симметричный: <code>alg: "HS256"</code>. В качестве симметричного HMAC-секрета злоумышленник использует байты вашего <strong>публичного ключа</strong>!<br />
+Если ваш Go-обработчик возвращает ключ в виде сырого среза байт <code>[]byte</code> (например, прочитанный PEM-файл) и не проверяет заголовок алгоритма:</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2326,7 +2326,8 @@ style R403 fill:#1e293b,stroke:#f43f5e,stroke-width:1px,color:#f8fafc
   </header>
   <pre class="language-go"><code class="language-go">// НЕБЕЗОПАСНЫЙ КОД: Уязвим к Key Confusion!
 token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
-    return rsaPublicKey, nil // Библиотека преобразует rsaPublicKey в байты и выполнит HMAC!
+    // Если вернуть сырые байты открытого ключа rsaPublicKeyBytes без проверки алгоритма:
+    return rsaPublicKeyBytes, nil // При alg=&quot;HS256&quot; библиотека примет их как HMAC-секрет!
 })
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
@@ -2336,8 +2337,8 @@ token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (interface{}, error) {
   </div>
 </div>
 
-<p>Библиотека применит HMAC-SHA256, используя публичный ключ как секрет, подпись сойдется, и атакующий получит полный административный доступ.  </p>
-<p><strong>Надежная защита:</strong> В коллбэке <code>Keyfunc</code> всегда <strong>жестко проверяйте конкретный тип алгоритма</strong>:</p>
+<p>Библиотека применит HMAC-SHA256, используя открытый ключ как секрет, подпись сойдется, и атакующий получит полный административный доступ. (В случае типизированного <code>*rsa.PublicKey</code> метод HMAC вернет ошибку типов <code>ErrInvalidKeyType</code>, но если в функцию передан <code>[]byte</code>, атака пройдет успешно).  </p>
+<p><strong>Надежная защита:</strong> В коллбэке <code>Keyfunc</code> всегда <strong>жестко проверяйте семейство алгоритмов</strong>:</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">

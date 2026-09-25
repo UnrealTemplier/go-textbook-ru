@@ -2309,7 +2309,7 @@ Client --&gt;|&quot;Таймаут&lt;br&gt;Что делать дальше?&qu
 
 <p>В стандартной библиотеке Go за сетевой транспорт отвечает структура <code>http.Transport</code>. Мало кто из инженеров заглядывает во внутренности рантайма, однако Go активно использует спецификацию идемпотентности для <strong>автоматических скрытых повторов (Auto-Retries)</strong> на уровне ядра сетевого стека!</p>
 <p>Представим штатную ситуацию: клиентский пул держит открытое постоянное соединение (HTTP Keep-Alive). В этот же момент удаленный сервер решает закрыть простаивающий сокет по тайм-ауту и отправляет управляющий TCP-пакет <code>RST</code> или кадр HTTP/2 <code>GOAWAY</code>. Если в эту микросекунду Go-клиент пытается отправить запрос в уже закрывающийся сокет, рантайм обязан принять решение: падать с сетевой ошибкой или попытаться прозрачно повторить запрос?</p>
-<p>Обратимся к исходному коду рантайма Go (файл <code>src/net/http/transport.go</code>, метод <code>shouldRetryRequest</code>):</p>
+<p>Обратимся к исходному коду рантайма Go (файл <code>src/net/http/request.go</code>, вызываемый из <code>transport.go</code> в методе <code>shouldRetryRequest</code>):</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2319,11 +2319,15 @@ Client --&gt;|&quot;Таймаут&lt;br&gt;Что делать дальше?&qu
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-go"><code class="language-go">// Логика автоматического повтора в недрах Go net/http
-func (req *Request) isReplayable() bool {
-    if req.Body == nil || req.Body == http.NoBody || req.GetBody != nil {
-        switch req.Method {
+  <pre class="language-go"><code class="language-go">// Логика автоматического повтора в недрах Go net/http (src/net/http/request.go)
+func (r *Request) isReplayable() bool {
+    if r.Body == nil || r.Body == NoBody || r.GetBody != nil {
+        switch valueOrDefault(r.Method, &quot;GET&quot;) {
         case &quot;GET&quot;, &quot;HEAD&quot;, &quot;OPTIONS&quot;, &quot;TRACE&quot;:
+            return true
+        }
+        // Заголовки идемпотентности позволяют повторить даже POST-запрос!
+        if r.Header.has(&quot;Idempotency-Key&quot;) || r.Header.has(&quot;X-Idempotency-Key&quot;) {
             return true
         }
     }
@@ -2345,7 +2349,7 @@ func (req *Request) isReplayable() bool {
   <div class="callout-body">
     <p>Механизм повторов в Go опирается на состояние сетевого буфера:<br />
 Если физический обрыв соединения произошел <strong>до того</strong>, как рантайм Go успел записать хотя бы один байт заголовков или тела запроса в сетевой дескриптор ядра (<code>netFD</code>), то клиентский транспорт прозрачно пересоздаст сокет и повторит АБСОЛЮТНО ЛЮБОЙ запрос, включая <code>POST</code>.</p>
-<p>Однако если в сокет <code>netFD</code> улетел хотя бы один байт, рантайм Go активирует метод <code>isReplayable()</code>. Для метода <code>POST</code> повтор будет немедленно заблокирован, и приложению вернется ошибка <code>context.DeadlineExceeded</code> или <code>io.EOF</code>, поскольку рантайм не знает, был ли пакет прочитан бэкендом. Для безопасных и идемпотентных методов (<code>GET</code>, <code>HEAD</code>) рантайм агрессивно переоткроет соединение и повторит операцию, спасая ваш сервис от сетевых морганий.</p>
+<p>Однако если в сокет <code>netFD</code> улетел хотя бы один байт, рантайм Go активирует метод <code>isReplayable()</code>. Для обычного метода <code>POST</code> повтор будет немедленно заблокирован (вернется ошибка <code>context.DeadlineExceeded</code> или <code>io.EOF</code>), поскольку рантайм не знает, был ли пакет прочитан бэкендом. Исключение составляют запросы, снабженные заголовками <code>Idempotency-Key</code> или <code>X-Idempotency-Key</code> с возможностью повторного чтения тела (<code>GetBody != nil</code>), либо стандартные безопасные и идемпотентные методы (<code>GET</code>, <code>HEAD</code>, <code>OPTIONS</code>, <code>TRACE</code>), для которых рантайм автоматически переоткроет соединение.</p>
   </div>
 </aside>
 

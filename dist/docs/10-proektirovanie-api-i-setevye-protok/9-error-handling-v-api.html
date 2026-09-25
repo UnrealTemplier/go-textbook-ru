@@ -2210,14 +2210,14 @@
 </aside>
 
 <hr />
-<h2 id="rfc-7807-standart-kontrakta-oshibki">RFC 7807: Стандарт контракта ошибки</h2>
+<h2 id="rfc-9457-standart-kontrakta-oshibki">RFC 9457: Стандарт контракта ошибки</h2>
 
 <p>Исторически каждый бэкенд-разработчик изобретал собственный формат JSON-ответа при сбоях:<br />
 * Вариант 1: <code>{"error": "message"}</code><br />
 * Вариант 2: <code>{"success": false, "data": null, "message": "error"}</code><br />
 * Вариант 3: <code>{"err_code": 104, "description": "fail"}</code></p>
 <p>Такой зоопарк превращал клиентскую разработку в кошмар: для каждого микросервиса приходилось писать уникальные парсеры ошибок.</p>
-<p>Чтобы стандартизировать формат, комитет IETF утвердил спецификацию <strong>RFC 7807 (Problem Details for HTTP APIs)</strong>, дополненную стандартом RFC 9457. Идиоматичный Go-бэкенд должен возвращать ошибки именно в этом формате с заголовком <code>Content-Type: application/problem+json</code>.</p>
+<p>Чтобы стандартизировать формат, комитет IETF утвердил спецификацию <strong>RFC 9457 (Problem Details for HTTP APIs)</strong>, которая официально аннулировала и заменила исходный стандарт RFC 7807. Идиоматичный Go-бэкенд должен возвращать ошибки именно в этом формате с заголовком <code>Content-Type: application/problem+json</code>.</p>
 
 <div class="code-block" data-lang="json">
   <header class="code-header">
@@ -2246,7 +2246,7 @@
   </div>
 </div>
 
-<p>Разберем назначение ключевых полей RFC 7807:<br />
+<p>Разберем назначение ключевых полей RFC 9457:<br />
 * <code>type</code>: URI-идентификатор, определяющий категорию проблемы. Клиентский код может программно проверять тип ошибки через <code>if (err.type === '...')</code>, не занимаясь хрупким парсингом человекочитаемых строк.<br />
 * <code>title</code>: Краткая текстовая сводка проблемы на понятном человеку языке (одинаковая для всех ошибок данного типа).<br />
 * <code>status</code>: Числовой HTTP-статус (дублирует код из заголовка пакета на случай, если корпоративный прокси или CDN исказил заголовки ответа).<br />
@@ -2275,7 +2275,7 @@ flowchart TD
 DB[&quot;База данных (PostgreSQL)&quot;] --&gt;|&quot;sql.ErrNoRows&quot;| Repo[&quot;Слой Репозитория (Repository)&quot;]
 Repo --&gt;|&quot;Враппинг: fmt.Errorf(%w)&lt;br&gt;или errors.Join&quot;| Usecase[&quot;Слой Бизнес-логики (Usecase)&quot;]
 Usecase --&gt;|&quot;Доменная ошибка:&lt;br&gt;ErrUserNotFound&quot;| Handler[&quot;Слой API (HTTP Handler)&quot;]
-Handler --&gt;|&quot;Логирование деталей в stdout&lt;br&gt;Маппинг в RFC 7807&quot;| Client[&quot;Клиент API&lt;br&gt;(HTTP 404 Not Found)&quot;]
+Handler --&gt;|&quot;Логирование деталей в stdout&lt;br&gt;Маппинг в RFC 9457&quot;| Client[&quot;Клиент API&lt;br&gt;(HTTP 404 Not Found)&quot;]
 
 classDef db fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#e2e8f0;
 classDef comp fill:#1e293b,stroke:#10b981,stroke-width:1px,color:#e2e8f0;
@@ -2332,7 +2332,7 @@ class Client out;
 </div>
 
 <h3 id="3-sloy-api-mapping-v-http-handler">3. Слой API (Маппинг в http.Handler)</h3>
-<p>В обработчике (<code>http.Handler</code>) мы извлекаем доменную ошибку и проверяем природу доменной ошибки и транслирует её в соответствующий HTTP-статус и DTO стандарта RFC 7807.</p>
+<p>В обработчике (<code>http.Handler</code>) мы извлекаем доменную ошибку и транслируем её в соответствующий HTTP-статус и DTO стандарта RFC 9457.</p>
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2474,13 +2474,28 @@ func NewNotFound(code, message string, err error) *AppError {
   </header>
   <div class="callout-body">
     <p>Встроенный <code>recover</code> в <code>net/http</code> защищает <strong>ТОЛЬКО</strong> ту конкретную горутину, которую рантайм выделил для обработки входящего HTTP-запроса!</p>
-<p>Если внутри хендлера вы запустите фоновую задачу:<br />
-<code>go func() { doSomeHeavyWork() }()</code><br />
-И в этой новой горутине произойдет паника — весь ваш бэкенд мгновенно рухнет (Downtime).<code>go
-go func() {
+<p>Если внутри хендлера вы запустите фоновую задачу:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">go func() {
     doSomeHeavyWork() // Если здесь случится nil dereference...
-}()</code><br />
-И в этой дочерней горутине произойдет паника — рантайм Go <strong>немедленно уронит весь процесс операционной системы</strong> (<code>SIGABRT</code>), вызвав фатальный простой (Downtime) всего сервиса для тысяч пользователей!</p>
+}()
+</code></pre>
+  <div class="retro-code-effects" aria-hidden="true">
+    <div class="retro-code-vhs-layer"></div>
+    <div class="retro-code-crt-layer"></div>
+    <div class="retro-code-noise-layer"></div>
+  </div>
+</div>
+
+<p>И в этой дочерней горутине произойдет паника — рантайм Go <strong>немедленно уронит весь процесс операционной системы</strong> (<code>SIGABRT</code>), вызвав фатальный простой (Downtime) всего сервиса для тысяч пользователей!</p>
 <p><strong>Железное правило:</strong> Никогда не запускайте анонимные неуправляемые горутины. Фоновые задачи обязаны содержать собственный <code>defer recover()</code>, либо управляться через структурированные пулы воркеров и пакет <code>golang.org/x/sync/errgroup</code>.</p>
   </div>
 </aside>
@@ -2572,7 +2587,7 @@ return nil // Явный nil очищает и itab, и data
 
 <ol>
 <li><strong>Не транслируйте технические ошибки наружу:</strong> Внутренние детали (SQL-запросы, трейсы, таймауты) должны оставаться в логах, а клиент API должен получать безопасный стандартизированный ответ.</li>
-<li><strong>RFC 7807:</strong> Используйте стандартизированный JSON (<code>application/problem+json</code>) с полями <code>type</code>, <code>title</code>, <code>status</code> и <code>detail</code>.</li>
+<li><strong>RFC 9457 (Problem Details):</strong> Используйте стандартизированный JSON (<code>application/problem+json</code>) с полями <code>type</code>, <code>title</code>, <code>status</code> и <code>detail</code> (заменивший RFC 7807).</li>
 <li><strong>Паттерн AppError:</strong> Применяйте централизованные типы ошибок приложения, чтобы избавиться от дублирования маппинга статусов в хендлерах.</li>
 <li><strong>Враппинг:</strong> Связывайте ошибки по цепочке через спецификатор <code>%w</code> в <code>fmt.Errorf</code> или функцию <code>errors.Join</code>, позволяя функциям <code>errors.Is</code> и <code>errors.As</code> работать корректно.</li>
 </ol>
@@ -2604,7 +2619,7 @@ return nil // Явный nil очищает и itab, и data
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#anatomiya-oshibki-ot-bazy-dannykh-do-json-otveta">Анатомия ошибки: От базы данных до JSON-ответа</a></li><li class="toc-item toc-h2"><a href="#paradigma-go-oshibki-vs-isklyucheniya">Парадигма Go: Ошибки vs Исключения</a></li><li class="toc-item toc-h2"><a href="#rfc-7807-standart-kontrakta-oshibki">RFC 7807: Стандарт контракта ошибки</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-sloistaya-obrabotka-oshibok">Архитектура: Слоистая обработка ошибок</a></li><li class="toc-item toc-h3"><a href="#1-sloy-repozitoriya-vrapping">1. Слой репозитория (Враппинг)</a></li><li class="toc-item toc-h3"><a href="#2-sloy-biznes-logiki-domennye-oshibki">2. Слой бизнес-логики (Доменные ошибки)</a></li><li class="toc-item toc-h3"><a href="#3-sloy-api-mapping-v-http-handler">3. Слой API (Маппинг в http.Handler)</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-pattern-kastomnaya-oshibka-prilozheniya-apperror">Идиоматичный паттерн: Кастомная ошибка приложения (AppError)</a></li><li class="toc-item toc-h2"><a href="#paniki-panics-v-http-api">Паники (Panics) в HTTP API</a></li><li class="toc-item toc-h2"><a href="#samaya-kovarnaya-oshibka-na-sobesedovaniyakh-nil-interface-trap">Самая коварная ошибка на собеседованиях: Nil Interface Trap</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#anatomiya-oshibki-ot-bazy-dannykh-do-json-otveta">Анатомия ошибки: От базы данных до JSON-ответа</a></li><li class="toc-item toc-h2"><a href="#paradigma-go-oshibki-vs-isklyucheniya">Парадигма Go: Ошибки vs Исключения</a></li><li class="toc-item toc-h2"><a href="#rfc-9457-standart-kontrakta-oshibki">RFC 9457: Стандарт контракта ошибки</a></li><li class="toc-item toc-h2"><a href="#arkhitektura-sloistaya-obrabotka-oshibok">Архитектура: Слоистая обработка ошибок</a></li><li class="toc-item toc-h3"><a href="#1-sloy-repozitoriya-vrapping">1. Слой репозитория (Враппинг)</a></li><li class="toc-item toc-h3"><a href="#2-sloy-biznes-logiki-domennye-oshibki">2. Слой бизнес-логики (Доменные ошибки)</a></li><li class="toc-item toc-h3"><a href="#3-sloy-api-mapping-v-http-handler">3. Слой API (Маппинг в http.Handler)</a></li><li class="toc-item toc-h2"><a href="#idiomatichnyy-pattern-kastomnaya-oshibka-prilozheniya-apperror">Идиоматичный паттерн: Кастомная ошибка приложения (AppError)</a></li><li class="toc-item toc-h2"><a href="#paniki-panics-v-http-api">Паники (Panics) в HTTP API</a></li><li class="toc-item toc-h2"><a href="#samaya-kovarnaya-oshibka-na-sobesedovaniyakh-nil-interface-trap">Самая коварная ошибка на собеседованиях: Nil Interface Trap</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 
