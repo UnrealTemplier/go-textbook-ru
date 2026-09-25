@@ -2188,7 +2188,7 @@
 
 <p>Структура <code>httputil.ReverseProxy</code> в рантайме Go — это не просто слепая пересылка сырых байтов через сетевой сокет. Это четко выверенный конвейер обработки HTTP-транзакций, состоящий из трех ключевых узлов:</p>
 <ol>
-<li><strong>Director</strong> (в современных версиях Go дополненный хуком <code>Rewrite</code>): Функция-модификатор входящего клиентского запроса. Она исполняется синхронно в горутине обслуживания запроса. <code>Director</code> отвечает за подмену URL назначения, корректировку заголовков хоста (<code>Host</code>) и выбор конкретного целевого бэкенда.</li>
+<li><strong>Rewrite / Director</strong>: Функция-модификатор входящего клиентского запроса. Начиная с Go 1.20, хук <code>Director</code> объявлен устаревшим (deprecated) из-за рисков безопасности (удаление hop-by-hop заголовков клиентом и уязвимость к спуфингу <code>X-Forwarded-*</code>). В современном коде стандартом является хук <code>Rewrite (func(*httputil.ProxyRequest))</code>, предоставляющий безопасные методы <code>SetURL()</code> и <code>SetXForwarded()</code>.</li>
 <li><strong>Transport</strong>: Абстракция интерфейса <code>http.RoundTripper</code> (обычно представляющая собой настроенный <code>*http.Transport</code>). Этот компонент управляет пулом постоянных TCP-соединений, кэшем TLS-сессий, таймаутами рукопожатий и непосредственной отправкой байт на выбранный бэкенд.</li>
 <li><strong>ModifyResponse</strong> (опциональный хук): Функция обратного вызова, позволяющая инспектировать или трансформировать заголовки и тело ответа бэкенда до того, как они отправятся клиенту.</li>
 </ol>
@@ -2268,7 +2268,14 @@ func NewSimpleProxy(targetURL string) (*httputil.ReverseProxy, error) {
 
     proxy := httputil.NewSingleHostReverseProxy(target)
 
-    // Кастомизация функции Director для модификации метаданных
+    // В Go 1.20+ для новых прокси рекомендуется использовать безопасный хук Rewrite:
+    // proxy.Rewrite = func(pr *httputil.ProxyRequest) {
+    //     pr.SetURL(target)
+    //     pr.Out.Header.Set(&quot;X-Proxy-By&quot;, &quot;go-service&quot;)
+    //     pr.SetXForwarded() // Безопасно заполняет X-Forwarded-* без уязвимости к спуфингу
+    // }
+
+    // Кастомизация функции Director для проектов с поддержкой старых версий Go:
     originalDirector := proxy.Director
     proxy.Director = func(req *http.Request) {
         originalDirector(req)

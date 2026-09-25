@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 9</span>
-              <span class="meta-tag read-time">⏱ ~18 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~19 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">10. Graceful shutdown</h1>
@@ -2248,15 +2248,15 @@ Srv--&gt;&gt;K8s: 9. Process exit 0 (Безопасное завершение)
 <hr />
 <h3 id="pod-kapotom-kak-rabotaet-http-server-shutdown">Под капотом. Как работает `http.Server.Shutdown`</h3>
 
-<p>Внутренний механизм <code>http.Server</code> в Go построен вокруг трекинга соединений. В исходном коде (<code>src/net/http/server.go</code>) сервер хранит две структуры:<br />
-- <code>idleConns</code>: map активных, но простаивающих соединений<br />
-- <code>activeConns</code>: map соединений, обрабатывающих запросы</p>
+<p>Внутренний механизм <code>http.Server</code> в Go построен вокруг централизованного трекинга открытых сокетов. В исходном коде (<code>src/net/http/server.go</code>) сервер хранит единую хеш-таблицу соединений под защитой мьютекса:<br />
+- <code>activeConn map[*conn]struct{}</code>: множество всех открытых клиентских TCP-соединений. Текущий статус сокета (<code>StateNew</code>, <code>StateActive</code>, <code>StateIdle</code>, <code>StateClosed</code>) хранится непосредственно в самом экземпляре <code>*conn</code> и защищается его внутренним атомарным состоянием (<code>c.getState()</code>).</p>
 <p>При вызове <code>Shutdown(ctx)</code>:<br />
-1. Закрывается <code>Listener</code> (новые запросы не принимаются)<br />
-2. Итерируется <code>idleConns</code> и вызывает <code>conn.closeIdle()</code>, отправляя <code>Connection: close</code><br />
-3. Для <code>activeConns</code> сервер не закрывает их принудительно сразу. Он ждет, пока обработчики завершат работу. Каждый обработчик работает в своей горутине, связанной с <code>*conn</code>.<br />
-4. Если <code>ctx</code> истекает, сервер вызывает <code>Close()</code> на всех оставшихся активных соединениях.</p>
-<p>В Go 1.21+ трекинг соединений оптимизирован: используется <code>sync.Map</code> и атомарные счетчики, что снижает contention при остановке высоконагруженных серверов с десятками тысяч открытых сокетов.</p>
+1. Атомарно выставляется флаг завершения работы <code>s.inShutdown.Store(true)</code>.<br />
+2. Закрываются все слушающие сокеты <code>net.Listener</code>, что прекращает прием новых входящих запросов и заставляет <code>Serve()</code> немедленно вернуть <code>ErrServerClosed</code>.<br />
+3. В отдельных горутинах вызываются зарегистрированные хуки <code>s.onShutdown</code>.<br />
+4. Метод <code>closeIdleConns()</code> обходит <code>s.activeConn</code> под <code>s.mu.Lock()</code> и немедленно закрывает все соединения, находящиеся в статусе <code>StateIdle</code>.<br />
+5. Сервер запускает цикл ожидания с экспоненциальным поллингом и джиттером (с шагом от 1 мс до 500 мс), ожидая перехода оставшихся соединений в статус завершенных и их удаления из <code>activeConn</code>.<br />
+6. Если переданный контекст <code>ctx</code> истекает до того, как все горутины обработчиков закончили работу, метод <code>Shutdown</code> завершается с возвратом ошибки <code>ctx.Err()</code>. Для жесткого принудительного обрыва оставшихся сокетов используется вызов <code>server.Close()</code>.</p>
 <hr />
 <h3 id="production-realizatsiya">Production-реализация</h3>
 

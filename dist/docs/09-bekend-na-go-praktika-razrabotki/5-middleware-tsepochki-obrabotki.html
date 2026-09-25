@@ -2711,7 +2711,9 @@ auth.GET(&quot;/users&quot;, getUsers)
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-go"><code class="language-go">// Middleware для извлечения пользователя из токена
+  <pre class="language-go"><code class="language-go">type userCtxKey struct{}
+
+// Middleware для извлечения пользователя из токена
 func userMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         token := r.Header.Get(&quot;Authorization&quot;)
@@ -2726,15 +2728,19 @@ func userMiddleware(next http.Handler) http.Handler {
             return
         }
 
-        // Добавляем пользователя в контекст
-        ctx := context.WithValue(r.Context(), &quot;user&quot;, user)
+        // Добавляем пользователя в контекст с неэкспортируемым типизированным ключом
+        ctx := context.WithValue(r.Context(), userCtxKey{}, user)
         next.ServeHTTP(w, r.WithContext(ctx))
     })
 }
 
 // Использование в обработчике
 func protectedHandler(w http.ResponseWriter, r *http.Request) {
-    user := r.Context().Value(&quot;user&quot;).(*User)
+    user, ok := r.Context().Value(userCtxKey{}).(*User)
+    if !ok {
+        http.Error(w, &quot;Unauthorized&quot;, http.StatusUnauthorized)
+        return
+    }
     w.Write([]byte(fmt.Sprintf(&quot;Hello, %s!&quot;, user.Name)))
 }
 </code></pre>

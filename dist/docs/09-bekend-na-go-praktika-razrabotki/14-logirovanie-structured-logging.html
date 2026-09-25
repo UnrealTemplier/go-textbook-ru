@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 9</span>
-              <span class="meta-tag read-time">⏱ ~19 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~20 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">14. Логирование. structured logging</h1>
@@ -2442,17 +2442,23 @@ func (h *AsyncHandler) run() {
     for r := range h.ch {
         _ = h.handler.Handle(context.Background(), r)
     }
-    h.handler.Close() // если есть
+    if c, ok := h.handler.(io.Closer); ok {
+        _ = c.Close()
+    }
     close(h.done)
 }
 
 func (h *AsyncHandler) Handle(ctx context.Context, r slog.Record) error {
+    // Контракт slog.Handler требует вызова r.Clone() при асинхронной обработке,
+    // чтобы предотвратить гонки данных за слайсы атрибутов при возврате из Handle
+    cloned := r.Clone()
+
     select {
-    case h.ch &lt;- r:
+    case h.ch &lt;- cloned:
         return nil
     default:
         // Очередь полна. Либо дропаем, либо пишем в stderr.
-        // В production лучше дропнуть, чем блокировать горутина.
+        // В production надежнее дропнуть, чем заблокировать рабочую горутину.
         _, _ = os.Stderr.WriteString(&quot;log queue full, dropping record\n&quot;)
         return nil
     }

@@ -2224,12 +2224,11 @@ class D storage;
 <p>Если таймаут базы данных равен таймауту шлюза, то при деградации БД сервис будет удерживать соединения до последнего момента. Шлюз завершит клиентскую сессию, а серверные горутины останутся заблокированными, потребляя память и файловые дескрипторы.</p>
 <h2 id="2-pod-kapotom-mekhanika-taymerov-v-rantayme-go">2. Под капотом. Механика таймеров в рантайме Go</h2>
 
-<p>Когда вы вызываете <code>context.WithTimeout</code> или <code>time.Sleep</code>, рантайм создает объект <code>runtime.timer</code>. Таймеры хранятся в глобальной минимальной куче (min-heap), отсортированной по времени срабатывания.</p>
+<p>Когда вы вызываете <code>context.WithTimeout</code> или <code>time.Sleep</code>, рантайм создает объект <code>runtime.timer</code>. В современном Go таймеры шардированы по локальным логическим процессорам <code>P</code> (per-P timer heaps), что устраняет конкуренцию за глобальный мьютекс.</p>
 <ul>
-<li>Вставка таймера: <code>O(log n)</code> через <code>heap.Push</code></li>
-<li>Проверка истекших таймеров: выделенная системная горутина <code>sysmon</code> периодически сканирует кучу, извлекает просроченные таймеры и пробуждает ожидающие горутины</li>
-<li>Отмена таймера: <code>timer.Stop()</code> удаляет элемент из кучи за <code>O(log n)</code>. Если горутина уже пробуждена, операция игнорируется</li>
-<li>Системные вызовы: <code>net.Conn.SetDeadline()</code> транслируется в <code>epoll_ctl(EPOLL_CTL_MOD)</code> с <code>EPOLLOUT</code>/<code>EPOLLIN</code> и таймером в ядре. Это позволяет ядру прерывать блокирующий <code>read()</code>/<code>write()</code> без участия Go-планировщика</li>
+<li>Локальное управление: планировщик Go проверяет созревшие таймеры непосредственно в цикле планирования <code>P</code> без задержек на переключение контекста. В Go 1.23+ подсистема таймеров была фундаментально переработана с прямой интеграцией в сетевой поллер (<code>netpoll</code>), что практически обнулило оверхед на синхронизацию.</li>
+<li>Отмена таймера: <code>timer.Stop()</code> помечает таймер для удаления и исключает его из очереди.</li>
+<li>Системные вызовы: <code>net.Conn.SetDeadline()</code> транслируется в <code>epoll_ctl(EPOLL_CTL_MOD)</code> с <code>EPOLLOUT</code>/<code>EPOLLIN</code> и таймером в ядре. Это позволяет ядру прерывать блокирующий <code>read()</code>/<code>write()</code> без участия Go-планировщика.</li>
 </ul>
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
@@ -2260,6 +2259,8 @@ import (
     &quot;time&quot;
 )
 
+var apiClient = setupClient()
+
 func setupClient() *http.Client {
     return &amp;http.Client{
         // Timeout покрывает весь цикл: connect -&gt; request -&gt; response -&gt; body read
@@ -2283,7 +2284,8 @@ func handlerWithTimeouts(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    resp, err := http.DefaultClient.Do(req)
+    // Используем сконфигурированный клиент с таймаутами вместо дефолтного
+    resp, err := apiClient.Do(req)
     if err != nil {
         // Различаем отмену и таймаут
         if ctx.Err() == context.DeadlineExceeded {

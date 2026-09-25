@@ -2303,7 +2303,7 @@ func process(ctx context.Context) error {
 <hr />
 <h2 id="2-pattern-obrabotki-v-servisnom-sloe">2. Паттерн обработки в сервисном слое</h2>
 
-<p>В production-сервисах ошибки делятся на категории: доменные, инфраструктурные и системные. Сервис не должен возвращать <code>sql.ErrNoRows</code> или сетевые ошибки напрямую. Он маппит их в доменные ошибки, сохраняя контекст.</p>
+<p>В production-сервисах ошибки делятся на категории: доменные, инфраструктурные и системные. Сервис не должен возвращать инфраструктурные ошибки СУБД или сетевые сбои напрямую. Он маппит их в доменные ошибки, сохраняя контекст.</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2319,8 +2319,8 @@ func process(ctx context.Context) error {
     }
 
     if err := s.repo.Create(ctx, &amp;User{Email: req.Email}); err != nil {
-        // Инфраструктурную ошибку превращаем в бизнес-сигнал
-        if errors.Is(err, sql.ErrNoRows) { 
+        // Ошибку нарушения уникальности из репозитория превращаем в доменный бизнес-сигнал
+        if errors.Is(err, repo.ErrAlreadyExists) { 
             return fmt.Errorf(&quot;create user: %w&quot;, ErrDuplicateEmail)
         }
         return fmt.Errorf(&quot;repo create: %w&quot;, err)
@@ -2386,6 +2386,7 @@ func good() error {
   <pre class="language-go"><code class="language-go">func writeError(w http.ResponseWriter, err error) {
     var status int
     var code string
+    var valErr *ValidationError
 
     switch {
     case errors.Is(err, ErrNotFound):
@@ -2394,7 +2395,7 @@ func good() error {
     case errors.Is(err, ErrDuplicate):
         status = http.StatusConflict
         code = &quot;DUPLICATE&quot;
-    case errors.As(err, new(ValidationError)):
+    case errors.As(err, &amp;valErr):
         status = http.StatusBadRequest
         code = &quot;VALIDATION_FAILED&quot;
     default:

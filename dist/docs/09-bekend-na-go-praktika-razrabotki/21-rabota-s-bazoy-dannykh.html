@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 9</span>
-              <span class="meta-tag read-time">⏱ ~24 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~25 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">21. Работа с базой данных</h1>
@@ -2258,7 +2258,7 @@ func main() {
 1. Горутина берет <code>sync.Mutex</code> пула.<br />
 2. Если <code>freeConn</code> не пуст — берется последнее свободное соединение.<br />
 3. Если свободно ничего нет и <code>numOpen &lt; MaxOpenConns</code> — инициируется создание нового соединения.<br />
-4. Если лимит достигнут — горутина встает в очередь <code>connRequests</code> и засыпает в ожидании освобождения через <code>sync.Cond.Wait()</code>.<br />
+4. Если лимит достигнут — горутина создает структуру запроса с буферизованным каналом (<code>make(chan connRequest, 1)</code>), регистрирует ее в очереди <code>connRequests</code> и ожидает свободного соединения через <code>select</code> между чтением из канала и отменой <code>ctx.Done()</code>.<br />
 5. После выполнения запроса соединение очищается и возвращается в пул либо закрывается, если превышен <code>ConnMaxIdleTime</code> или <code>ConnMaxLifetime</code>.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -2282,7 +2282,7 @@ E --&gt;|Да| F[&quot;Создание нового соединения&quot;]
 E --&gt;|Нет| G[&quot;Ожидание в connRequests&quot;]
 D --&gt; H[&quot;Выполнение SQL запроса&quot;]
 F --&gt; H
-G --&gt;|&quot;Уведомление по Cond&quot;| D
+G --&gt;|&quot;Получение conn через канал&quot;| D
 H --&gt; I[&quot;Возврат соединения в пул&quot;]
 I --&gt; J{&quot;Соединение живо и не просрочено?&quot;}
 J --&gt;|Да| K[&quot;Добавление в freeConn&quot;]
@@ -2308,7 +2308,7 @@ class L term;
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p><code>sync.Cond</code> используется вместо <code>chan</code>, чтобы избежать создания множества каналов при высокой конкуренции. Ожидание переводит горутину в состояние <code>_Gwaiting</code>, а при освобождении соединения планировщик будит первую горутину из очереди. Это снижает аллокации, но при тысячах ожидающих горутин вызывает contention на уровне <code>futex</code> в ядре ОС. Настройка <code>MaxOpenConns</code> чуть выше ожидаемого пика нагрузки критична для предотвращения starvation.</p>
+    <p>Для ожидания соединений в пуле <code>database/sql</code> используются буферизованные каналы (<code>chan connRequest</code>), а не <code>sync.Cond</code>. Это фундаментальное архитектурное решение: <code>sync.Cond.Wait()</code> принципиально невозможно прервать по сигналу <code>context.Context</code>. Канальная модель позволяет горутине мгновенно прервать ожидание соединения при истечении таймаута контекста (<code>case &lt;-ctx.Done():</code>) и корректно удалить свой запрос из очереди ожидания. При освобождении соединения вызывается <code>putConnDBLocked()</code>, передавая сокет первому ожидающему запросу прямо через его канал.</p>
   </div>
 </aside>
 
