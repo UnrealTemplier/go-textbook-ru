@@ -2184,9 +2184,9 @@
 <p>В Go создатели языка — Кен Томпсон и Роб Пайк — полностью переосмыслили работу со строками. Они заложили в них железные гарантии неизменяемости (Immutability). Это защищает многопоточные приложения от гонок данных без единого мьютекса, но при неосторожном обращении может спровоцировать колоссальные утечки памяти и деградацию производительности при конкатенациях.</p>
 <p>В этой главе мы препарируем структуру <code>StringHeader</code>, разберем физику неизменяемости, узнаем, почему наивная конвертация строки в срез байт убивает производительность, и изучим, как <code>strings.Builder</code> использует низкоуровневые механизмы для Zero-Copy манипуляций.</p>
 <hr />
-<h2 id="anatomiya-stringheader">Анатомия StringHeader</h2>
+<h2 id="anatomiya-struktury-stroki-stringheader">Анатомия структуры строки (StringHeader)</h2>
 
-<p>На уровне рантайма строка — это примитивная 16-байтная структура (на 64-битной архитектуре), объявленная в пакете <code>reflect</code> как <code>StringHeader</code>:</p>
+<p>На уровне рантайма (<code>runtime/string.go</code>) строка — это легковесная 16-байтная структура (на 64-битной архитектуре) из двух полей:</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2196,9 +2196,9 @@
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-go"><code class="language-go">type StringHeader struct {
-    Data uintptr
-    Len  int
+  <pre class="language-go"><code class="language-go">type stringStruct struct {
+    str unsafe.Pointer // Указатель на непрерывный байтовый массив в памяти
+    len int            // Точное количество физических байт в строке
 }
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
@@ -2208,6 +2208,7 @@
   </div>
 </div>
 
+<p><em>(Исторически в пакете <code>reflect</code> была определена аналогичная структура <code>StringHeader</code>, но начиная с Go 1.20 она объявлена устаревшей (deprecated) в пользу функций <code>unsafe.String</code> и <code>unsafe.StringData</code>).</em></p>
 <p>Обратите внимание на ключевое отличие от <code>SliceHeader</code> из главы <a href="16-slice-glavnaya-struktura-dannykh-v-go.html" class="wikilink">16. Slice. Главная структура данных в Go</a>: <strong>у строки принципиально отсутствует поле <code>Cap</code> (Capacity)</strong>. Поскольку размер строки неизменяем, резервировать избыточную емкость не имеет физического смысла:</p>
 <ol>
 <li><strong><code>Data</code></strong>: указатель на непрерывный read-only массив байт в памяти процесса.</li>
@@ -2504,7 +2505,7 @@ s2 := &quot;internal_server_error&quot;
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#anatomiya-stringheader">Анатомия StringHeader</a></li><li class="toc-item toc-h2"><a href="#neizmenyaemost-immutability-i-eyo-tsena">Неизменяемость (Immutability) и её цена</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-zachem-nuzhna-neizmenyaemost">Mechanical Sympathy: Зачем нужна неизменяемость?</a></li><li class="toc-item toc-h2"><a href="#konkatenatsiya-on2-i-ubiystvo-garbage-collectora">Конкатенация: O(N^2) и убийство Garbage Collector&#x27;а</a></li><li class="toc-item toc-h3"><a href="#idiomatichnyy-podkhod-strings-builder">Идиоматичный подход: strings.Builder</a></li><li class="toc-item toc-h2"><a href="#konvertatsiya-string-byte">Конвертация string &lt;-&gt; []byte</a></li><li class="toc-item toc-h3"><a href="#optimizatsii-kompilyatora-compiler-magic">Оптимизации компилятора (Compiler Magic)</a></li><li class="toc-item toc-h2"><a href="#string-interning-ekonomiya-na-dublikatakh">String Interning: Экономия на дубликатах</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#anatomiya-struktury-stroki-stringheader">Анатомия структуры строки (StringHeader)</a></li><li class="toc-item toc-h2"><a href="#neizmenyaemost-immutability-i-eyo-tsena">Неизменяемость (Immutability) и её цена</a></li><li class="toc-item toc-h3"><a href="#mechanical-sympathy-zachem-nuzhna-neizmenyaemost">Mechanical Sympathy: Зачем нужна неизменяемость?</a></li><li class="toc-item toc-h2"><a href="#konkatenatsiya-on2-i-ubiystvo-garbage-collectora">Конкатенация: O(N^2) и убийство Garbage Collector&#x27;а</a></li><li class="toc-item toc-h3"><a href="#idiomatichnyy-podkhod-strings-builder">Идиоматичный подход: strings.Builder</a></li><li class="toc-item toc-h2"><a href="#konvertatsiya-string-byte">Конвертация string &lt;-&gt; []byte</a></li><li class="toc-item toc-h3"><a href="#optimizatsii-kompilyatora-compiler-magic">Оптимизации компилятора (Compiler Magic)</a></li><li class="toc-item toc-h2"><a href="#string-interning-ekonomiya-na-dublikatakh">String Interning: Экономия на дубликатах</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

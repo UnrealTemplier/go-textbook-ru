@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 5</span>
-              <span class="meta-tag read-time">⏱ ~32 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~33 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">31. Время и даты. time.Time, Duration, Timer, Ticker</h1>
@@ -2452,13 +2452,13 @@ fmt.Println(&quot;Таймер сработал&quot;)
   </div>
 </div>
 
-<h3 id="utechka-pamyati-s-time-after">Утечка памяти с time.After</h3>
+<h3 id="allokatsii-i-utechki-pamyati-s-time-after">Аллокации и утечки памяти с time.After</h3>
 
-<p>Функция <code>time.After</code> — удобная обертка над <code>time.NewTimer</code>, сразу возвращающая канал <code>&lt;-chan Time</code>. Однако в циклических конструкциях она превращается в классический источник скрытых утечек памяти.</p>
-<aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Утечка памяти в цикле for-select">
+<p>Функция <code>time.After</code> — удобная обертка над <code>time.NewTimer</code>, сразу возвращающая канал <code>&lt;-chan Time</code>. Однако в циклических конструкциях она превращается в классический источник проблем с производительностью и памятью.</p>
+<aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Поведение time.After в цикле for-select">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Утечка памяти в цикле for-select</span>
+    <span class="callout-title">Ловушка / Gotcha: Поведение time.After в цикле for-select</span>
   </header>
   <div class="callout-body">
     <p>Взгляните на типичный код обработки очереди сообщений:</p>
@@ -2476,7 +2476,7 @@ fmt.Println(&quot;Таймер сработал&quot;)
         select {
         case msg := &lt;-ch:
             handle(msg)
-        case &lt;-time.After(1 * time.Hour): // УТЕЧКА ПАМЯТИ!
+        case &lt;-time.After(1 * time.Hour): // Порождает новый таймер на каждом витке
             fmt.Println(&quot;Нет сообщений целый час, завершаю работу&quot;)
             return
         }
@@ -2490,8 +2490,10 @@ fmt.Println(&quot;Таймер сработал&quot;)
   </div>
 </div>
 
-<p><strong>В чем кроется катастрофа?</strong> Функция <code>time.After</code> на <strong>каждой итерации цикла</strong> создает совершенно новый таймер в рантайме. Если сообщения поступают с высокой частотой (например, 1 000 сообщений в секунду), за минуту сервис породит 60 000 таймеров. И каждый из них будет удерживаться внутренними структурами рантайма в памяти <strong>целый час</strong>! Сборщик мусора бессилен удалить эти объекты, пока их интервал не истечет. Память сервиса быстро исчерпается.</p>
-<p><strong>Корректное решение:</strong> создайте один экземпляр <code>time.NewTimer</code> перед циклом и переиспользуйте его через метод <code>Reset</code>:</p>
+<p><strong>В чем кроется проблема?</strong> Функция <code>time.After</code> на <strong>каждой итерации цикла</strong> создает совершенно новый таймер в рантайме. Если сообщения поступают с высокой частотой (например, 1 000 сообщений в секунду), за минуту сервис породит 60 000 таймеров.</p>
+<p><em>В Go до версии 1.23:</em> Сборщик мусора принципиально не мог удалить эти таймеры до истечения их часового интервала, поскольку внутренние структуры рантайма удерживали на них жесткие ссылки. Это вызывало катастрофические утечки оперативной памяти.</p>
+<p><em>В Go 1.23+:</em> Архитектура таймеров была фундаментально переработана. Таймеры без живых пользовательских ссылок теперь немедленно утилизируются сборщиком мусора, устраняя историческую утечку. Однако многократный вызов <code>time.After</code> в цикле по-прежнему создает паразитные аллокации в куче и нагружает GC.</p>
+<p><strong>Корректное инженерное решение:</strong> создайте один экземпляр <code>time.NewTimer</code> перед циклом и переиспользуйте его через метод <code>Reset</code>:</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2508,10 +2510,7 @@ for {
     select {
     case msg := &lt;-ch:
         handle(msg)
-        // Безопасно сбрасываем таймер для следующей итерации
-        if !timer.Stop() {
-            &lt;-timer.C // Очищаем канал, если таймер уже успел сработать
-        }
+        // В Go 1.23+ Reset можно безопасно вызывать напрямую
         timer.Reset(1 * time.Hour)
     case &lt;-timer.C:
         return
@@ -2525,6 +2524,7 @@ for {
   </div>
 </div>
 
+<p><em>(Примечание для старых версий Go &lt; 1.23: канал таймера был буферизованным емкостью 1, поэтому перед <code>timer.Reset</code> требовалось дренировать канал через <code>if !timer.Stop() { select { case &lt;-timer.C: default: } }</code>. В Go 1.23+ канал таймера стал небуферизованным и синхронным, а <code>timer.Reset</code> безопасно вызывается напрямую).</em></p>
   </div>
 </aside>
 
@@ -2660,7 +2660,7 @@ M[&quot;Тред ОС (M)&lt;br/&gt;исполняет код&quot;] -.-&gt;|&qu
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#1-wall-clock-protiv-monotonic-clock">1. Wall Clock против Monotonic Clock</a></li><li class="toc-item toc-h3"><a href="#vdso-i-mechanical-sympathy">vDSO и Mechanical Sympathy</a></li><li class="toc-item toc-h2"><a href="#2-time-duration-tipobezopasnye-intervaly">2. time.Duration: Типобезопасные интервалы</a></li><li class="toc-item toc-h2"><a href="#3-magiya-formatirovaniya-2006-01-02-150405">3. Магия форматирования: &quot;2006-01-02 15:04:05&quot;</a></li><li class="toc-item toc-h2"><a href="#4-taymzony-i-problema-tzdata-v-docker">4. Таймзоны и проблема tzdata в Docker</a></li><li class="toc-item toc-h2"><a href="#5-taymery-i-tikery-kanaly-sobytiy">5. Таймеры и Тикеры: Каналы событий</a></li><li class="toc-item toc-h3"><a href="#time-timer-odnorazovoe-sobytie">time.Timer (Одноразовое событие)</a></li><li class="toc-item toc-h3"><a href="#utechka-pamyati-s-time-after">Утечка памяти с time.After</a></li><li class="toc-item toc-h3"><a href="#time-ticker-periodicheskie-tiki">time.Ticker (Периодические тики)</a></li><li class="toc-item toc-h2"><a href="#6-pod-kapotom-kak-rantaym-go-upravlyaet-taymerami">6. Под капотом: Как рантайм Go управляет таймерами</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-wall-clock-protiv-monotonic-clock">1. Wall Clock против Monotonic Clock</a></li><li class="toc-item toc-h3"><a href="#vdso-i-mechanical-sympathy">vDSO и Mechanical Sympathy</a></li><li class="toc-item toc-h2"><a href="#2-time-duration-tipobezopasnye-intervaly">2. time.Duration: Типобезопасные интервалы</a></li><li class="toc-item toc-h2"><a href="#3-magiya-formatirovaniya-2006-01-02-150405">3. Магия форматирования: &quot;2006-01-02 15:04:05&quot;</a></li><li class="toc-item toc-h2"><a href="#4-taymzony-i-problema-tzdata-v-docker">4. Таймзоны и проблема tzdata в Docker</a></li><li class="toc-item toc-h2"><a href="#5-taymery-i-tikery-kanaly-sobytiy">5. Таймеры и Тикеры: Каналы событий</a></li><li class="toc-item toc-h3"><a href="#time-timer-odnorazovoe-sobytie">time.Timer (Одноразовое событие)</a></li><li class="toc-item toc-h3"><a href="#allokatsii-i-utechki-pamyati-s-time-after">Аллокации и утечки памяти с time.After</a></li><li class="toc-item toc-h3"><a href="#time-ticker-periodicheskie-tiki">time.Ticker (Периодические тики)</a></li><li class="toc-item toc-h2"><a href="#6-pod-kapotom-kak-rantaym-go-upravlyaet-taymerami">6. Под капотом: Как рантайм Go управляет таймерами</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 
