@@ -2196,11 +2196,11 @@
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-go"><code class="language-go">// Внутреннее представление слайса в рантайме (до Go 1.20 структура называлась slice, сейчас это reflect.SliceHeader / внутренняя структура рантайма)
-type SliceHeader struct {
-    Data uintptr // Указатель на первый элемент массива в куче или на стеке
-    Len  int     // Текущая длина (количество доступных элементов)
-    Cap  int     // Емкость (количество выделенной памяти от начала Data)
+  <pre class="language-go"><code class="language-go">// Внутреннее представление слайса в рантайме (структура slice; устаревший reflect.SliceHeader в Go 1.20+ заменен на unsafe.Slice / unsafe.SliceData)
+type slice struct {
+    array unsafe.Pointer // Указатель на первый элемент массива в куче или на стеке
+    len   int            // Текущая длина (количество доступных элементов)
+    cap   int            // Емкость (количество выделенной памяти от начала массива)
 }
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
@@ -2219,9 +2219,9 @@ type SliceHeader struct {
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-ascii"><code class="language-ascii">Дескриптор среза SliceHeader в памяти (24 байта на 64-бит CPU):
+  <pre class="language-ascii"><code class="language-ascii">Дескриптор среза slice в памяти (24 байта на 64-бит CPU):
 +-------------------------+-------------------------+-------------------------+
-|     Data (uintptr)      |        Len (int)        |        Cap (int)        |
+|  array (unsafe.Pointer) |        len (int)        |        cap (int)        |
 |  8 байт (адрес массива) |    8 байт (длина = 3)   |   8 байт (емкость = 6)  |
 +-------------------------+-------------------------+-------------------------+
              │
@@ -2259,8 +2259,8 @@ type SliceHeader struct {
 2. Старые данные копируются в новый блок через ассемблерную инструкцию <code>memmove</code>.<br />
 3. Старый блок памяти становится мусором для Garbage Collector (GC).</p>
 <p><strong>Стратегия роста:</strong><br />
-*   Для малых слайсов (&lt; 1024 байт) емкость обычно удваивается ($2x$).<br />
-*   Для больших слайсов рост становится более плавным и консервативным (примерно $1.25x$), чтобы не выделять гигабайты неиспользуемой памяти впустую.</p>
+*   Для небольших срезов (емкостью менее 256 элементов, до Go 1.18 было 1024) емкость удваивается ($2x$).<br />
+*   Для более крупных срезов, начиная с Go 1.18, рантайм использует формулу плавного перехода <code>newcap += (newcap + 3*threshold) / 4</code>, которая постепенно снижает коэффициент роста к $1.25x$, исключая резкие скачки потребления памяти.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">

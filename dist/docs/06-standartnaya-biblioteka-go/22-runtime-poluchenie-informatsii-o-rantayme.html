@@ -2230,7 +2230,7 @@ fmt.Printf(&quot;%s&quot;, buf[:n])
 <p>Планировщик Go виртуозно мультиплексирует миллионы горутин (<code>G</code>) на небольшое количество потоков операционной системы (<code>M</code>). Но в реальном мире есть подсистемы, требующие строгой привязки к конкретному системному треду.</p>
 <h3 id="numcpu-vs-gomaxprocs">`NumCPU` vs `GOMAXPROCS`</h3>
 
-<p><code>runtime.NumCPU()</code> возвращает количество логических ядер, видимых процессу. В современных Linux-контейнерах эта функция читает <code>cgroups v2</code> (<code>cpuset.cpus.effective</code>) и корректно учитывает лимиты Kubernetes/Docker, если процессу выделен отдельный набор ядер.</p>
+<p><code>runtime.NumCPU()</code> возвращает количество логических ядер, доступных процессу. В Linux рантайм определяет это значение через системный вызов <code>sched_getaffinity</code> (маску affinity процесса), поэтому привязка к конкретным ядрам (<code>cpuset</code>) учитывается. Однако квоты процессорного времени (CFS Bandwidth / <code>cpu.max</code>) системный вызов <code>sched_getaffinity</code> не отражает, и файлы <code>cgroups</code> напрямую рантаймом не парсятся.</p>
 <p><code>runtime.GOMAXPROCS(n)</code> изменяет количество логических процессоров (<code>P</code>), используемых планировщиком Go. По умолчанию равно <code>NumCPU</code>. Изменение на лету возможно, но не рекомендуется: оно вызывает перераспределение очередей горутин и временную деградацию пропускной способности. В облачных контейнерах при жестких CPU Quota (CFS bandwidth control) исторически требовалось настраивать <code>GOMAXPROCS</code> вручную (например, через популярную библиотеку <code>uber-go/automaxprocs</code>), чтобы планировщик не создавал лишние <code>P</code>, приводящие к троттлингу ядра Linux.</p>
 <h3 id="lockosthread-i-unlockosthread">`LockOSThread` и `UnlockOSThread`</h3>
 
@@ -2308,7 +2308,7 @@ fmt.Printf(&quot;NumGC: %d\n&quot;, ms.NumGC)                        // Заве
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p><code>runtime.ReadMemStats</code> в Go 1.21+ использует асинхронное сэмплирование. Ранние версии вызывали микроскопический <code>STW</code> для снятия точного среза. Сейчас данные читаются из <code>memstats</code>, который обновляется фоновым потоком <code>bggc</code> атомарно. Вызов остается дорогим при экстремальной нагрузке (&gt;50k RPS) из-за барьеров памяти. В современном Go для высокочастотного сбора метрик рекомендуется пакет <code>runtime/metrics</code>, работающий без накладных расходов устаревшего <code>MemStats</code>.</p>
+    <p><code>runtime.ReadMemStats</code> по-прежнему вызывает Stop-The-World (<code>stopTheWorld(stwReadMemStats)</code>) для фиксации консистентного среза структур аллокатора памяти. Частый вызов <code>ReadMemStats</code> в критических путях высоконагруженных сервисов приводит к ощутимым задержкам (latency spikes). Именно поэтому в современном Go для регулярного и высокочастотного сбора телеметрии рекомендуется пакет <code>runtime/metrics</code>, который считывает агрегированные счетчики атомарно и без остановки мира.</p>
   </div>
 </aside>
 

@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 6</span>
-              <span class="meta-tag read-time">⏱ ~25 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~26 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">31. net. Базовая работа с сетью</h1>
@@ -2318,7 +2318,7 @@ C --&gt; I[&quot;Возврат n и err&quot;]
 <p>Каждый <code>net.Conn</code> потребляет 1 файловый дескриптор (FD). В Linux лимит задается <code>ulimit -n</code> (часто 1024 по умолчанию). Для production-сервисов это катастрофически мало. Настройте <code>fs.file-max</code> и <code>LimitNOFILE</code> в systemd до <code>65535</code> или выше. Утечка FD из-за забытого <code>conn.Close()</code> — одна из самых частых причин падения сервисов.</p>
 <h3 id="bufery-yadra-i-nagles-algorithm">Буферы ядра и Nagle's Algorithm</h3>
 
-<p>Сокеты имеют буферы на уровне ядра (<code>SO_SNDBUF</code>, <code>SO_RCVBUF</code>). По умолчанию TCP включает <code>TCP_NODELAY=off</code> (Nagle's algorithm), который кооперирует мелкие пакеты для уменьшения накладных расходов. Для RPC и игровых серверов это неприемлемо из-за задержек (latency). Отключается через:</p>
+<p>Сокеты имеют буферы на уровне ядра (<code>SO_SNDBUF</code>, <code>SO_RCVBUF</code>). В Go для всех TCP-соединений флаг <code>TCP_NODELAY</code> <strong>включен по умолчанию</strong> (<code>setNoDelay(fd, true)</code> при инициализации сокета), то есть алгоритм Нагла отключен. Это сделано намеренно для минимизации задержек (latency) в RPC и веб-сервисах. Если вам требуется включить алгоритм Нагла для коалесценции мелких пакетов при массивной потоковой передаче, это делается явно:</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2330,7 +2330,7 @@ C --&gt; I[&quot;Возврат n и err&quot;]
   </header>
   <pre class="language-go"><code class="language-go">tcpConn, ok := conn.(*net.TCPConn)
 if ok {
-    tcpConn.SetNoDelay(true) // Отправка сразу, без коалисценции
+    tcpConn.SetNoDelay(false) // Включение алгоритма Нагла при необходимости
 }
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
@@ -2340,7 +2340,7 @@ if ok {
   </div>
 </div>
 
-<p>Это увеличивает количество пакетов в сети, но снижает latency. В стандартном HTTP-сервере Go этот флаг уже включен по умолчанию для минимизации задержек ответов.</p>
+<p>По умолчанию Go ориентирован на минимальную сетевую задержку, отправляя данные сразу после вызова <code>Write</code>.</p>
 <h3 id="tsena-sozdaniya-soketa">Цена создания сокета</h3>
 
 <p><code>net.Dial</code> выполняет:<br />
@@ -2446,7 +2446,7 @@ ips, err := resolver.LookupIPAddr(context.Background(), &quot;api.example.com&qu
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p>Go кэширует DNS-ответы в рантайме только если включена <code>GODEBUG=asyncdns=1</code> и используются определенные системные настройки. В контейнеризированных средах (Kubernetes) часто отключают кэширование на уровне ОС, что делает асинхронный резолвер Go критически важным для стабильности.</p>
+    <p>Стандартный пакет <code>net</code> принципиально <strong>не кэширует</strong> DNS-ответы внутри рантайма Go. Кэширование возлагается на системные службы ОС (<code>systemd-resolved</code>, <code>nscd</code>, <code>dnsmasq</code>) или сетевую инфраструктуру. Выбор между нативным чистым Go-резолвером и системным libc/cgo управляется через <code>GODEBUG=netdns=go</code> или <code>netdns=cgo</code> (а флаг <code>netdns=1</code> включает подробный отладочный вывод).</p>
   </div>
 </aside>
 

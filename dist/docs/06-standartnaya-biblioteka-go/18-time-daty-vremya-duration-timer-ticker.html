@@ -2354,18 +2354,18 @@ for {
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-go"><code class="language-go">// ✅ ХОРОШО: Переиспользование одного таймера
+  <pre class="language-go"><code class="language-go">// ✅ ХОРОШО: Переиспользование одного таймера (Go 1.23+)
 t := time.NewTimer(time.Second)
 defer t.Stop()
 
 for {
-    t.Reset(time.Second) // Сбрасывает deadline без создания нового объекта
+    t.Reset(time.Second) // В Go 1.23+ Reset безопасен напрямую (канал unbuffered)
     select {
     case msg := &lt;-ch:
         process(msg)
-        if !t.Stop() {
-            &lt;-t.C // Опустошаем канал, если таймер уже сработал
-        }
+        // До Go 1.23 требовался дренаж: if !t.Stop() { &lt;-t.C }
+        // В Go 1.23+ дренаж канала не нужен и может привести к deadlock!
+        t.Stop()
     case &lt;-t.C:
         log.Println(&quot;timeout&quot;)
     }
@@ -2465,7 +2465,7 @@ for {
 <ol>
 <li><code>time.Time</code> хранит <strong>и</strong> wall clock, <strong>и</strong> monotonic. Всегда используйте метод <code>Equal()</code> для логического сравнения временных меток.</li>
 <li><code>time.Duration</code> — это целочисленный <code>int64</code> в наносекундах. Арифметика сложения интервалов бесплатна для CPU.</li>
-<li><code>time.Timer</code> и <code>time.Ticker</code> управляются планировщиком через min-heap. Они не тратят треды ОС, но требуют явного вызова <code>Stop()</code>.</li>
+<li><code>time.Timer</code> и <code>time.Ticker</code> управляются планировщиком рантайма. Они не тратят треды ОС. Начиная с Go 1.23, неиспользуемые таймеры собираются GC даже без <code>Stop()</code>, а каналы стали синхронными (unbuffered), что устранило необходимость сложного ручного дренажа при <code>Reset</code>.</li>
 <li>Избегайте вызова <code>time.After</code> в циклах <code>select</code>. Переиспользуйте один экземпляр <code>time.NewTimer</code> с методом <code>Reset()</code>.</li>
 <li><code>time.Now()</code> оптимизирован через страницы ядра vDSO и процессорный счетчик TSC. Аллокаций в куче не происходит.</li>
 <li>Храните временные метки в базе данных в формате UTC (<code>time.UTC()</code>), форматируя их в локальное время <code>time.Local()</code> только перед отображением клиенту.</li>

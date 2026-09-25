@@ -2398,7 +2398,7 @@ var client = &amp;http.Client{
     <p><strong>Вопрос:</strong> Почему <code>http.Transport</code> не использует <code>sync.Pool</code> для соединений?<br />
 <strong>Ответ:</strong> <code>sync.Pool</code> предназначен для короткоживущих, безсостоятельных объектов. TCP-соединение содержит состояние (очереди TCP, TLS session state, буферы чтения/записи, флаги Keep-Alive). Возврат такого объекта в пул потребовал бы полной очистки состояния, что сложнее, чем создание нового. Поэтому Go использует кастомный <code>connPool</code> с явным отслеживанием жизненного цикла и таймерами idle.</p>
 <p><strong>Вопрос:</strong> Как отследить количество idle соединений в рантайме без метрик Prometheus?<br />
-<strong>Ответ:</strong> В Go 1.21+ добавлен метод <code>client.Transport.(*http.Transport).GetIdleConns()</code> (и <code>MaxIdleConns()</code>). Он возвращает слайс соединений. Для старых версий используйте <code>runtime.NumGoroutine()</code> + анализ логов <code>GODEBUG=httpclient=1</code> или внешние eBPF-метрики.</p>
+<strong>Ответ:</strong> Стандартный <code>*http.Transport</code> не предоставляет публичного API для инспекции пула idle-соединений (метода <code>GetIdleConns</code> не существует). Для мониторинга используют хуки <code>httptrace.ClientTrace</code> (<code>GotConn</code>, <code>PutIdleConn</code>), кастомную обертку над <code>net.Dialer</code> / <code>DialContext</code> либо сетевую телеметрию ОС (eBPF, <code>ss</code>, <code>netstat</code>).</p>
   </div>
 </aside>
 
@@ -2410,7 +2410,7 @@ var client = &amp;http.Client{
 <li>Всегда закрывайте <code>resp.Body</code>. Непрочитанное тело ломает Keep-Alive и вынуждает создавать новые соединения.</li>
 <li>HTTP/2 мультиплексирует запросы по одному TCP-соединению, HTTP/1.1 требует пула соединений, равного количеству параллельных вызовов.</li>
 <li>Idle-соединения держат FD и память ядра. Настройте <code>IdleConnTimeout</code> и <code>MaxIdleConns</code> под нагрузку и лимиты ОС.</li>
-<li>Мониторьте состояние пула. Используйте <code>GetIdleConns()</code> и экспортируйте метрики для предотвращения <code>TIME_WAIT</code> штормов.</li>
+<li>Мониторьте состояние пула. Используйте <code>httptrace</code> и сетевые метрики для предотвращения <code>TIME_WAIT</code> штормов.</li>
 </ol>
 <p>Освоив управление сетевыми соединениями, мы переходим к критическому аспекту разработки: как тестировать HTTP-сервисы без реальных сетевых задержек, мокировать внешние API и писать стабильные интеграционные тесты. В следующей статье мы разберем стандартный инструментарий: <a href="35-httptest-testirovanie-http-servisov.html" class="wikilink">35. httptest. Тестирование HTTP-сервисов</a>.</p>
           </div>
