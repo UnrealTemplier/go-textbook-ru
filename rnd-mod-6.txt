@@ -1,0 +1,664 @@
+# FACT-CHECK RESEARCH BRIEF
+
+## Module
+
+Module: 6
+Title: Стандартная библиотека Go
+Source directory: sources/6. Стандартная библиотека Go
+Articles: 48
+Approximate scope: Фундаментальный обзор стандартной библиотеки Go: базовый ввод-вывод (io, bufio, bytes, strings, strconv, unicode, fmt), файловые и системные интерфейсы (os, path, path/filepath, io/fs, embed, flag, log/slog), параллелизм и примитивы синхронизации (context, time, sync, sync/atomic, sync.Pool), интроспекция и низкоуровневые механизмы (runtime, reflect, unsafe), структуры данных и алгоритмы (sort, slices, maps, cmp, container/list, heap, ring, regexp), сериализация (encoding/json, encoding/xml, csv, gob), сетевой стек и протоколы (net, net/url, net/http, net/http/pprof, httptest, expvar), криптография и случайные числа (crypto/rand, math/rand, crypto/*, TLS), работа с СУБД (database/sql), архивация и сжатие (archive/tar, zip, compress/gzip, zlib, flate), взаимодействие с процессами и ОС (os/exec, syscall, x/sys), тестирование и расширения (testing, testing/quick, plugin).
+
+---
+
+## Executive Summary
+
+Модуль 6 представляет собой один из самых объемных и технически глубоких разделов энциклопедии (48 статей, ~9200 строк текста, сотни примеров кода и архитектурных схем Mermaid). Его цель — дать исчерпывающий, профессиональный разбор стандартной библиотеки языка Go с акцентом на системное программирование, механическую симпатию (Mechanical Sympathy), распределенные системы и подготовку к собеседованиям уровня Senior/Staff.
+
+Главные зоны наивысшего риска в модуле сосредоточены на стыке сетевого стека, контрактов ввода-вывода, криптографии, управления памятью и версионных изменений рантайма:
+1. **Сетевой стек и HTTP (`net`, `net/http`, `net/http/pprof`):** Выявлены серьезные фактические ошибки, включая упоминание несуществующих методов API (`http.Transport.GetIdleConns()`), неверное описание настроек сокетов по умолчанию (`TCP_NODELAY`), ложные утверждения о встроенном кэшировании DNS через несуществующие флаги (`GODEBUG=asyncdns=1`) и искажение формулы сэмплирования профилировщика памяти (`runtime.MemProfileRate`).
+2. **Контракты ввода-вывода (`io`, `os`, `bufio`, `strings`):** Выявлено фундаментальное противоречие спецификации Go относительно контракта `io.Writer` (ошибочное утверждение о допустимости возврата `n < len(p)` при `err == nil`), ложные утверждения о панике `bufio.Scanner` при превышении буфера 64 КБ, а также вымышленные механизмы «заморозки» буфера со стороны `strings.Builder`.
+3. **Безопасность и криптография (`crypto/rand`, `math/rand`, `encoding/gob`, `os/exec`):** Ложная тревога и концептуальная ошибка в описании `encoding/gob` (приписывание уязвимости RCE/произвольного выполнения кода по аналогии с Python `pickle`), а также смешение версионных генераторов `math/rand` (v1) и `math/rand/v2` (PCG).
+4. **Внутреннее устройство рантайма и параллелизм (`runtime`, `time`, `sync`, `unsafe`):** Фактическая ошибка о якобы переходе `runtime.ReadMemStats` на «асинхронное сэмплирование без STW в Go 1.21+» (тогда как функция до сих пор безусловно вызывает Stop-The-World), неполная актуализация таймеров под Go 1.23 (где таймеры собираются GC и каналы небуферизированы), а также устаревшие ментальные модели слайсов (`reflect.SliceHeader`).
+
+Версионная чувствительность модуля чрезвычайно высока: в текстах упоминаются изменения от Go 1.0 до Go 1.24+ (включая `io/fs` и `embed` в 1.16; дженерики и фаззинг в 1.18; `atomic.Pointer`, `pdqsort`, `GOMEMLIMIT` в 1.19; `errors.Join`, `cmd.Cancel`, deprecation `SliceHeader` в 1.20; `slices`, `maps`, `cmp`, `clear()`, `log/slog` в 1.21; новый `ServeMux`, `math/rand/v2`, `reflect.TypeFor` в 1.22; таймеры Go 1.23; `b.Loop()`, `testing/synctest`, `os.Root` в 1.24). В нескольких ключевых местах исторические модели или промежуточные предложения выданы за актуальный стандарт, либо перепутаны номера версий.
+
+Плотность деталей реализации исключительно высока: от ассемблерных инструкций (`PAUSE`, `RDTSC`, `AES-NI`) и структур ядра (`poll.FD`, `epoll_event`, `futex`) до внутренних структур рантайма (`hmap`, `bggc`, `gopark`, `eface`, `stenciling`). Данный бриф структурирует выявленные дефекты по уровню серьезности, формирует кластеры проблем и предоставляет строго верифицированные первоисточники для финального агента.
+
+---
+
+# 1. HIGH-PRIORITY CLAIMS
+
+## Claim 1: Вымышленный метод инспекции соединений `http.Transport.GetIdleConns()`
+
+* **File:** `sources/6. Стандартная библиотека Go/34. net_http под капотом. Transport, Connection Pool, Keep Alive.md`
+* **Section:** Блок «[!tip] Собеседование» (строка 137) и «Итог», п. 6 (строка 146).
+* **Claim:**  
+  `«В Go 1.21+ добавлен метод client.Transport.(*http.Transport).GetIdleConns() (и MaxIdleConns()). Он возвращает слайс соединений.»`  
+  `«6. Мониторьте состояние пула. Используйте GetIdleConns() и экспортируйте метрики для предотвращения TIME_WAIT штормов.»`
+* **Claim type:** FACTUALLY WRONG / HALLUCINATED API
+* **Severity:** High
+* **Historical / Current / Unclear:** Current (заявлено как фича Go 1.21+).
+* **Why verification matters:** Метод `GetIdleConns()` в структуре `*http.Transport` **полностью отсутствует** во всех версиях Go (включая Go 1.21–1.24+). Любой читатель или кандидат на собеседовании, попытавшийся вызвать этот метод, получит ошибку компиляции: `type *http.Transport has no field or method GetIdleConns`. Стандартный `http.Transport` принципиально не экспортирует срез или количество свободных соединений.
+* **Primary source:** Официальная документация Go `net/http` и исходный код `src/net/http/transport.go`.
+* **Source URL:** https://pkg.go.dev/net/http#Transport
+* **Relevant section:** Struct `http.Transport`.
+* **What specifically must be verified:** Проверить список экспортированных методов `http.Transport` в пакете `net/http`. Убедиться, что ни `GetIdleConns()`, ни метода `MaxIdleConns()` (есть только экспортированное поле `MaxIdleConns int`) не существует.
+* **Potential correction direction:** Удалить утверждение о наличии метода `GetIdleConns()`. Пояснить, что стандартный `http.Transport` не предоставляет публичного API для интроспекции текущего пула idle-соединений; для мониторинга используются `httptrace.ClientTrace` (`GotConn`, `PutIdleConn`), кастомные обертки над `DialContext` либо сетевые метрики ОС (eBPF, `ss`, `netstat`).
+
+---
+
+## Claim 2: Ложное утверждение о допустимости частичной записи `io.Writer` без ошибки
+
+* **File:** `sources/6. Стандартная библиотека Go/4. io. Reader, Writer и философия потоков в Go.md` (строка 267) и `11. os. Работа с процессом, окружением и файлами.md` (строка 94).
+* **Section:** «Хардкорные вопросы с собеседований» (таблица, строка 267) в файле 4; подраздел «Чтение и запись» в файле 11.
+* **Claim:**  
+  Файл 4: `«| Может ли Write вернуть n < len(p) и err == nil? | Да, особенно при записи в неблокирующие сокеты или пайпы. Вызывающий код обязан проверить n и продолжить запись остатка. |»`  
+  Файл 11: `«Write также может записать меньше байт, чем запрошено (особенно при переполнении буфера сокета или канала pipe)...»`
+* **Claim type:** FACTUALLY WRONG
+* **Severity:** High
+* **Historical / Current / Unclear:** Current.
+* **Why verification matters:** Это прямое и грубое нарушение канонического интерфейсного контракта `io.Writer`. В спецификации Go черным по белому зафиксировано: *«Write must return a non-nil error if it returns n < len(p)»*. Если реализация вернула меньше байт без ошибки, она не удовлетворяет контракту. Стандартные утилиты Go (`io.Copy`, `io.WriteString`) при обнаружении `n < len(p) && err == nil` аварийно возвращают `io.ErrShortWrite`. Автор спутал контракт Go-интерфейса `io.Writer` с поведением системного вызова POSIX `write(2)`.
+* **Primary source:** Спецификация пакета `io`, документация интерфейса `io.Writer`.
+* **Source URL:** https://pkg.go.dev/io#Writer
+* **Relevant section:** `type Writer interface { Write(p []byte) (n int, err error) }`
+* **What specifically must be verified:** Проверить контракт `io.Writer` в документации и коде `src/io/io.go` (константа `ErrShortWrite`). Также проверить контракт `(*os.File).Write`, где документация гарантирует: *«Write returns a non-nil error when n != len(b)»*.
+* **Potential correction direction:** Заменить ответ в таблице: `«Нет, контракт io.Writer категорически запрещает возвращать n < len(p) при err == nil. Если запись не завершена полностью, Writer ОБЯЗАН вернуть ненулевую ошибку (в стандартных утилитах это приводит к io.ErrShortWrite). Поведение с возвратом n < len(p) без ошибки характерно для системного вызова write(2) в Си/POSIX, но в Go оно запрещено контрактом интерфейса».`
+
+---
+
+## Claim 3: Ложное утверждение об «асинхронном сэмплировании без STW» в `runtime.ReadMemStats`
+
+* **File:** `sources/6. Стандартная библиотека Go/22. runtime. Получение информации о рантайме.md`
+* **Section:** «[!info] Под капотом» (строка 82).
+* **Claim:**  
+  `«runtime.ReadMemStats в Go 1.21+ использует асинхронное сэмплирование. Ранние версии вызывали микроскопический STW для снятия точного среза. Сейчас данные читаются из memstats, который обновляется фоновым потоком bggc атомарно. Вызов остается дорогим при экстремальной нагрузке (>50k RPS) из-за барьеров памяти. В современном Go для высокочастотного сбора метрик рекомендуется пакет runtime/metrics...»`
+* **Claim type:** FACTUALLY WRONG
+* **Severity:** High
+* **Historical / Current / Unclear:** Current (заявлено как поведение Go 1.21+).
+* **Why verification matters:** `runtime.ReadMemStats(&ms)` в Go (включая Go 1.21, 1.22, 1.23, 1.24) **всегда останавливает мир** (`stopTheWorld(stwReadMemStats)`). В рантайме Go нет никакого «асинхронного сэмплирования» для `ReadMemStats`. Асинхронное бесконфликтное чтение метрик без STW реализовано исключительно в пакете `runtime/metrics`, появившемся еще в Go 1.16/1.17. Читатель, поверивший утверждению, может ошибочно вызвать `ReadMemStats` в критическом цикле production-сервиса, получив катастрофические задержки Stop-The-World.
+* **Primary source:** Исходный код Go runtime `src/runtime/mstats.go`, функция `ReadMemStats`.
+* **Source URL:** https://cs.opensource.google/go/go/+/master:src/runtime/mstats.go
+* **Relevant section:** `func ReadMemStats(m *MemStats) { ... stw := stopTheWorld(stwReadMemStats) ... startTheWorld(stw) }`
+* **What specifically must be verified:** Проверить реализацию `ReadMemStats` в актуальном дереве исходников Go: убедиться в наличии вызова `stopTheWorld`.
+* **Potential correction direction:** Исправить текст врезки: `ReadMemStats` по-прежнему вызывает Stop-The-World (STW) для фиксации консистентного состояния аллокатора. Именно поэтому для production-мониторинга в современном Go необходимо использовать пакет `runtime/metrics`, который читает агрегированные счетчики без остановки мира.
+
+---
+
+## Claim 4: Ложное утверждение о выключенном по умолчанию `TCP_NODELAY` в пакете `net`
+
+* **File:** `sources/6. Стандартная библиотека Go/31. net. Базовая работа с сетью.md`
+* **Section:** «Буферы ядра и Nagle's Algorithm» (строки 94–100).
+* **Claim:**  
+  `«По умолчанию TCP включает TCP_NODELAY=off (Nagle's algorithm), который кооперирует мелкие пакеты для уменьшения накладных расходов. Для RPC и игровых серверов это неприемлемо из-за задержек (latency). Отключается через: tcpConn.SetNoDelay(true)»`
+* **Claim type:** FACTUALLY WRONG
+* **Severity:** High
+* **Historical / Current / Unclear:** Current.
+* **Why verification matters:** Утверждение утверждает ровно обратное реальности. В стандартной библиотеке Go (`net.Dial`, `net.Listen`) для всех TCP-соединений флаг `TCP_NODELAY` **включен по умолчанию** (`SetNoDelay(true)` вызывается рантаймом при инициализации сокета). Алгоритм Нагла в Go **отключен по умолчанию** со времен ранних версий Go, так как Go проектировался для высокопроизводительных сетевых RPC. Чтобы включить алгоритм Нагла обратно, разработчик должен вызвать `SetNoDelay(false)`.
+* **Primary source:** Документация и исходный код `src/net/tcpsock.go`, `src/net/tcpsock_posix.go` (`setNoDelay`).
+* **Source URL:** https://pkg.go.dev/net#TCPConn.SetNoDelay
+* **Relevant section:** `func (c *TCPConn) SetNoDelay(noDelay bool) error`
+* **What specifically must be verified:** Проверить документацию `net.Dial` и `SetNoDelay`, подтвердить вызов `setNoDelay(fd, true)` при создании сокета по умолчанию.
+* **Potential correction direction:** Скорректировать текст: `В Go алгоритм Нагла отключен по умолчанию (TCP_NODELAY=true установлен для всех TCP-соединений автоматически при Dial и Accept), что минимизирует задержки в RPC-протоколах. Если требуется включить алгоритм Нагла для объемной потоковой передачи данных, вызывается tcpConn.SetNoDelay(false).`
+
+---
+
+## Claim 5: Вымышленный механизм «заморозки и паники при записи» в `strings.Builder`
+
+* **File:** `sources/6. Стандартная библиотека Go/7. strings. Работа со строками.md`
+* **Section:** «strings.Builder: Zero-allocation сборщик строк» (строка 109) и «Собеседование» (строка 133).
+* **Claim:**  
+  Строка 109: `«Начиная с Go 1.10, он помечает внутренний буфер как "замороженный" (через unsafe внутри пакета strings), предотвращая его изменение, и возвращает строку без копирования данных, если буфер больше не используется для записи.»`  
+  Строка 133: `«Как только вы вызываете .String(), он запрещает дальнейшую запись в этот инстанс (паникует при попытке) и может безопасно вернуть строку, ссылающуюся на тот же блок памяти...»`
+* **Claim type:** FACTUALLY WRONG / MISLEADING MENTAL MODEL
+* **Severity:** High
+* **Historical / Current / Unclear:** Current.
+* **Why verification matters:** `strings.Builder` **никогда не паникует** при вызове методов записи (`Write`, `WriteString`) после вызова `.String()`. В нем нет никакого флага «заморозки» буфера. Единственная проверка с паникой в `strings.Builder` — это `copyCheck()`, которая паникует только при **копировании самого экземпляра `strings.Builder` по значению** (`illegal use of non-zero Builder copied by value`). Вызов `b.String()` возвращает `unsafe.String(unsafe.SliceData(b.buf), len(b.buf))`, после чего в `b` можно продолжать писать дальше без каких-либо паник.
+* **Primary source:** Исходный код `src/strings/builder.go`.
+* **Source URL:** https://cs.opensource.google/go/go/+/master:src/strings/builder.go
+* **Relevant section:** Методы `copyCheck()`, `String()`, `Write()`.
+* **What specifically must be verified:** Запустить тестовый код: вызвать `b.WriteString("a")`, затем `b.String()`, затем снова `b.WriteString("b")`. Убедиться в отсутствии паники. Проверить `src/strings/builder.go` на отсутствие флагов запрета записи.
+* **Potential correction direction:** Устранить утверждение о панике при записи после `.String()`. Разъяснить реальный механизм: `strings.Builder` запрещает только свое копирование по значению (через проверку собственного адреса `addr *Builder`), а `String()` просто преобразует срез в строку через `unsafe.String` без копирования данных.
+
+---
+
+## Claim 6: Ложное утверждение о панике `bufio.Scanner` при превышении буфера 64 КБ
+
+* **File:** `sources/6. Стандартная библиотека Go/6. bufio. Буферизированный ввод и вывод.md`
+* **Section:** Подраздел «2. Scanner: парсинг по токенам» (строка 153) и таблица «Ловушки» (строка 183).
+* **Claim:**  
+  Строка 153: `«По умолчанию он использует ограничение в 64 КБ. Превышение вызывает панику.»`  
+  Строка 183: `«| Scanner panic | bufio.Scanner: token too long | Установите лимит через scanner.Buffer()... |»`
+* **Claim type:** FACTUALLY WRONG
+* **Severity:** High
+* **Historical / Current / Unclear:** Current.
+* **Why verification matters:** Превышение максимального размера токена (`MaxScanTokenSize = 64 * 1024`) в `bufio.Scanner` **никогда не вызывает панику**. Метод `scanner.Scan()` просто возвращает `false`, цикл завершается, а метод `scanner.Err()` возвращает ошибку `bufio.ErrTooLong` (`"bufio.Scanner: token too long"`). Читатель, ожидающий панику, будет писать избыточные `recover()` вместо проверки `scanner.Err()`.
+* **Primary source:** Документация и код `src/bufio/scan.go`, переменная `ErrTooLong`.
+* **Source URL:** https://pkg.go.dev/bufio#ErrTooLong
+* **Relevant section:** `var ErrTooLong = errors.New("bufio.Scanner: token too long")`
+* **What specifically must be verified:** Проверить документацию и поведение `scanner.Scan()` на строке > 64 КБ: метод возвращает `false`, паники нет.
+* **Potential correction direction:** Исправить текст: `bufio.Scanner` не паникует; при токене более 64 КБ метод `Scan()` возвращает `false`, а последующий вызов `scanner.Err()` возвращает ошибку `bufio.ErrTooLong`.
+
+---
+
+## Claim 7: Ошибочное приписывание произвольного выполнения кода (RCE) пакету `encoding/gob`
+
+* **File:** `sources/6. Стандартная библиотека Go/30. encoding_xml, csv, gob и другие форматы сериализации.md`
+* **Section:** Таблица «Ловушки и вопросы с собеседований» (строка 142) и «Итог» (строка 167).
+* **Claim:**  
+  Строка 142: `«| gob и безопасность | Десериализация ненадежных gob потоков позволяет выполнять произвольный код через gob.Register | Никогда не декодируйте gob из внешних источников. Используйте Protobuf или JSON для публичных контрактов. |»`  
+  Строка 167: `«5. Никогда не используйте gob для парсинга ненадежных данных...»`
+* **Claim type:** FACTUALLY WRONG / MISLEADING SECURITY CLAIM
+* **Severity:** Critical (вводит в заблуждение в вопросах AppSec).
+* **Historical / Current / Unclear:** Current.
+* **Why verification matters:** Пакет `encoding/gob` **не позволяет выполнять произвольный машинный код** (Remote Code Execution / RCE). В отличие от Python `pickle` или Java Object Serialization, десериализатор Go `gob` строго декодирует поля в заранее известные скомпилированные типы данных структуры Go и не вызывает конструкторов, деструкторов или произвольных методов. Известные уязвимости `gob` при обработке ненадежных данных относятся к классу **Denial of Service (DoS)** через исчерпание памяти или переполнение стека рекурсивными структурами (CVE-2022-30635, CVE-2024-34156). Приписывание `gob` уязвимости RCE искажает модель угроз.
+* **Primary source:** Go Security Advisories, документация пакета `encoding/gob`.
+* **Source URL:** https://pkg.go.dev/encoding/gob
+* **Relevant section:** Безопасность десериализации `gob`.
+* **What specifically must be verified:** Изучить историю CVE для пакета `encoding/gob` (CVE-2022-30635, CVE-2024-34156) и подтвердить, что они связаны с DoS/stack exhaustion, а не с выполнением кода.
+* **Potential correction direction:** Скорректировать описание угрозы: ненадежные потоки `gob` опасны не выполнением произвольного кода (RCE), а атаками типа Denial of Service (DoS) — глубоко вложенные структуры могут вызвать панику из-за исчерпания стека или переполнения кучи аллокациями невалидных слайсов.
+
+---
+
+## Claim 8: Смешение версий `math/rand` (v1) и `math/rand/v2` (алгоритм PCG)
+
+* **File:** `sources/6. Стандартная библиотека Go/37. crypto_rand и math_rand.md`
+* **Section:** Подраздел «Механика math/rand» (строка 16) и Mermaid-схема (строка 41).
+* **Claim:**  
+  `«До Go 1.20 использовался алгоритм Lagged Fibonacci, подверженный статистическим артефактам. В современных версиях перешли на PCG (Permuted Congruential Generator). Он работает с 64-битным состоянием, выполняет несколько битовых сдвигов и умножений на каждом вызове...»`  
+  Mermaid: `A["Вызов math/rand.Intn"]:::system --> B["CPU: Битовые операции PCG"]`
+* **Claim type:** OUTDATED / MISLEADING VERSION MIXING
+* **Severity:** High
+* **Historical / Current / Unclear:** Historical vs Current mixing.
+* **Why verification matters:** Пакет `math/rand` (v1) **никогда не переходил на PCG**! В Go 1.20 в пакете `math/rand` было добавлено только автоматическое сидирование глобального генератора случайным числом при старте (до этого дефолтный seed был равен 1). Сам алгоритм генератора в `math/rand` остался прежним. Алгоритм **PCG** (а также ChaCha8) был представлен только в Go 1.22 в **новом отдельном пакете `math/rand/v2`** (`math/rand/v2.NewPCG`). Вызов `math/rand.Intn` в Go 1.20+ не выполняет операций PCG.
+* **Primary source:** Release Notes Go 1.20, Go 1.22; документация `math/rand` и `math/rand/v2`.
+* **Source URL:** https://go.dev/doc/go1.22#math_rand_v2
+* **Relevant section:** Section `math/rand/v2`.
+* **What specifically must be verified:** Проверить дерево исходников `src/math/rand/rand.go` (там нет PCG) и `src/math/rand/v2/pcg.go`.
+* **Potential correction direction:** Четко разграничить: в Go 1.20 для `math/rand` было добавлено лишь автосидирование глобального генератора. Алгоритм PCG (структура `rand.PCG`) появился исключительно в пакете `math/rand/v2` в Go 1.22.
+
+---
+
+## Claim 9: Конфликт утверждений и устаревшая ментальная модель `time.Timer` в свете Go 1.23
+
+* **File:** `sources/6. Стандартная библиотека Go/18. time. Даты, время, Duration, Timer, Ticker.md`
+* **Section:** Подраздел «Утечка Ticker» (строка 75), пример оптимизации цикла (строки 110–116) и «Итог» (строка 158).
+* **Claim:**  
+  Строка 75: `«В Go 1.23 архитектуру таймеров радикально переработали: теперь неиспользуемые таймеры и тикеры могут собираться сборщиком мусора GC.»`  
+  Строки 110–116: код со старым идиоматическим дренажем `if !t.Stop() { <-t.C }`.  
+  Строка 158: `«3. time.Timer и time.Ticker управляются планировщиком через min-heap. Они не тратят треды ОС, но требуют явного вызова Stop().»`
+* **Claim type:** CROSS-ARTICLE CONTRADICTION / OUTDATED GUIDANCE
+* **Severity:** High
+* **Historical / Current / Unclear:** Mixed (исторический код смешан с фичей Go 1.23).
+* **Why verification matters:** В Go 1.23 таймеры претерпели самое масштабное изменение за 10 лет (proposals #61542, #56190):
+  1. Неиспользуемые таймеры собираются GC сразу, даже если `Stop()` не был вызван (утверждение п. 3 в итоге "требуют явного вызова Stop()" прямо противоречит строке 75 и Go 1.23).
+  2. Каналы таймеров стали **небуферизированными** (unbuffered). Теперь вызов `t.Reset()` безопасен напрямую и больше не требует дренажа канала `if !t.Stop() { <-t.C }`. Попытка прочитать из `<-t.C` после `Stop() == false` в Go 1.23 может привести к зависанию (deadlock), если значение уже было отброшено.
+  3. Кроме того, таймеры с Go 1.14 распределены по локальным P (`pp.timers`), а не хранятся в единой глобальной min-heap.
+* **Primary source:** Go 1.23 Release Notes, раздел "Timer changes".
+* **Source URL:** https://go.dev/doc/go1.23#timer-changes
+* **Relevant section:** Timer changes.
+* **What specifically must be verified:** Проверить поведение `t.Reset()` в Go 1.23+ без предварительного дренажа канала `<-t.C`. Устранить внутреннее противоречие между строкой 75 и строкой 158.
+* **Potential correction direction:** Обновить паттерн переиспользования таймера под стандарт Go 1.23+, явно указав, что ручной дренаж канала `<-t.C` и обязательный `Stop()` для предотвращения утечек памяти требовались до Go 1.23, а начиная с Go 1.23 каналы стали синхронными и сбрасываются автоматически при `Reset`.
+
+---
+
+# 2. MEDIUM-PRIORITY CLAIMS
+
+## Claim 10: Утверждение о панике рантайма при пустом пути в `exec.Command("")`
+
+* **File:** `sources/6. Стандартная библиотека Go/43. os_exec. Запуск внешних процессов.md`
+* **Section:** Таблица «Ловушки и хардкорные вопросы с собеседований» (строка 217).
+* **Claim:**  
+  `«| exec.Command с пустым путем | Паника рантайма: exec: "" is not an absolute path. | Передавайте абсолютный путь или имя бинарника... |»`
+* **Claim type:** FACTUALLY WRONG
+* **Severity:** Medium
+* **Historical / Current / Unclear:** Current.
+* **Why verification matters:** Функция `exec.Command("")` не паникует. При последующем вызове `cmd.Run()` или `cmd.Start()` метод возвращает обычную ошибку `*errors.errorString` с текстом `"exec: no command"`. Текста ошибки `"exec: "" is not an absolute path"` в стандартной библиотеке не существует, как и паники.
+* **Primary source:** Исходный код `src/os/exec/exec.go`.
+* **Source URL:** https://pkg.go.dev/os/exec#Command
+* **Relevant section:** `func Command(name string, arg ...string) *Cmd`
+* **What specifically must be verified:** Проверить выполнение `exec.Command("").Run()` в Go: убедиться, что возвращается `err == "exec: no command"`, паники нет.
+* **Potential correction direction:** Исправить текст в таблице: при вызове с пустым именем команды `cmd.Run()` возвращает ошибку `exec: no command`, а не паникует.
+
+---
+
+## Claim 11: Неверное указание версии появления `cmd.Cancel` в `os/exec`
+
+* **File:** `sources/6. Стандартная библиотека Go/43. os_exec. Запуск внешних процессов.md`
+* **Section:** «[!tip] Собеседование» (строка 225).
+* **Claim:**  
+  `«Начиная с Go 1.19, в структуре exec.Cmd появилось поле cmd.Cancel, позволяющее задать кастомную функцию отмены для CommandContext.»`
+* **Claim type:** OUTDATED / VERSION ERROR
+* **Severity:** Medium
+* **Historical / Current / Unclear:** Historical version accuracy.
+* **Why verification matters:** Поля `cmd.Cancel` и `cmd.WaitDelay` появились в структуре `exec.Cmd` в **Go 1.20** (issue #50436), а не в Go 1.19. В Go 1.19 была лишь обновлена безопасность поиска путей `LookPath` (ошибка `ErrDot`).
+* **Primary source:** Go 1.20 Release Notes.
+* **Source URL:** https://go.dev/doc/go1.20#os_exec
+* **Relevant section:** Package `os/exec`.
+* **What specifically must be verified:** Проверить релизные заметки Go 1.20: добавление полей `Cancel` и `WaitDelay`.
+* **Potential correction direction:** Заменить «Go 1.19» на «Go 1.20».
+
+---
+
+## Claim 12: Вымышленный флаг `GODEBUG=asyncdns=1` и утверждение о встроенном кэше DNS
+
+* **File:** `sources/6. Стандартная библиотека Go/31. net. Базовая работа с сетью.md`
+* **Section:** «[!info] Под капотом» (строка 182).
+* **Claim:**  
+  `«Go кэширует DNS-ответы в рантайме только если включена GODEBUG=asyncdns=1 и используются определенные системные настройки.»`
+* **Claim type:** FACTUALLY WRONG / HALLUCINATED API
+* **Severity:** Medium
+* **Historical / Current / Unclear:** Current.
+* **Why verification matters:** Стандартный резолвер пакета `net` в Go **вообще не имеет встроенного кэша DNS-ответов** (это проектное решение Go, подтвержденное issues #71712, #24796: делегирование кэширования локальному резолверу ОС / nscd / systemd-resolved). Флага `GODEBUG=asyncdns=1` не существует; выбор резолвера управляется флагом `GODEBUG=netdns=go` или `netdns=cgo`.
+* **Primary source:** Go issue tracker (issue #71712, #24796), документация `net` package, `GODEBUG` documentation.
+* **Source URL:** https://go.dev/doc/godebug
+* **Relevant section:** Setting `netdns`.
+* **What specifically must be verified:** Проверить список поддерживаемых ключей `GODEBUG` в документации Go; подтвердить отсутствие встроенного DNS-кэша в чистом Go-резолвере `src/net/dnsclient_unix.go`.
+* **Potential correction direction:** Исправить текст: стандартная библиотека Go принципиально не кэширует DNS-ответы; переключение резолвера выполняется через `GODEBUG=netdns=go` или `netdns=cgo`, а кэширование возлагается на системные сервисы ОС.
+
+---
+
+## Claim 13: Искажение математической формулы сэмплирования `runtime.MemProfileRate`
+
+* **File:** `sources/6. Стандартная библиотека Go/36. net_http_pprof и expvar.md`
+* **Section:** «Heap и Memory Profiling» (строка 28).
+* **Claim:**  
+  `«Работает через runtime.MemProfileRate. По умолчанию равен 512 * 1024 (512 КБ). Это значит, что примерно каждая 512-я аллокация в куче будет записана в таблицу runtime.MemProfile.»`
+* **Claim type:** FACTUALLY WRONG NUMERICAL INTERPRETATION
+* **Severity:** Medium
+* **Historical / Current / Unclear:** Current.
+* **Why verification matters:** Значение `512 * 1024` означает сэмплирование в среднем одной аллокации на каждые **512 килобайт выделенной памяти** (пуассоновский процесс выборки по объему), а **не каждую 512-ю аллокацию по счетчику**. Мелкие аллокации (например, 16 байт) сэмплируются с вероятностью 1 к 32768, в то время как крупная аллокация на 1 МБ сэмплируется гарантированно. Утверждение искажает физическую модель работы профайлера памяти.
+* **Primary source:** Документация `runtime.MemProfileRate`, исходный код `src/runtime/mprof.go`.
+* **Source URL:** https://pkg.go.dev/runtime#MemProfileRate
+* **Relevant section:** `var MemProfileRate int = 512 * 1024`.
+* **What specifically must be verified:** Проверить комментарий к переменной `MemProfileRate`: *"The profiler aims to sample an average of one allocation per MemProfileRate bytes allocated"*.
+* **Potential correction direction:** Заменить формулировку: `«По умолчанию равен 512 * 1024 (512 КБ). Это означает, что профилировщик отбирает в среднем одну аллокацию на каждые 512 КБ выделенных данных, а не каждую N-ю операцию».`
+
+---
+
+## Claim 14: Инвертированное описание статуса `reflect.SliceHeader`
+
+* **File:** `sources/6. Стандартная библиотека Go/8. bytes. Работа с []byte и буферами.md`
+* **Section:** Начало статьи, комментарий к коду (строка 11).
+* **Claim:**  
+  `«// Внутреннее представление слайса в рантайме (до Go 1.20 структура называлась slice, сейчас это reflect.SliceHeader / внутренняя структура рантайма)»`
+* **Claim type:** FACTUALLY WRONG / BACKWARDS
+* **Severity:** Medium
+* **Historical / Current / Unclear:** Current vs Historical.
+* **Why verification matters:** В рантайме Go структура слайса всегда называлась `slice` (`type slice struct { array unsafe.Pointer; len int; cap int }`). `reflect.SliceHeader` — это старая структура пакета `reflect`, поле `Data` которой имело тип `uintptr` (что нарушало отслеживание GC). Начиная с **Go 1.20, `reflect.SliceHeader` объявлена устаревшей (deprecated)** в пользу функций `unsafe.Slice` и `unsafe.SliceData`. Утверждение, что «до Go 1.20 была slice, а сейчас reflect.SliceHeader», вывернуто наизнанку.
+* **Primary source:** Документация `reflect.SliceHeader`, Release Notes Go 1.20.
+* **Source URL:** https://pkg.go.dev/reflect#SliceHeader
+* **Relevant section:** Deprecation notice for `SliceHeader`.
+* **What specifically must be verified:** Проверить статус депрекации `reflect.SliceHeader` в Go 1.20+.
+* **Potential correction direction:** Исправить комментарий: во внутреннем коде рантайма слайс всегда представляется структурой `slice` с полем `unsafe.Pointer`, а структура `reflect.SliceHeader` устарела в Go 1.20 и заменена на `unsafe.Slice` / `unsafe.SliceData`.
+
+---
+
+## Claim 15: Неточное описание формулы роста емкости слайса
+
+* **File:** `sources/6. Стандартная библиотека Go/8. bytes. Работа с []byte и буферами.md`
+* **Section:** «Механика роста: append и амортизированная сложность» (строки 50–53).
+* **Claim:**  
+  `«Стратегия роста: Для малых слайсов (< 1024 байт) емкость обычно удваивается (2x). Для больших слайсов рост становится более плавным и консервативным (примерно 1.25x)...»`
+* **Claim type:** OUTDATED / WRONG UNITS
+* **Severity:** Medium
+* **Historical / Current / Unclear:** Historical (до Go 1.18).
+* **Why verification matters:** Во-первых, порог в историческом Go измерялся в **количестве элементов (cap)**, а не в байтах (`< 1024 байт`). Во-вторых, начиная с **Go 1.18**, логика роста в функции `growslice` была полностью переработана: порог удвоения снижен до **256 элементов**, после чего коэффициент роста плавно уменьшается по формуле `newcap += (newcap + 3*threshold) / 4`, монотонно приближаясь к 1.25x на бесконечности, исключая резкий скачок коэффициента на границе 1024.
+* **Primary source:** Исходный код `src/runtime/slice.go`, функция `growslice`; Go 1.18 release commit.
+* **Source URL:** https://cs.opensource.google/go/go/+/master:src/runtime/slice.go
+* **Relevant section:** `func growslice(...)`
+* **What specifically must be verified:** Проверить исходный код функции `growslice` в актуальном Go: порог 256 элементов и монотонная формула.
+* **Potential correction direction:** Уточнить описание: порог измеряется в элементах, а не байтах; начиная с Go 1.18 удвоение происходит до 256 элементов, после чего формула плавно масштабирует емкость в сторону 1.25x.
+
+---
+
+## Claim 16: Утверждение о полной мономорфизации дженериков в `slices.Sort`
+
+* **File:** `sources/6. Стандартная библиотека Go/25. sort и slices. Сортировка данных.md`
+* **Section:** «Влияние на GC» (строка 125).
+* **Claim:**  
+  `«slices.Sort использует дженерики, которые монотонизируются (monomorphization) компилятором. Функция сравнения инлайнится прямо в тело сортировки...»`
+* **Claim type:** MISLEADING / MENTAL MODEL INACCURACY
+* **Severity:** Medium
+* **Historical / Current / Unclear:** Current.
+* **Why verification matters:** Go **не использует полную мономорфизацию** дженериков (в отличие от C++ шаблонов или Rust). Официальный дизайн компилятора Go использует подход **GcShape Stenciling with Dictionaries**: все указательные типы делят единый скомпилированный машинный код (один stencil), получая метаданные через таблицу-словарь (dictionary passing). Настоящая мономорфизация происходит только для типов разной формы в памяти (различные размеры скаляров). Утверждение формирует неверную ментальную модель работы бинарника.
+* **Primary source:** Официальный дизайн-документ Go: "Type Parameters: Implementation via GCShape Stenciling".
+* **Source URL:** https://github.com/golang/proposal/blob/master/design/generics-implementation-stenciling.md
+* **Relevant section:** Overview of GcShape stenciling.
+* **What specifically must be verified:** Проверить дизайн компилятора Go относительно stenciling vs monomorphization.
+* **Potential correction direction:** Заменить термин «монотонизируются»/«полная мономорфизация» на корректное описание: Go использует гибридную схему трафаретов форм памяти (GcShape stenciling) с инлайнингом для простых типов.
+
+---
+
+## Claim 17: Утверждение о чтении cgroups v2 функцией `runtime.NumCPU()`
+
+* **File:** `sources/6. Стандартная библиотека Go/22. runtime. Получение информации о рантайме.md`
+* **Section:** «NumCPU vs GOMAXPROCS» (строка 38).
+* **Claim:**  
+  `«runtime.NumCPU() возвращает количество логических ядер, видимых процессу. В современных Linux-контейнерах эта функция читает cgroups v2 (cpuset.cpus.effective) и корректно учитывает лимиты Kubernetes/Docker, если процессу выделен отдельный набор ядер.»`
+* **Claim type:** CONTEXT-DEPENDENT / MISLEADING
+* **Severity:** Medium
+* **Historical / Current / Unclear:** Current.
+* **Why verification matters:** `runtime.NumCPU()` в Linux на самом деле вызывает системный вызов `sched_getaffinity` один раз при старте процесса. Она действительно учитывает ограничения CPU affinity (например, `cpuset`), но делает это **через маску аффинити ядра Linux**, а не путем прямого парсинга файлов `cgroups v2` (`cpuset.cpus.effective`). Более того, квоты CPU (CFS quota, `cpu.max`, `cpu.cfs_quota_us`) функцией `NumCPU()` вообще не учитываются.
+* **Primary source:** Исходный код `src/runtime/os_linux.go`, функция `osinit`.
+* **Source URL:** https://cs.opensource.google/go/go/+/master:src/runtime/os_linux.go
+* **Relevant section:** Инициализация `ncpu`.
+* **What specifically must be verified:** Проверить, читает ли `NumCPU()` псевдофайлы cgroups напрямую, или использует `sched_getaffinity`.
+* **Potential correction direction:** Уточнить: `runtime.NumCPU()` на Linux определяет доступные ядра через маску аффинити планировщика ОС (`sched_getaffinity`), которая отражает ограничения `cpuset`, но не парсит файлы cgroups напрямую и не учитывает лимиты CFS Quota.
+
+---
+
+# 3. LOW-PRIORITY CLAIMS
+
+## Claim 18: Устаревший импорт ограничения типов `constraints.Ordered` вместо `cmp.Ordered`
+* **File:** `sources/6. Стандартная библиотека Go/25. sort и slices. Сортировка данных.md` (строка 93).
+* **Claim:** `«Пакет cmp (Go 1.21+) предоставляет cmp.Compare[T constraints.Ordered]...»`
+* **Claim type:** OUTDATED PACKAGE REFERENCE
+* **Severity:** Low
+* **Historical / Current / Unclear:** Current.
+* **Why verification matters:** Сигнатура функции в стандартной библиотеке: `func Compare[T Ordered](x, y T) int`, где `Ordered` — это встроенный тип самого пакета `cmp` (`cmp.Ordered`). Пакет `constraints` остался в экспериментальном модуле `golang.org/x/exp/constraints`.
+* **Primary source:** https://pkg.go.dev/cmp#Compare
+* **What specifically must be verified:** Проверить сигнатуру `cmp.Compare`.
+* **Potential correction direction:** Заменить `constraints.Ordered` на `cmp.Ordered`.
+
+---
+
+## Claim 19: Утверждение о "5 правилах" вместо 6 паттернов в `unsafe.Pointer`
+* **File:** `sources/6. Стандартная библиотека Go/24. unsafe. Когда и зачем нужен unsafe.md` (строки 9, 140).
+* **Claim:** `«Однако документация go doc unsafe четко определяет 5 правил...»` / `«Всегда соблюдайте 5 правил из go doc unsafe.»`
+* **Claim type:** NUMERICAL INACCURACY
+* **Severity:** Low
+* **Historical / Current / Unclear:** Current.
+* **Why verification matters:** В официальной документации `go doc unsafe.Pointer` перечислено ровно **6 пронумерованных допустимых паттернов** (1..6).
+* **Primary source:** https://pkg.go.dev/unsafe#Pointer
+* **What specifically must be verified:** Проверить нумерацию в `go doc unsafe.Pointer`.
+* **Potential correction direction:** Исправить «5 правил» на «6 паттернов безопасного преобразования».
+
+---
+
+## Claim 20: Неверное объяснение невозможности копирования `sync.WaitGroup`
+* **File:** `sources/6. Стандартная библиотека Go/19. sync. Mutex, RWMutex, WaitGroup, Once.md` (строка 106).
+* **Claim:** `«Ответ: Структура содержит внутренние указатели на семафоры и состояние. Копирование WaitGroup через присваивание копирует указатели, но создает независимые структуры...»`
+* **Claim type:** FACTUALLY WRONG RATIONALE
+* **Severity:** Low
+* **Historical / Current / Unclear:** Current.
+* **Why verification matters:** Структура `sync.WaitGroup` не содержит никаких внутренних указателей: `type WaitGroup struct { noCopy noCopy; state atomic.Uint64; sema uint32 }`. Копирование запрещено потому, что состояние копируется по значению, разрывая синхронизацию между счетчиком задач и горутинами, уснувшими на семафоре `sema`.
+* **Primary source:** `src/sync/waitgroup.go`.
+* **What specifically must be verified:** Проверить поля структуры `WaitGroup`.
+* **Potential correction direction:** Исправить объяснение: структура копируется по значению (а не по указателям), из-за чего копия получает независимый счетчик и рассинхронизируется с оригиналом.
+
+---
+
+## Claim 21: Неточная версия внедрения Starvation Mode в `sync.Mutex`
+* **File:** `sources/6. Стандартная библиотека Go/19. sync. Mutex, RWMutex, WaitGroup, Once.md` (строка 52).
+* **Claim:** `«Начиная с Go 1.10, мьютекс автоматически переходит в Starvation Mode, если ожидание превышает 1 мс.»`
+* **Claim type:** VERSION INACCURACY
+* **Severity:** Low
+* **Historical / Current / Unclear:** Historical.
+* **Why verification matters:** Starvation Mode был добавлен в Go 1.9 (коммит `0670984`), а не в Go 1.10.
+* **Primary source:** Go 1.9 Release Notes.
+* **Source URL:** https://go.dev/doc/go1.9
+* **Potential correction direction:** Исправить Go 1.10 на Go 1.9.
+
+---
+
+# 4. CLAIM CLUSTERS
+
+## Cluster 1: Контракты частичной записи и спецификация `io.Writer`
+* **Name:** io-writer-short-write-misconception
+* **Files:**
+  - `sources/6. Стандартная библиотека Go/4. io. Reader, Writer и философия потоков в Go.md`
+  - `sources/6. Стандартная библиотека Go/11. os. Работа с процессом, окружением и файлами.md`
+* **Common claim:** Утверждение о том, что метод `Write` может законно записать меньше запрошенных байт (`n < len(p)`) и вернуть `nil` ошибку (например, при переполнении сокета/пайпа), и вызывающий код обязан делать цикл дозаписи.
+* **Why it is related:** В обоих файлах автор перенес семантику системного вызова ядра POSIX `write(2)` на Go-интерфейс `io.Writer` и структуру `os.File`. В Go спецификация категорически требует возвращать ненулевую ошибку при `n < len(p)`.
+* **Primary source(s):** Go specification for `io.Writer` (https://pkg.go.dev/io#Writer), `os.File.Write` (https://pkg.go.dev/os#File.Write).
+
+## Cluster 2: Несуществующие API и галлюцинации в сетевых пакетах
+* **Name:** network-hallucinated-apis
+* **Files:**
+  - `sources/6. Стандартная библиотека Go/34. net_http под капотом. Transport, Connection Pool, Keep Alive.md`
+  - `sources/6. Стандартная библиотека Go/31. net. Базовая работа с сетью.md`
+* **Common claim:** Введение несуществующих методов (`http.Transport.GetIdleConns()`, `MaxIdleConns()`) и несуществующих настроек рантайма (`GODEBUG=asyncdns=1` для включения кэша DNS).
+* **Why it is related:** Оба утверждения порождены предположениями об интерфейсах сетевой телеметрии, которых нет в стандартной библиотеке Go.
+* **Primary source(s):** https://pkg.go.dev/net/http, https://go.dev/doc/godebug, issue #71712.
+
+## Cluster 3: Паники рантайма vs обычные ошибки
+* **Name:** phantom-runtime-panics
+* **Files:**
+  - `sources/6. Стандартная библиотека Go/6. bufio. Буферизированный ввод и вывод.md`
+  - `sources/6. Стандартная библиотека Go/7. strings. Работа со строками.md`
+  - `sources/6. Стандартная библиотека Go/43. os_exec. Запуск внешних процессов.md`
+* **Common claim:** Ошибочное утверждение о том, что штатные ошибочные ситуации приводят к фатальной панике: токен > 64 КБ в `bufio.Scanner`, запись в `strings.Builder` после `.String()`, пустая строка команды в `exec.Command("")`.
+* **Why it is related:** Во всех трех случаях авторы запугивают читателя паникой там, где рантайт либо возвращает ошибку (`bufio.ErrTooLong`, `exec: no command`), либо вообще продолжает нормальную работу (`strings.Builder`).
+* **Primary source(s):** `src/bufio/scan.go`, `src/strings/builder.go`, `src/os/exec/exec.go`.
+
+## Cluster 4: Эволюция и депрекация представлений слайсов в рантайме
+* **Name:** slice-header-evolution
+* **Files:**
+  - `sources/6. Стандартная библиотека Go/8. bytes. Работа с []byte и буферами.md`
+  - `sources/6. Стандартная библиотека Go/24. unsafe. Когда и зачем нужен unsafe.md`
+  - `sources/6. Стандартная библиотека Go/25. sort и slices. Сортировка данных.md`
+* **Common claim:** Описание внутреннего устройства слайса через дескриптор `reflect.SliceHeader` с полем `uintptr Data`.
+* **Why it is related:** В файле 24 корректно указано, что `reflect.SliceHeader` устарел в Go 1.20, а в файле 8 ошибочно утверждается обратное — что до Go 1.20 была `slice`, а сейчас `reflect.SliceHeader`.
+* **Primary source(s):** Go 1.20 Release Notes, https://pkg.go.dev/reflect#SliceHeader, `src/runtime/slice.go`.
+
+---
+
+# 5. CROSS-ARTICLE CONTRADICTIONS
+
+## Contradiction 1: Обязательность вызова `Stop()` для таймеров и утечки памяти
+* **File A:** `sources/6. Стандартная библиотека Go/18. time. Даты, время, Duration, Timer, Ticker.md` (строка 75)
+  *Statement A:* `«В Go 1.23 архитектуру таймеров радикально переработали: теперь неиспользуемые таймеры и тикеры могут собираться сборщиком мусора GC.»`
+* **File B:** `sources/6. Стандартная библиотека Go/18. time. Даты, время, Duration, Timer, Ticker.md` (строка 158)
+  *Statement B:* `«3. time.Timer и time.Ticker управляются планировщиком через min-heap. Они не тратят треды ОС, но требуют явного вызова Stop().»`
+* **Conflict:** Внутри одной статьи утверждение в пункте 3 («требуют явного вызова Stop()») прямо опровергает утверждение из раздела про Go 1.23, где поясняется, что таймеры теперь собираются GC без вызова `Stop()`.
+* **Relevant authoritative source:** Go 1.23 Release Notes ("Timer changes").
+
+## Contradiction 2: Статус структуры `reflect.SliceHeader`
+* **File A:** `sources/6. Стандартная библиотека Go/8. bytes. Работа с []byte и буферами.md` (строка 11)
+  *Statement A:* `«до Go 1.20 структура называлась slice, сейчас это reflect.SliceHeader / внутренняя структура рантайма»`
+* **File B:** `sources/6. Стандартная библиотека Go/24. unsafe. Когда и зачем нужен unsafe.md` (строка 46)
+  *Statement B:* `«Начиная с Go 1.17 и 1.20, в язык добавлены типобезопасные встроенные функции, которые делают работу с памятью предсказуемой и отправляют в архив небезопасное манипулирование устаревшими структурами reflect.SliceHeader...»`
+* **Conflict:** Файл 8 утверждает, что `reflect.SliceHeader` — актуальное современное представление (Go 1.20+), а Файл 24 справедливо называет его устаревшим и замененным на `unsafe.Slice`.
+* **Relevant authoritative source:** `reflect.SliceHeader` documentation deprecation notice (Go 1.20).
+
+## Contradiction 3: Алгоритм генерации псевдослучайных чисел в `math/rand`
+* **File A:** `sources/6. Стандартная библиотека Go/37. crypto_rand и math_rand.md` (строка 5)
+  *Statement A:* `«В современном Go (Go 1.22+) появился пакет нового поколения math/rand/v2, использующий быстрые алгоритмы PCG и ChaCha8...»`
+* **File B:** `sources/6. Стандартная библиотека Go/37. crypto_rand и math_rand.md` (строки 16, 41)
+  *Statement B:* `«До Go 1.20 использовался алгоритм Lagged Fibonacci... В современных версиях перешли на PCG... Вызов math/rand.Intn -> CPU: Битовые операции PCG»`
+* **Conflict:** В строке 5 сказано, что PCG появился в `math/rand/v2` в Go 1.22, а в строках 16 и 41 утверждается, что в `math/rand` (v1) перешли на PCG с Go 1.20.
+* **Relevant authoritative source:** `math/rand/v2` proposal & Go 1.20 / 1.22 release notes.
+
+---
+
+# 6. VERSION-SENSITIVE MATERIAL
+
+| File | Claim | Version | Current / Historical | Verification Source |
+|---|---|---|---|---|
+| `3. errors.md` | Внедрение `errors.Is`, `errors.As`, `%w` | Go 1.13 | Historical | Go 1.13 Release Notes |
+| `3. errors.md` | Метод `errors.Join` и множественная распаковка | Go 1.20 | Current | Go 1.20 Release Notes |
+| `5. io_ioutil.md` | Депрекация `io/ioutil`, переход на `os`/`io` | Go 1.16 | Current | Go 1.16 Release Notes |
+| `14. embed.md` | Директива `//go:embed` и пакет `embed` | Go 1.16 | Current | Go 1.16 Release Notes |
+| `16. log_slog.md` | Пакет структурированного логирования `log/slog` | Go 1.21 | Current | Go 1.21 Release Notes |
+| `17. context.md` | Функции `context.AfterFunc`, `WithoutCancel` | Go 1.21 | Current | Go 1.21 Release Notes |
+| `18. time.md` | Разделение Wall Clock и Monotonic Clock | Go 1.9 | Historical | Go 1.9 Release Notes |
+| `18. time.md` | Сборка неиспользуемых таймеров GC, небуферизированные каналы | Go 1.23 | Current | Go 1.23 Release Notes |
+| `18. time.md` | Пакет `synctest` для тестирования времени | Go 1.24+ | Current (Experimental) | `testing/synctest` docs (GOEXPERIMENT) |
+| `19. sync.md` | Starvation Mode в `sync.Mutex` | Go 1.9 (ошибочно указан 1.10) | Historical | Go 1.9 Release Notes |
+| `19. sync.md` | Обертки `sync.OnceFunc`, `OnceValue` | Go 1.21 | Current | Go 1.21 Release Notes |
+| `20. sync_atomic.md` | Типизированные атомики `atomic.Int64`, `Pointer[T]` | Go 1.19 | Current | Go 1.19 Release Notes |
+| `21. sync_pool.md` | Введение Victim Cache в `sync.Pool` | Go 1.13 | Historical | Go 1.13 Release Notes |
+| `22. runtime.md` | Параметр `GOMEMLIMIT` | Go 1.19 | Current | Go 1.19 Release Notes |
+| `23. reflect.md` | Функция `reflect.TypeFor[T]()` | Go 1.22 | Current | Go 1.22 Release Notes |
+| `24. unsafe.md` | Функции `unsafe.Slice`, `unsafe.String` | Go 1.17 / 1.20 | Current | Go 1.20 Release Notes |
+| `25. sort_slices.md` | Алгоритм Pdqsort в пакете `sort` | Go 1.19 | Historical | Go 1.19 Release Notes |
+| `25. sort_slices.md` | Пакет `slices` со стабильной сортировкой на дженериках | Go 1.21 | Current | Go 1.21 Release Notes |
+| `26. maps_cmp.md` | Пакет `maps`, функция `clear()` для мап и слайсов | Go 1.21 | Current | Go 1.21 Release Notes |
+| `33. net_http.md` | Маршрутизация `http.ServeMux` с методами и wildcard `{id}` | Go 1.22 | Current | Go 1.22 Release Notes |
+| `34. net_http.md` | Якобы появление `GetIdleConns()` в `http.Transport` | Go 1.21+ (ошибочно) | Non-existent | `src/net/http/transport.go` |
+| `37. crypto_rand.md` | Автосидирование `math/rand` (v1) | Go 1.20 | Historical | Go 1.20 Release Notes |
+| `37. crypto_rand.md` | Пакет `math/rand/v2` (PCG, ChaCha8) | Go 1.22 | Current | Go 1.22 Release Notes |
+| `43. os_exec.md` | Поле `cmd.Cancel` (ошибочно указан 1.19) | Go 1.20 | Current | Go 1.20 Release Notes |
+| `45. testing.md` | Встроенный фаззинг `testing.F` | Go 1.18 | Current | Go 1.18 Release Notes |
+| `45. testing.md` | Новый цикл бенчмарков `for b.Loop() { ... }` | Go 1.24 | Current (не отражен в файле) | Go 1.24 Release Notes |
+
+---
+
+# 7. NUMERICAL / ABSOLUTE CLAIMS
+
+### Numerical Claims (Численные параметры и лимиты)
+1. **`8. bytes.md`, L51:** Рост слайса: удвоение при `< 1024 байт`. В действительности порог измеряется в элементах, и с Go 1.18 порог составляет 256 элементов с плавной функцией роста.
+2. **`6. bufio.md`, L54:** Дефолтный размер буфера `bufio.Writer` = `4096` байт. (Верно, `defaultBufSize = 4096`).
+3. **`6. bufio.md`, L153:** Дефолтный лимит токена `bufio.Scanner` = `64 КБ` (`MaxScanTokenSize = 64 * 1024`). (Верно, но ошибочно утверждается о панике).
+4. **`18. time.md`, L30:** Размер структуры `time.Time` = ровно 24 байта на 64-битной архитектуре. (Верно: `wall uint64` (8), `ext int64` (8), `loc *Location` (8)).
+5. **`19. sync.md`, L26:** До 4 тактов цикла инструкций `PAUSE/NOP` при спиннинге мьютекса (`active_spin_cnt = 30` в runtime). Требует верификации точной константы в `src/sync/mutex.go`.
+6. **`19. sync.md`, L52:** Порог переключения мьютекса в Starvation Mode = ровно `1 мс` (`starvationThresholdNs = 1e6`). (Верно).
+7. **`34. net_http.md`, L101:** `MaxIdleConnsPerHost` по умолчанию = `2`. (Верно, `DefaultMaxIdleConnsPerHost = 2`).
+8. **`36. net_http_pprof.md`, L24:** Частота CPU профилирования = `100 Гц` (100 прерываний в секунду, каждые 10 мс). (Верно).
+9. **`36. net_http_pprof.md`, L28:** `runtime.MemProfileRate` = `512 * 1024` байт (ошибочно интерпретировано как "каждая 512-я аллокация").
+10. **`38. crypto.md`, L154:** Nonce в AES-GCM по умолчанию = ровно 12 байт (96 бит). (Верно по стандарту NIST SP 800-38D).
+
+### Absolute Claims (Абсолютные утверждения)
+1. **`4. io.md`, L267:** `Write` может вернуть `n < len(p)` и `err == nil`. (Абсолютно ложно по контракту `io.Writer`).
+2. **`7. strings.md`, L133:** `strings.Builder` паникует при попытке записи после `.String()`. (Абсолютно ложно).
+3. **`26. maps_cmp.md`, L70:** Go гарантирует, что обход мапы *никогда* не выдаст детерминированный порядок. (Слишком сильное утверждение: порядок обхода спецификацией просто *не определен*; для мап из 0 или 1 элемента порядок тривиально детерминирован).
+4. **`28. regexp.md`, L7:** Движок RE2 гарантирует линейное время `O(n)` относительно длины входной строки. (Верно для фиксированного регулярного выражения, но в общем случае сложность составляет `O(m * n)`, где `m` — размер паттерна).
+5. **`30. encoding_xml_csv_gob.md`, L142:** Десериализация `gob` позволяет выполнять произвольный код. (Абсолютно ложно; RCE отсутствует).
+6. **`31. net.md`, L94:** По умолчанию TCP включает `TCP_NODELAY=off`. (Абсолютно ложно; в Go `TCP_NODELAY` по умолчанию включен).
+7. **`31. net.md`, L182:** Go кэширует DNS-ответы в рантайме при `GODEBUG=asyncdns=1`. (Абсолютно ложно).
+8. **`47. plugin.md`, L113:** В рантайме Go принципиально не реализована выгрузка плагинов (`dlclose`). (Верно, официальное архитектурное ограничение Go).
+
+---
+
+# 8. SOURCE MAP
+
+| Тематический домен | Первоисточник (Authoritative / Primary Source) | URL / Идентификатор |
+|---|---|---|
+| **Спецификация языка Go** | The Go Programming Language Specification | https://go.dev/ref/spec |
+| **Интерфейсы ввода-вывода (io, bufio)** | Пакетная документация `io`, `bufio`, исходный код `src/io/io.go` | https://pkg.go.dev/io, https://pkg.go.dev/bufio |
+| **Внутреннее устройство рантайма (GMP, GC, MemStats)** | Исходный код рантайма Go (`src/runtime/*.go`) | https://cs.opensource.google/go/go/+/master:src/runtime/ |
+| **Метрики рантайма** | Пакет `runtime/metrics` | https://pkg.go.dev/runtime/metrics |
+| **Примитивы синхронизации (sync, atomic)** | `src/sync/*.go`, `src/sync/atomic/*.go` | https://pkg.go.dev/sync, https://pkg.go.dev/sync/atomic |
+| **Таймеры и планировщик времени** | Go 1.23 Release Notes ("Timer changes"), design doc #61542 | https://go.dev/doc/go1.23 |
+| **Сетевой стек (net, net/http)** | Документация `net`, `net/http`, RFC 9110 (HTTP Semantics), RFC 9113 (HTTP/2) | https://pkg.go.dev/net, https://pkg.go.dev/net/http, https://www.rfc-editor.org/rfc/rfc9110 |
+| **Генерация случайных чисел** | Документация `crypto/rand`, `math/rand`, `math/rand/v2` | https://pkg.go.dev/crypto/rand, https://pkg.go.dev/math/rand/v2 |
+| **Криптография и TLS** | RFC 8446 (TLS 1.3), NIST SP 800-38D (GCM), пакеты `crypto/*` | https://www.rfc-editor.org/rfc/rfc8446, https://pkg.go.dev/crypto/tls |
+| **Безопасность бинарных форматов** | Go Security Team advisories, CVE-2022-30635, CVE-2024-34156 | https://pkg.go.dev/vuln/ |
+| **Базы данных (database/sql)** | Документация `database/sql` и `database/sql/driver` | https://pkg.go.dev/database/sql |
+| **Низкоуровневые указатели и unsafe** | Документация `unsafe.Pointer`, 6 правил преобразования | https://pkg.go.dev/unsafe#Pointer |
+| **Бенчмарки и фаззинг** | Документация `testing`, Go 1.24 Release Notes (`testing.B.Loop`) | https://pkg.go.dev/testing |
+
+---
+
+# 9. LIKELY OUT-OF-DATE AREAS
+
+1. **`18. time.md` (Таймеры и сборка мусора):**
+   * *Причина подозрения:* Код использует устаревший идиоматический паттерн дренажа канала `if !t.Stop() { <-t.C }` и заявляет о необходимости обязательного вызова `Stop()` для предотвращения утечки. В Go 1.23 каналы таймеров небуферизированы, очищаются рантаймом при `Reset`, а неиспользуемые таймеры собираются GC.
+   * *Статус:* Suspected stale, needs verification.
+
+2. **`45. testing.md` (Идиома бенчмарков `b.N`):**
+   * *Причина подозрения:* Вся статья построена вокруг классического цикла `for i := 0; i < b.N; i++` и ручного сброса таймера `b.ResetTimer()`. В Go 1.24 добавлен официальный идиоматичный цикл `for b.Loop() { ... }`, автоматизирующий сброс таймера и изоляцию подготовки.
+   * *Статус:* Suspected stale (missing Go 1.24 idiom), needs verification.
+
+3. **`8. bytes.md` (Формула реаллокации слайса):**
+   * *Причина подозрения:* Описана логика Go 1.0–1.17 (удвоение до 1024, затем 1.25x). В Go 1.18+ алгоритм переведен на сглаженную монотонную кривую с порогом 256 элементов.
+   * *Статус:* Suspected stale, needs verification.
+
+4. **`41. archive_zip, tar...` (Защита от Path Traversal):**
+   * *Причина подозрения:* Рассматривается классическая ручная валидация через `filepath.Clean` и `strings.HasPrefix`. В Go 1.24 добавлен стандартный механизм безопасного ограничения корня файловой системы `os.Root` (`os.OpenRoot`).
+   * *Статус:* Needs modern context addition.
+
+---
+
+# 10. AREAS THAT APPEAR SOUND
+
+1. **`3. errors.md`:** Механика оборачивания `%w`, рекурсивный разбор в `errors.Is`/`errors.As`, а также множественная распаковка через `Unwrap() []error` в `errors.Join` (Go 1.20+) описаны абсолютно точно и соответствуют Go 1.20+.
+2. **`16. log и log_slog.md`:** Архитектурное разделение `Logger` и `Handler`, zero-allocation структура `slog.Value`, раннее отсечение через `handler.Enabled()`, группировка атрибутов описаны в строгом соответствии со спецификацией Go 1.21+.
+3. **`17. context.md`:** Семантика распространения отмены по дереву горутин, функции `context.WithoutCancel` и `context.AfterFunc` (Go 1.21+), защита от хранения мутабельных данных описаны безупречно.
+4. **`21. sync_pool.md`:** Описание двухуровневой структуры `localPool`, кольцевого буфера `poolChain`, работы Victim Cache (Go 1.13+) и предостережение о недопустимости хранения объектов с сохранением состояния (например, открытых сокетов) полностью соответствуют рантайму Go.
+5. **`38. crypto.md`:** Использование constant-time сравнений (`hmac.Equal`, `subtle.ConstantTimeCompare`), фатальность повторного использования nonce в AES-GCM, специфика TLS 1.3 (1-RTT, отказ от RSA key exchange), отсутствие онлайн-проверок OCSP по умолчанию — все утверждения канонически точны.
+6. **`39. database_sql.md` и `40. database_sql под капотом.md`:** Модель пула соединений (`freeConn`, `connRequests`), поведение драйверов при `driver.ErrBadConn`, обязательный паттерн `defer tx.Rollback()` с превращением его в no-op при успешном `Commit()`, усечение `MaxIdleConns` описаны на уровне исходного кода `database/sql`.
+7. **`47. plugin.md`:** Архитектурные ограничения пакета `plugin` (невозможность выгрузки через `dlclose`, единое адресное пространство GC, чувствительность к версиям зависимостей, отсутствие нативной поддержки Windows) отражают реальное состояние подсистемы в Go.
+
+---
+
+# 11. RECOMMENDED EXECUTION ORDER
+
+Следующему агенту рекомендуется выполнять проверку и правку в строгом порядке убывания риска:
+
+1. **Critical Security Misinformation:**
+   * `30. encoding_xml_csv_gob.md` — устранить миф о выполнении произвольного кода (RCE) в `encoding/gob`.
+2. **Non-Existent & Hallucinated APIs:**
+   * `34. net_http под капотом.md` — вырезать несуществующий метод `http.Transport.GetIdleConns()`.
+   * `31. net.md` — исправить утверждение о DNS-кэше и несуществующем `GODEBUG=asyncdns=1`.
+3. **Core Interface Contract Violations:**
+   * `4. io.md` и `11. os.md` — исправить ответ о допустимости `n < len(p)` при `err == nil` для `io.Writer`.
+4. **False Runtime Panics:**
+   * `6. bufio.md` — заменить «панику» сканера на возврат ошибки `bufio.ErrTooLong`.
+   * `7. strings.md` — убрать утверждение о «заморозке и панике при записи» в `strings.Builder`.
+   * `43. os_exec.md` — убрать утверждение о панике при пустом пути команды.
+5. **Networking Socket Defaults:**
+   * `31. net.md` — инвертировать утверждение о `TCP_NODELAY` (включен по умолчанию в Go).
+6. **Runtime & Profiler Internals:**
+   * `22. runtime.md` — исправить утверждение об «асинхронном сэмплировании» в `ReadMemStats` (вернуть STW).
+   * `36. net_http_pprof.md` — исправить трактовку `runtime.MemProfileRate` (объем байт, а не количество аллокаций).
+   * `18. time.md` — синхронизировать утверждения о таймерах Go 1.23 (GC сборка, небуферизированные каналы).
+   * `37. crypto_rand.md` — развести `math/rand` (v1) и `math/rand/v2` (PCG).
+7. **Low-level Memory & Generics:**
+   * `8. bytes.md` — исправить статус `reflect.SliceHeader` и формулу роста.
+   * `24. unsafe.md` — исправить количество правил (6 вместо 5).
+   * `25. sort_slices.md` — скорректировать терминологию stenciling vs monomorphization.
+8. **Version Sync & Modern Idioms:**
+   * `43. os_exec.md` — исправить версию `cmd.Cancel` (1.20).
+   * `19. sync.md` — исправить версию Starvation Mode (1.9).
+   * `45. testing.md` — добавить упоминание Go 1.24 `b.Loop()`.
+
+---
+
+# 12. STOP CONDITIONS
+
+### Что ТРЕБУЕТ обязательной проверки по первоисточникам:
+* Любые утверждения о методах стандартных структур (`http.Transport`, `os.File`, `strings.Builder`).
+* Утверждения о контрактах интерфейсов Go (`io.Writer`, `io.Reader`).
+* Утверждения о наличии Stop-The-World в функциях `runtime`.
+* Описания уязвимостей (RCE vs DoS).
+
+### Что НЕ СТОИТ трогать и на что не тратить время:
+* Педагогические метафоры (почтовая сумка в `bufio`, блокнот для записей в `bytes`, курьеры и почтовые ящики). Они технически безопасны и улучшают понимание.
+* Стилистические шероховатости формулировок, если они технически корректны.
+* Известные легитимные ограничения Go (например, отсутствие `dlclose` в `plugin` или отсутствие `cap()` у `map`).
+* Утверждения о поведении сторонних библиотек (`uber-go/automaxprocs`, `sonic`, `jsoniter`), если они носят обзорный характер.
+
+---
+
+# 13. FINAL HANDOFF TO SONNET
+
+## HANDOFF INSTRUCTIONS
+
+Для агента, выполняющего фактологическую правку:
+
+1. **Файлы первой очереди (Hotspots с верифицированными ошибками):**
+   * `sources/6. Стандартная библиотека Go/34. net_http под капотом. Transport, Connection Pool, Keep Alive.md` (удалить `GetIdleConns()`).
+   * `sources/6. Стандартная библиотека Go/4. io. Reader, Writer и философия потоков в Go.md` (исправить контракт `io.Writer`).
+   * `sources/6. Стандартная библиотека Go/31. net. Базовая работа с сетью.md` (исправить `TCP_NODELAY` на "включен по умолчанию", убрать DNS-кэш и `GODEBUG=asyncdns=1`).
+   * `sources/6. Стандартная библиотека Go/30. encoding_xml, csv, gob и другие форматы сериализации.md` (убрать RCE из `gob`, оставить DoS).
+   * `sources/6. Стандартная библиотека Go/6. bufio. Буферизированный ввод и вывод.md` (заменить панику сканера на возврат `bufio.ErrTooLong`).
+   * `sources/6. Стандартная библиотека Go/7. strings. Работа со строками.md` (убрать миф о заморозке буфера и панике при записи в `strings.Builder`).
+   * `sources/6. Стандартная библиотека Go/22. runtime. Получение информации о рантайме.md` (убрать утверждение об асинхронном сэмплировании в `ReadMemStats`, вернуть упоминание STW).
+   * `sources/6. Стандартная библиотека Go/36. net_http_pprof и expvar.md` (исправить смысл `MemProfileRate` на сэмплирование по байтам).
+   * `sources/6. Стандартная библиотека Go/37. crypto_rand и math_rand.md` (перенести упоминание PCG исключительно в контекст `math/rand/v2`).
+   * `sources/6. Стандартная библиотека Go/18. time. Даты, время, Duration, Timer, Ticker.md` (устранить внутреннее противоречие по `Stop()`, актуализировать под Go 1.23).
+
+2. **Первоисточники для сверки:**
+   * Go Standard Library Package Docs: `https://pkg.go.dev/std`
+   * Go Source Repository: `/usr/local/go/src/` (доступен локально на хосте, Go 1.26.2).
+   * Go Official Release Notes: `https://go.dev/doc/devel/release`
+
+3. **Что НЕЛЬЗЯ трогать:**
+   * Не менять нумерацию глав и файлов.
+   * Не удалять Mermaid-диаграммы и блоки выносок (`[!tip]`, `[!warning]`, `[!info]`), а точечно исправлять текст внутри них.
+   * Сохранять Кернигановский инженерный тон и объяснения через физические аналогии.
+
+4. **Статус проблем:**
+   * Претензии 1–15 в данном брифе являются **строго верифицированными дефектами** (подтвержденными компилятором, тестами на Go 1.26.2 и кодом стандартной библиотеки).
+   * Претензии 16–21 являются терминологическими и версионными неточностями, требующими аккуратной полировки без переписывания разделов.

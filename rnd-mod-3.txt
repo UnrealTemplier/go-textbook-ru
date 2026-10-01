@@ -1,0 +1,716 @@
+# FACT-CHECK RESEARCH BRIEF: MODULE 3 (NETWORKING & NETWORK STACK)
+
+## Module Passport
+
+- **Module Number:** 3
+- **Module Title:** Компьютерные сети и сетевой стек (Computer Networks & Go Network Stack)
+- **Source Directory:** `sources/3. Компьютерные сети и сетевой стек/`
+- **Total Articles:** 44 articles (`sources/3. Компьютерные сети и сетевой стек/*.md`)
+- **Total Content Lines:** ~13,197 lines of Markdown
+- **Scope & Topics:**
+  - Network Fundamentals & L2/L3 (OSI/TCP-IP models, encapsulation, Ethernet, MAC, MTU, IPv4/IPv6 headers, ARP, NDP, Routing tables, BGP/OSPF/RIP, NAT/PAT/conntrack, VLAN 802.1Q, VXLAN overlays);
+  - Transport Layer — TCP & UDP (TCP state machine, 3-way handshake, 4-way teardown, sliding window flow control, congestion control: Reno, Cubic, BBR; TCP retransmission, RTO, Nagle algorithm TCP_NODELAY, Delayed ACK, Keep-Alive; UDP architecture, connected UDP sockets);
+  - Sockets & OS API (Socket API: socket, bind, listen, accept, connect, O_NONBLOCK, SO_REUSEADDR, SO_REUSEPORT, SO_LINGER);
+  - Domain Name System (DNS architecture, root/TLD/authoritative resolvers, records A/AAAA/CNAME/SRV/TXT, EDNS0, caching mechanics, Go netgo resolver vs cgo getaddrinfo);
+  - Transport Layer Security (TLS 1.2 vs TLS 1.3, 1-RTT handshake, 0-RTT early data, ECDHE, AES-GCM vs ChaCha20-Poly1305, PKI, X.509, SAN vs CN, mTLS, SNI);
+  - Web & Application Protocols (HTTP/1.1 keep-alive, chunked transfer encoding, pipelining; HTTP/2 binary framing, multiplexing, streams, HPACK static/dynamic tables; HTTP/3 & QUIC, streams, connection migration, loss recovery; WebSockets RFC 6455, framing, masking, SSE text/event-stream; gRPC, Protocol Buffers TLV, length-prefixed framing, HTTP/2 trailers);
+  - Proxies & Distributed Infrastructure (Reverse proxy, API Gateway, Nginx, Envoy, HAProxy, L4 vs L7 load balancing, Consistent Hashing, Service Discovery, CDN caching, HTTP headers: Cache-Control, ETag);
+  - Linux Network Stack Under the Hood (NIC ring buffers, DMA, IRQ, NAPI, SoftIRQ net_rx_action, sk_buff allocation, GRO, GSO, TSO, qdisc, netfilter, iptables vs nftables, conntrack, eBPF & XDP driver mode);
+  - Network Security & Observability (DDoS mitigation: SYN cookies, rate limiting, Slowloris, tcpdump, Wireshark, ss, ping, traceroute, mtr, Go netpoller integration);
+  - Cloud & Orchestration Networking (Kubernetes CNI, veth pairs, kube-proxy iptables vs IPVS, CoreDNS ndots:5, Service Mesh Istio/Envoy sidecar, distributed patterns: Circuit Breaker, Retries with Jitter, Bulkhead).
+
+---
+
+## Executive Summary
+
+Модуль 3 («Компьютерные сети и сетевой стек») является крупнейшим и наиболее ответственным инфраструктурным блоком веб-энциклопедии. Состоящий из 44 масштабных глав (~13 200 строк), он детально выстраивает сквозной путь данных от физического провода и сетевых прерываний ядра Linux до высокоуровневых gRPC-микросервисов, TLS-криптографии, Envoy sidecar и Kubernetes CNI. Модуль написан на впечатляющем академическом и инженерном уровне: сложные концепции (алгоритм сжатия HPACK, конечный автомат TCP, BBR congestion control, инкапсуляция VXLAN и eBPF/XDP) изложены живо, снабжены превосходными sequence- и flowchart-диаграммами Mermaid и практическими примерами на Go.
+
+Тем не менее, сплошной полинейный аудит всех 44 статей выявил **серьезные фактологические ошибки, некомпилируемые примеры кода с фатальными гонками данных, ложные утверждения о несуществующих API стандартной библиотеки, галлюцинации вокруг системного планировщика Go (netpoller) и системных вызовов Linux, а также прямые внутренние противоречия между статьями модуля**.
+
+Наиболее критические зоны риска распределяются по следующим направлениям:
+
+1. **Галлюцинации вокруг рантайма Go и планировщика `netpoller`:**
+   - **EPOLLONESHOT:** В статье 15 утверждается, что Go 1.21+ перевел `netpoller` на флаг ядра `EPOLLONESHOT`. Это ложно: исходный код рантайма (`runtime/netpoll_epoll.go`) регистрирует сокеты строго один раз с флагом `EPOLLET` (Edge-Triggered), а функция перерегистрации `netpollarm` буквально содержит вызов `throw("runtime: unused")`. Более того, статьи 37 и 38 того же модуля прямо противоречат статье 15, корректно указывая `EPOLLET`.
+   - **Фиксированный пул 1024 тредов:** В статье 44 утверждается, что `netpoller` переиспользует «фиксированный пул тредов (по умолчанию 1024)», которые выполняют `epoll_wait` в цикле. В реальности вызов `netpoll` совершается любым простаивающим тредом `M` при поиске работы (`findrunnable`) либо фоновым потоком `sysmon`. Выделенного пула из 1024 потоков в `netpoller` никогда не существовало.
+   - **Встроенный DNS-кэш Go:** В статьях 17 и 30 подробно описывается несуществующий механизм: якобы чистый рантайм Go (`netgo`) ведет встроенный DNS-кэш в оперативной памяти (с лимитом 1000 записей и удержанием до 2 секунд). В действительности `net.Resolver` в Go **вообще не кэширует DNS-ответы**; пакет использует лишь `singleflight` для объединения одновременных одинаковых запросов на время их выполнения.
+
+2. **Некомпилируемый код и фатальные гонки данных (Runtime Panics / Crashes):**
+   - **Сбойный Rate Limiter (Статья 33):** В эталонном примере промышленного лимитера для защиты от DDoS код не компилируется из-за необъявленных переменных `perIPLimit`/`perIPBurst`. Хуже того, код содержит фатальный data race: чтение `rl.limiters["global"]` выполняется без взятия мьютекса, пока другие потоки пишут в мапу. Под реальной нагрузкой сервис гарантированно падает с аварийным завершением рантайма: `fatal error: concurrent map read and map write`.
+   - **Несуществующий `syscall.SO_REUSEPORT` на Linux (Статья 39):** Код настройки высоконагруженного сокета использует `syscall.SO_REUSEPORT`. В Go на платформе Linux константа `SO_REUSEPORT` в стандартном пакете `syscall` отсутствует (код не компилируется: `undefined: syscall.SO_REUSEPORT`).
+   - **Галлюцинация API `icmp.ListenNetwork` (Статья 35):** В обоих примерах программ утилиты ping вызывается несуществующий метод `icmp.ListenNetwork(ctx, ...)`. Настоящий метод библиотеки `golang.org/x/net/icmp` называется `ListenPacket` и не принимает контекст первым аргументом.
+   - **Синтаксические ошибки строк с неэкранированными переводами строк (Статьи 3 и 4):** В статьях 3 и 4 строковые литералы содержат битые разрывы строк внутри двойных кавычек (`syntax error: newline in string`).
+
+3. **Критичные заблуждения сетевого стека и противоречия:**
+   - **Дефолт `MaxIdleConnsPerHost` (Статьи 21 vs 30):** Статья 21 заявляет, что `MaxIdleConnsPerHost` в `http.Transport` по умолчанию равен 100. Это опаснейшая дезинформация: по умолчанию он равен **2** (`DefaultMaxIdleConnsPerHost = 2`). Статья 30 прямо опровергает статью 21, указывая истинное значение 2.
+   - **Путаница `tcp_fin_timeout` и `TIME_WAIT` (Статьи 39 и 42):** В статье 39 утверждается, что таймер `TIME_WAIT` в Linux равен 60 секундам, потому что `tcp_fin_timeout = 60`. В статье 42 рекомендуется настраивать `tcp_fin_timeout` для борьбы с `TIME_WAIT`. В реальности `tcp_fin_timeout` в ядре Linux управляет исключительно состоянием **`FIN-WAIT-2`**; таймер `TIME_WAIT` жестко зашит константой ядра (`TCP_TIMEWAIT_LEN`) и не поддается изменению через sysctl.
+   - **Выдуманный порт VXLAN 4785 (Статья 9):** В статье 9 неоднократно утверждается, что ядро Linux исторически использует порт 4785 для VXLAN. Это ошибка: стандартный порт IANA — 4789, а исторический порт Linux — 8472. Число 4785 является опечаткой/галлюцинацией.
+   - **Несуществующие параметры ядра sysctl (Статья 12):** В статье 12 читателям предлагается настраивать `$ sysctl -w net.ipv4.tcp_rto_min=200` и упоминается системный таймер `tcp_delack_max`. Обеих переменных sysctl в ядре Linux не существует.
+
+Настоящий бриф представляет собой исчерпывающую техническую карту для следующего агента (Sonnet), позволяющую точечно и обоснованно верифицировать и исправить все технические несоответствия без риска повредить педагогический каркас модуля.
+
+---
+
+# 1. HIGH-PRIORITY CLAIMS (CRITICAL / FACTUALLY WRONG / BROKEN CODE)
+
+## Claim 1: Go Netpoller использует epoll с флагом EPOLLONESHOT в Go 1.21+
+- **File:** `sources/3. Компьютерные сети и сетевой стек/15. Порты, сокеты и Socket API.md`
+- **Section:** `### Go-специфика: Как рантайм дружит сокеты с планировщиком` (строки 348–355)
+- **Claim:**
+  > «Начиная с Go 1.21+, сетевой полинг Netpoller использует `epoll` с флагом **`EPOLLONESHOT`**. Это гарантирует, что после срабатывания события ядро отключает мониторинг дескриптора до тех пор, пока рантайм Go явно не перерегистрирует его. Это исключает дублирующие пробуждения и предотвращает явление Starvation (голодание) отдельных соединений при мощных сетевых штормах.»
+- **Claim Type:** FACTUALLY WRONG / HALLUCINATION
+- **Severity:** Critical
+- **Historical / Current / Unclear:** False claim about Go 1.21+.
+- **Why verification matters:** Искажает базовую архитектуру ввода-вывода Go. Приводит читателя к ложной ментальной модели, будто Go выполняет тяжелый системный вызов `epoll_ctl(EPOLL_CTL_MOD)` на каждое сетевое событие.
+- **Primary Source:**
+  - Go source: `/usr/local/go/src/runtime/netpoll_epoll.go`, функция `netpollopen`:
+    ```go
+    func netpollopen(fd uintptr, pd *pollDesc) uintptr {
+        var ev linux.EpollEvent
+        ev.Events = linux.EPOLLIN | linux.EPOLLOUT | linux.EPOLLRDHUP | linux.EPOLLET
+        tp := taggedPointerPack(unsafe.Pointer(pd), pd.fdseq.Load())
+        *(*taggedPointer)(unsafe.Pointer(&ev.Data)) = tp
+        return linux.EpollCtl(epfd, linux.EPOLL_CTL_ADD, int32(fd), &ev)
+    }
+    func netpollarm(pd *pollDesc, mode int) {
+        throw("runtime: unused")
+    }
+    ```
+- **Source URL:** https://github.com/golang/go/blob/master/src/runtime/netpoll_epoll.go
+- **What specifically must be verified:** Убедиться, что Go регистрирует FD ровно один раз с флагом `EPOLLET` (Edge-Triggered) и никогда не использует `EPOLLONESHOT`.
+- **Potential correction direction (Hypothesis):** Заменить упоминание `EPOLLONESHOT` на `EPOLLET` (Edge-Triggered), объяснив, что краевое срабатывание пробуждает горутину только при поступлении новых байт, а дескриптор регистрируется один раз при создании сокета (`netpollopen`).
+
+---
+
+## Claim 2: Netpoller переиспользует фиксированный пул из 1024 тредов для epoll_wait
+- **File:** `sources/3. Компьютерные сети и сетевой стек/44. Итоги раздела. Полная картина сетевого стека для Go-разработчика.md`
+- **Section:** `> [!info] Под капотом` (строки 103–106)
+- **Claim:**
+  > «`netpoller` не создает новые системные треды для каждого сокета. Он переиспользует (复用) фиксированный пул тредов (по умолчанию 1024, настраивается через `GOMAXPROCS` и внутренние лимиты), которые выполняют `epoll_wait` в цикле. Это критически важно для высокой плотности горутин на один тред ОС.»
+- **Claim Type:** FACTUALLY WRONG / CONFLATION
+- **Severity:** High
+- **Historical / Current / Unclear:** False across all Go versions.
+- **Why verification matters:** Придумывает несуществующий пул из 1024 потоков операционной системы. 1024 потока, одновременно крутящих `epoll_wait` на одном epoll-дескрипторе, вызвали бы катастрофический thundering herd и сожгли бы CPU. Также в тексте присутствует случайный китайский иероглиф `(复用)`.
+- **Primary Source:**
+  - Go source: `src/runtime/proc.go` (функция `findrunnable`), `src/runtime/netpoll.go`.
+  - В Go `netpoll` вызывается любым свободным потоком `M`, когда у него нет локальных или глобальных готовых горутин, либо фоновым потоком `sysmon`. Отдельного пула потоков под `netpoller` нет.
+- **Source URL:** https://github.com/golang/go/blob/master/src/runtime/proc.go
+- **What specifically must be verified:** Проверить, как `findrunnable()` и `sysmon` опрашивают `netpoll()`. Убедиться в отсутствии пула из 1024 тредов.
+- **Potential correction direction (Hypothesis):** Удалить китайский иероглиф `(复用)` и ложное число 1024. Описать, что вызов `netpoll(delay)` выполняется обычными потоками `M` в цикле планировщика при поиске работы, а также потоком монитора `sysmon`.
+
+---
+
+## Claim 3: Чистый Go-рантайм (netgo) ведет собственный DNS-кэш в памяти
+- **File 1:** `sources/3. Компьютерные сети и сетевой стек/17. DNS под капотом. Record Types, TTL, Recursive Resolver, кеширование.md` (строки 174–203, 328)
+- **File 2:** `sources/3. Компьютерные сети и сетевой стек/30. Service Discovery и балансировка в микросервисах.md` (строки 92–96)
+- **Claim:**
+  > Article 17: «Чистый Go-рантайм (в режиме `netgo`) ведет собственный изолированный кэш в памяти процесса. Это значит, что разные Go-процессы на одной машине не делят DNS-кэш между собой...»  
+  > (В Mermaid-схеме изображен Cache Hit с возвратом за 0 мс: `REQ -> CHECK{"Запись есть в кэше и now < expire_at?"} -> RET["Мгновенный возврат IP (0 мс)"]`).  
+  > Article 30: «В Go 1.11+ встроенный DNS-клиент кэширует ответы. Кэш работает на уровне `net` пакета и использует TTL из ответа сервера, но имеет внутреннюю минимальную задержку инвалидации... Go может всё равно удержать запись в памяти до 2 секунд (или до исчерпания лимита кэша, который по умолчанию ~1000 записей).»
+- **Claim Type:** FACTUALLY WRONG / HALLUCINATION / INTRA-MODULE CONTRADICTION
+- **Severity:** Critical
+- **Historical / Current / Unclear:** False across all Go versions.
+- **Why verification matters:** Опаснейшая дезинформация. Разработчики, поверив, что Go автоматически кэширует DNS по TTL на 1000 записей, не настраивают локальный кэширующий DNS (dnsmasq / systemd-resolved) и сталкиваются со шквалом сетевых DNS-запросов на каждый HTTP-запрос.
+- **Primary Source:**
+  - Go source: `/usr/local/go/src/net/lookup.go`, `net/dnsclient_unix.go`.
+  - В пакете `net` стандартной библиотеки Go **нет никакого DNS-кэша**. Единственный механизм защиты — `internal/singleflight`, который лишь дедуплицирует *одновременно выполняющиеся* запросы за одним и тем же хостом. Как только запрос завершился, результат нигде не сохраняется.
+  - Предложения добавить DNS-кэш в `net` отклонялись годами (см. Go issues #24796, #33097).
+- **Source URL:** https://github.com/golang/go/issues/24796
+- **What specifically must be verified:** Проверить реализацию `net.Resolver.LookupIP` в `src/net/lookup.go`. Убедиться в отсутствии кэширования.
+- **Potential correction direction (Hypothesis):** Четко заявить, что Go **не кэширует** DNS-ответы. Объяснить роль `singleflight`. Скорректировать схему и текст в статьях 17 и 30: кэширование должно обеспечиваться либо ОС (`systemd-resolved`), либо внешними библиотеками в приложении.
+
+---
+
+## Claim 4: MaxIdleConnsPerHost в http.Transport по умолчанию равен 100
+- **File:** `sources/3. Компьютерные сети и сетевой стек/21. HTTP 1.1 под капотом. Keep Alive, Chunked Encoding, Pipelining.md`
+- **Section:** `### Под капотом Go: http.Transport и пул соединений` (строки 55–62)
+- **Claim:**
+  ```go
+  type Transport struct {
+      MaxIdleConns        int           // Максимум idle-соединений в целом
+      MaxIdleConnsPerHost int           // На один host. По умолчанию 100
+      IdleConnTimeout     time.Duration // Таймаут ожидания в пуле (по умолчанию 90s)
+  }
+  ```
+- **Claim Type:** FACTUALLY WRONG / DIRECT CONTRADICTION WITH ARTICLE 30
+- **Severity:** High
+- **Historical / Current / Unclear:** False across all Go versions.
+- **Why verification matters:** По умолчанию `MaxIdleConnsPerHost` равен **2**! Если разработчик не переопределит это поле, рассчитывая на «дефолтные 100», его микросервис под нагрузкой будет удерживать только 2 сокета к целевому сервису, закрывая и переоткрывая остальные, что ведет к лавине TIME_WAIT и деградации производительности.
+- **Contradiction:** Статья 30 (строка 148) прямо опровергает статью 21:  
+  `// Важно: MaxIdleConnsPerHost по умолчанию = 2. Для LB это критично: при ротации IP пул быстро исчерпается.`
+- **Primary Source:**
+  - Go source: `/usr/local/go/src/net/http/transport.go` line 61:
+    ```go
+    const DefaultMaxIdleConnsPerHost = 2
+    ```
+- **Source URL:** https://pkg.go.dev/net/http#Transport
+- **What specifically must be verified:** Проверить `transport.go` в стандартной библиотеке.
+- **Potential correction direction (Hypothesis):** Исправить комментарий в статье 21 на `// На один host. По умолчанию 2 (DefaultMaxIdleConnsPerHost)!`.
+
+---
+
+## Claim 5: Таймер TIME_WAIT в Linux равен 60 секундам из-за tcp_fin_timeout = 60
+- **File 1:** `sources/3. Компьютерные сети и сетевой стек/39. TIME_WAIT, Port Exhaustion и другие проблемы TCP-сервисов.md` (строка 28)
+- **File 2:** `sources/3. Компьютерные сети и сетевой стек/42. Service Mesh. Istio, Linkerd, sidecar proxy.md` (строка 218)
+- **Claim:**
+  > Article 39: «В современном Linux этот параметр зашит константой в ядре и составляет 60 секунд (`tcp_fin_timeout = 60»).»  
+  > Article 42: «В Kubernetes также помогает `net.ipv4.tcp_fin_timeout` и `net.ipv4.tcp_tw_reuse`» [в контексте снижения скопления TIME_WAIT].
+- **Claim Type:** FACTUALLY WRONG / CONFLATION
+- **Severity:** High
+- **Historical / Current / Unclear:** False across all Linux kernel versions.
+- **Why verification matters:** Классическая инженерная путаница. Параметр ядра `net.ipv4.tcp_fin_timeout` управляет таймаутом сокета в состоянии **`FIN-WAIT-2`** (когда локальный узел отправил FIN, получил ACK, и ждет FIN от удаленной стороны). Он не имеет никакого отношения к состоянию `TIME_WAIT`! Длительность `TIME_WAIT` в Linux жестко зашита в заголовочном файле ядра и не регулируется через sysctl.
+- **Primary Source:**
+  - Linux kernel source: `include/net/tcp.h`:
+    ```c
+    #define TCP_TIMEWAIT_LEN (60*HZ) /* how long to wait to destroy TIME-WAIT state, about 60 seconds */
+    #define TCP_FIN_TIMEOUT  TCP_TIMEWAIT_LEN /* default to 60 seconds */
+    ```
+  - Linux man-страница `tcp(7)`:
+    > `tcp_fin_timeout (integer; default: 60)`  
+    > This specifies the number of seconds to wait for a final FIN packet before the socket is forcibly closed. This is strictly a violation of the TCP specification, but required to prevent denial-of-service attacks.
+- **Source URL:** https://man7.org/linux/man-pages/man7/tcp.7.html
+- **What specifically must be verified:** Убедиться, что `tcp_fin_timeout` управляет исключительно переходом из `FIN-WAIT-2` в закрытое состояние, а `TIME_WAIT` не меняется этим параметром.
+- **Potential correction direction (Hypothesis):** Разделить эти два понятия: объяснить, что 60 секунд `TIME_WAIT` в ядре зашиты константой `TCP_TIMEWAIT_LEN`, а `tcp_fin_timeout` защищает от зависания в `FIN-WAIT-2`, если удаленный пир не присылает свой FIN.
+
+---
+
+## Claim 6: Некомпилируемый и опасный Rate Limiter (Data Race + Undefined Vars)
+- **File:** `sources/3. Компьютерные сети и сетевой стек/33. DDoS, Rate Limiting и базовая защита сетевых сервисов.md`
+- **Section:** `### Идиоматичная реализация в Go` (строки 106–128)
+- **Claim (Code):**
+  ```go
+  func (rl *Limiter) Allow(ip string) bool {
+      // Быстрая проверка без блокировки для глобального лимита
+      if !rl.limiters["global"].Allow() {
+          return false
+      }
+
+      rl.mu.RLock()
+      lim, exists := rl.limiters[ip]
+      rl.mu.RUnlock()
+
+      if !exists {
+          rl.mu.Lock()
+          if lim, exists = rl.limiters[ip]; !exists {
+              lim = rate.NewLimiter(perIPLimit, perIPBurst) // <-- ОШИБКА 1: perIPLimit, perIPBurst не объявлены!
+              rl.limiters[ip] = lim
+          }
+          rl.mu.Unlock()
+      }
+
+      return lim.Allow()
+  }
+  ```
+- **Claim Type:** BROKEN CODE / COMPILATION FAILURE / FATAL DATA RACE
+- **Severity:** Critical
+- **Historical / Current / Unclear:** Broken code.
+- **Why verification matters:**
+  1. Код **не компилируется**: идентификаторы `perIPLimit` и `perIPBurst` отсутствуют в области видимости метода `Allow` (они были аргументами конструктора `NewLimiter`, но не сохранены в структуре `Limiter`).
+  2. В коде содержится **фатальная гонка данных**: `rl.limiters["global"].Allow()` читает мапу `rl.limiters` без блокировки (`RLock`), в то время как ветка `!exists` пишет в ту же мапу `rl.limiters[ip] = lim`. В многопоточной среде Go это вызывает немедленный аварийный сбой: `fatal error: concurrent map read and map write`.
+- **Primary Source:** Go language specification (map concurrency rules); `go build`.
+- **What specifically must be verified:** Скомпилировать код и запустить под `-race`.
+- **Potential correction direction (Hypothesis):** Сохранить `perIPLimit` и `perIPBurst` как поля структуры `Limiter`. Сделать отдельное поле `global *rate.Limiter` вне мапы, либо читать `global` под мьютексом.
+
+---
+
+## Claim 7: syscall.SO_REUSEPORT в примере продакшен-сервера на Linux
+- **File:** `sources/3. Компьютерные сети и сетевой стек/39. TIME_WAIT, Port Exhaustion и другие проблемы TCP-сервисов.md`
+- **Section:** `### Пример правильной настройки для production` (строки 160–166)
+- **Claim (Code):**
+  ```go
+  lc := net.ListenConfig{
+      Control: func(network, address string, c syscall.RawConn) error {
+          return c.Control(func(fd uintptr) {
+              if err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEPORT, 1); err != nil {
+                  return
+              }
+  ```
+- **Claim Type:** BROKEN CODE / COMPILATION FAILURE ON LINUX
+- **Severity:** High
+- **Historical / Current / Unclear:** Broken in standard library on Linux across all Go versions.
+- **Why verification matters:** Пакет `syscall` на Linux не содержит константу `SO_REUSEPORT` (она была заморожена до появления опции в пакете). Попытка собрать файл на Linux дает ошибку компилятора: `undefined: syscall.SO_REUSEPORT`. (Примечательно, что в статье 37 строка 254 автор использовал корректный пакет `golang.org/x/sys/unix`).
+- **Primary Source:** Go standard library `src/syscall/zerrors_linux_amd64.go`.
+- **What specifically must be verified:** Проверить наличие `syscall.SO_REUSEPORT` при `GOOS=linux`.
+- **Potential correction direction (Hypothesis):** Заменить `syscall` на `golang.org/x/sys/unix` (`unix.SO_REUSEPORT`), либо явно определить константу `const SO_REUSEPORT = 0x0F` (Linux value).
+
+---
+
+## Claim 8: Вызов несуществующего icmp.ListenNetwork(ctx, ...)
+- **File:** `sources/3. Компьютерные сети и сетевой стек/35. Диагностика сети. ping, traceroute, dig, curl, mtr.md`
+- **Section:** `### Go-имплементация` (строка 53) и `### Применение в Go` (строка 324)
+- **Claim (Code):**
+  ```go
+  conn, err := icmp.ListenNetwork(ctx, "ip4:icmp", "0.0.0.0", nil)
+  ```
+  и
+  ```go
+  conn, err := icmp.ListenNetwork(ctx, "ip4:icmp", "", nil)
+  ```
+- **Claim Type:** BROKEN CODE / HALLUCINATED API
+- **Severity:** High
+- **Historical / Current / Unclear:** Non-existent API.
+- **Why verification matters:** Функция `icmp.ListenNetwork` не существует в библиотеке `golang.org/x/net/icmp`. Оба листинга в статье не могут быть скомпилированы.
+- **Primary Source:** Документация пакета `golang.org/x/net/icmp`:
+  - Экспортируемая функция создания слушателя: `func ListenPacket(network, address string) (*PacketConn, error)`. Она не принимает контекст и называется `ListenPacket`.
+- **Source URL:** https://pkg.go.dev/golang.org/x/net/icmp#ListenPacket
+- **What specifically must be verified:** Проверить экспортируемые функции пакета `icmp`.
+- **Potential correction direction (Hypothesis):** Заменить `icmp.ListenNetwork(ctx, "ip4:icmp", "0.0.0.0", nil)` на `icmp.ListenPacket("ip4:icmp", "0.0.0.0")`.
+
+---
+
+## Claim 9: Синтаксические ошибки неэкранированных переводов строк в строковых литералах
+- **File 1:** `sources/3. Компьютерные сети и сетевой стек/3. Ethernet, MAC-адреса и локальные сети.md` (строки 232–239)
+- **File 2:** `sources/3. Компьютерные сети и сетевой стек/4. IP. IPv4, IPv6 и устройство сетевого пакета.md` (строки 260–261)
+- **Claim (Code):**
+  В статье 3:
+  ```go
+  fmt.Printf("Interface: %s
+  ", iface.Name)
+  fmt.Printf("MTU: %d байт
+  ", iface.MTU)
+  fmt.Printf("MAC: %s
+  ", mac.String())
+  fmt.Printf("IPv4/IPv6 Addrs: %v
+  ", addrs)
+  ```
+  В статье 4:
+  ```go
+  fmt.Printf("Подсеть: %s, Маска: %d бит
+  ", prefix4.Addr(), prefix4.Bits())
+  ```
+- **Claim Type:** SYNTAX ERROR / UNESCAPED STRING LITERAL
+- **Severity:** High
+- **Historical / Current / Unclear:** Broken syntax.
+- **Why verification matters:** Символ экранирования `
+` был утерян или разбит на физический перевод строки. В Go буквальный перенос строки внутри строки в двойных кавычках `"..."` запрещен спецификацией (`syntax error: newline in string`). Примеры кода не компилируются.
+- **Primary Source:** Go language specification (String literals).
+- **What specifically must be verified:** Собрать файлы примеров компилятором `go`.
+- **Potential correction direction (Hypothesis):** Восстановить экранированные последовательности `
+` в строковых литералах.
+
+---
+
+## Claim 10: Go http.Client по умолчанию отключает keep-alive для незашифрованного http://
+- **File:** `sources/3. Компьютерные сети и сетевой стек/41. Kubernetes Networking. CNI, Pod Network, Service, Ingress.md`
+- **Section:** `### 2. TCP Keep-Alive и Cloud NAT` (строки 147–148)
+- **Claim:**
+  > «Облачные балансировщики и NAT-шлюзы (AWS NLB, GCP Cloud NAT, Azure LB) часто убивают idle TCP соединения через 350-1000 секунд без отправки RST-пакета. Go `http.Client` по умолчанию отключает keep-alive для `http://` (только `https` использует).»
+- **Claim Type:** FACTUALLY WRONG / GROSS MISCONCEPTION
+- **Severity:** High
+- **Historical / Current / Unclear:** False across all Go versions.
+- **Why verification matters:** Полная дезинформация относительно базового поведения стандартной библиотеки. В Go `http.Client` и `http.DefaultTransport` поддерживают HTTP/1.1 Persistent Connections (Keep-Alive) по умолчанию как для `http://`, так и для `https://`. Поле `DisableKeepAlives` по умолчанию равно `false`.
+- **Primary Source:** RFC 7230, RFC 9112; `/usr/local/go/src/net/http/transport.go`.
+- **Source URL:** https://pkg.go.dev/net/http#Transport
+- **What specifically must be verified:** Проверить значение `DefaultTransport.DisableKeepAlives` и логику `roundTrip` для незашифрованных HTTP-запросов.
+- **Potential correction direction (Hypothesis):** Исправить утверждение. Указать, что `http.Client` использует Keep-Alive для обоих протоколов по умолчанию. Проблема с Cloud NAT заключается в том, что промежуточные шлюзы разрывают неактивные TCP-сессии без уведомления, поэтому в `net.Dialer` нужно настраивать `KeepAlive: 30 * time.Second`.
+
+---
+
+## Claim 11: Несуществующие параметры ядра sysctl net.ipv4.tcp_rto_min и tcp_delack_max
+- **File:** `sources/3. Компьютерные сети и сетевой стек/12. TCP Retransmission, Keep Alive, Nagle и Delayed ACK.md`
+- **Section:** `### 3. Go и настройка Retransmission` (строка 133) и `### Delayed ACK` (строка 184)
+- **Claim:**
+  ```bash
+  # Минимальное значение RTO (по умолчанию 200 мс в Linux)
+  $ sysctl -w net.ipv4.tcp_rto_min=200
+  ```
+  и
+  > «Либо до истечения защитного системного таймера **`tcp_delack_max`** (в современных ядрах Linux он составляет около **40 мс**, хотя исторически в BSD достигал 400 мс).»
+- **Claim Type:** FACTUALLY WRONG / FABRICATED SYSCTL
+- **Severity:** Medium
+- **Historical / Current / Unclear:** Non-existent sysctl parameters in Linux.
+- **Why verification matters:** Команда `sysctl -w net.ipv4.tcp_rto_min=200` возвращает ошибку `sysctl: cannot stat /proc/sys/net/ipv4/tcp_rto_min: No such file or directory`. В ядре Linux `TCP_RTO_MIN` ($200	ext{ мс}$) и `TCP_DELACK_MAX` ($40	ext{ мс}$) являются константами компиляции ядра (`include/net/tcp.h`). Минимальный RTO настраивается per-route через `ip route ... rto_min 200ms`, но не через глобальный sysctl.
+- **Primary Source:** Linux kernel source `include/net/tcp.h`, `man 7 tcp`.
+- **What specifically must be verified:** Запустить `sysctl net.ipv4.tcp_rto_min` на Linux машине.
+- **Potential correction direction (Hypothesis):** Пояснить, что 200 мс и 40 мс — это встроенные константы ядра (`TCP_RTO_MIN` и `TCP_DELACK_MAX`). Заменить неработающую команду `sysctl` на правильный метод настройки per-route: `ip route change default ... rto_min 200ms`.
+
+---
+
+## Claim 12: Использование ядром Linux порта 4785 по умолчанию для VXLAN
+- **File:** `sources/3. Компьютерные сети и сетевой стек/9. VLAN, VXLAN и сегментация сети.md`
+- **Section:** строки 171, 172, 204, 211, 404
+- **Claim:**
+  > «Порт назначения по стандарту IANA равен 4789, однако в подсистеме ядра Linux исторически по умолчанию используется порт **`4785`**.»  
+  > (И на всех схемах: `VTEP1 <-->|UDP/IP Туннель Port 4785| SpineSwitch`).
+- **Claim Type:** FACTUALLY WRONG / TYPO / FABRICATION
+- **Severity:** Medium
+- **Historical / Current / Unclear:** False port number.
+- **Why verification matters:** Официальный порт IANA для VXLAN (RFC 7348) — **4789**. Исторический порт ядра Linux до ратификации RFC — **8472** (см. Linux commit 95170e357). Порта `4785` никогда не существовало в сетевом стеке Linux для VXLAN (это опечатка или галлюцинация).
+- **Primary Source:** RFC 7348 (Section 5, IANA Considerations); Linux kernel `drivers/net/vxlan/vxlan_core.c` (`#define VXLAN_HLEN`, port 8472).
+- **What specifically must be verified:** Проверить RFC 7348 и документацию ядра Linux по модулю `vxlan`.
+- **Potential correction direction (Hypothesis):** Заменить `4785` на канонический `4789` (стандарт IANA) и упомянуть, что ранние версии Linux использовали `8472`. Исправить подписи портов на диаграммах.
+
+---
+
+# 2. MEDIUM-PRIORITY CLAIMS (ANACHRONISMS / MISLEADING MENTAL MODELS)
+
+## Claim 13: setsockopt(SO_NONBLOCK) в описании неблокирующих сокетов
+- **File 1:** `sources/3. Компьютерные сети и сетевой стек/10. TCP. Устройство, гарантии и жизненный цикл соединения.md` (строки 274, 296)
+- **File 2:** `sources/3. Компьютерные сети и сетевой стек/11. TCP Handshake, Flow Control и Congestion Control.md` (строка 106)
+- **Claim:**
+  > «2. **Перевод в неблокирующий режим:** Go немедленно вызывает `sys_setsockopt`: `setsockopt(SO_NONBLOCK)`. В Go все сетевые сокеты **всегда неблокирующие**!»
+- **Claim Type:** MISLEADING TERMINOLOGY / POSIX ERROR
+- **Severity:** Medium
+- **Why verification matters:** В стандарте POSIX и ядре Linux опции сокета `SO_NONBLOCK` для системного вызова `setsockopt` не существует. Неблокирующий режим устанавливается либо флагом `SOCK_NONBLOCK` прямо при создании через `socket(..., SOCK_NONBLOCK, ...)`, либо флагом файла через `fcntl(fd, F_SETFL, O_NONBLOCK)`.
+- **Primary Source:** POSIX.1-2017 `setsockopt(3)`, `fcntl(2)`, `socket(2)`. Go source: `src/internal/poll/sock_cloexec.go`.
+- **Potential correction direction (Hypothesis):** Исправить формулировку на `socket(..., SOCK_NONBLOCK)` или `fcntl(O_NONBLOCK)`.
+
+---
+
+## Claim 14: Использование устаревшего метода net.Error.Temporary()
+- **File:** `sources/3. Компьютерные сети и сетевой стек/12. TCP Retransmission, Keep Alive, Nagle и Delayed ACK.md` (строки 146–149)
+- **Claim:**
+  ```go
+  // Метод Temporary() исторически проверял временный характер ошибки
+  if netErr.Temporary() {
+      // Можно повторить попытку с прикладным backoff
+  }
+  ```
+- **Claim Type:** OUTDATED API / DEPRECATED
+- **Severity:** Medium
+- **Historical / Current / Unclear:** Deprecated in Go 1.18.
+- **Why verification matters:** Метод `Temporary()` в интерфейсе `net.Error` официально помечен как `Deprecated` начиная с Go 1.18 из-за неопределенной семантики. В современном Go рекомендуется проверять таймауты (`netErr.Timeout()`) и отмену контекста (`errors.Is(err, context.DeadlineExceeded)`).
+- **Primary Source:** Go standard library `src/net/net.go` (комментарий к `type Error interface`).
+- **Potential correction direction (Hypothesis):** Добавить явное предостережение о депрекации `Temporary()` в Go 1.18+ и показать современный способ классификации ошибок.
+
+---
+
+## Claim 15: Интеграция crypto/internal/fips140 приписана Go 1.21+
+- **File:** `sources/3. Компьютерные сети и сетевой стек/18. TLS и HTTPS. Шифрование поверх TCP.md` (строка 161)
+- **Claim:**
+  > «Начиная с Go 1.21+, внутренняя архитектура `crypto/tls` была глубоко модернизирована: 1. Интеграция с пакетом **`crypto/internal/fips140`** для сертификации криптографических модулей по стандарту FIPS 140-3.»
+- **Claim Type:** VERSION ANACHRONISM
+- **Severity:** Medium
+- **Historical / Current / Unclear:** Introduced in Go 1.24, not Go 1.21.
+- **Why verification matters:** Криптографический модуль FIPS 140-3 (`GOFIPS140=v1.0.0`, директория `src/crypto/internal/fips140`) был спроектирован и внедрен Филиппо Вальсордой в релизе **Go 1.24**, а не Go 1.21.
+- **Primary Source:** Go 1.24 Release Notes; design doc "FIPS 140-3 Cryptographic Module for Go".
+- **Potential correction direction (Hypothesis):** Исправить номер версии с Go 1.21+ на Go 1.24+.
+
+---
+
+## Claim 16: http.Server.BaseContext приписан Go 1.21+
+- **File:** `sources/3. Компьютерные сети и сетевой стек/40. Head of Line Blocking, Slowloris и деградация под нагрузкой.md` (строка 154)
+- **Claim:**
+  ```go
+  // Context-based shutdown (Go 1.21+)
+  BaseContext: func(listener net.Listener) context.Context { ... }
+  ```
+- **Claim Type:** VERSION ANACHRONISM
+- **Severity:** Low
+- **Historical / Current / Unclear:** Introduced in Go 1.13.
+- **Why verification matters:** Поле `BaseContext` в структуре `http.Server` появилось в **Go 1.13**, а не Go 1.21.
+- **Primary Source:** Go 1.13 Release Notes (`net/http`).
+- **Potential correction direction (Hypothesis):** Заменить пометку `(Go 1.21+)` на `(Go 1.13+)`.
+
+---
+
+## Claim 17: Намек на нативную поддержку HTTP/3 в net/http начиная с Go 1.20+
+- **File:** `sources/3. Компьютерные сети и сетевой стек/23. HTTP 3 и QUIC. Почему будущее уходит от TCP.md` (строка 81)
+- **Claim:**
+  > «В Go нативной поддержки HTTP/3 в `net/http` без внешних зависимостей нет (до версии 1.20+ она оставалась экспериментальной). Стандартный инструмент — библиотека `quic-go` (или `golang.org/x/net/http3`).»
+- **Claim Type:** MISLEADING / FACTUALLY UNCLEAR
+- **Severity:** Medium
+- **Why verification matters:** Фраза «до версии 1.20+ она оставалась экспериментальной» создает у читателя ложное впечатление, будто в Go 1.20+ появилась нативная стабильная поддержка HTTP/3 в стандартной библиотеке. В действительности нативной поддержки HTTP/3 в стандартном `net/http` нет ни в Go 1.20, ни в Go 1.24, ни в Go 1.26.
+- **Primary Source:** Go standard library `net/http`; пакет `quic-go`.
+- **Potential correction direction (Hypothesis):** Переформулировать: «В стандартной библиотеке Go нативная поддержка HTTP/3 отсутствует во всех актуальных версиях; поддержка осуществляется исключительно через внешние библиотеки (`github.com/quic-go/quic-go/http3`).»
+
+---
+
+## Claim 18: Утверждение, что возобновление сессии в TLS 1.2 требовало 2-RTT
+- **File:** `sources/3. Компьютерные сети и сетевой стек/19. Сертификаты, PKI, mTLS и процесс TLS Handshake.md` (строка 129)
+- **Claim:**
+  > «1. **Скорость:** Рукопожатие сокращено до **`1-RTT`** (один сетевой оборот). При повторном соединении через билеты сессий возможен режим **`0-RTT`**... В TLS 1.2 требовалось как минимум **`2-RTT`».**
+- **Claim Type:** TOO STRONG / FACTUALLY INACCURATE
+- **Severity:** Medium
+- **Why verification matters:** В TLS 1.2 полный handshake действительно занимал 2-RTT. Однако при повторном подключении с использованием Session ID или Session Tickets (RFC 5077) рукопожатие в TLS 1.2 занимало **1-RTT**, а не «как минимум 2-RTT».
+- **Primary Source:** RFC 5246 (TLS 1.2), RFC 5077 (Stateless Session Resumption).
+- **Potential correction direction (Hypothesis):** Уточнить, что 2-RTT в TLS 1.2 требовал *полный* (первичный) handshake, тогда как сессионное возобновление работало за 1-RTT.
+
+---
+
+## Claim 19: SO_REUSEPORT как средство борьбы с клиентским TIME_WAIT при net.Dial()
+- **File:** `sources/3. Компьютерные сети и сетевой стек/10. TCP. Устройство, гарантии и жизненный цикл соединения.md` (строки 245–251)
+- **Claim:**
+  > «Вопрос: Почему при высокой нагрузке на микросервис вызовы `net.Dial()` начинают падать с ошибкой нехватки портов из-за состояния TIME_WAIT? Как правильно решить проблему в Go?  
+  > Ответ: ... 2. На уровне сокета: Использование сокетных флагов `SO_REUSEADDR` и `SO_REUSEPORT` (в Go настраивается через коллбэк `net.ListenConfig.Control`), позволяющих ядру мгновенно привязываться к сокету в состоянии TIME_WAIT.»
+- **Claim Type:** CONFLATION / WRONG REMEDY
+- **Severity:** Medium
+- **Why verification matters:** Вопрос задан про исходящие вызовы клиента `net.Dial()`, у которого кончаются эфемерные порты. Настройка `SO_REUSEPORT` через `net.ListenConfig.Control` относится к *слушающим* серверным сокетам (`net.Listen`). На исходящие вызовы `net.Dial()` она не оказывает никакого влияния. Исходящие соединения должны использовать `net.Dialer` и переиспользование сокетов ядра через `tcp_tw_reuse`.
+- **Primary Source:** Linux man `tcp(7)`, `ip(7)`.
+- **Potential correction direction (Hypothesis):** Разграничить серверные слушающие сокеты (`ListenConfig` + `SO_REUSEADDR/SO_REUSEPORT`) и клиентские исходящие сокеты (Connection pooling в `http.Transport` + `tcp_tw_reuse`).
+
+---
+
+# 3. LOW-PRIORITY CLAIMS (PEDAGOGICAL OVERSIMPLIFICATIONS & CODE POLISH)
+
+## Claim 20: Утверждение о "разрушении буферов" при конкурентной работе с net.Conn
+- **File:** `sources/3. Компьютерные сети и сетевой стек/1. Обзор раздела. Как работают сети и зачем это Go бэкенд-разработчику.md` (строки 198–201)
+- **Claim:**
+  > «...одновременный вызов двух Read() или двух Write() из разных горутин категорически запрещен! Это приведет к разрушению внутренних буферов, перемешиванию сетевых кадров и непредсказуемым гонкам данных (Race Conditions).»
+- **Claim Type:** PEDAGOGICAL HYPERBOLE / TOO STRONG
+- **Severity:** Low
+- **Reality:** Спецификация Go явно гарантирует потокобезопасность методов `net.Conn`: *"Multiple goroutines may invoke methods on a Conn simultaneously."* Внутренние структуры защищены мьютексами в пакете `internal/poll`. Никакого разрушения структур памяти и memory corruption не происходит. Проблема исключительно прикладная: байты из двух потоков будут перемешаны в потоке TCP, что сломает протокол прикладного уровня.
+
+---
+
+## Claim 21: Серверное маскирование WebSocket-фреймов
+- **File:** `sources/3. Компьютерные сети и сетевой стек/25. WebSocket, SSE и долгоживущие соединения.md` (строка 186)
+- **Claim:**
+  > «Сервер может не маскировать исходящие пакеты.»
+- **Claim Type:** PEDAGOGICAL WORDING / TOO WEAK
+- **Severity:** Low
+- **Reality:** RFC 6455 (Section 5.1) категоричен: сервер **обязан НЕ** маскировать фреймы, отправляемые клиенту (*"A server MUST NOT mask any frames that it sends to the client. A client MUST close a connection if it detects a masked frame"*). Формулировка «может не маскировать» звучит так, будто сервер имеет право маскировать по своему желанию.
+
+---
+
+## Claim 22: Неиспользуемые импорты в изолированных листингах
+- **Files:**
+  - `2. Модели OSI и TCP IP...md` (строка 125: импорт `"fmt"` не используется);
+  - `20. HTTP 1.1. Структура запроса и ответа.md` (строка 249: импорт `"time"` не используется);
+  - `30. Service Discovery...md` (строка 125: импорт `"context"` не используется);
+  - `31. CDN, Edge и кеширование HTTP.md` (строка 192: импорт `"encoding/hex"` не используется);
+  - `42. Service Mesh...md` (строка 162: импорт `"context"` не используется).
+- **Claim Type:** UNUSED IMPORT (COMPILER WARNING / ERROR IN STANDALONE RUN)
+- **Severity:** Low
+- **Reality:** В Go неиспользуемый импорт приводит к ошибке компиляции при попытке запустить файл напрямую. В учебных сниппетах это не критично, но исправление повышает качество репозитория.
+
+---
+
+# 4. CLAIM CLUSTERS
+
+## Cluster 1: Netpoller Mechanics & Epoll Flags
+- **Common Issue:** Противоречивые и ошибочные утверждения о взаимодействии рантайма Go с `epoll`.
+- **Files:**
+  - `15. Порты, сокеты и Socket API.md` (утверждает `EPOLLONESHOT` в Go 1.21+)
+  - `37. Сетевой стек Linux под капотом.md` (корректно утверждает `EPOLLET`)
+  - `38. Как Go работает с сетью. net, net_http, netpoller, epoll.md` (корректно утверждает `EPOLLET`)
+  - `44. Итоги раздела.md` (галлюцинирует о пуле из 1024 тредов)
+- **Primary Source:** `/usr/local/go/src/runtime/netpoll_epoll.go`, `/usr/local/go/src/runtime/proc.go`.
+- **Resolution Strategy:** Синхронизировать все статьи: Go использует `EPOLLET` (Edge-Triggered), сокет регистрируется однократно при открытии, вызовы `netpoll` диспетчеризируются обычными потоками `M` и `sysmon`.
+
+## Cluster 2: DNS Caching & Resolver Behavior in Go
+- **Common Issue:** Утверждения о наличии встроенного DNS-кэша в чистом Go (`netgo`).
+- **Files:**
+  - `17. DNS под капотом. Record Types, TTL, Recursive Resolver, кеширование.md` (строки 174–203, 328)
+  - `30. Service Discovery и балансировка в микросервисах.md` (строки 92–96)
+- **Primary Source:** `/usr/local/go/src/net/lookup.go`, Go issue #24796.
+- **Resolution Strategy:** Устранить утверждения о кэшировании в Go. Четко зафиксировать: Go `net.Resolver` **не кэширует** ответы (кэш должен быть на уровне ОС или внешних библиотек приложения), но дедуплицирует параллельные вызовы через `singleflight`.
+
+## Cluster 3: TIME_WAIT, tcp_fin_timeout and Port Exhaustion
+- **Common Issue:** Смешение таймера `TIME_WAIT` с таймером `FIN-WAIT-2` (`tcp_fin_timeout`), а также смешение клиентских сокетов с серверными.
+- **Files:**
+  - `10. TCP. Устройство, гарантии и жизненный цикл соединения.md` (строки 245–251)
+  - `39. TIME_WAIT, Port Exhaustion и другие проблемы TCP-сервисов.md` (строки 28, 101–112)
+  - `42. Service Mesh. Istio, Linkerd, sidecar proxy.md` (строка 218)
+- **Primary Source:** Linux kernel `include/net/tcp.h`, `man 7 tcp`.
+- **Resolution Strategy:** Зафиксировать, что `tcp_fin_timeout` управляет только `FIN-WAIT-2`. `TIME_WAIT` жестко равен 60 с (`TCP_TIMEWAIT_LEN`). Клиентское истощение портов решается пулингом соединений и `tcp_tw_reuse = 1`.
+
+## Cluster 4: Connection Pooling Defaults in net/http
+- **Common Issue:** Противоречивые утверждения о дефолтном значении `MaxIdleConnsPerHost`.
+- **Files:**
+  - `21. HTTP 1.1 под капотом. Keep Alive, Chunked Encoding, Pipelining.md` (строка 59: утверждает дефолт 100)
+  - `30. Service Discovery и балансировка в микросервисах.md` (строка 148: утверждает дефолт 2)
+  - `39. TIME_WAIT...md` (строка 143: путаный комментарий о равенстве MaxIdleConns)
+- **Primary Source:** `/usr/local/go/src/net/http/transport.go` (`DefaultMaxIdleConnsPerHost = 2`).
+- **Resolution Strategy:** Привести все упоминания к единому стандарту: по умолчанию `MaxIdleConns = 100`, а `MaxIdleConnsPerHost = 2`.
+
+---
+
+# 5. CROSS-ARTICLE CONTRADICTIONS
+
+## Contradiction 1: Netpoller Epoll Flag (EPOLLONESHOT vs EPOLLET)
+- **File A:** `15. Порты, сокеты и Socket API.md` (строка 352):  
+  *«Начиная с Go 1.21+, сетевой полинг Netpoller использует `epoll` с флагом `EPOLLONESHOT`...»*
+- **File B:** `37. Сетевой стек Linux под капотом.md` (строка 149):  
+  *«epoll_ctl(EPOLL_CTL_ADD, fd, EPOLLIN|EPOLLET, &ev) -> Регистрирует сокет в красно-черном дереве epoll ядра...»*  
+  и `38. Как Go работает с сетью...md` (строка 77):  
+  *«FD регистрируется в подсистеме ядра через epoll_ctl (флаг EPOLL_CTL_ADD с событием EPOLLIN | EPOLLET).»*
+- **Conflict:** Статья 15 заявляет, что Go использует `EPOLLONESHOT`. Статьи 37 и 38 заявляют, что Go использует `EPOLLET`.
+- **Authoritative Source:** `/usr/local/go/src/runtime/netpoll_epoll.go`. Верна позиция Статей 37 и 38 (`EPOLLET`). Статья 15 содержит ошибку.
+
+---
+
+## Contradiction 2: Default MaxIdleConnsPerHost Value (100 vs 2)
+- **File A:** `21. HTTP 1.1 под капотом. Keep Alive, Chunked Encoding, Pipelining.md` (строка 59):  
+  *«MaxIdleConnsPerHost int // На один host. По умолчанию 100»*
+- **File B:** `30. Service Discovery и балансировка в микросервисах.md` (строка 148):  
+  *«// Важно: MaxIdleConnsPerHost по умолчанию = 2. Для LB это критично...»*
+- **Conflict:** Статья 21 указывает значение 100. Статья 30 указывает значение 2.
+- **Authoritative Source:** `/usr/local/go/src/net/http/transport.go` (`DefaultMaxIdleConnsPerHost = 2`). Верна позиция Статьи 30. В Статье 21 допущена грубая ошибка.
+
+---
+
+## Contradiction 3: DNS Caching in Go Runtime (Internal Cache vs Application-level Only)
+- **File A:** `17. DNS под капотом...md` (строка 203):  
+  *«Чистый Go-рантайм (в режиме netgo) ведет собственный изолированный кэш в памяти процесса...»*
+- **File B:** `17. DNS под капотом...md` (строка 246):  
+  *«1. Кэширование на уровне приложения: Использование потокобезопасного кэша на базе sync.Map или библиотек вроде ttlcache для исключения повторных сетевых вызовов.»*  
+  и `30. Service Discovery...md` (строка 105): кастомный резолвер без кэша.
+- **Conflict:** Если рантайм Go уже кэширует DNS-ответы в памяти процесса по TTL (как заявляет строка 203), то приложению не требуется городить `sync.Map` или `ttlcache` для предотвращения повторных сетевых вызовов (строка 246).
+- **Authoritative Source:** `src/net/lookup.go`. В Go кэша нет; кэширование на уровне приложения действительно необходимо, если нет внешнего кэширующего резолвера.
+
+---
+
+# 6. VERSION-SENSITIVE MATERIAL
+
+| File | Claim | Stated Version | Status | Authoritative Verification Source |
+|---|---|---|---|---|
+| `15. Порты, сокеты...md` | Netpoller перешел на `EPOLLONESHOT` | Go 1.21+ | **Factually Wrong** | `/usr/local/go/src/runtime/netpoll_epoll.go` (`EPOLLET`) |
+| `18. TLS и HTTPS...md` | Интеграция `crypto/internal/fips140` | Go 1.21+ | **Anachronism** (Go 1.24) | Go 1.24 Release Notes; `src/crypto/internal/fips140` |
+| `40. Head of Line...md` | `http.Server.BaseContext` | Go 1.21+ | **Anachronism** (Go 1.13) | Go 1.13 Release Notes (`net/http`) |
+| `12. TCP Retransmission...md` | `net.Error.Temporary()` | Unclear | **Deprecated** in Go 1.18 | Go 1.18 Release Notes; `src/net/net.go` |
+| `23. HTTP 3 и QUIC...md` | Нативная поддержка HTTP/3 в `net/http` | До Go 1.20+ была эксперим. | **Misleading** (Нет нативной) | Go standard library `net/http` (поддержка только через quic-go) |
+| `4. IP. IPv4, IPv6...md` | Безаллокационный пакет `net/netip` | Go 1.18+ | **Correct** | Go 1.18 Release Notes; `src/net/netip` |
+| `21. HTTP 1.1...md` | `http.ResponseController` | Go 1.20+ | **Correct** | Go 1.20 Release Notes (`net/http`) |
+| `25. WebSocket...md` | `ResponseController.Flush()` | Go 1.20+ | **Correct** | Go 1.20 Release Notes |
+| `13. Congestion Algorithms...md` | BBR в ядре Linux | Linux 4.9+ | **Correct** | Linux kernel 4.9 release notes (BBR merge) |
+| `9. VLAN, VXLAN...md` | Исторический порт VXLAN в Linux | Ядро Linux | **Wrong** (4785 вместо 8472) | Linux kernel commit 95170e357 (default port 8472) |
+
+---
+
+# 7. NUMERICAL / ABSOLUTE CLAIMS
+
+### Numerical Claims Requiring Special Attention:
+1. **`MaxIdleConnsPerHost = 100`** (`21. HTTP 1.1...md:59`):  
+   Ложно. Константа `DefaultMaxIdleConnsPerHost = 2`.
+2. **`1024 тредов в пуле netpoller`** (`44. Итоги раздела...md:104`):  
+   Ложно. У `netpoller` нет пула из 1024 потоков.
+3. **`Порт VXLAN 4785`** (`9. VLAN, VXLAN...md:171, 211`):  
+   Ложно. Официальный IANA — `4789`, исторический Linux — `8472`. Число 4785 — ошибка.
+4. **`sysctl net.ipv4.tcp_rto_min=200`** (`12. TCP Retransmission...md:133`):  
+   Ложно. Такой переменной sysctl в Linux не существует.
+5. **`Таймер tcp_delack_max = 40 мс`** (`12. TCP Retransmission...md:184`):  
+   Константа компиляции ядра (`TCP_DELACK_MAX`), не настраиваемый sysctl.
+6. **`DNS-кэш на 1000 записей и 2 секунды`** (`30. Service Discovery...md:94`):  
+   Галлюцинация. В `net.Resolver` кэша нет.
+
+### Absolute Claims ("Always / Never / 100% / Guaranteed"):
+1. **«все сетевые сокеты всегда неблокирующие»** (`10. TCP...md:274`):  
+   По существу верно для сетевых сокетов, управляемых Go `netpoller`, но механизм их перевода в неблокирующий режим описан ошибочно как `setsockopt(SO_NONBLOCK)`.
+2. **«одновременный вызов двух Read() или двух Write() категорически запрещен»** (`1. Обзор раздела...md:198`):  
+   Чрезмерно категорично. Спецификация Go гарантирует безопасность конкурентных вызовов методов `net.Conn`, но предупреждает о семантическом перемешивании данных прикладного уровня.
+3. **«Go http.Client по умолчанию отключает keep-alive для http://»** (`41. Kubernetes Networking...md:148`):  
+   Абсолютно ложное утверждение.
+
+---
+
+# 8. SOURCE MAP
+
+| Топик / Область | Авторитетный первоисточник (Primary Source) | Раздел / Документ |
+|---|---|---|
+| Go Netpoller implementation | Go standard library source | `src/runtime/netpoll_epoll.go`, `src/runtime/proc.go` |
+| Go DNS resolution & lookup | Go standard library source & specs | `src/net/lookup.go`, `src/net/dnsclient_unix.go` |
+| Go HTTP client & transport | Go standard library source & docs | `src/net/http/transport.go`, `pkg.go.dev/net/http` |
+| Socket options & Linux kernel TCP | Linux man pages & kernel headers | `man 7 tcp`, `man 7 ip`, `include/net/tcp.h` |
+| TCP Specification & States | IETF RFC Standards | RFC 793 (TCP), RFC 1122 (Host Requirements), RFC 5681 (Congestion Control) |
+| Nagle's Algorithm | IETF RFC Standard | RFC 896 |
+| VXLAN Specification & Port | IETF RFC Standard | RFC 7348 (Section 5: IANA Port 4789) |
+| TLS 1.3 Architecture | IETF RFC Standard | RFC 8446 |
+| HTTP/2 Specification & HPACK | IETF RFC Standards | RFC 7540 / RFC 9113 (HTTP/2), RFC 7541 (HPACK) |
+| HTTP/3 & QUIC Specifications | IETF RFC Standards | RFC 9000 (QUIC Transport), RFC 9002 (Loss Recovery), RFC 9114 (HTTP/3) |
+| WebSocket Protocol & Framing | IETF RFC Standard | RFC 6455 |
+| Go ICMP / Raw Sockets | Go sub-repositories | `golang.org/x/net/icmp` |
+
+---
+
+# 9. LIKELY OUT-OF-DATE AREAS
+
+1. **Использование `net.Error.Temporary()` (Статья 12):**  
+   *Подозрение:* Устарело. Метод объявлен `Deprecated` в Go 1.18. Требует обновления до `errors.Is(err, context.DeadlineExceeded)`.
+2. **Упоминание `Pipelining` в HTTP/1.1 (Статьи 20, 21):**  
+   *Подозрение:* Корректно описан как устаревший, но следует еще раз подчеркнуть, что ни один современный браузер и ни один продакшен Go-сервер не используют HTTP Pipelining.
+3. **Common Name (CN) валидация в TLS (Статья 19):**  
+   *Подозрение:* Статья верно указывает, что `Common Name` устарел и игнорируется в Go в пользу `SAN`. Это актуальное и верное состояние (начиная с Go 1.15).
+
+---
+
+# 10. AREAS THAT APPEAR SOUND (НЕ ТРЕБУЮТ ИЗМЕНЕНИЙ)
+
+1. **HPACK сжатие заголовков (Статья 22):**  
+   Размер статической таблицы (ровно 61 запись, индексы 1–61), динамическая таблица с индекса 62, объяснение атаки CRIME и дерева Хаффмана — на 100% соответствует RFC 7541.
+2. **Алгоритмы перегрузки Reno, Cubic, BBR (Статья 13):**  
+   Сравнение формул $t^3$, AIMD, pacing rate, переключение через sysctl (`net.core.default_qdisc=fq`, `net.ipv4.tcp_congestion_control=bbr`) — безупречно точно.
+3. **QUIC фрейминг и Stream ID (Статьи 23, 24):**  
+   Структура Long/Short Header, назначение 2 младших бит в Stream ID (Client/Server, Bidi/Unidi), RFC 9000/9002, отсутствие transport-level HOL-blocking — полностью выверено.
+4. **eBPF и XDP архитектура (Статья 36):**  
+   Модель 11 регистров (r0–r9 общего назначения, r10 frame pointer), коды действий `XDP_DROP`, `XDP_TX`, `XDP_REDIRECT`, `XDP_PASS`, интеграция через `cilium/ebpf` и `bpf2go` — соответствует канонической документации ядра Linux.
+5. **gRPC HTTP/2 Mapping & Framing (Статья 26):**  
+   Префикс 5 байт (1 байт компрессии + 4 байта длины), заголовки `application/grpc`, трейлеры `grpc-status`/`grpc-message`, маппинг на Protobuf TLV wire types (0, 1, 2, 5) — абсолютно точно.
+6. **Пакет net/netip в Go 1.18+ (Статья 4):**  
+   Переход от `net.IP` ([]byte на куче) к `netip.Addr` (значимый тип `struct` без аллокаций, поддержка `==` и ключей мап) — исторически и технически безупречно.
+
+---
+
+# 11. RECOMMENDED EXECUTION ORDER
+
+Следующему агенту рекомендуется выполнять проверку и исправления строго в следующем порядке:
+
+1. **Broken Code & Compilation Fixes (Устранение ошибок компиляции и крашей):**
+   - Статья 33: Исправить Rate Limiter (объявить переменные, устранить data race по чтению мапы).
+   - Статья 39: Заменить `syscall.SO_REUSEPORT` на переносимый аналог (`unix.SO_REUSEPORT`).
+   - Статья 35: Исправить вызовы `icmp.ListenNetwork` на канонический `icmp.ListenPacket`.
+   - Статьи 3 и 4: Исправить синтаксис broken string literals (`
+`).
+2. **Critical Factual Errors & Contradictions (Критические концептуальные ошибки):**
+   - Статья 15: Заменить `EPOLLONESHOT` на `EPOLLET` (ликвидировать противоречие со Статьями 37 и 38).
+   - Статья 44: Удалить утверждение о пуле 1024 тредов и китайский глиф `(复用)`.
+   - Статьи 17 и 30: Устранить утверждение о наличии встроенного DNS-кэша в рантайме Go.
+   - Статья 21: Исправить дефолтное значение `MaxIdleConnsPerHost` со 100 на 2 (синхронизировать со Статьей 30).
+   - Статья 41: Удалить ложное утверждение об отключении Keep-Alive для plain HTTP.
+3. **Protocol & Kernel Tuning Parameters (Сетевые порты и параметры sysctl):**
+   - Статья 9: Заменить выдуманный порт VXLAN `4785` на канонический `4789`.
+   - Статьи 39 и 42: Исправить связь `tcp_fin_timeout` с `TIME_WAIT` (уточнить, что это таймаут для `FIN-WAIT-2`).
+   - Статья 12: Заменить несуществующий sysctl `net.ipv4.tcp_rto_min` на настройку маршрутов `ip route`.
+   - Статья 10: Исправить рекомендацию `SO_REUSEPORT` для клиентского `net.Dial()`.
+4. **Version Alignments & Deprecated APIs (Версионная синхронизация):**
+   - Статья 18: Исправить Go 1.21+ на Go 1.24+ для `crypto/internal/fips140`.
+   - Статья 40: Исправить Go 1.21+ на Go 1.13+ для `http.Server.BaseContext`.
+   - Статья 12: Добавить пометку о депрекации `net.Error.Temporary()`.
+5. **Pedagogical Polish & Unused Imports:**
+   - Почистить неиспользуемые импорты (`"fmt"`, `"time"`, `"context"`, `"encoding/hex"`) в статьях 2, 20, 30, 31, 42.
+
+---
+
+# 12. STOP CONDITIONS
+
+- **НЕ менять педагогические аналогии:** Объяснения через почтовые открытки (UDP), телефонные звонки (TCP), таможню аэропорта (XDP), жилые дома (VLAN) отлично работают на понимание и не содержат инженерных ошибок.
+- **НЕ переписывать алгоритмы BBR, Cubic, Reno, HPACK, QUIC:** Они изложены точно и соответствуют стандартам RFC.
+- **НЕ менять архитектурные схемы Envoy, Nginx, HAProxy, CNI, Service Mesh:** Описания моделей процессов, хуков Netfilter и режимов балансировки выверены.
+- **НЕ трогать код, который компилируется и демонстрирует стандартные паттерны**, если в нем нет доказанных багов.
+
+---
+
+# 13. FINAL HANDOFF TO SONNET
+
+## HANDOFF INSTRUCTIONS
+
+Следующему агенту (редактору-верификатору):
+
+Ты приступаешь к этапу верификации и исправления Модуля 3. Твоя цель — устранить найденные технические и синтаксические дефекты, сохранив авторский кернигановский стиль и стройность изложения.
+
+### Файлы для первоочередной работы:
+1. `sources/3. Компьютерные сети и сетевой стек/33. DDoS, Rate Limiting и базовая защита сетевых сервисов.md`:
+   - Исправить метод `Allow` структуры `Limiter`: добавить поля `perIPLimit`, `perIPBurst`, устранить data race при доступе к `global`.
+2. `sources/3. Компьютерные сети и сетевой стек/15. Порты, сокеты и Socket API.md`:
+   - В блоке «Под капотом» (строка 352) заменить `EPOLLONESHOT` на `EPOLLET`. Привести в согласие со статьями 37 и 38.
+3. `sources/3. Компьютерные сети и сетевой стек/44. Итоги раздела. Полная картина сетевого стека для Go-разработчика.md`:
+   - В строке 104 удалить китайский иероглиф `(复用)` и ложное утверждение о «фиксированном пуле из 1024 тредов netpoller». Описать реальную диспетчеризацию через `findrunnable` и `sysmon`.
+4. `sources/3. Компьютерные сети и сетевой стек/17. DNS под капотом. Record Types, TTL, Recursive Resolver, кеширование.md` и `30. Service Discovery...md`:
+   - Устранить выдуманный встроенный DNS-кэш в Go. Описать работу `singleflight` и необходимость системного или прикладного кэширования.
+5. `sources/3. Компьютерные сети и сетевой стек/21. HTTP 1.1 под капотом. Keep Alive, Chunked Encoding, Pipelining.md`:
+   - В строке 59 исправить `MaxIdleConnsPerHost`: дефолт равен 2, а не 100.
+6. `sources/3. Компьютерные сети и сетевой стек/9. VLAN, VXLAN и сегментация сети.md`:
+   - Заменить порт `4785` на `4789` (стандарт IANA) и исправить подписи на диаграммах Mermaid.
+7. `sources/3. Компьютерные сети и сетевой стек/39. TIME_WAIT...md`:
+   - Заменить `syscall.SO_REUSEPORT` на `unix.SO_REUSEPORT` (или определить константу). Разъяснить, что `tcp_fin_timeout` управляет `FIN-WAIT-2`, а не `TIME_WAIT`.
+8. `sources/3. Компьютерные сети и сетевой стек/35. Диагностика сети...md`:
+   - Заменить `icmp.ListenNetwork` на `icmp.ListenPacket`.
+9. `sources/3. Компьютерные сети и сетевой стек/3. Ethernet...md` и `4. IP...md`:
+   - Починить строковые литералы с разбитыми `
+`.
+10. `sources/3. Компьютерные сети и сетевой стек/41. Kubernetes Networking...md`:
+    - Исправить строку 148: Go `http.Client` не отключает Keep-Alive для plain HTTP.
+
+### Что НЕ трогать:
+- Не трогать статьи 13 (BBR/Cubic), 22 (HPACK), 24 (QUIC Deep Dive), 26 (gRPC), 36 (eBPF/XDP) — их математический и технический фундамент точен.
+- Не менять общую структуру оглавления и названия файлов.
+- Сохранять все Mermaid-диаграммы, аккуратно исправляя в них только ошибочные подписи портов или переходов.
