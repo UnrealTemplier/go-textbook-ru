@@ -6,6 +6,7 @@ builder/converter.py
 
 import re
 import html
+import textwrap
 from typing import Tuple, Dict, Any, List, Optional
 import markdown
 from builder.scanner import slugify, Article, KnowledgeBaseScanner
@@ -133,16 +134,17 @@ class MarkdownConverter:
         idx = 0
         def repl(match):
             nonlocal idx
-            raw_code = match.group(1).strip()
-            # Очистка строк от лидирующих цитатных символов '> '
+            # Отступы значимы для mindmap (и ряда других типов), поэтому строки не обрезаются
+            # слева: убираем только пустые строки по краям, цитатные символы '> ' и общий отступ.
+            raw_code = match.group(1).strip("\n")
             lines = []
             for l in raw_code.splitlines():
-                l = l.strip()
-                if l.startswith(">"):
-                    l = l.lstrip(">").strip()
+                l = l.rstrip()
+                if l.lstrip().startswith(">"):
+                    l = re.sub(r"^\s*>+ ?", "", l)
                 lines.append(l)
-            
-            clean_code = "\n".join(lines).strip()
+
+            clean_code = textwrap.dedent("\n".join(lines)).strip()
 
             # Валидация и исправление узлов с незакавыченными скобками: A[Text (Info)] -> A["Text (Info)"]
             clean_code = self._sanitize_mermaid(clean_code)
@@ -172,26 +174,62 @@ class MarkdownConverter:
 
         return pattern.sub(repl, text)
 
+    # Заголовки диаграмм, к которым применяются автоисправления синтаксиса рёбер и узлов.
+    _MERMAID_FLOW_HEADER = re.compile(r"\s*(?:flowchart|graph)\b")
+    # Операторы связи flowchart: -->, ---, ==>, -.->, <-->, ~~~ и т.п.
+    _MERMAID_LINK = r"(?:<?-{2,}>?|<?={2,}>?|-\.+-?>?|~~~)"
+
+    @staticmethod
+    def _outside_quotes(line: str, pos: int) -> bool:
+        """True, если позиция pos в строке не находится внутри строки в двойных кавычках."""
+        return line[:pos].count('"') % 2 == 0
+
+    def _fix_flowchart_line(self, line: str) -> str:
+        """Автоисправление типичных синтаксических ошибок flowchart/graph (Mermaid 10.9.1)."""
+        # Толстая двунаправленная стрелка с квотированной меткой (недопустима):
+        # A <==|"текст"|==> B  ->  A <== "текст" ==> B
+        line = re.sub(r'<==\|"([^"]*)"\|==>', r'<== "\1" ==>', line)
+
+        # Вложенные двойные кавычки в метке узла:
+        # N["os.Open("/etc")"]  ->  N["os.Open(#quot;/etc#quot;)"]
+        # Метка заканчивается на первом сочетании "] (соседние узлы строки не захватываются).
+        def _escape_nested(m):
+            return f'{m.group(1)}["{m.group(2).replace(chr(34), "#quot;")}"]'
+        line = re.sub(r'(\w+)\["((?:(?!"\]).)+)"\]', _escape_nested, line)
+
+        # Неквотированная метка ребра (скобки, двоеточия и т.п. ломают разбор):
+        # A -->|open()| B  ->  A -->|"open()"| B
+        line = re.sub(
+            rf'({self._MERMAID_LINK})\|([^|"\n]+)\|',
+            lambda m: f'{m.group(1)}|"{m.group(2).strip()}"|',
+            line,
+        )
+        return line
+
     def _sanitize_mermaid(self, code: str) -> str:
         """Исправление типичных опечаток в Mermaid."""
         # 1. Если первая строка '>', убираем
         lines = code.splitlines()
         if lines and lines[0].strip() == ">":
             lines = lines[1:]
-        
+
+        is_flowchart = bool(lines) and bool(self._MERMAID_FLOW_HEADER.match(lines[0]))
+
         sanitized_lines = []
         for line in lines:
             # Оборачиваем скобки внутри узлов: id[Text (with parens)] -> id["Text (with parens)"]
-            # Ищем квадратные скобки без кавычек внутри, содержащие круглые скобки
+            # Ищем квадратные скобки без кавычек внутри, содержащие круглые скобки.
+            # Совпадение внутри уже квотированной метки (например, индексы срезов
+            # Go: "dq[:len(dq)-1]") не трогаем — иначе схема ломается.
             m = re.search(r"(\w+)\s*\[([^\"\]]*\([^\"\]]*\)[^\"\]]*)\]", line)
-            if m:
+            if m and self._outside_quotes(line, m.start()):
                 node_id = m.group(1)
                 label = m.group(2)
                 line = line.replace(f"{node_id}[{label}]", f'{node_id}["{label}"]')
 
             # Оборачиваем форму БД: DB[(Database Text)] -> DB[("Database Text")]
             m_db = re.search(r"(\w+)\s*\[\(([^\"\]\)]+)\)\]", line)
-            if m_db:
+            if m_db and self._outside_quotes(line, m_db.start()):
                 node_id = m_db.group(1)
                 label = m_db.group(2)
                 line = line.replace(f"{node_id}[({label})]", f'{node_id}[("{label}")]')
@@ -201,6 +239,10 @@ class MarkdownConverter:
             m_class = re.match(r"^(\s*class\s+[a-zA-Z0-9_-]+(?:,\s*[a-zA-Z0-9_-]+)*),\s*([a-zA-Z0-9_-]+)\s*(;?)\s*$", line)
             if m_class:
                 line = f"{m_class.group(1)} {m_class.group(2)}{m_class.group(3)}"
+
+            # Синтаксис рёбер и кавычек во flowchart/graph
+            if is_flowchart:
+                line = self._fix_flowchart_line(line)
 
             sanitized_lines.append(line)
 

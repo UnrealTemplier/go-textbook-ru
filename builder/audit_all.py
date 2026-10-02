@@ -4,15 +4,23 @@ builder/audit_all.py
 1. Проверка кроссплатформенной совместимости имен файлов (Windows, macOS, Linux).
 2. Проверка целостности ссылок (0 broken links).
 3. Валидность анкоров и структуры.
-4. Корректность и синтаксис диаграмм Mermaid.
+4. Корректность и синтаксис диаграмм Mermaid (статические проверки + реальный разбор
+   вендорным mermaid.min.js в headless-браузере Firefox по протоколу file://).
 """
 
 import os
 import re
 import sys
+import html
+import json
+import shutil
 import argparse
-from urllib.parse import unquote
-from typing import List, Dict, Tuple, Set
+import tempfile
+import threading
+import subprocess
+import http.server
+from urllib.parse import unquote, urlparse, parse_qs
+from typing import List, Dict, Tuple, Set, Optional
 
 # Недопустимые символы Windows (NTFS / FAT): < > : " / \ | ? * и управляющие символы 0-31
 WIN_FORBIDDEN_CHARS = set("<>:\"/\\|?*")
@@ -23,8 +31,16 @@ WIN_RESERVED_NAMES = {
     *(f"LPT{i}" for i in range(1, 10))
 }
 
+# Максимальное время одного прогона разбора диаграмм в браузере, секунды
+MERMAID_RUNTIME_TIMEOUT = 300
+
+
 class SiteAuditor:
-    def __init__(self, dist_dir: str = "./dist", repo_root: str = "."):
+    def __init__(self, dist_dir: str = "./dist", repo_root: str = ".", mermaid_runtime: bool = True):
+        self.mermaid_runtime = mermaid_runtime
+        # (страница, порядковый номер блока на странице, исходный код) — для рантайм-разбора
+        self.mermaid_blocks: List[Tuple[str, int, str]] = []
+        self.mermaid_warnings: List[Dict[str, str]] = []
         self.dist_dir = os.path.abspath(dist_dir)
         self.repo_root = os.path.abspath(repo_root)
         self.html_files: List[str] = []
@@ -73,6 +89,12 @@ class SiteAuditor:
         for page_path in self.html_files:
             self._audit_single_page(page_path, file_ids_cache)
 
+        # 3b. Реальный разбор диаграмм рантаймом Mermaid (ловит ошибки, невидимые статическому анализу)
+        if self.mermaid_runtime:
+            self._audit_mermaid_runtime()
+        else:
+            print("      ℹ️ Рантайм-разбор Mermaid отключён (--no-mermaid-runtime).")
+
         # 4. Подведение итогов
         print("\n[4/4] 📊 Результаты проверки:")
         print(f"      Ошибок несовместимости имен файлов: {len(self.filename_issues)}")
@@ -80,6 +102,7 @@ class SiteAuditor:
         print(f"      Битых ссылок (Broken Links): {len(self.broken_links)}")
         print(f"      Ошибок анкоров (Missing Anchors): {len(self.missing_anchors)}")
         print(f"      Ошибок диаграмм Mermaid: {len(self.mermaid_errors)}")
+        print(f"      Предупреждений по диаграммам Mermaid: {len(self.mermaid_warnings)}")
 
         success = True
 
@@ -107,12 +130,20 @@ class SiteAuditor:
             for item in self.missing_anchors[:5]:
                 print(f"  В файле: {os.path.relpath(item['source'], self.dist_dir)} -> {item['raw_href']}")
 
+        if self.mermaid_warnings:
+            print(f"\n⚠️ Замечания по диаграммам Mermaid: {len(self.mermaid_warnings)} штук.")
+            for w in self.mermaid_warnings[:5]:
+                print(f"  В файле: {os.path.relpath(w['file'], self.dist_dir)}")
+                print(f"  Причина: {w['reason']}")
+
         if self.mermaid_errors:
             success = False
             print("\n❌ ОШИБКИ В ДИАГРАММАХ MERMAID:")
-            for err in self.mermaid_errors[:10]:
+            for err in self.mermaid_errors[:20]:
                 print(f"  В файле: {os.path.relpath(err['file'], self.dist_dir)}")
                 print(f"  Причина: {err['reason']}\n")
+            if len(self.mermaid_errors) > 20:
+                print(f"  ... и еще {len(self.mermaid_errors) - 20} ошибок диаграмм.")
 
         print("=====================================================================")
         if success:
@@ -227,7 +258,7 @@ class SiteAuditor:
 
         # Проверяем блоки Mermaid
         mermaid_blocks = re.findall(r'<pre class="mermaid">(.*?)</pre>', content, re.DOTALL)
-        for b in mermaid_blocks:
+        for block_no, b in enumerate(mermaid_blocks, 1):
             clean_b = b.strip()
             if not clean_b:
                 self.mermaid_errors.append({
@@ -251,6 +282,17 @@ class SiteAuditor:
                 })
                 continue
 
+            # ":::class" внутри квотированной метки не падает при разборе, но выводится текстом
+            # в узле: A["Текст:::entry"] вместо A["Текст"]:::entry
+            unescaped_b = html.unescape(clean_b)
+            if re.search(r':::\w+"\]', unescaped_b):
+                self.mermaid_warnings.append({
+                    "file": page_path,
+                    "reason": f"Блок №{block_no}: ':::класс' внутри квотированной метки узла (будет выведен текстом)"
+                })
+
+            self.mermaid_blocks.append((page_path, block_no, unescaped_b))
+
             first_line = clean_b.splitlines()[0].strip()
             valid_headers = (
                 "flowchart", "graph", "sequencediagram", "classdiagram",
@@ -266,13 +308,131 @@ class SiteAuditor:
                     "reason": f"Неизвестный тип диаграммы Mermaid: \"{first_line[:40]}\""
                 })
 
+    @staticmethod
+    def _find_browser() -> Optional[str]:
+        """Путь к Firefox: переменная MERMAID_BROWSER, затем PATH."""
+        env = os.environ.get("MERMAID_BROWSER")
+        if env:
+            return env if os.path.exists(env) or shutil.which(env) else None
+        return shutil.which("firefox")
+
+    def _mermaid_js_path(self) -> Optional[str]:
+        """Вендорный Mermaid: сначала копия из dist, затем из builder/assets."""
+        candidates = [
+            os.path.join(self.dist_dir, "assets", "vendor", "mermaid.min.js"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "vendor", "mermaid.min.js"),
+        ]
+        return next((c for c in candidates if os.path.exists(c)), None)
+
+    def _audit_mermaid_runtime(self):
+        """
+        Прогоняет каждый блок через mermaid.parse() в headless Firefox (тот же вендорный
+        mermaid.min.js, что и на сайте). Результаты возвращаются в Python через
+        Image-маячки на временный локальный HTTP-сервер: headless Firefox не умеет
+        печатать DOM. Если браузер недоступен, проверка пропускается с предупреждением.
+        """
+        print(f"      🧪 Рантайм-разбор диаграмм Mermaid: {len(self.mermaid_blocks)} блоков...")
+        if not self.mermaid_blocks:
+            return
+        browser = self._find_browser()
+        mermaid_js = self._mermaid_js_path()
+        if not browser or not mermaid_js:
+            print("      ⚠️ Пропущено: не найден Firefox (PATH или MERMAID_BROWSER) или mermaid.min.js. "
+                  "Установите Firefox либо отключите проверку флагом --no-mermaid-runtime.")
+            return
+
+        failures: Dict[int, str] = {}
+        done = threading.Event()
+        total_reported = {"n": -1}
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                q = parse_qs(urlparse(self.path).query)
+                if "i" in q:
+                    failures[int(q["i"][0])] = q.get("m", [""])[0]
+                if "done" in q:
+                    total_reported["n"] = int(q["done"][0])
+                    done.set()
+                self.send_response(204)
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        port = server.server_address[1]
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+
+        slim = [{"i": i, "c": code} for i, (_, _, code) in enumerate(self.mermaid_blocks)]
+        # "</" внутри <script> преждевременно закрыл бы тег
+        blocks_json = json.dumps(slim, ensure_ascii=False).replace("</", "<\\/")
+        page = (
+            '<!doctype html><meta charset="utf-8"><body>'
+            f'<script src="{os.path.abspath(mermaid_js)}"></script><script>\n'
+            f'const blocks = {blocks_json};\n'
+            f'const PORT = {port};\n'
+            "function send(q){return new Promise(r=>{const im=new Image();"
+            "im.onload=im.onerror=()=>r();im.src='http://127.0.0.1:'+PORT+'/r?'+q;});}\n"
+            "(async()=>{ mermaid.initialize({startOnLoad:false});\n"
+            " for(const b of blocks){ try{ await mermaid.parse(b.c); } catch(e){\n"
+            "   await send('i='+b.i+'&m='+encodeURIComponent(String(e.message||e).split('\\n').slice(0,3).join(' | ').slice(0,240))); } }\n"
+            " await send('done='+blocks.length); })();\n"
+            "</script>"
+        )
+
+        proc = None
+        try:
+            with tempfile.TemporaryDirectory(prefix="audit-mermaid-") as tmp:
+                page_path = os.path.join(tmp, "mermaid_runtime.html")
+                with open(page_path, "w", encoding="utf-8") as fh:
+                    fh.write(page)
+                profile = os.path.join(tmp, "profile")
+                os.makedirs(profile)
+                proc = subprocess.Popen(
+                    [browser, "--headless", "--no-remote", "--profile", profile,
+                     "file://" + page_path],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                finished = done.wait(MERMAID_RUNTIME_TIMEOUT)
+        except OSError as e:
+            print(f"      ⚠️ Не удалось запустить браузер: {e}. Рантайм-разбор пропущен.")
+            server.shutdown()
+            return
+        finally:
+            if proc is not None:
+                proc.terminate()
+                try:
+                    proc.wait(10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+            server.shutdown()
+
+        if not finished:
+            self.mermaid_errors.append({
+                "file": self.dist_dir,
+                "reason": f"Рантайм-разбор Mermaid не завершился за {MERMAID_RUNTIME_TIMEOUT} с"
+            })
+            return
+
+        for i in sorted(failures):
+            page_path, block_no, code = self.mermaid_blocks[i]
+            first = failures[i].replace("\n", " ")
+            self.mermaid_errors.append({
+                "file": page_path,
+                "reason": f"Блок №{block_no}: Mermaid не разбирает диаграмму ({first[:200]})"
+            })
+        print(f"      Рантайм-разбор завершён, не разобраны: {len(failures)}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Аудитор сгенерированного сайта и совместимости имен файлов")
     parser.add_argument("--dist", default="./dist", help="Путь к скомпилированному сайту")
     parser.add_argument("--repo-root", default=".", help="Корень репозитория для проверки имен файлов")
+    parser.add_argument("--no-mermaid-runtime", action="store_true",
+                        help="Не запускать рантайм-разбор диаграмм Mermaid в headless Firefox")
     args = parser.parse_args()
 
-    auditor = SiteAuditor(args.dist, args.repo_root)
+    auditor = SiteAuditor(args.dist, args.repo_root, mermaid_runtime=not args.no_mermaid_runtime)
     success = auditor.run_audit()
     sys.exit(0 if success else 1)
 
