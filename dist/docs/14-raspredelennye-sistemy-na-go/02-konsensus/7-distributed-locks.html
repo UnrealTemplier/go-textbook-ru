@@ -2274,25 +2274,25 @@ func ProcessTaskWithRedisLock(ctx context.Context, redisClient *redis.Client) er
   </figcaption>
   <pre class="mermaid">
 sequenceDiagram
-autonumber
-participant C1 as Клиент 1 (Go)
-participant R as Redis
-participant DB as База Данных
-participant C2 as Клиент 2 (Go)
+    autonumber
+    participant C1 as Клиент 1 (Go)
+    participant R as Redis
+    participant DB as База Данных
+    participant C2 as Клиент 2 (Go)
 
-C1-&gt;&gt;R: SET lock:user:123 NX PX 10000 (Лок взят на 10 сек)
-R--&gt;&gt;C1: OK
-Note over C1: Внезапная пауза GC STW / фриз ОС на 12 секунд!
+    C1-&gt;&gt;R: SET lock:user:123 NX PX 10000 (Лок взят на 10 сек)
+    R--&gt;&gt;C1: OK
+    Note over C1: Внезапная пауза GC STW / фриз ОС на 12 секунд!
 
-Note over R: Прошло 10 секунд... TTL истек!&lt;br/&gt;Redis удаляет ключ.
+    Note over R: Прошло 10 секунд... TTL истек!&lt;br/&gt;Redis удаляет ключ.
 
-C2-&gt;&gt;R: SET lock:user:123 NX PX 10000
-R--&gt;&gt;C2: OK (Лок выдан!)
-C2-&gt;&gt;DB: UPDATE accounts SET balance = balance - 100
+    C2-&gt;&gt;R: SET lock:user:123 NX PX 10000
+    R--&gt;&gt;C2: OK (Лок выдан!)
+    C2-&gt;&gt;DB: UPDATE accounts SET balance = balance - 100
 
-Note over C1: Клиент 1 отмирает после STW!&lt;br/&gt;Уверен, что лок еще у него.
-C1-&gt;&gt;DB: UPDATE accounts SET balance = balance - 500
-Note over DB: Двойное некорректное списание! Data Race!
+    Note over C1: Клиент 1 отмирает после STW!&lt;br/&gt;Уверен, что лок еще у него.
+    C1-&gt;&gt;DB: UPDATE accounts SET balance = balance - 500
+    Note over DB: Двойное некорректное списание! Data Race!
   </pre>
 </figure>
 
@@ -2343,28 +2343,28 @@ Note over DB: Двойное некорректное списание! Data Rac
   </figcaption>
   <pre class="mermaid">
 sequenceDiagram
-autonumber
-participant C1 as Клиент 1 (Go)
-participant Lock as etcd (Lock Manager)
-participant DB as PostgreSQL (Хранилище)
-participant C2 as Клиент 2 (Go)
+    autonumber
+    participant C1 as Клиент 1 (Go)
+    participant Lock as etcd (Lock Manager)
+    participant DB as PostgreSQL (Хранилище)
+    participant C2 as Клиент 2 (Go)
 
-C1-&gt;&gt;Lock: Lock(/resource)
-Lock--&gt;&gt;C1: Granted (Fencing Token = 33)
-Note over C1: Зависает в длительной паузе GC STW...
+    C1-&gt;&gt;Lock: Lock(/resource)
+    Lock--&gt;&gt;C1: Granted (Fencing Token = 33)
+    Note over C1: Зависает в длительной паузе GC STW...
 
-Note over Lock: Lease истекает.&lt;br/&gt;Блокировка сброшена.
+    Note over Lock: Lease истекает.&lt;br/&gt;Блокировка сброшена.
 
-C2-&gt;&gt;Lock: Lock(/resource)
-Lock--&gt;&gt;C2: Granted (Fencing Token = 34)
-C2-&gt;&gt;DB: UPDATE table SET val=&#x27;B&#x27;, last_fencing_token=34&lt;br/&gt;WHERE id=1 AND last_fencing_token &lt; 34
-DB--&gt;&gt;C2: OK (1 row updated)
+    C2-&gt;&gt;Lock: Lock(/resource)
+    Lock--&gt;&gt;C2: Granted (Fencing Token = 34)
+    C2-&gt;&gt;DB: UPDATE table SET val=&#x27;B&#x27;, last_fencing_token=34&lt;br/&gt;WHERE id=1 AND last_fencing_token &lt; 34
+    DB--&gt;&gt;C2: OK (1 row updated)
 
-Note over C1: Клиент 1 оживает после паузы!&lt;br/&gt;Пытается применить свое устаревшее решение:
-C1-&gt;&gt;DB: UPDATE table SET val=&#x27;A&#x27;, last_fencing_token=33&lt;br/&gt;WHERE id=1 AND last_fencing_token &lt; 33
-Note over DB: Отказ! В БД уже токен 34.&lt;br/&gt;Условие token &lt; 33 ложно!
-DB--&gt;&gt;C1: 0 rows affected
-Note over C1: Клиент видит 0 rows affected и делает откат!
+    Note over C1: Клиент 1 оживает после паузы!&lt;br/&gt;Пытается применить свое устаревшее решение:
+    C1-&gt;&gt;DB: UPDATE table SET val=&#x27;A&#x27;, last_fencing_token=33&lt;br/&gt;WHERE id=1 AND last_fencing_token &lt; 33
+    Note over DB: Отказ! В БД уже токен 34.&lt;br/&gt;Условие token &lt; 33 ложно!
+    DB--&gt;&gt;C1: 0 rows affected
+    Note over C1: Клиент видит 0 rows affected и делает откат!
   </pre>
 </figure>
 

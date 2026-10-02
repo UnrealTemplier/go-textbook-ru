@@ -2200,29 +2200,29 @@
   </figcaption>
   <pre class="mermaid">
 flowchart TD
-subgraph LinuxKernel [&quot;Ядро Linux (OS Level)&quot;]
-direction TB
-FD[&quot;Файловые дескрипторы (ulimit -n)&lt;br&gt;Сокеты клиентов + Raft WAL сегменты&quot;]
-SockMem[&quot;Буферы TCP-сокетов (rmem/wmem)&lt;br&gt;Память сетевого стека ядра&quot;]
-DiskCache[&quot;Page Cache ядра Linux&lt;br&gt;Сглаживание дискового I/O&quot;]
-end
+    subgraph LinuxKernel [&quot;Ядро Linux (OS Level)&quot;]
+        direction TB
+        FD[&quot;Файловые дескрипторы (ulimit -n)&lt;br&gt;Сокеты клиентов + Raft WAL сегменты&quot;]
+        SockMem[&quot;Буферы TCP-сокетов (rmem/wmem)&lt;br&gt;Память сетевого стека ядра&quot;]
+        DiskCache[&quot;Page Cache ядра Linux&lt;br&gt;Сглаживание дискового I/O&quot;]
+    end
 
-subgraph BEAM [&quot;Виртуальная машина BEAM (Erlang)&quot;]
-direction TB
-ErlangProcs[&quot;Erlang Processes (1 очередь = 1 процесс)&quot;]
-MnesiaDB[&quot;Mnesia DB &amp; ETS таблицы&quot;]
-Watermark[&quot;High Watermark Памяти (0.4 RAM)&quot;]
-end
+    subgraph BEAM [&quot;Виртуальная машина BEAM (Erlang)&quot;]
+        direction TB
+        ErlangProcs[&quot;Erlang Processes (1 очередь = 1 процесс)&quot;]
+        MnesiaDB[&quot;Mnesia DB &amp; ETS таблицы&quot;]
+        Watermark[&quot;High Watermark Памяти (0.4 RAM)&quot;]
+    end
 
-FD --&gt; BEAM
-SockMem --&gt; BEAM
-DiskCache --&gt; BEAM
+    FD --&gt; BEAM
+    SockMem --&gt; BEAM
+    DiskCache --&gt; BEAM
 
-classDef os fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
-classDef beam fill:#312e81,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+    classDef os fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef beam fill:#312e81,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
 
-class FD,SockMem,DiskCache os;
-class ErlangProcs,MnesiaDB,Watermark beam;
+    class FD,SockMem,DiskCache os;
+    class ErlangProcs,MnesiaDB,Watermark beam;
   </pre>
 </figure>
 
@@ -2267,22 +2267,22 @@ class ErlangProcs,MnesiaDB,Watermark beam;
   </figcaption>
   <pre class="mermaid">
 sequenceDiagram
-autonumber
-participant Pub as &quot;Go Publishers&quot;
-participant RMQ as &quot;RabbitMQ (BEAM RAM)&quot;
-participant Sub as &quot;Go Consumers&quot;
+    autonumber
+    participant Pub as &quot;Go Publishers&quot;
+    participant RMQ as &quot;RabbitMQ (BEAM RAM)&quot;
+    participant Sub as &quot;Go Consumers&quot;
 
-Note over RMQ: Потребление памяти достигло 40% (High Watermark)!
-Note over RMQ: Срабатывает Global Flow Control
+    Note over RMQ: Потребление памяти достигло 40% (High Watermark)!
+    Note over RMQ: Срабатывает Global Flow Control
 
-RMQ--&gt;&gt;Pub: TCP Window Size = 0 (Окно сокета закрыто)
-Note over Pub: Вызовы ch.PublishWithContext() блокируются на write()
+    RMQ--&gt;&gt;Pub: TCP Window Size = 0 (Окно сокета закрыто)
+    Note over Pub: Вызовы ch.PublishWithContext() блокируются на write()
 
-Sub-&gt;&gt;RMQ: Basic.Deliver + Basic.Ack (Вычитка сообщений)
-Note over RMQ: Память опускается ниже Watermark (например, 35%)
+    Sub-&gt;&gt;RMQ: Basic.Deliver + Basic.Ack (Вычитка сообщений)
+    Note over RMQ: Память опускается ниже Watermark (например, 35%)
 
-RMQ--&gt;&gt;Pub: TCP Window Size &gt; 0 (Окно открыто)
-Note over Pub: Разблокировка системных вызовов write()
+    RMQ--&gt;&gt;Pub: TCP Window Size &gt; 0 (Окно открыто)
+    Note over Pub: Разблокировка системных вызовов write()
   </pre>
 </figure>
 
@@ -2330,27 +2330,27 @@ $$\mathbf{1\text{ Очередь} = 1\text{ Erlang-процесс} = 1\text{ Я�
   </figcaption>
   <pre class="mermaid">
 flowchart TD
-Pub[&quot;Go Publishers (Высокий RPS)&quot;] --&gt;|&quot;RoutingKey: &#x27;user_id_9901&#x27;&quot;| CHE[&quot;Consistent Hash Exchange&lt;br&gt;(Вычисление хэша)&quot;]
+    Pub[&quot;Go Publishers (Высокий RPS)&quot;] --&gt;|&quot;RoutingKey: &#x27;user_id_9901&#x27;&quot;| CHE[&quot;Consistent Hash Exchange&lt;br&gt;(Вычисление хэша)&quot;]
 
-CHE --&gt;|&quot;Слот кольца #1&quot;| Q1[&quot;Queue Shard 1&lt;br&gt;(Erlang Process / Core 1)&quot;]
-CHE --&gt;|&quot;Слот кольца #2&quot;| Q2[&quot;Queue Shard 2&lt;br&gt;(Erlang Process / Core 2)&quot;]
-CHE --&gt;|&quot;Слот кольца #3&quot;| Q3[&quot;Queue Shard 3&lt;br&gt;(Erlang Process / Core 3)&quot;]
-CHE --&gt;|&quot;Слот кольца #4&quot;| Q4[&quot;Queue Shard 4&lt;br&gt;(Erlang Process / Core 4)&quot;]
+    CHE --&gt;|&quot;Слот кольца #1&quot;| Q1[&quot;Queue Shard 1&lt;br&gt;(Erlang Process / Core 1)&quot;]
+    CHE --&gt;|&quot;Слот кольца #2&quot;| Q2[&quot;Queue Shard 2&lt;br&gt;(Erlang Process / Core 2)&quot;]
+    CHE --&gt;|&quot;Слот кольца #3&quot;| Q3[&quot;Queue Shard 3&lt;br&gt;(Erlang Process / Core 3)&quot;]
+    CHE --&gt;|&quot;Слот кольца #4&quot;| Q4[&quot;Queue Shard 4&lt;br&gt;(Erlang Process / Core 4)&quot;]
 
-Q1 --&gt; W1[&quot;Go Worker Pool 1&quot;]
-Q2 --&gt; W2[&quot;Go Worker Pool 2&quot;]
-Q3 --&gt; W3[&quot;Go Worker Pool 3&quot;]
-Q4 --&gt; W4[&quot;Go Worker Pool 4&quot;]
+    Q1 --&gt; W1[&quot;Go Worker Pool 1&quot;]
+    Q2 --&gt; W2[&quot;Go Worker Pool 2&quot;]
+    Q3 --&gt; W3[&quot;Go Worker Pool 3&quot;]
+    Q4 --&gt; W4[&quot;Go Worker Pool 4&quot;]
 
-classDef pub fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
-classDef ex fill:#312e81,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
-classDef q fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
-classDef worker fill:#1e293b,stroke:#f59e0b,stroke-width:2px,color:#f8fafc;
+    classDef pub fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef ex fill:#312e81,stroke:#818cf8,stroke-width:2px,color:#f8fafc;
+    classDef q fill:#064e3b,stroke:#34d399,stroke-width:2px,color:#f8fafc;
+    classDef worker fill:#1e293b,stroke:#f59e0b,stroke-width:2px,color:#f8fafc;
 
-class Pub pub;
-class CHE ex;
-class Q1,Q2,Q3,Q4 q;
-class W1,W2,W3,W4 worker;
+    class Pub pub;
+    class CHE ex;
+    class Q1,Q2,Q3,Q4 q;
+    class W1,W2,W3,W4 worker;
   </pre>
 </figure>
 

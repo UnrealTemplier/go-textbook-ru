@@ -2207,22 +2207,22 @@ $$\text{INSERT INTO tbl VALUES } (\$1), (\$2), \dots, (\$1000)$$</p>
   </figcaption>
   <pre class="mermaid">
 flowchart LR
-subgraph SingleMode[&quot;Поштучная обработка (Single Item)&quot;]
-direction TB
-S1[&quot;msg 1&quot;] --&gt;|&quot;RTT + fsync&quot;| DB1[(&quot;PostgreSQL&quot;)]
-S2[&quot;msg 2&quot;] --&gt;|&quot;RTT + fsync&quot;| DB1
-SN[&quot;msg 1000&quot;] --&gt;|&quot;RTT + fsync&quot;| DB1
-end
+    subgraph SingleMode[&quot;Поштучная обработка (Single Item)&quot;]
+        direction TB
+        S1[&quot;msg 1&quot;] --&gt;|&quot;RTT + fsync&quot;| DB1[(&quot;PostgreSQL&quot;)]
+        S2[&quot;msg 2&quot;] --&gt;|&quot;RTT + fsync&quot;| DB1
+        SN[&quot;msg 1000&quot;] --&gt;|&quot;RTT + fsync&quot;| DB1
+    end
 
-subgraph BatchMode[&quot;Пакетная обработка (Batching)&quot;]
-direction TB
-B_All[&quot;msg 1 ... 1000&lt;br&gt;(Собрано в слайс)&quot;] --&gt;|&quot;1 сетевой RTT + 1 fsync&quot;| DB2[(&quot;PostgreSQL&quot;)]
-end
+    subgraph BatchMode[&quot;Пакетная обработка (Batching)&quot;]
+        direction TB
+        B_All[&quot;msg 1 ... 1000&lt;br&gt;(Собрано в слайс)&quot;] --&gt;|&quot;1 сетевой RTT + 1 fsync&quot;| DB2[(&quot;PostgreSQL&quot;)]
+    end
 
-classDef bad fill:#1e1e2e,stroke:#f43f5e,stroke-width:2px,color:#f8fafc;
-classDef good fill:#0f172a,stroke:#10b981,stroke-width:2px,color:#f8fafc;
-class SingleMode bad;
-class BatchMode good;
+    classDef bad fill:#1e1e2e,stroke:#f43f5e,stroke-width:2px,color:#f8fafc;
+    classDef good fill:#0f172a,stroke:#10b981,stroke-width:2px,color:#f8fafc;
+    class SingleMode bad;
+    class BatchMode good;
   </pre>
 </figure>
 
@@ -2274,18 +2274,18 @@ class BatchMode good;
   </figcaption>
   <pre class="mermaid">
 flowchart TD
-In[&quot;Входящий поток сообщений&quot;] --&gt; Buffer[&quot;Буфер batch := make([]Message, 0, N)&quot;]
-Buffer --&gt; Check{&quot;Условие сброса&quot;}
-Check --&gt;|&quot;len(batch) &gt;= batchSize&quot;| FlushSize[&quot;Сброс по размеру (Flush)&quot;]
-Check --&gt;|&quot;ticker.C (истек интервал)&quot;| FlushTime[&quot;Сброс по таймеру (Flush)&quot;]
-Check --&gt;|&quot;ctx.Done() (SIGTERM)&quot;| FlushDrain[&quot;Аварийный сброс остатков (Drain)&quot;]
+    In[&quot;Входящий поток сообщений&quot;] --&gt; Buffer[&quot;Буфер batch := make([]Message, 0, N)&quot;]
+    Buffer --&gt; Check{&quot;Условие сброса&quot;}
+    Check --&gt;|&quot;len(batch) &gt;= batchSize&quot;| FlushSize[&quot;Сброс по размеру (Flush)&quot;]
+    Check --&gt;|&quot;ticker.C (истек интервал)&quot;| FlushTime[&quot;Сброс по таймеру (Flush)&quot;]
+    Check --&gt;|&quot;ctx.Done() (SIGTERM)&quot;| FlushDrain[&quot;Аварийный сброс остатков (Drain)&quot;]
 
-FlushSize &amp; FlushTime &amp; FlushDrain --&gt; DB[(&quot;PostgreSQL / ClickHouse&quot;)]
+    FlushSize &amp; FlushTime &amp; FlushDrain --&gt; DB[(&quot;PostgreSQL / ClickHouse&quot;)]
 
-classDef prc fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
-classDef fls fill:#1e293b,stroke:#10b981,stroke-width:2px,color:#f8fafc;
-class In,Buffer,Check prc;
-class FlushSize,FlushTime,FlushDrain fls;
+    classDef prc fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#f8fafc;
+    classDef fls fill:#1e293b,stroke:#10b981,stroke-width:2px,color:#f8fafc;
+    class In,Buffer,Check prc;
+    class FlushSize,FlushTime,FlushDrain fls;
   </pre>
 </figure>
 
@@ -2445,23 +2445,23 @@ func (p *BatchProcessor) Run(ctx context.Context, ch &lt;-chan Message) error {
   </figcaption>
   <pre class="mermaid">
 sequenceDiagram
-autonumber
-participant W as Batch Worker
-participant DB as PostgreSQL
-participant DLQ as Dead Letter Queue
+    autonumber
+    participant W as Batch Worker
+    participant DB as PostgreSQL
+    participant DLQ as Dead Letter Queue
 
-W-&gt;&gt;DB: Попытка BatchInsert(500 сообщений)
-DB--&gt;&gt;W: Ошибка: foreign_key_violation на элементе #499!
-Note over W: Срабатывает паттерн Fallback to Single!
-loop Обработка каждого сообщения поштучно
-W-&gt;&gt;DB: SingleInsert(msg)
-alt Успех
-DB--&gt;&gt;W: OK -&gt; msg.Ack()
-else Ошибка (Poison Message #499)
-DB--&gt;&gt;W: ERROR -&gt; msg.Nack(requeue=false)
-W-&gt;&gt;DLQ: Отправка в Dead Letter Queue
-end
-end
+    W-&gt;&gt;DB: Попытка BatchInsert(500 сообщений)
+    DB--&gt;&gt;W: Ошибка: foreign_key_violation на элементе #499!
+    Note over W: Срабатывает паттерн Fallback to Single!
+    loop Обработка каждого сообщения поштучно
+        W-&gt;&gt;DB: SingleInsert(msg)
+        alt Успех
+            DB--&gt;&gt;W: OK -&gt; msg.Ack()
+        else Ошибка (Poison Message #499)
+            DB--&gt;&gt;W: ERROR -&gt; msg.Nack(requeue=false)
+            W-&gt;&gt;DLQ: Отправка в Dead Letter Queue
+        end
+    end
   </pre>
 </figure>
 
