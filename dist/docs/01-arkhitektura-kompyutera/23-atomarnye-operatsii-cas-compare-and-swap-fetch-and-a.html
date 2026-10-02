@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 1</span>
-              <span class="meta-tag read-time">⏱ ~29 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~31 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">23. Атомарные операции. CAS, Compare And Swap, Fetch And Add</h1>
@@ -2180,7 +2180,7 @@
 
           <div class="article-markdown">
             <p>В предыдущей главе (<a href="22-memory-ordering-i-cpu-memory-model.html" class="wikilink">22. Memory Ordering и CPU Memory Model</a>) мы наблюдали за тем, как процессоры и оптимизирующие компиляторы переставляют инструкции местами, порождая трудноуловимые аппаратные аномалии. Мы выяснили, что спасением служит строгая Модель памяти Go (The Go Memory Model) и её отношение <em>Happens-Before</em>, опирающееся на каналы и мьютексы.</p>
-<p>Но если мы заглянем в исходный код стандартной библиотеки Go (<code>src/sync/mutex.go</code> или <code>src/runtime/chan.go</code>), мы обнаружим поразительную вещь: на самом дне рантайма нет никаких «магических мьютексов». Вся многопоточность и все высокоуровневые средства синхронизации построены на крошечных, предельно быстрых кирпичиках — <strong>Атомарных операциях (Atomic Operations)</strong>.</p>
+<p>Но если мы заглянем в исходный код стандартной библиотеки Go (<code>src/sync/mutex.go</code> или <code>src/runtime/chan.go</code>), мы обнаружим поразительную вещь: на самом дне рантайма нет никаких «магических» механизмов. (Оговорка: канал <code>hchan</code> в <code>runtime/chan.go</code> защищён собственным внутренним <code>runtime.mutex</code>, но и тот в итоге построен на тех же атомиках и futex.) Вся многопоточность и все высокоуровневые средства синхронизации построены на крошечных, предельно быстрых кирпичиках — <strong>Атомарных операциях (Atomic Operations)</strong>.</p>
 <p>Атомики — это фундамент, на котором покоится вся индустрия высокопроизводительного, неблокирующего (lock-free) бэкенда.</p>
 <hr />
 <h2 id="pochemu-counter-ne-rabotaet">Почему `counter++` не работает?</h2>
@@ -2220,8 +2220,8 @@ classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
 classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
 subgraph RMW[&quot;Неатомарный инкремент RMW (гонка двух ядер)&quot;]
 direction TB
-C1_Read[&quot;Ядро 1: Load (читает 0):::system&quot;] --&gt; C1_Add[&quot;Ядро 1: Add (0 + 1 = 1)&quot;]
-C2_Read[&quot;Ядро 2: Load (тоже читает 0!):::system&quot;] --&gt; C2_Add[&quot;Ядро 2: Add (0 + 1 = 1)&quot;]
+C1_Read[&quot;Ядро 1: Load (читает 0)&quot;]:::system --&gt; C1_Add[&quot;Ядро 1: Add (0 + 1 = 1)&quot;]
+C2_Read[&quot;Ядро 2: Load (тоже читает 0!)&quot;]:::system --&gt; C2_Add[&quot;Ядро 2: Add (0 + 1 = 1)&quot;]
 C1_Add --&gt; C1_Write[&quot;Ядро 1: Store (пишет 1)&quot;]
 C2_Add --&gt; C2_Write[&quot;Ядро 2: Store (перетирает 1 единицей!)&quot;]
 end
@@ -2282,7 +2282,7 @@ end
 </figure>
 
 
-<p>В архитектурах ARM64 исторически применялась пара инструкций <strong>Load-Linked / Store-Conditional (LL/SC)</strong> — <code>LDXR</code> и <code>STXR</code> (в 32-битном ARMv7 они назывались <code>LDREX</code>/<code>STREX</code>, но в 64-битном A64 ISA эти мнемоники отсутствуют). С семантикой Acquire/Release используются варианты <code>LDAXR</code> и <code>STLXR</code>. Начиная с ARMv8.1-A, расширение LSE (Large System Extensions) добавило прямые атомарные инструкции <code>LDADD</code> и <code>CAS</code>, сделав длинные циклы LL/SC необязательными для стандартных примитивов (именно LSE активен на современных серверах AWS Graviton2/3/4).</p>
+<p>В архитектурах ARM64 исторически применялась пара инструкций <strong>Load-Linked / Store-Conditional (LL/SC)</strong> — <code>LDXR</code> и <code>STXR</code> (в 32-битном ARMv7 они назывались <code>LDREX</code>/<code>STREX</code>, но в 64-битном A64 ISA эти мнемоники отсутствуют). С семантикой Acquire/Release используются варианты <code>LDAXR</code> и <code>STLXR</code>. Начиная с ARMv8.1-A, расширение LSE (Large System Extensions) добавило прямые атомарные инструкции <code>LDADD</code> и <code>CAS</code>, сделав длинные циклы LL/SC необязательными для стандартных примитивов (процессоры AWS Graviton2/3/4 поддерживают LSE; Go по умолчанию проверяет его наличие в рантайме и выбирает нужную ветку, а при сборке с <code>GOARM64=v8.1</code> использует LSE безусловно).</p>
 <hr />
 <h2 id="bazovye-atomarnye-operatsii-v-go">Базовые атомарные операции в Go</h2>
 
@@ -2318,7 +2318,7 @@ func handleRequest() {
 </div>
 
 <p>Компилятор Go транслирует метод <code>counter.Add(1)</code> в одну аппаратную инструкцию: <code>LOCK XADDQ</code>. <br />
-Она атомарно прибавляет единицу и возвращает предыдущее (или новое) значение. Однако помните о законах кэша из <a href="21-false-sharing-i-cache-line-contention.html" class="wikilink">21. False Sharing и Cache Line Contention</a>: при дикой конкуренции сотен горутин постоянные вызовы <code>counter.Add(1)</code> приведут к Cache Line Contention и замедлят шину.</p>
+Сама инструкция <code>XADD</code> атомарно прибавляет единицу и возвращает <strong>предыдущее</strong> значение из памяти, а метод <code>Add</code> в Go по документации возвращает <strong>новое</strong> значение — недостающее прибавление выполняет уже сам компилятор. Однако помните о законах кэша из <a href="21-false-sharing-i-cache-line-contention.html" class="wikilink">21. False Sharing и Cache Line Contention</a>: при дикой конкуренции сотен горутин постоянные вызовы <code>counter.Add(1)</code> приведут к Cache Line Contention и замедлят шину.</p>
 <h3 id="2-compare-and-swap-cas">2. Compare And Swap (CAS)</h3>
 
 <p>Инструкция <strong>Compare-And-Swap (Сравнение с обменом)</strong> — это абсолютная вершина инженерной мысли в многопоточности. Без неё было бы невозможно построить ни планировщик Go, ни рантайм каналов, ни современные базы данных.</p>
@@ -2372,6 +2372,7 @@ func updateConfigTimeout(newTimeout int) {
   </div>
 </div>
 
+<p><em>(Честная оговорка: в этом конкретном примере новое значение не зависит от старого, поэтому цикл вырождается в простой <code>currentConfig.Store(newConfig)</code>. Настоящий CAS-цикл нужен, когда новое значение вычисляется из прочитанного старого — например, «скопировать <code>oldConfig</code> и поменять в копии одно поле».)</em></p>
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2437,17 +2438,18 @@ func updateConfigTimeout(newTimeout int) {
 <p>В завершение — ключевое правило Mechanical Sympathy при проектировании CAS-циклов.</p>
 <p>Если десятки горутин на разных ядрах одновременно пытаются обновить одну и ту же переменную через CAS, возникает тяжелая конкуренция (High Contention). Постоянные неудачные попытки заваливают процессорную шину бесконечными префиксами <code>LOCK CMPXCHG</code>, порождая Invalidate-шторм. Если тысячи горутин крутят пустой цикл <code>for {}</code>, пытаясь выполнить CAS, это полностью парализует ядра.</p>
 <p>Если CAS возвращает <code>false</code>, грубейшей ошибкой будет немедленно начинать новый круг без пауз. Идиоматичный подход требует внедрения аппаратной паузы:<br />
-- Вызов <code>runtime.Gosched()</code> передает управление планировщику Go, давая возможность поработать другим горутинам.<br />
-- На уровне ассемблера для спинлоков применяется специальная процессорная инструкция <strong><code>PAUSE</code></strong> (в x86). Инструкция <code>PAUSE</code> сообщает конвейеру ядра, что идет цикл ожидания, временно притормаживает исполнение на 10–140 тактов, снижает энергопотребление и предотвращает тяжелый сброс конвейера при выходе из цикла.</p>
+- Вызов <code>runtime.Gosched()</code> передает управление планировщику Go, давая возможность поработать другим горутинам. Это не аппаратная пауза, а уступка процессора другой горутине.<br />
+- Для самого короткого ожидания на уровне ассемблера применяется специальная процессорная инструкция <strong><code>PAUSE</code></strong> (в x86). Она сообщает конвейеру ядра, что идет цикл ожидания, на какое-то время притормаживает исполнение (от нескольких до сотни с лишним тактов в зависимости от процессора), снижает энергопотребление и предотвращает тяжелый сброс конвейера при выходе из цикла. Из обычного Go-кода <code>PAUSE</code> напрямую недоступна: рантайм использует её внутри <code>runtime.procyield</code> (например, при спиннинге в <code>sync.Mutex</code>).<br />
+- Хороший спинлок использует <strong>экспоненциальный backoff</strong> (всё более длинные паузы между попытками) и схему <em>test-and-test-and-set</em>: сначала читает значение обычной загрузкой (она идёт из локального кэша и не бьёт по кэш-линии), и только если ресурс выглядит свободным, пробует CAS.</p>
 <hr />
 <h2 id="itog">Итог</h2>
 
 <ol>
 <li>Операция <code>counter++</code> аппаратно неатомарна и состоит из трех стадий: <strong>Load-Modify-Store (RMW)</strong>.</li>
-<li><strong>Атомарные операции</strong> делают весь цикл неделимым на уровне кремния за счет блокировки кэш-линии (префикс <code>LOCK</code> в x86, спаренные инструкции в ARM64).</li>
+<li><strong>Атомарные операции</strong> делают весь цикл неделимым на уровне кремния за счет блокировки кэш-линии (префикс <code>LOCK</code> в x86, пара LL/SC <code>LDAXR</code>/<code>STLXR</code> либо одна атомарная инструкция расширения LSE в ARM64).</li>
 <li><strong>Fetch-And-Add (<code>atomic.Int64.Add</code>)</strong> — эталонный способ быстрого параллельного инкремента счетчиков.</li>
 <li><strong>Compare-And-Swap (<code>atomic.Pointer.CompareAndSwap</code>)</strong> — основа lock-free алгоритмов, реализующая концепцию оптимистичных блокировок.</li>
-<li><strong>Проблема ABA</strong> в Go эффективно нивелируется Сборщиком Мусора (GC), который запрещает повторное выделение занятых адресов памяти.</li>
+<li><strong>Проблема ABA</strong> в Go эффективно нивелируется Сборщиком Мусора (GC), который не отдаёт под новые объекты адрес, на который ещё есть ссылки (но не спасает, если узлы переиспользуются вручную, например через пул).</li>
 <li>В прикладных задачах отдавайте предпочтение <strong><code>sync.Mutex</code></strong>: в отличие от бесконечных CAS-циклов, мьютекс паркует ожидающие горутины через <code>runtime.Semacquire</code>, сохраняя ресурсы CPU.</li>
 </ol>
 <p>Мы научились делать операции неделимыми (Atomicity). <br />
