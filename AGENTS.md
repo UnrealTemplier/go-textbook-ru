@@ -76,7 +76,12 @@ go-textbook/
 │   ├── audit_all.py       # Сквозной QA-аудит (ОС-совместимость, ссылки, анкоры, Mermaid)
 │   ├── verify_editorial.py# Инструмент верификации авторской редактуры ДО и ПОСЛЕ
 │   └── assets/            # Исходные статические ассеты (стили, скрипты, вендор)
-│       ├── style.css      # Единая дизайн-система и токены трёх тем
+│       ├── themes/        # Реестр и CSS-токены тем (один файл — одна тема)
+│       │   ├── manifest.json  # Реестр тем: порядок, label, icon, default
+│       │   ├── dark.css       # [data-theme="dark"] CSS Custom Properties
+│       │   ├── light.css      # [data-theme="light"] CSS Custom Properties
+│       │   └── paper.css      # [data-theme="paper"] CSS Custom Properties
+│       ├── style.css      # Дизайн-система: :root-токены, компонентные правила (без блоков тем)
 │       ├── main.js        # Клиентская логика (Vanilla JS, без фреймворков)
 │       └── vendor/        # Локальные вендорные библиотеки (Prism, Mermaid 10.9.1, KaTeX шрифты)
 ├── dist/                  # Скомпилированный статический сайт (артефакт, коммитится в Git)
@@ -153,18 +158,28 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --git-ref HEAD~
 2. **Единый плавающий переключатель (Floating Theme Switcher):**  
    Элемент переключения темы вынесен из сайдбара в единую плавающую кнопку в правом нижнем углу экрана (`bottom: 24px, right: 24px`, класс `.floating-theme-switcher`). Это круглая icon-only кнопка с SVG-иконками (Paper — документ, Light — солнце, Dark — луна), доступным атрибутом `aria-label` и тултипом с названием текущей темы. Нажатие циклически переключает тему на клиенте на лету без перезагрузки: `<html data-theme="dark|paper|light">`.
 3. **Персистентность в `localStorage`:** Выбранная тема сохраняется под ключом `go_encyclopedia_theme`.
-4. **Защита от мигания (Anti-flicker):** В `<head>` каждой страницы первым выполняется синхронный инлайн-скрипт, восстанавливающий тему из `localStorage` до начала отрисовки DOM:
+4. **Защита от мигания (Anti-flicker):** В `<head>` каждой страницы первым выполняется комбинированный синхронный инлайн-скрипт «Theme & Retro anti-flicker», генерируемый динамически функцией `make_anti_flicker_script()` из `builder/template.py`. Скрипт читает список допустимых тем из `builder/assets/themes/manifest.json` и до начала отрисовки DOM:
+   - Восстанавливает активную тему из `localStorage` (ключ `go_encyclopedia_theme`).
+   - Восстанавливает активное состояние ретро-эффектов (trail, site, code) из `localStorage` и устанавливает соответствующие CSS Custom Properties на `<html>`.
    ```html
-   <script>/* Theme anti-flicker */(function(){var t=localStorage.getItem('go_encyclopedia_theme');if(t&&['paper','light','dark'].includes(t)){document.documentElement.dataset.theme=t;}else{document.documentElement.dataset.theme='dark';}})();</script>
+   <script>/* Theme & Retro anti-flicker */(function(){try{
+     var d=document.documentElement;
+     var t=localStorage.getItem('go_encyclopedia_theme');
+     if(t&&['paper','light','dark'].includes(t)){d.dataset.theme=t;}else{d.dataset.theme='dark';}
+     /* ... восстановление ретро-эффектов ... */
+   }catch(e){}})();</script>
    ```
+   > [!NOTE]
+   > Список тем в скрипте (`['paper','light','dark']`) генерируется автоматически из `manifest.json`. Добавление новой темы в манифест обновляет этот список при следующей сборке.
 5. **Семантические токены CSS Custom Properties:**  
-   Основным механизмом колористики интерфейса являются семантические токены тем, определённые в блоках `[data-theme="..."]` файла `builder/assets/style.css`:
+   Токены тем определены в отдельных файлах `builder/assets/themes/{theme-key}.css` и при сборке конкатенируются в `dist/assets/style.css` через функцию `build_themed_css()`:
    - Фоновые слои: `--bg`, `--bg-surface`, `--bg-card`, `--bg-card-hover`, `--bg-elevated`.
    - Границы: `--border`, `--border-strong`, `--border-accent`.
    - Текст: `--text`, `--text-secondary`, `--text-muted`, `--text-subtle`.
    - Акценты и статусы: `--accent`, `--accent-glow`, `--link`, `--link-glow`, `--success`, `--warning`, `--danger`.
    - Подсветка Prism: `--code-text`, `--code-keyword`, `--code-string`, `--code-comment`, `--code-function`, `--code-number`, `--code-class`, `--code-operator`, `--code-punctuation`.
    - Палитра Mermaid: `--mm-process-*`, `--mm-success-*`, `--mm-error-*`, `--mm-warning-*`, `--mm-entry-*`, `--mm-aux-*`, `--mm-system-*`, `--mm-data-*`, `--mm-network-*`, `--mm-accent-*`.
+   - Токены ретро-эффектов (специфичны для каждой темы): `--retro-noise-blend`, `--retro-vhs-line-alpha`, `--retro-crt-line-alpha`, `--retro-crt-glow-color`, `--retro-trail-blend`, `--retro-trail-filter`, `--retro-trail-gradient`.
 
    *Канонические базовые значения ключевых токенов палитр:*
 
@@ -183,6 +198,12 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --git-ref HEAD~
    | `--code-bg` (фон блоков кода) | `#0d0c0a` | `#181512` | `#16181d` |
    | `--code-text` (текст кода) | `#ded8cc` | `#edd8b4` | `#e6edf3` |
 6. **Дисциплина использования цветов:** Прямые hex/rgba значения не должны использоваться там, где применим семантический токен темы. Отдельные изолированные прямые значения (например, гарантированно контрастный белый текст `#fff` поверх заливки primary-акцента в логотипе или кнопке «Наверх» при ховере) являются допустимыми проектными исключениями и не подменяют общую токенизированную архитектуру тем.
+7. **Расширяемая архитектура тем («один файл — одна тема»):**  
+   Реестр тем хранится в `builder/assets/themes/manifest.json`. Каждая тема — отдельный CSS-файл в `builder/assets/themes/`. Сборщик (`build_themed_css()` в `build_all.py`) автоматически обнаруживает темы по манифесту, конкатенирует их в `dist/assets/style.css` и инжектирует список в HTML-атрибуты и anti-flicker скрипт.  
+   Каждый `<html>` содержит атрибуты `data-available-themes="paper,light,dark"` и `data-theme-labels="paper:Paper,light:Light,dark:Dark"`, из которых `main.js` читает список тем для переключателя.  
+   **Добавить новую тему:** создать `builder/assets/themes/{key}.css` + добавить запись в `manifest.json` → пересобрать (`--all`).
+
+
 
 ---
 
@@ -204,6 +225,9 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --git-ref HEAD~
   - Пагинация между статьями: `<nav class="article-bottom-nav" aria-label="Навигация по статьям">`.
 * **Элементы управления:**
   - Единый плавающий переключатель темы: `<button type="button" id="theme-switcher-btn" class="floating-theme-switcher" data-action="toggle-theme" ...>` в правом нижнем углу экрана (icon-only, SVG-иконки для 3 тем).
+  - Кнопка ретро-эффектов: `<button type="button" id="retro-btn" class="floating-retro-btn" ...>` рядом с переключателем тем; открывает попап-панель (`#retro-popover`) настройки визуальных эффектов.
+  - Оверлейные слои ретро-эффектов: `<div id="retro-site-effects">` (VHS, CRT, Noise для всей страницы) и `<div id="retro-phosphor-trail">` (фосфорный след под курсором).
+
 * **Оглавление статьи (TOC):**
   - `<aside class="article-toc" id="article-toc" aria-label="Оглавление страницы">` со списком `<ul class="toc-list">`.
 * **Диаграммы Mermaid:**
@@ -232,7 +256,8 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --git-ref HEAD~
   - `window.resetMermaidZoom()`
 * **Основные архитектурные модули в `main.js`:**
   - `saveMermaidSources()` / `initMermaid()` / `rerenderMermaid()` — управление жизненным циклом диаграмм.
-  - `initThemeSwitcher()` — переключение тем и синхронизация с `localStorage`.
+  - `initThemeSwitcher()` — переключение тем и синхронизация с `localStorage`; читает список тем из `data-available-themes` / `data-theme-labels` атрибутов `<html>`.
+  - `initRetroEffects()` — управление ретро-эффектами (VHS, CRT, Noise, Phosphor Trail); состояние хранится per-theme в `localStorage` под ключом `go_encyclopedia_retro_effects_{theme}`.
   - `initSidebarResize()` — изменение ширины сайдбара мышью с сохранением значения.
   - `initSidebarFilter()` — мгновенный фильтр по дереву лекций.
   - `initSidebarCentering()` — центрирование активной лекции в дереве сайдбара.
@@ -241,9 +266,35 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --git-ref HEAD~
   - `initGlobalSearch()` — клиентский поиск на базе предварительно сгенерированного `search-data.js`.
   - `initKaTeX()` — локальный рендеринг математических формул LaTeX.
 
+
+
+
+---
+
+## 🎞️ 6а. Подсистема ретро-эффектов (Retro Visual Effects)
+
+Портал содержит опциональную подсистему визуальных эффектов в стиле ретро-терминала, управляемую через плавающую кнопку `.floating-retro-btn` рядом с переключателем тем.
+
+### Эффекты и их CSS-переменные:
+
+| Эффект | Область | CSS-переменная | `data-` атрибут |
+|---|---|---|---|
+| **VHS-строки** (горизонтальные полосы) | Страница / код | `--retro-site-vhs` / `--retro-code-vhs` | `data-site-vhs` / `data-code-vhs` |
+| **CRT-свечение** (пиксельный эффект монитора) | Страница / код | `--retro-site-crt` / `--retro-code-crt` | `data-site-crt` / `data-code-crt` |
+| **Noise-зернистость** (аналоговый шум) | Страница / код | `--retro-site-noise` / `--retro-code-noise` | `data-site-noise` / `data-code-noise` |
+| **Phosphor Trail** (фосфорный след под курсором) | Курсор | `--retro-trail` | `data-retro-trail` |
+
+### Архитектура:
+- **HTML:** Оверлейный `<div id="retro-site-effects">` с тремя слоями (VHS, CRT, Noise) и `<div id="retro-phosphor-trail">` вставляются в каждую страницу шаблоном.
+- **CSS:** Базовые значения эффектов (по умолчанию `0`) определены в `:root`. Каждая тема переопределяет сопутствующие токены (`--retro-noise-blend`, `--retro-vhs-line-alpha`, `--retro-crt-glow-color`, `--retro-trail-gradient`) под свою палитру.
+- **JS (`main.js`):** Функция `initRetroEffects()` управляет поповером, слайдерами и тогглами. `applyRetroEffects()` записывает значения в CSS Custom Properties. `syncRetroUI()` обновляет UI при смене темы.
+- **Персистентность:** Состояние хранится **per-theme** в `localStorage` под ключом `go_encyclopedia_retro_effects_{theme}` (отдельно для `dark`, `light`, `paper`). При переключении темы автоматически загружается соответствующий профиль настроек.
+- **Anti-flicker:** Ретро-состояние восстанавливается **до рендера** в inline-скрипте в `<head>` вместе с темой.
+
 ---
 
 ## 📊 7. Архитектура и пайплайн Mermaid
+
 
 Диаграммы Mermaid проходят строгий конвейер обработки:
 
@@ -413,6 +464,8 @@ Markdown Source (sources/**/*.md)
   Исследование и безопасное удаление разовой утилиты миграции `builder/colorize_mermaid.py`. Темизация схем переведена полностью на CSS-селекторы с `!important` и `main.js`.
 * **Version Metadata & Governance Centralization (коммиты `b6684f16`, `189fcb02`):**  
   Объявление `AGENTS.md § 1.4` единственным каноническим источником правды для версии проекта (`v1.1.0`), автоматический вывод версии в hero главной страницы и футер сайдбара статей, внедрение детерминированного парсера `get_project_version()` со строгой проверкой отсутствия дублирующих деклараций.
+* **Theme Architecture Refactoring (октябрь 2026):** `refactor(themes): one-file-per-theme architecture`  
+  Вынос CSS-токенов тем из монолитного `style.css` в отдельные файлы `builder/assets/themes/{dark,light,paper}.css`. Введён `manifest.json` как реестр тем (порядок, label, icon, default). Сборщик `build_themed_css()` автоматически конкатенирует темы при сборке. Функция `make_anti_flicker_script()` и `make_html_tag()` в `template.py` генерируют список тем динамически из манифеста. `main.js` читает список тем из `data-available-themes` атрибута. **Результат:** добавление новой темы = 1 файл + 1 строчка в манифест.
 
 ---
 
