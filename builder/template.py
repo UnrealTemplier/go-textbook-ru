@@ -7,6 +7,7 @@ HTML5 шаблоны, CSS стили в стиле Go Workout (Dark Theme) и JS
 import os
 import re
 import html
+import json
 from typing import Dict, Any, List, Optional
 from builder.scanner import Article
 
@@ -54,6 +55,22 @@ def get_project_version(agents_path: Optional[str] = None) -> str:
 
     return version_raw
 
+def _load_themes_manifest():
+    """Загружает manifest.json из builder/assets/themes/ для динамической генерации тем."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    manifest_path = os.path.join(here, "assets", "themes", "manifest.json")
+    try:
+        with open(manifest_path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data.get("default", "dark"), data.get("themes", [])
+    except Exception:
+        # Fallback к хардкодным значениям
+        return "dark", [
+            {"key": "paper", "label": "Paper", "icon": "document"},
+            {"key": "light", "label": "Light", "icon": "sun"},
+            {"key": "dark",  "label": "Dark",  "icon": "moon"},
+        ]
+
 GO_LOGO_SVG = (
     '<svg class="logo-go-icon" viewBox="0 42 165 82" fill="#00ADD8" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
     '<g transform="translate(9, 46)" fill="#00ADD8" fill-rule="evenodd">'
@@ -63,31 +80,37 @@ GO_LOGO_SVG = (
     '</svg>'
 )
 
-ANTI_FLICKER_SCRIPT = (
-    '<script>/* Theme & Retro anti-flicker */(function(){'
-    'try{'
-    "var d=document.documentElement;"
-    "var t=localStorage.getItem('go_encyclopedia_theme');"
-    "if(t&&['paper','light','dark'].includes(t)){d.dataset.theme=t;}else{d.dataset.theme='dark';}"
-    "var r=localStorage.getItem('go_encyclopedia_retro_effects');"
-    "if(r){"
-    "var c=JSON.parse(r);"
-    "var s=d.style;"
-    "if(c.trail&&c.trail.enabled){var ts=(c.trail.strength!==undefined)?c.trail.strength:100;if(ts>0){d.dataset.retroTrail='on';s.setProperty('--retro-trail',(ts/100).toFixed(2));}}"
-    "if(c.site){"
-    "if(c.site.vhs&&c.site.vhs.enabled){d.dataset.siteVhs='on';s.setProperty('--retro-site-vhs',((c.site.vhs.strength||0)/100).toFixed(2));}"
-    "if(c.site.crt&&c.site.crt.enabled){d.dataset.siteCrt='on';s.setProperty('--retro-site-crt',((c.site.crt.strength||0)/100).toFixed(2));}"
-    "if(c.site.noise&&c.site.noise.enabled){d.dataset.siteNoise='on';s.setProperty('--retro-site-noise',((c.site.noise.strength||0)/100).toFixed(2));}"
-    "}"
-    "if(c.code){"
-    "if(c.code.vhs&&c.code.vhs.enabled){d.dataset.codeVhs='on';s.setProperty('--retro-code-vhs',((c.code.vhs.strength||0)/100).toFixed(2));}"
-    "if(c.code.crt&&c.code.crt.enabled){d.dataset.codeCrt='on';s.setProperty('--retro-code-crt',((c.code.crt.strength||0)/100).toFixed(2));}"
-    "if(c.code.noise&&c.code.noise.enabled){d.dataset.codeNoise='on';s.setProperty('--retro-code-noise',((c.code.noise.strength||0)/100).toFixed(2));}"
-    "}"
-    "}"
-    "}catch(e){}"
-    '})();</script>'
-)
+
+def make_anti_flicker_script() -> str:
+    """Генерирует anti-flicker инлайн-скрипт с динамическим списком тем из manifest.json."""
+    default_theme, themes = _load_themes_manifest()
+    theme_keys = [t["key"] for t in themes]
+    theme_keys_js = str(theme_keys).replace("'", "'")
+    return (
+        '<script>/* Theme & Retro anti-flicker */(function(){'
+        'try{'
+        "var d=document.documentElement;"
+        "var t=localStorage.getItem('go_encyclopedia_theme');"
+        f"if(t&&{theme_keys_js}.includes(t)){{d.dataset.theme=t;}}else{{d.dataset.theme='{default_theme}';}}"
+        "var r=localStorage.getItem('go_encyclopedia_retro_effects');"
+        "if(r){"
+        "var c=JSON.parse(r);"
+        "var s=d.style;"
+        "if(c.trail&&c.trail.enabled){var ts=(c.trail.strength!==undefined)?c.trail.strength:100;if(ts>0){d.dataset.retroTrail='on';s.setProperty('--retro-trail',(ts/100).toFixed(2));}}"
+        "if(c.site){"
+        "if(c.site.vhs&&c.site.vhs.enabled){d.dataset.siteVhs='on';s.setProperty('--retro-site-vhs',((c.site.vhs.strength||0)/100).toFixed(2));}"
+        "if(c.site.crt&&c.site.crt.enabled){d.dataset.siteCrt='on';s.setProperty('--retro-site-crt',((c.site.crt.strength||0)/100).toFixed(2));}"
+        "if(c.site.noise&&c.site.noise.enabled){d.dataset.siteNoise='on';s.setProperty('--retro-site-noise',((c.site.noise.strength||0)/100).toFixed(2));}"
+        "}"
+        "if(c.code){"
+        "if(c.code.vhs&&c.code.vhs.enabled){d.dataset.codeVhs='on';s.setProperty('--retro-code-vhs',((c.code.vhs.strength||0)/100).toFixed(2));}"
+        "if(c.code.crt&&c.code.crt.enabled){d.dataset.codeCrt='on';s.setProperty('--retro-code-crt',((c.code.crt.strength||0)/100).toFixed(2));}"
+        "if(c.code.noise&&c.code.noise.enabled){d.dataset.codeNoise='on';s.setProperty('--retro-code-noise',((c.code.noise.strength||0)/100).toFixed(2));}"
+        "}"
+        "}"
+        "}catch(e){}"
+        '})();</script>'
+    )
 
 FLOATING_THEME_SWITCHER_HTML = (
     '<button type="button" id="theme-switcher-btn" class="floating-theme-switcher" '
@@ -239,6 +262,13 @@ RETRO_CONTROLS_HTML = (
     '  </div>\n'
     '</div>'
 )
+
+def make_html_tag() -> str:
+    """Генерирует открывающий тег <html> с атрибутами тем из manifest.json."""
+    default_theme, themes = _load_themes_manifest()
+    theme_keys = ','.join(t['key'] for t in themes)
+    theme_labels = ','.join(f"{t['key']}:{t['label']}" for t in themes)
+    return f'<html lang="ru" data-theme="{default_theme}" data-available-themes="{theme_keys}" data-theme-labels="{theme_labels}">'
 
 def get_rel_root(rel_path: str) -> str:
     """Вычисление пути к корню сайта из относительного пути файла."""
@@ -394,7 +424,7 @@ def render_article_page(
     reading_time = max(2, int(article.size_bytes / 800))
 
     return f"""<!DOCTYPE html>
-<html lang="ru" data-theme="dark">
+{make_html_tag()}
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -402,7 +432,7 @@ def render_article_page(
   <meta name="description" content="Полное руководство: {html.escape(article.title)}. Go, архитектура систем, computer science.">
   <link rel="icon" href="{rel_root}favicon.ico" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="{rel_root}favicon.svg" sizes="any">
-  {ANTI_FLICKER_SCRIPT}
+  {make_anti_flicker_script()}
   <link rel="stylesheet" href="{rel_root}assets/style.css">
   <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">
 </head>
@@ -573,7 +603,7 @@ def render_index_page(
 """)
 
     return f"""<!DOCTYPE html>
-<html lang="ru" data-theme="dark">
+{make_html_tag()}
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -581,7 +611,7 @@ def render_index_page(
   <meta name="description" content="Фундаментальная энциклопедия бэкенда, распределенных систем и языка Go от Брайана Кернигана. 1 400+ статей, 1 400+ схем Mermaid.">
   <link rel="icon" href="{rel_root}favicon.ico" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="{rel_root}favicon.svg" sizes="any">
-  {ANTI_FLICKER_SCRIPT}
+  {make_anti_flicker_script()}
   <link rel="stylesheet" href="{rel_root}assets/style.css">
 </head>
 <body class="index-page">

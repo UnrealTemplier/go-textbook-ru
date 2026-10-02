@@ -11,6 +11,7 @@ import shutil
 import time
 import json
 import argparse
+from pathlib import Path
 from typing import List, Optional
 
 from builder.scanner import KnowledgeBaseScanner, Article
@@ -25,13 +26,67 @@ def copy_assets(builder_assets_dir: str, dist_assets_dir: str):
         return
 
     for root, dirs, files in os.walk(builder_assets_dir):
+        # Пропускаем папку themes/ — она обрабатывается build_themed_css
+        dirs[:] = [d for d in dirs if d != "themes"]
         rel = os.path.relpath(root, builder_assets_dir)
         target_dir = os.path.join(dist_assets_dir, rel) if rel != "." else dist_assets_dir
         os.makedirs(target_dir, exist_ok=True)
         for f in files:
+            # style.css обрабатывается build_themed_css
+            if f == "style.css":
+                continue
             src_f = os.path.join(root, f)
             dst_f = os.path.join(target_dir, f)
             shutil.copy2(src_f, dst_f)
+
+def build_themed_css(builder_assets_dir: str, dist_assets_dir: str) -> list:
+    """
+    Читает manifest.json из themes/, конкатенирует CSS файлы тем
+    с основным style.css и записывает итоговый style.css в dist/assets/.
+    Возвращает список словарей тем из манифеста.
+    """
+    themes_dir = os.path.join(builder_assets_dir, "themes")
+    manifest_path = os.path.join(themes_dir, "manifest.json")
+
+    if not os.path.exists(manifest_path):
+        print("[WARN] themes/manifest.json not found, skipping theme CSS injection")
+        return []
+
+    with open(manifest_path, encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    themes = manifest.get("themes", [])
+    themes_sorted = sorted(themes, key=lambda t: t.get("order", 99))
+
+    # Собираем CSS тем
+    themes_css_parts = []
+    for theme in themes_sorted:
+        key = theme["key"]
+        css_file = os.path.join(themes_dir, f"{key}.css")
+        if os.path.exists(css_file):
+            with open(css_file, encoding="utf-8") as f:
+                themes_css_parts.append(f.read())
+        else:
+            print(f"[WARN] Theme CSS not found: {css_file}")
+
+    # Читаем базовый style.css (без тем)
+    base_css_path = os.path.join(builder_assets_dir, "style.css")
+    base_css = ""
+    if os.path.exists(base_css_path):
+        with open(base_css_path, encoding="utf-8") as f:
+            base_css = f.read()
+
+    # Объединяем: сначала темы, затем базовые правила
+    combined_css = "\n".join(themes_css_parts) + "\n" + base_css
+
+    # Пишем в dist/assets/style.css
+    os.makedirs(dist_assets_dir, exist_ok=True)
+    out_path = os.path.join(dist_assets_dir, "style.css")
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(combined_css)
+
+    print(f"      Темы CSS собраны: {[t['key'] for t in themes_sorted]} → dist/assets/style.css")
+    return themes
 
 def generate_search_data_js(articles: List[Article], dist_dir: str):
     """
@@ -97,6 +152,7 @@ def build(
     builder_assets = os.path.join(os.path.dirname(__file__), "assets")
     dist_assets = os.path.join(dist_dir, "assets")
     copy_assets(builder_assets, dist_assets)
+    themes_list = build_themed_css(builder_assets, dist_assets)
     generate_search_data_js(all_articles, dist_dir)
     
     # Копирование favicon в корень dist/ и в dist/assets/

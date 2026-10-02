@@ -843,8 +843,14 @@
   // 10. Переключение тем (paper / light / dark)
   // -------------------------------------------------------------------------
   const THEME_KEY = 'go_encyclopedia_theme';
-  const THEMES = ['paper', 'light', 'dark'];
-  const THEME_NAMES = { paper: 'Paper', light: 'Light', dark: 'Dark' };
+  // Список тем читается из data-атрибута <html> (инжектируется сборщиком),
+  // с fallback на хардкодные значения для совместимости.
+  const _themesAttr = document.documentElement.dataset.availableThemes;
+  const THEMES = _themesAttr ? _themesAttr.split(',') : ['paper', 'light', 'dark'];
+  const _themeLabelsAttr = document.documentElement.dataset.themeLabels;
+  const THEME_NAMES = _themeLabelsAttr
+    ? Object.fromEntries(_themeLabelsAttr.split(',').map(s => s.split(':')))
+    : { paper: 'Paper', light: 'Light', dark: 'Dark' };
 
   function updateThemeSwitcherBtn() {
     const btn = document.getElementById('theme-switcher-btn');
