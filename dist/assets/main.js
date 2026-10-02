@@ -859,11 +859,17 @@
     const current = document.documentElement.dataset.theme || 'dark';
     const idx = THEMES.indexOf(current);
     const next = THEMES[(idx + 1) % THEMES.length];
+    // Сохраняем ретро-эффекты для текущей темы перед переключением
+    saveRetroState(current);
     document.documentElement.dataset.theme = next;
     try {
       localStorage.setItem(THEME_KEY, next);
     } catch (e) {}
     updateThemeSwitcherBtn();
+    // Загружаем ретро-эффекты для новой темы
+    loadRetroState(next);
+    applyRetroEffects();
+    syncRetroUI();
     if (typeof rerenderMermaid === 'function') {
       setTimeout(rerenderMermaid, 80);
     }
@@ -897,7 +903,13 @@
   // -------------------------------------------------------------------------
   // 11. Управление ретро-эффектами (VHS, CRT, Noise)
   // -------------------------------------------------------------------------
-  const RETRO_STORAGE_KEY = 'go_encyclopedia_retro_effects';
+  const RETRO_STORAGE_KEY_PREFIX = 'go_encyclopedia_retro_effects';
+
+  // Возвращает ключ localStorage для заданной темы
+  function retroStorageKey(theme) {
+    const t = theme || document.documentElement.dataset.theme || 'dark';
+    return `${RETRO_STORAGE_KEY_PREFIX}_${t}`;
+  }
 
   const DEFAULT_RETRO_STATE = {
     version: 1,
@@ -916,9 +928,11 @@
 
   let retroState = JSON.parse(JSON.stringify(DEFAULT_RETRO_STATE));
 
-  function loadRetroState() {
+  function loadRetroState(theme) {
+    // Сбрасываем в дефолт перед загрузкой
+    retroState = JSON.parse(JSON.stringify(DEFAULT_RETRO_STATE));
     try {
-      const raw = localStorage.getItem(RETRO_STORAGE_KEY);
+      const raw = localStorage.getItem(retroStorageKey(theme));
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== 'object') return;
@@ -950,9 +964,9 @@
     }
   }
 
-  function saveRetroState() {
+  function saveRetroState(theme) {
     try {
-      localStorage.setItem(RETRO_STORAGE_KEY, JSON.stringify(retroState));
+      localStorage.setItem(retroStorageKey(theme), JSON.stringify(retroState));
     } catch (e) {
       console.warn('Failed to save retro effects state:', e);
     }
