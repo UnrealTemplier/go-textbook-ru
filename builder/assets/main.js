@@ -1094,16 +1094,21 @@
     }
   }
 
-  function closeRetroPopover() {
+  function closeRetroPopover(returnFocus = false) {
     const popover = document.getElementById('retro-popover');
     const btn = document.getElementById('retro-btn');
     if (!popover || !btn) return;
 
     if (popover.classList.contains('open')) {
+      if (document.activeElement && popover.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
       popover.classList.remove('open');
       popover.setAttribute('aria-hidden', 'true');
       btn.setAttribute('aria-expanded', 'false');
-      btn.focus();
+      if (returnFocus) {
+        btn.focus();
+      }
     }
   }
 
@@ -1111,7 +1116,7 @@
     const popover = document.getElementById('retro-popover');
     if (!popover) return;
     if (popover.classList.contains('open')) {
-      closeRetroPopover();
+      closeRetroPopover(false);
     } else {
       openRetroPopover();
     }
@@ -1131,18 +1136,24 @@
         e.stopPropagation();
         toggleRetroPopover();
       });
+      btn.addEventListener('pointerdown', function (e) {
+        e.stopPropagation();
+      });
     }
 
     if (closeBtn) {
       closeBtn.addEventListener('click', function (e) {
         e.stopPropagation();
-        closeRetroPopover();
+        closeRetroPopover(true);
       });
     }
 
     if (popover) {
-      // Prevent clicks inside popover from closing it
+      // Prevent clicks and pointer events inside popover from closing it
       popover.addEventListener('click', function (e) {
+        e.stopPropagation();
+      });
+      popover.addEventListener('pointerdown', function (e) {
         e.stopPropagation();
       });
 
@@ -1194,23 +1205,50 @@
           applyRetroEffects();
           saveRetroState();
         });
+
+        // Сброс фокуса со слайдера при окончании взаимодействия (touch/drag/change)
+        const blurSlider = function () {
+          slider.blur();
+        };
+        slider.addEventListener('change', blurSlider);
+        slider.addEventListener('pointerup', blurSlider);
+        slider.addEventListener('touchend', blurSlider);
+
+        // Предотвращение изменения значения колесиком мыши или жестом скролла
+        slider.addEventListener('wheel', function (e) {
+          e.preventDefault();
+          slider.blur();
+        }, { passive: false });
       });
     }
 
-    // Close on click outside
-    document.addEventListener('click', function (e) {
+    // Close on click or pointer outside
+    function handleOutsideInteraction(e) {
       if (!popover || !popover.classList.contains('open')) return;
       if (!popover.contains(e.target) && (!btn || !btn.contains(e.target))) {
-        closeRetroPopover();
+        closeRetroPopover(false);
       }
-    });
+    }
+
+    document.addEventListener('click', handleOutsideInteraction);
+    document.addEventListener('pointerdown', handleOutsideInteraction);
 
     // Close on Escape key
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && popover && popover.classList.contains('open')) {
-        closeRetroPopover();
+        closeRetroPopover(true);
       }
     });
+
+    // Сброс фокуса и закрытие попапа при скролле страницы
+    window.addEventListener('scroll', function () {
+      if (document.activeElement && popover && popover.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
+      if (popover && popover.classList.contains('open')) {
+        closeRetroPopover(false);
+      }
+    }, { passive: true });
   }
 
   // -------------------------------------------------------------------------
