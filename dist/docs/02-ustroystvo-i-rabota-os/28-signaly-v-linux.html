@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~21 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~23 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">28. Сигналы в Linux</h1>
@@ -2289,7 +2289,7 @@ flowchart TD
 <td><code>SIGPIPE</code></td>
 <td>13</td>
 <td>Termination</td>
-<td>Запись в закрытый pipe/сокет. В Go по умолчанию игнорируется.</td>
+<td>Запись в закрытый pipe/сокет. В Go: на fd 1 и 2 завершает программу, на остальных fd запись возвращает ошибку <code>EPIPE</code> (подробнее — ниже).</td>
 </tr>
 <tr>
 <td><code>SIGHUP</code></td>
@@ -2368,10 +2368,10 @@ sequenceDiagram
 <h3 id="kak-rabotaet-ossignal">Как работает `os/signal`</h3>
 
 <p>Пакет <code>os/signal</code> не регистрирует прямой C-хук. Вместо этого:<br />
-1. Go runtime блокирует целевые сигналы через <code>rt_sigprocmask</code> на всех тредях, кроме основного.<br />
-2. На основном тредe запускается фоновый goroutine, который блокируется на системном вызове <code>sigwaitinfo</code> (или аналогичном).<br />
-3. Когда сигнал приходит, ядро разблокирует <code>sigwaitinfo</code>, runtime получает номер сигнала.<br />
-4. Runtime сериализует сигнал и кладёт его в <strong>channel</strong>.<br />
+1. Go runtime устанавливает собственные обработчики сигналов через <code>rt_sigaction</code> (на практике таких вызовов при старте десятки), а <code>rt_sigprocmask</code> использует для управления масками потоков.<br />
+2. Когда сигнал приходит, ядро вызывает обработчик рантайма, и тот кладёт номер сигнала во внутреннюю очередь (<code>sigsend</code>). <code>sigwaitinfo</code> (то есть <code>rt_sigtimedwait</code>) Go для этого не использует.<br />
+3. Служебная горутина <code>os/signal</code> забирает сигналы из этой очереди (<code>signal_recv</code>) и засыпает на примитиве рантайма, а не в системном вызове.<br />
+4. Пакет <code>os/signal</code> кладёт сигнал в <strong>channel</strong> каждого подписчика.<br />
 5. Ожидающая горутина разблокируется.</p>
 
 <div class="code-block" data-lang="go">
@@ -2436,15 +2436,15 @@ func main() {
 
 <h3 id="pod-kapotom-ossignal">Под капотом `os/signal`</h3>
 <ul>
-<li>Channel по умолчанию имеет <strong>буфер размером 1</strong> на каждый зарегистрированный сигнал.</li>
+<li>Размер буфера канала определяете вы сами: пакет <code>signal</code> не блокируется при отправке в канал, и ответственность за достаточный буфер лежит на вызывающем коде (документация советует буфер хотя бы на один сигнал).</li>
 <li>Если сигнал приходит, а channel полон (goroutine не успела считать), сигнал <strong>безвозвратно теряется</strong>. Это критично в высоконагруженных сервисах.</li>
-<li><code>signal.NotifyContext</code> (Go 1.15+) — современный идиоматичный способ. Он создаёт контекст, который отменяется при получении сигнала. Внутренне использует тот же механизм, но привязывает отмену к <code>context</code> lifecycle, что идеально ложится на dependency injection и middleware.</li>
+<li><code>signal.NotifyContext</code> (Go 1.16+) — современный идиоматичный способ. Он создаёт контекст, который отменяется при получении сигнала. Внутренне использует тот же механизм, но привязывает отмену к <code>context</code> lifecycle, что идеально ложится на dependency injection и middleware.</li>
 </ul>
 <hr />
 <h2 id="lovushki-i-kaverznye-voprosy-s-sobesedovaniy">Ловушки и каверзные вопросы с собеседований</h2>
 
 <h3 id="1-sigpipe-tikhiy-ubiytsa">1. SIGPIPE: Тихий убийца</h3>
-<p>По умолчанию запись в закрытый pipe или сокет вызывает <code>SIGPIPE</code>, что завершает процесс. В Go пакеты <code>net</code>, <code>os</code> и <code>io</code> автоматически игнорируют <code>SIGPIPE</code> на старте. Однако, если вы работаете с raw socket или CGO, падение гарантировано.</p>
+<p>По умолчанию запись в закрытый pipe или сокет вызывает <code>SIGPIPE</code>, что завершает процесс. В Go действует более тонкое правило (см. документацию <code>os/signal</code>): если запись в закрытый pipe или сокет происходит на файловых дескрипторах 1 и 2 (stdout/stderr), программа <strong>завершается</strong> по <code>SIGPIPE</code>; на всех остальных дескрипторах запись просто возвращает ошибку <code>EPIPE</code>. Так что падение возможно и без raw socket или CGO — например, при <code>myapp | head</code>.</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2466,7 +2466,7 @@ signal.Ignore(syscall.SIGPIPE)
 
 <h3 id="2-eintr-i-prervannye-sistemnye-vyzovy">2. EINTR и прерванные системные вызовы</h3>
 <p>Когда сигнал доставляется, ядро может прервать блокирующий syscall (например, <code>read</code> или <code>accept</code>), вернув ошибку <code>EINTR</code>. <br />
-- В Go это <strong>абстрагировано</strong>: netpoller и стандартная библиотека автоматически перезапускают syscall или возвращают корректные ошибки Go (<code>syscall.EINTR</code> маппится на соответствующий error).<br />
+- В Go это <strong>частично скрыто</strong>: стандартная библиотека (<code>os</code>, <code>net</code>) сама повторяет прерванные вызовы, а рантайм ставит обработчики с <code>SA_RESTART</code>. Но <code>epoll_wait</code> не перезапускается ни при каких флагах, и при прямых вызовах через <code>syscall</code> и <code>x/sys/unix</code> (включая <code>unix.EpollWait</code>) <code>EINTR</code> возвращается вам: проверяйте его и повторяйте вызов сами.<br />
 - В C/C++ вы обязаны проверять <code>errno == EINTR</code> и вызывать syscall повторно.</p>
 <h3 id="3-gonka-dannykh-pri-cleanup">3. Гонка данных при cleanup</h3>
 <p>Классическая ошибка на собеседованиях:</p>
@@ -2547,7 +2547,7 @@ go func() {
 <li>Доставка происходит при переходе из Kernel в User Space, с созданием <code>Signal Frame</code> в стеке.</li>
 <li>Go runtime берёт на себя всю работу с <code>rt_sigaction</code> и <code>rt_sigprocmask</code>, предоставляя безопасный channel-based API (<code>os/signal</code>).</li>
 <li><code>SIGKILL</code> нельзя перехватить. <code>SIGTERM</code> — стандарт для graceful shutdown.</li>
-<li>Буфер канала <code>os/signal</code> (размер 1) может привести к потере сигналов в пиковых нагрузках. Используйте <code>signal.NotifyContext</code> для интеграции с lifecycle.</li>
+<li>Слишком маленький буфер канала <code>os/signal</code> может привести к потере сигналов в пиковых нагрузках (пакет не блокируется при отправке; размер буфера задаёте вы). Используйте <code>signal.NotifyContext</code> для интеграции с lifecycle.</li>
 <li>Понимание сигналов критично для работы с K8s, Docker, отладки падений и проектирования отказоустойчивых сервисов.</li>
 </ol>
 <p>Мы разобрали, как процесс реагирует на внешние события. Но как сам процесс становится фоновым сервисом, который живёт годами, перезапускается и управляется? В следующей статье мы перейдём к теме: <a href="29-demony-i-fonovye-protsessy.html" class="wikilink">29. Демоны и фоновые процессы</a>.</p>

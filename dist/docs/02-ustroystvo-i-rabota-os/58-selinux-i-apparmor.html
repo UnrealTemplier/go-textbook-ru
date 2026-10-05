@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~43 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~44 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 5 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">58. SELinux и AppArmor</h1>
@@ -2494,31 +2494,28 @@ flowchart TD
 import (
     &quot;fmt&quot;
     &quot;log&quot;
-    &quot;os&quot;
 
     &quot;golang.org/x/sys/unix&quot;
 )
 
 func dropPrivileges() error {
-    // 1. Убираем все capabilities
-    header := unix.CapHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
-    data := unix.CapData{Permitted: 0, Effective: 0, Inheritable: 0}
-    if err := unix.Capset(&amp;header, &amp;data); err != nil {
-        return fmt.Errorf(&quot;capset drop: %w&quot;, err)
+    // При LINUX_CAPABILITY_VERSION_3 ядро ожидает массив из ДВУХ структур CapUserData
+    // (capability 0–31 и 32–63), а не одну. Типы называются CapUserHeader и CapUserData.
+    header := unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
+    var data [2]unix.CapUserData
+
+    // 1. Оставляем только CAP_NET_BIND_SERVICE для прослушивания &lt;1024 портов
+    // (расширять набор после сброса уже нельзя, поэтому задаём нужный набор сразу)
+    data[0].Permitted = 1 &lt;&lt; unix.CAP_NET_BIND_SERVICE
+    data[0].Effective = 1 &lt;&lt; unix.CAP_NET_BIND_SERVICE
+    if err := unix.Capset(&amp;header, &amp;data[0]); err != nil {
+        return fmt.Errorf(&quot;capset: %w&quot;, err)
     }
 
-    // 2. Оставляем только CAP_NET_BIND_SERVICE для прослушивания &lt;1024 портов
-    dataPermitted := unix.CapData{
-        Permitted:   1 &lt;&lt; unix.CAP_NET_BIND_SERVICE,
-        Effective:   1 &lt;&lt; unix.CAP_NET_BIND_SERVICE,
-        Inheritable: 0,
-    }
-    if err := unix.Capset(&amp;header, &amp;dataPermitted); err != nil {
-        return fmt.Errorf(&quot;capset set: %w&quot;, err)
-    }
-
-    // 3. Переключаемся на non-root пользователя
-    return os.Chown(&quot;.&quot;, 1000, 1000) // Пример смены владельца
+    // Внимание: unix.Capset действует только на ТЕКУЩИЙ поток ОС, а не на весь процесс
+    // (в отличие от syscall.Setuid). Остальные потоки Go сохранят прежние capabilities.
+    // 2. Смена UID процесса делается через syscall.Setuid (os.Chown меняет владельца файла, а не UID).
+    return nil
 }
 
 func main() {
@@ -2542,7 +2539,7 @@ func main() {
   </header>
   <div class="callout-body">
     <p><strong>Базовый профиль AppArmor в Docker (<code>docker-default</code>):</strong><br />
-В контейнерах Docker и Kubernetes по умолчанию применяется стандартный профиль безопасности <code>docker-default</code>. Он блокирует около 44 опасных системных вызовов ядра, включая вызовы монтирования <code>mount</code>, отладки памяти через <code>ptrace</code> и доступ к виртуальной директории параметров ядра <code>/proc/sys</code>. Если ваше Go-приложение пытается инспектировать статус собственных потоков через <code>os.Open("/proc/self/status")</code>, собирает низкоуровневые метрики или использует профилировщик <code>debug/pprof</code> для трассировки системных вызовов, в режиме Enforcing вы мгновенно получите ошибку <code>EACCES</code>.<br />
+В контейнерах Docker и Kubernetes по умолчанию применяется стандартный профиль безопасности <code>docker-default</code>. Вместе с seccomp-профилем Docker по умолчанию (он отключает около 44 системных вызовов из более чем 300) он ограничивает опасные действия: монтирование (<code>mount</code>), отладку через <code>ptrace</code> и доступ к виртуальной директории параметров ядра <code>/proc/sys</code>. Если ваше Go-приложение пытается инспектировать статус собственных потоков через <code>os.Open("/proc/self/status")</code>, собирает низкоуровневые метрики или использует профилировщик <code>debug/pprof</code> для трассировки системных вызовов, в режиме Enforcing вы мгновенно получите ошибку <code>EACCES</code>.<br />
 <strong>Инженерные решения:</strong><br />
 1. Для тестов и локальной отладки запускайте контейнер без профиля: <code>docker run --security-opt apparmor=unconfined</code>.<br />
 2. В продакшене используйте декларативный манифест с точечным добавлением capabilities через <code>--cap-add=SYS_PTRACE</code> или напишите кастомный целевой профиль AppArmor с явным доступом к нужным псевдофайлам в <code>/proc</code>.</p>

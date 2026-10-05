@@ -2278,10 +2278,10 @@ flowchart TD
 
 
 <hr />
-<h2 id="start-yadra-linux-ot-head-s-do-startkernel">Старт ядра Linux: От `head.S` до `start_kernel()`</h2>
+<h2 id="start-yadra-linux-ot-head64-s-do-startkernel">Старт ядра Linux: От `head_64.S` до `start_kernel()`</h2>
 
 <p>Образ ядра Linux на диске — это не простой ELF-файл, а сложный самораспаковывающийся контейнер, собранный по спецификации <strong>multiboot</strong>. Процесс его инициализации строго разделен на фазы:</p>
-<h3 id="1-rannyaya-stadiya-zagruzki-early-boot-archx86boothead-s">1. Ранняя стадия загрузки Early Boot (`arch/x86/boot/head.S`)</h3>
+<h3 id="1-rannyaya-stadiya-zagruzki-early-boot-archx86bootheader-s-i-archx86bootcompress">1. Ранняя стадия загрузки Early Boot (`arch/x86/boot/header.S` и `arch/x86/boot/compressed/head_64.S`)</h3>
 
 <ul>
 <li>Входная ассемблерная подпрограмма запускает процедуру декомпрессии ядра (<strong><code>decompress_kernel</code></strong>). Сжатый gzip/zstd образ ядра разворачивается в физическую память.</li>
@@ -2321,13 +2321,13 @@ flowchart TD
 <hr />
 <h2 id="pochemu-eto-vazhno-dlya-go-razrabotchika">Почему это важно для Go-разработчика?</h2>
 
-<p>Казалось бы: зачем бэкенд-разработчику на Go, пишущему микросервисы для обработки JSON, знать про <code>head.S</code> и <code>initramfs</code>? </p>
+<p>Казалось бы: зачем бэкенд-разработчику на Go, пишущему микросервисы для обработки JSON, знать про <code>head_64.S</code> и <code>initramfs</code>? </p>
 <p>Понимание процесса загрузки радикально меняет подход к проектированию надежной и быстрой серверной архитектуры:</p>
 <ol>
 <li><strong>Борьба за Cold Start в облаке и бессерверных средах (Serverless / AWS Lambda)</strong>:<br />
    Цепочка инициализации:<br />
    $$\text{Старт VM} \longrightarrow \text{Загрузка ядра} \longrightarrow \text{init} \longrightarrow \text{containerd} \longrightarrow \text{Go Runtime} \longrightarrow \text{main()}$$<br />
-   Каждое звено вносит вклад в задержку отклика. Оптимизация <code>initramfs</code>, использование легковесных образов и технологий вроде <code>eBPF</code> для быстрого сетевого подключения напрямую определяют время прогрева. Именно поэтому современные cloud-native среды отказываются от тяжелых BIOS/UEFI в пользу специализированных гипервизоров (Firecracker, Cloud-Hypervisor), которые загружают ядро Linux напрямую за 5 миллисекунд, минуя стадию прошивки!</li>
+   Каждое звено вносит вклад в задержку отклика. Оптимизация <code>initramfs</code>, использование легковесных образов и технологий вроде <code>eBPF</code> для быстрого сетевого подключения напрямую определяют время прогрева. Именно поэтому современные cloud-native среды отказываются от тяжелых BIOS/UEFI в пользу специализированных гипервизоров (Firecracker, Cloud-Hypervisor), которые загружают ядро Linux напрямую, минуя стадию прошивки (по спецификации Firecracker, от вызова API <code>InstanceStart</code> до запуска <code>/sbin/init</code> в госте проходит не более 125 мс)!</li>
 <li><strong>Тайны функций <code>init()</code> в Go</strong>:<br />
    В Go функции <code>init()</code> в пакетах выполняются автоматически при старте бинарника до вызова функции <code>main()</code>. Если разработчик наивно помещает в <code>init()</code> тяжелые сетевые запросы к сервису конфигураций или инициализирует глобальные мьютексы, сервис рискует упасть при рестарте контейнера: сеть на уровне операционной системы или DNS-резолвер внутри пода Kubernetes могут быть еще не готовы. Инициализацию всегда надежнее делать явной и контролируемой через <code>sync.Once</code>.</li>
 <li><strong>Системные лимиты ядра (<code>sysctl</code> и <code>cmdline</code>)</strong>:<br />
@@ -2361,7 +2361,7 @@ flowchart TD
 <ol>
 <li><strong>Прошивка (BIOS/UEFI)</strong> инициализирует аппаратные контроллеры материнской платы, проверяет память в тесте POST и по криптографическим сертификатам Secure Boot передает управление доверенному загрузчику.</li>
 <li><strong>Загрузчик (Bootloader)</strong> размещает в оперативной памяти образ ядра <code>vmlinuz</code> и архив драйверов <code>initramfs</code>, переводит физический процессор в 64-битный режим Long Mode и передает параметры конфигурации <code>cmdline</code>.</li>
-<li><strong>Ранний старт ядра (<code>head.S</code>)</strong> декомпрессирует ядро, включает блок управления памятью MMU, инициализирует локальные структуры ядер <code>percpu</code> и переходит в главную функцию <code>start_kernel()</code>.</li>
+<li><strong>Ранний старт ядра (<code>head_64.S</code>)</strong> декомпрессирует ядро, включает блок управления памятью MMU, инициализирует локальные структуры ядер <code>percpu</code> и переходит в главную функцию <code>start_kernel()</code>.</li>
 <li><strong>Рождение пространств</strong>: Функция <code>start_kernel()</code> настраивает подсистемы памяти, прерываний и планировщика, запускает системный процесс <code>kthreadd</code> (PID 2) и создает через <code>kernel_thread()</code> первичный процесс пространства пользователя — <strong>PID 1 (<code>systemd</code>)</strong>.</li>
 <li><strong>Контекст для Go</strong>: Ваш сервис на Go стартует на фундаменте полностью прогретого ядра, но конфигурация системных лимитов (<code>sysctl</code>), порядок инициализации пакетов <code>init()</code> и особенности виртуализации напрямую определяют надежность и задержки сервиса в production.</li>
 </ol>
@@ -2395,7 +2395,7 @@ flowchart TD
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#ot-nazhatiya-knopki-pitaniya-do-startkernel">От нажатия кнопки питания до startkernel()</a></li><li class="toc-item toc-h2"><a href="#era-bios-i-mbr-limity-1980-kh">Эра BIOS и MBR: Лимиты 1980-х</a></li><li class="toc-item toc-h2"><a href="#uefi-i-gpt-sovremennyy-standart">UEFI и GPT: Современный стандарт</a></li><li class="toc-item toc-h2"><a href="#bootloader-grub-systemd-boot-i-zagruzka-yadra">Bootloader: GRUB, systemd-boot и загрузка ядра</a></li><li class="toc-item toc-h2"><a href="#start-yadra-linux-ot-head-s-do-startkernel">Старт ядра Linux: От head.S до startkernel()</a></li><li class="toc-item toc-h3"><a href="#1-rannyaya-stadiya-zagruzki-early-boot-archx86boothead-s">1. Ранняя стадия загрузки Early Boot (arch/x86/boot/head.S)</a></li><li class="toc-item toc-h3"><a href="#2-zapusk-mnogoprotsessornosti-smp-startup">2. Запуск многопроцессорности (SMP Startup)</a></li><li class="toc-item toc-h3"><a href="#3-serdtse-sistemy-startkernel-i-restinit">3. Сердце системы: startkernel() и restinit()</a></li><li class="toc-item toc-h2"><a href="#pochemu-eto-vazhno-dlya-go-razrabotchika">Почему это важно для Go-разработчика?</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#ot-nazhatiya-knopki-pitaniya-do-startkernel">От нажатия кнопки питания до startkernel()</a></li><li class="toc-item toc-h2"><a href="#era-bios-i-mbr-limity-1980-kh">Эра BIOS и MBR: Лимиты 1980-х</a></li><li class="toc-item toc-h2"><a href="#uefi-i-gpt-sovremennyy-standart">UEFI и GPT: Современный стандарт</a></li><li class="toc-item toc-h2"><a href="#bootloader-grub-systemd-boot-i-zagruzka-yadra">Bootloader: GRUB, systemd-boot и загрузка ядра</a></li><li class="toc-item toc-h2"><a href="#start-yadra-linux-ot-head64-s-do-startkernel">Старт ядра Linux: От head64.S до startkernel()</a></li><li class="toc-item toc-h3"><a href="#1-rannyaya-stadiya-zagruzki-early-boot-archx86bootheader-s-i-archx86bootcompress">1. Ранняя стадия загрузки Early Boot (arch/x86/boot/header.S и arch/x86/boot/compressed/head64.S)</a></li><li class="toc-item toc-h3"><a href="#2-zapusk-mnogoprotsessornosti-smp-startup">2. Запуск многопроцессорности (SMP Startup)</a></li><li class="toc-item toc-h3"><a href="#3-serdtse-sistemy-startkernel-i-restinit">3. Сердце системы: startkernel() и restinit()</a></li><li class="toc-item toc-h2"><a href="#pochemu-eto-vazhno-dlya-go-razrabotchika">Почему это важно для Go-разработчика?</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

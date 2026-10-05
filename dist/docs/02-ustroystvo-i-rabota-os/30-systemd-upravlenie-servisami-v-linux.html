@@ -2239,12 +2239,13 @@ func main() {
             log.Fatalf(&quot;invalid LISTEN_FDS: %v&quot;, listenFDs)
         }
         // systemd передает FD начиная с 3. Берем первый.
-        conn, err := net.FileConn(os.NewFile(3, &quot;&quot;))
+        // FD 3 — это слушающий сокет, поэтому нужен net.FileListener, а не net.FileConn
+        ln, err := net.FileListener(os.NewFile(3, &quot;&quot;))
         if err != nil {
-            log.Fatalf(&quot;failed to get connection from FD 3: %v&quot;, err)
+            log.Fatalf(&quot;failed to get listener from FD 3: %v&quot;, err)
         }
-        defer conn.Close()
-        // ... обработка conn ...
+        defer ln.Close()
+        // ... ln.Accept() и обработка соединений ...
     } else {
         // Fallback для локальной разработки
         conn, err := net.Listen(&quot;tcp&quot;, &quot;:8080&quot;)
@@ -2417,7 +2418,7 @@ func getListenFD() (net.Listener, error) {
 <p>Когда вы запускаете <code>systemctl start myapp</code>, происходит следующий цепочный процесс:</p>
 <ol>
 <li><strong>Парсинг unit-файла:</strong> systemd читает директивы, создает <strong>cgroup v2</strong> группу <code>system.slice/myapp.service</code>.</li>
-<li><strong>Изоляция ресурсов:</strong> <code>MemoryMax</code>, <code>CPUQuota</code>, <code>LimitNOFILE</code> применяются к cgroup через <code>/sys/fs/cgroup/</code>. Это <strong>жесткие</strong> ограничения ядра. Если Go-приложение превысит <code>MemoryMax</code>, ядро убьет процесс (OOMKilled), даже если GC работает корректно.</li>
+<li><strong>Изоляция ресурсов:</strong> <code>MemoryMax</code> и <code>CPUQuota</code> применяются к cgroup через <code>/sys/fs/cgroup/</code>, а <code>LimitNOFILE</code> (как и остальные <code>Limit*</code>) — это не cgroup, а обычный <code>rlimit</code> процесса (<code>setrlimit</code>). Всё это <strong>жесткие</strong> ограничения ядра. Если Go-приложение превысит <code>MemoryMax</code>, ядро убьет процесс (OOMKilled), даже если GC работает корректно.</li>
 <li><strong>Формирование процесса:</strong> <br />
    - <code>fork()</code> -&gt; <code>clone()</code> с флагами <code>CLONE_NEWPID</code>, <code>CLONE_NEWNS</code>, <code>CLONE_NEWNET</code> (если настроено в <code>ProtectSystem</code>, <code>ProtectHome</code>, <code>PrivateTmp</code>).<br />
    - <code>setuid</code>/<code>setgid</code> для <code>User</code>/<code>Group</code>.<br />
@@ -2437,7 +2438,7 @@ func getListenFD() (net.Listener, error) {
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> В чем разница между <code>LimitNOFILE=65536</code> в systemd и <code>ulimit -n</code> в bash?<br />
-<strong>Ответ:</strong> <code>ulimit</code> — это ограничение процесса в текущей сессии shell. <code>LimitNOFILE</code> в systemd применяется к процессу <strong>до</strong> его запуска, на уровне ядра и cgroup. Даже если пользователь выполнит <code>ulimit -n 1000</code>, systemd переопределит это значение на указанное в unit-файле. Для Go-бэкенда это критично: <code>netpoller</code>, goroutines, открытые соединения к БД и кэшам быстро исчерпают лимит по умолчанию (1024).</p>
+<strong>Ответ:</strong> <code>ulimit</code> — это ограничение процесса в текущей сессии shell. <code>LimitNOFILE</code> в systemd задаёт <code>rlimit</code> (soft и hard) процесса <strong>до</strong> его запуска; это не cgroup-параметр. Даже если пользователь выполнит <code>ulimit -n 1000</code>, systemd переопределит это значение на указанное в unit-файле. Для Go-бэкенда это критично: <code>netpoller</code>, goroutines, открытые соединения к БД и кэшам быстро исчерпают лимит по умолчанию (1024).</p>
   </div>
 </aside>
 

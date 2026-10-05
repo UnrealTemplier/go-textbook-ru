@@ -2362,7 +2362,7 @@ sequenceDiagram
 <li><strong>Запуск асинхронного I/O:</strong> Вы используете <code>ReadFile</code> / <code>WSARecv</code> с флагом <code>OVERLAPPED</code>. Вместо того чтобы блокировать поток, ядро планирует операцию и возвращает управление немедленно.</li>
 <li><strong>Получение результата:</strong> Приложение вызывает <code>GetQueuedCompletionStatus()</code>. Если операция еще не завершена, поток блокируется внутри ядра. Как только I/O заканчивается, ядро создает <strong>Completion Packet</strong> (пакет завершения) и помещает его в очередь порта. Блокированный поток пробуждается, забирает пакет и обрабатывает данные.</li>
 </ol>
-<p>Ключевая особенность IOCP — <strong>встроенный пул потоков ядра</strong>. При создании порта вы можете указать лимит одновременно исполняемых потоков (Concurrency Value, обычно равный числу логических ядер процессора). Ядро Windows отслеживает состояние потоков: если один из потоков пула заблокировался (например, на мьютексе или страничном сбое), ядро немедленно будит следующий поток. Это предотвращает создание "thundering herd" (лавинного пробуждения потоков) и минимизирует смену контекстов CPU.</p>
+<p>Ключевая особенность IOCP — <strong>управление конкурентностью потоков</strong>, обслуживающих порт. Сам пул потоков заранее создаёт приложение (в Go — рантайм), а порт и ядро Windows лишь регулируют его работу. При создании порта вы можете указать лимит одновременно исполняемых потоков (Concurrency Value, обычно равный числу логических ядер процессора). Ядро Windows отслеживает состояние потоков: если один из потоков пула заблокировался (например, на мьютексе или страничном сбое), ядро немедленно будит следующий поток. Это предотвращает создание "thundering herd" (лавинного пробуждения потоков) и минимизирует смену контекстов CPU.</p>
 <aside class="callout callout-warning" aria-label="Ловушка">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2469,8 +2469,8 @@ flowchart TD
     Netpoller[&quot;Абстракция runtime.netpoll&quot;]
 
     LinuxEpoll[&quot;netpoll_epoll.go (Linux: epoll)&quot;]
-    BSDKqueue[&quot;netpollkqueue.go (macOS/BSD: kqueue)&quot;]
-    WinIOCP[&quot;netpollwindows.go (Windows: IOCP)&quot;]
+    BSDKqueue[&quot;netpoll_kqueue.go (macOS/BSD: kqueue)&quot;]
+    WinIOCP[&quot;netpoll_windows.go (Windows: IOCP)&quot;]
 
     GoApp --&gt; Netpoller
     Netpoller --&gt; LinuxEpoll
@@ -2486,18 +2486,18 @@ flowchart TD
 </figure>
 
 
-<h3 id="na-macosbsd-netpollkqueue-go">На macOS/BSD (`netpollkqueue.go`):</h3>
+<h3 id="na-macosbsd-netpollkqueue-go">На macOS/BSD (`netpoll_kqueue.go`):</h3>
 <ol>
 <li>При старте рантайма Go создает один глобальный дескриптор <code>kqueue</code>.</li>
 <li>При открытии сетевого соединения Go регистрирует фильтры вызовом <code>kevent</code> с масками <code>EVFILT_READ | EV_ADD</code> и <code>EVFILT_WRITE | EV_ADD</code>.</li>
 <li>В цикле планировщика функция <code>runtime.netpoll</code> периодически вызывает <code>kevent</code> с нулевым timeout. Как только ядро возвращает готовый дескриптор, Go находит ассоциированную структуру горутины, переводит ее в состояние <code>runnable</code> и пробуждает планировщик.</li>
 </ol>
-<h3 id="na-windows-netpollwindows-go">На Windows (`netpollwindows.go`):</h3>
+<h3 id="na-windows-netpollwindows-go">На Windows (`netpoll_windows.go`):</h3>
 <ol>
 <li>Go создает один глобальный порт завершения вызовом <code>CreateIoCompletionPort</code>.</li>
 <li>Все открытые сетевые сокеты связываются с этим портом.</li>
-<li>Поскольку Windows требует запустить операцию заранее, Go выделяет служебную структуру <code>runtime.netpollLink</code> (или <code>netpollLink</code>) и передает ее в вызовы <code>WSARecv</code> / <code>ReadFile</code> через указатель <code>lpOverlapped</code>.</li>
-<li>Функция <code>runtime.netpoll</code> вызывает системную функцию <code>GetQueuedCompletionStatus</code>. Когда ядро сообщает о завершении асинхронного чтения, Go извлекает указатель на <code>netpollLink</code>, находит связанную горутину и переводит её в состояние <code>runnable</code>.</li>
+<li>Поскольку Windows требует запустить операцию заранее, Go выделяет служебную структуру <code>operation</code> (пакет <code>internal/poll</code>, первым полем она содержит <code>syscall.Overlapped</code>) и передает ее в вызовы <code>WSARecv</code> / <code>ReadFile</code> через указатель <code>lpOverlapped</code>.</li>
+<li>Функция <code>runtime.netpoll</code> вызывает системную функцию <code>GetQueuedCompletionStatus</code>. Когда ядро сообщает о завершении асинхронного чтения, Go извлекает указатель на <code>operation</code>, находит связанную горутину и переводит её в состояние <code>runnable</code>.</li>
 </ol>
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -2507,7 +2507,7 @@ flowchart TD
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Почему реализация <code>netpoll</code> на Windows концептуально сложнее, чем на Linux или macOS?</p>
 <p><strong>Ответ:</strong> Linux (<code>epoll</code>) и BSD (<code>kqueue</code>) работают по модели готовности (Readiness): они сообщают сокету, что данные <em>можно прочитать</em>. Сам системный вызов чтения Go делает уже после пробуждения горутины.</p>
-<p>Windows (<code>IOCP</code>) работает по модели завершения (Completion): она требует инициировать операцию чтения <em>до</em> того, как горутина уснет. Go вынужден выделять структуры памяти под операцию (<code>lpOverlapped</code> / <code>netpollLink</code>), удерживать буферы заблокированными в памяти и полагаться на планировщик IOCP ядра для обработки завершений. Это делает рантайм Go под Windows архитектурно иным внутри, но сохраняет единый публичный API для программиста.</p>
+<p>Windows (<code>IOCP</code>) работает по модели завершения (Completion): она требует инициировать операцию чтения <em>до</em> того, как горутина уснет. Go вынужден выделять структуры памяти под операцию (<code>lpOverlapped</code> / <code>operation</code>), удерживать буферы заблокированными в памяти и полагаться на планировщик IOCP ядра для обработки завершений. Это делает рантайм Go под Windows архитектурно иным внутри, но сохраняет единый публичный API для программиста.</p>
   </div>
 </aside>
 
@@ -2527,7 +2527,7 @@ flowchart TD
 <li><strong><code>kqueue</code> (BSD/macOS)</strong> и <strong><code>IOCP</code> (Windows)</strong> воплощают две различные инженерные парадигмы: модель уведомления о готовности (Reactor) против модели уведомления о завершении (Proactor).</li>
 <li><strong><code>kqueue</code></strong> выделяется широтой охвата: через единый дескриптор очереди и структуры <code>knote</code> она мониторит сокеты, таймеры, сигналы ОС и файловые события <code>vnode</code>.</li>
 <li><strong><code>IOCP</code></strong> перекладывает бремя мультиплексирования на ядро Windows: приложение передает буфер заранее через структуру <code>OVERLAPPED</code>, а ядро по завершении DMA-чтения пробуждает рабочий поток из внутреннего пула.</li>
-<li>В рантайме Go обе архитектуры гармонично скрыты внутри сетевого поллера (<code>netpollkqueue.go</code> и <code>netpollwindows.go</code>), позволяя приложению использовать чистый синхронный синтаксис <code>conn.Read()</code> без потери наносекунд производительности.</li>
+<li>В рантайме Go обе архитектуры гармонично скрыты внутри сетевого поллера (<code>netpoll_kqueue.go</code> и <code>netpoll_windows.go</code>), позволяя приложению использовать чистый синхронный синтаксис <code>conn.Read()</code> без потери наносекунд производительности.</li>
 </ol>
 <p>В следующей статье мы заглянем в самое сердце сетевого поллера Go: <code>&lt;a href="38-kak-netpoller-go-ispolzuet-epoll-i-kqueue.html" class="wikilink"&gt;38. Как netpoller Go использует epoll и kqueue&lt;/a&gt;</code>, где детально разберем внутренние структуры данных рантайма, координацию с системным монитором <code>sysmon</code> и то, как исключаются взаимные блокировки при сетевых вызовах.</p>
           </div>

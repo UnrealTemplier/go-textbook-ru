@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~20 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~21 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">27. Unix Domain Socket</h1>
@@ -2196,7 +2196,7 @@
 <p>В ядре Linux UDS поддерживает три типа, реализующие разные семантики:</p>
 <ol>
 <li><code>SOCK_STREAM</code> — надежный, потоковый, ориентированный на байты (аналог TCP). Гарантирует порядок доставки и отсутствие дубликатов.</li>
-<li><code>SOCK_DGRAM</code> — ненадежный, пакетный, ориентированный на сообщения (аналог UDP). Сообщения могут теряться или приходить вне порядка.</li>
+<li><code>SOCK_DGRAM</code> — пакетный, ориентированный на сообщения (по форме аналог UDP). В отличие от UDP, на Linux UNIX-датаграммы <strong>надёжны</strong>: они не теряются и не переупорядочиваются (<code>man 7 unix</code>).</li>
 <li><code>SOCK_SEQPACKET</code> — надежный, пакетный. Гарантирует доставку целых сообщений в порядке отправки.</li>
 </ol>
 <p>UDS использует два типа пространств имен (namespaces) для привязки адреса:</p>
@@ -2304,8 +2304,7 @@ func main() {
     defer listener.Close()
     defer os.Remove(path) // Гарантированная очистка
 
-    fmt.Printf(&quot;Сервер слушает: %s
-&quot;, path)
+    fmt.Printf(&quot;Сервер слушает: %s\n&quot;, path)
 
     for {
         conn, err := listener.Accept()
@@ -2325,8 +2324,7 @@ func handleConnection(conn net.Conn) {
         log.Printf(&quot;Ошибка чтения: %v&quot;, err)
         return
     }
-    fmt.Printf(&quot;Получено: %s
-&quot;, string(buf[:n]))
+    fmt.Printf(&quot;Получено: %s\n&quot;, string(buf[:n]))
 }
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
@@ -2437,24 +2435,27 @@ sequenceDiagram
     </button>
   </header>
   <pre class="language-go"><code class="language-go">// Сервер (отправка FD)
-fd, _ := os.Open(&quot;/tmp/data.bin&quot;)
-cmsg := unix.UnixRights(int(fd))
-msg := &amp;unix.Mmsghdr{
-   Hdr: unix.Mhdr{
-        Control: unix.Cmsghdr{
-            Level: unix.SOL_SOCKET,
-            Type:  unix.SCM_RIGHTS,
-            Len:   unix.CmsgSpace(4),
-        },
-        Iov: []unix.Iovec{{Base: &amp;[]byte{'A'}[0]}},
-    },
-    MsgHdr: unix.Mhdr{},
+f, err := os.Open(&quot;/tmp/data.bin&quot;)
+if err != nil {
+    log.Fatal(err)
 }
-unix.Sendmmsg(listenerFD, []*unix.Mmsghdr{cmsg}, 0)
+// SCM_RIGHTS: дескриптор уходит как вспомогательные данные (oob) вместе с одним байтом полезной нагрузки.
+// conn — *net.UnixConn с установленным соединением с процессом Б.
+rights := unix.UnixRights(int(f.Fd()))
+if _, _, err := conn.WriteMsgUnix([]byte{'A'}, rights, nil); err != nil {
+    log.Fatal(err)
+}
 
 // Клиент (прием FD)
-// Используется recvmsg с буфером для CMSG. Извлеченный дескриптор 
-// оборачивается в os.NewFile(uintptr(fd), &quot;&quot;).
+buf := make([]byte, 1)
+oob := make([]byte, unix.CmsgSpace(4)) // место под один int32-дескриптор
+_, oobn, _, _, err := conn.ReadMsgUnix(buf, oob)
+if err != nil {
+    log.Fatal(err)
+}
+msgs, _ := unix.ParseSocketControlMessage(oob[:oobn])
+fds, _ := unix.ParseUnixRights(&amp;msgs[0])
+// Извлеченный дескриптор оборачивается в os.NewFile(uintptr(fds[0]), &quot;received&quot;).
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
     <div class="retro-code-vhs-layer"></div>

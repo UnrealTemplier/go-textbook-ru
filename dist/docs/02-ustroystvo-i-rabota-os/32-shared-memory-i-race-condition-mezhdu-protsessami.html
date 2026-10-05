@@ -2262,25 +2262,27 @@ import (
     &quot;fmt&quot;
     &quot;os&quot;
     &quot;syscall&quot;
-    &quot;unsafe&quot;
 )
 
 func main() {
-    // 1. Создаем или открываем сегмент в /dev/shm
-    fd, err := syscall.ShmOpen(&quot;/my_shared_seg&quot;, syscall.O_RDWR|syscall.O_CREAT, 0644)
+    // 1. Создаем или открываем сегмент в /dev/shm.
+    // В пакете syscall нет обёрток shm_open/shm_unlink: POSIX shared memory — это обычные файлы
+    // в tmpfs (/dev/shm), и os.OpenFile делает по сути то же самое.
+    f, err := os.OpenFile(&quot;/dev/shm/my_shared_seg&quot;, os.O_RDWR|os.O_CREATE, 0644)
     if err != nil {
         // production-ready: всегда обрабатываем ошибки
-        panic(fmt.Sprintf(&quot;shm_open failed: %v&quot;, err))
+        panic(fmt.Sprintf(&quot;open /dev/shm failed: %v&quot;, err))
     }
-    defer syscall.ShmUnlink(&quot;/my_shared_seg&quot;)
+    defer f.Close()
+    defer os.Remove(&quot;/dev/shm/my_shared_seg&quot;) // аналог shm_unlink
 
-    // 2. Устанавливаем размер (например, 4096 байт)
-    if err := syscall.ShmSetSize(fd, 4096); err != nil {
-        panic(fmt.Sprintf(&quot;shm_set_size failed: %v&quot;, err))
+    // 2. Устанавливаем размер (например, 4096 байт; аналог ftruncate)
+    if err := f.Truncate(4096); err != nil {
+        panic(fmt.Sprintf(&quot;truncate failed: %v&quot;, err))
     }
 
     // 3. Отображаем в память процесса
-    ptr, err := syscall.Mmap(fd, 0, 4096, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+    ptr, err := syscall.Mmap(int(f.Fd()), 0, 4096, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
     if err != nil {
         panic(fmt.Sprintf(&quot;mmap failed: %v&quot;, err))
     }

@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~31 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~32 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">43. Direct IO и Zero Copy</h1>
@@ -2279,7 +2279,7 @@ flowchart LR
   <div class="callout-body">
     <p><strong>Требование выравнивания (Alignment)</strong><br />
 Direct IO <strong>жестко требует</strong> выравнивания адреса буфера в оперативной памяти, файлового смещения и размера порции данных. Обычно размер выравнивания составляет 512 байт (для старых дисков) или ровно 4096 байт (размер сектора Advanced Format / страницы памяти). </p>
-<p>Если передать невыровненный буфер, ядро немедленно отвергнет системный вызов с ошибкой <code>EINVAL</code>. Это не прихоть программистов ядра Linux, а жесткое аппаратное требование DMA-контроллеров шины PCIe: они оперируют физическими фреймами памяти, кратными размеру страницы!</p>
+<p>Если передать невыровненный буфер, ядро на большинстве файловых систем (ext4, XFS) отвергнет системный вызов с ошибкой <code>EINVAL</code> (на некоторых, например btrfs, такая запись может пройти без ошибки: поведение зависит от файловой системы и версии ядра). Это не прихоть программистов ядра Linux, а жесткое аппаратное требование DMA-контроллеров шины PCIe: они оперируют физическими фреймами памяти, кратными размеру страницы!</p>
   </div>
 </aside>
 
@@ -2516,9 +2516,15 @@ import (
 )
 
 func writeDirectIO(path string, data []byte) error {
-    // 1. Выравнивание буфера по границе страницы (4096 байт)
-    // В реальном production коде выравнивание делают через posix_memalign или syscall.Mmap
-    aligned := make([]byte, len(data)+4096)
+    // 1. Выравнивание буфера по границе страницы (4096 байт).
+    // make([]byte, n) выравнивания не гарантирует (адрес получается случайным), а память из mmap
+    // всегда начинается на границе страницы. Длину записи округляем вверх до кратной 4096.
+    size := (len(data) + 4095) &amp;^ 4095
+    aligned, err := syscall.Mmap(-1, 0, size, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE)
+    if err != nil {
+        return err
+    }
+    defer syscall.Munmap(aligned)
     copy(aligned, data)
 
     // 2. Открытие файла с флагом syscall.O_DIRECT
@@ -2528,9 +2534,11 @@ func writeDirectIO(path string, data []byte) error {
     }
     defer f.Close()
 
-    // 3. Запись выровненных данных
-    _, err = f.Write(aligned[:len(data)])
-    return err
+    // 3. Запись выровненных данных (длина кратна 4096), затем обрезаем хвост до реального размера
+    if _, err = f.Write(aligned); err != nil {
+        return err
+    }
+    return f.Truncate(int64(len(data)))
 }
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
@@ -2567,7 +2575,7 @@ func writeDirectIO(path string, data []byte) error {
 </ol>
 <h3 id="tipichnye-voprosy-na-middlesenior">Типичные вопросы на Middle+/Senior</h3>
 <ul>
-<li><strong>Как <code>net/http</code> сервит статические файлы в Go?</strong> Стандартная библиотека в файле <code>src/net/http/fs.go</code> анализирует типы дескрипторов: на Linux вызывается системный вызов <code>sendfile</code>, на других ОС — стандартная буферизованная передача через <code>WriteFile</code>.</li>
+<li><strong>Как <code>net/http</code> сервит статические файлы в Go?</strong> Стандартная библиотека в <code>src/net/http/fs.go</code> копирует файл в соединение через <code>io.CopyN</code>, а до <code>sendfile</code> дело доходит ниже: метод <code>(*net.TCPConn).ReadFrom</code> на Linux использует системный вызов <code>sendfile</code> (реализации <code>sendfile</code> есть и на ряде других ОС, см. <code>internal/poll/sendfile_*.go</code>); там, где ни <code>sendfile</code>, ни <code>splice</code> не применимы, используется обычное буферизованное копирование.</li>
 <li><strong>Почему <code>io.Copy</code> иногда работает быстрее, чем связка <code>bufio.NewReader</code> + <code>bufio.Writer</code>?</strong> Метод <code>io.Copy</code> содержит оптимизацию: при обнаружении типов <code>*os.File</code> и <code>net.Conn</code> он прозрачно вызывает системный вызов <code>sendfile</code>, исключая двойное копирование в userspace-буферы <code>bufio</code>.</li>
 <li><strong>Как отладить падение с ошибкой <code>EINVAL</code> при <code>O_DIRECT</code>?</strong> Проверьте кратность адреса буфера в оперативной памяти (<code>uintptr(unsafe.Pointer(&amp;data[0])) % 4096 == 0</code>), кратность длины слайса и смещение в файле. Запустите утилиту <code>strace</code>, чтобы увидеть точные аргументы системного вызова, переданные ядру.</li>
 </ul>

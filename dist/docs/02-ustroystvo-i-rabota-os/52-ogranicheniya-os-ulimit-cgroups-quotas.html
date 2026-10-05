@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~34 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~35 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">52. Ограничения ОС. ulimit, cgroups, quotas</h1>
@@ -2255,7 +2255,7 @@ flowchart TD
 2. <strong><code>hard</code> (Жесткий лимит):</strong> Потолок, выше которого soft-лимит не может быть поднят. Увеличить значение hard-лимита имеет право исключительно суперпользователь (<code>root</code>).</p>
 <h3 id="klyuchevye-limity-dlya-go-bekenda">Ключевые лимиты для Go-бэкенда:</h3>
 <ul>
-<li><strong><code>RLIMIT_NOFILE</code> (или <code>nofile</code>):</strong> Максимальное количество открытых файловых дескрипторов (FD) на процесс. В Go сетевой поллер <code>netpoller</code>, каждый входящий сокет <code>net.Conn</code>, исходящие пулы к базам данных, лог-файлы и таймеры потребляют файловые дескрипторы. Если лимит исчерпан, сервер больше не может принимать новые TCP-рукопожатия.</li>
+<li><strong><code>RLIMIT_NOFILE</code> (или <code>nofile</code>):</strong> Максимальное количество открытых файловых дескрипторов (FD) на процесс. В Go сетевой поллер <code>netpoller</code>, каждый входящий сокет <code>net.Conn</code>, исходящие пулы к базам данных, лог-файлы и таймеры потребляют файловые дескрипторы. Если лимит исчерпан, сервер больше не может принимать новые TCP-рукопожатия. (Оговорка: начиная с Go 1.19 рантайм при старте сам поднимает soft-лимит до hard-лимита, поэтому на практике ограничивает именно hard-лимит; в контейнерах и под systemd он бывает занижен.)</li>
 <li><strong><code>RLIMIT_NPROC</code>:</strong> Максимальное количество процессов и потоков операционной системы, которые разрешено породить данному пользователю (UID).</li>
 <li><strong><code>RLIMIT_AS</code> (или <code>maxrss</code>):</strong> Ограничение на максимальный размер виртуального адресного пространства (Address Space) или физической памяти.</li>
 <li><strong><code>RLIMIT_CPU</code> и <code>RLIMIT_FSIZE</code>:</strong> Максимальное время процессора в секундах и максимальный размер создаваемого файла на диске.</li>
@@ -2370,7 +2370,7 @@ flowchart TD
 <li><strong><code>cpu.max</code> (CFS Bandwidth Control):</strong> Задает квоту и период планировщика CFS: <code>quota period</code> (например, строка <code>20000 100000</code> означает, что процессу выделяется 20 000 мкс процессора за период 100 000 мкс, то есть ровно 20% одного ядра CPU).<br />
    Если сервис сжигает квоту быстрее, ядро немедленно ставит все его потоки на паузу (<strong>CPU Throttling</strong>). Для Go это катастрофично: сборщик мусора GC Pacer задерживается, куча раздувается, сетевые сокеты перестают вычитываться, а latency улетает в космос!</li>
 <li><strong><code>memory.max</code> (Жесткий потолок оперативной памяти):</strong> Лимит физической памяти. Если суммарное потребление памяти процессами cgroup превысит <code>memory.max</code>, ядро попытается сбросить Page Cache, а при неудаче вмешается механизм <strong>OOM Killer</strong> и мгновенно уничтожит процесс сигналом <code>SIGKILL</code>!</li>
-<li><strong><code>pids.max</code>:</strong> Лимит на общее количество потоков и процессов. Хотя горутины в Go мультиплексируются в пространстве пользователя, вызовы <code>syscall</code>, запуск подпроцессов через <code>os/exec</code>, интеграция с <code>Cgo</code> или блокировки в <code>netpoller</code> требуют аллокации новых системных тредов ОС (<code>M</code>). При исчерпании лимита системный вызов <code>clone()</code> вернет ошибку ядра <code>EAGAIN</code>.</li>
+<li><strong><code>pids.max</code>:</strong> Лимит на общее количество потоков и процессов. Хотя горутины в Go мультиплексируются в пространстве пользователя, вызовы <code>syscall</code>, запуск подпроцессов через <code>os/exec</code>, интеграция с <code>Cgo</code> или блокировки в <code>netpoller</code> требуют аллокации новых системных тредов ОС (<code>M</code>). При исчерпании лимита системный вызов <code>clone()</code> вернет ошибку ядра <code>EAGAIN</code>. Для рантайма Go, которому нужен новый поток <code>M</code>, это фатально: он напечатает <code>runtime: failed to create new OS thread</code> и аварийно завершится (<code>throw</code>).</li>
 </ol>
 <aside class="callout callout-interview" aria-label="Собеседование: Почему рантайм Go не видит лимиты cgroups «из коробки»?">
   <header class="callout-header">
@@ -2380,8 +2380,8 @@ flowchart TD
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Почему скомпилированный Go-бинарник, запущенный в контейнере Docker или Kubernetes с жестким ограничением памяти 512 МБ на машине с 64 ГБ RAM, может упасть по OOM Killer?</p>
 <p><strong>Ответ:</strong> <br />
-Исторически рантайм Go работает в пользовательском пространстве и определяет объем доступной памяти через системный вызов <code>sysinfo</code> или чтение <code>/proc/meminfo</code>, которые возвращают общий объем памяти <strong>физического хоста</strong> (все 64 ГБ!), абсолютно не подозревая об ограничениях контрольных групп <code>memory.max</code>.<br />
-В результате стандартный сборщик мусора Go ориентировался на гигантскую память хоста, запускал GC слишком поздно (когда куча уже перевалила за 1 ГБ), и ядро Linux безжалостно убивало контейнер через OOM Killer (<code>OOMKilled</code>).  </p>
+Рантайм Go ничего не знает об ограничениях контрольных групп <code>memory.max</code>: момент запуска GC он считает не от памяти машины, а от размера живой кучи и значения <code>GOGC</code> (по умолчанию куча может вырасти примерно вдвое относительно живых данных), без <code>GOMEMLIMIT</code> лимит по умолчанию бесконечен (<code>math.MaxInt64</code>).<br />
+В результате стандартный сборщик мусора запускал GC слишком поздно, пик кучи перевалил за 1 ГБ, и ядро Linux безжалостно убивало контейнер через OOM Killer (<code>OOMKilled</code>).  </p>
 <p>Начиная с Go 1.19, в язык внедрена переменная окружения <strong><code>GOMEMLIMIT</code></strong> (мягкий лимит памяти). Она заставляет GC Pacer следить за тем, чтобы суммарное потребление памяти рантаймом приближалось к целевой границе, агрессивно запуская циклы сборки мусора и возвращая свободные страницы ОС через <code>madvise(MADV_DONTNEED)</code>.</p>
   </div>
 </aside>
@@ -2430,7 +2430,8 @@ spec:
         image: payment-service:v1.0.0
         env:
         # GOMEMLIMIT должен составлять 80-85% от hard-лимита памяти (memory.max)
-        # Оставшиеся 15-20% резервируются под стек горутин, метаданные рантайма и Page Cache
+        # Оставшиеся 15-20% резервируются под то, что GOMEMLIMIT не учитывает: память C/cgo, syscall.Mmap, буферы ядра и Page Cache
+        # (стеки горутин и метаданные рантайма в лимит уже входят)
         - name: GOMEMLIMIT
           value: &quot;850MiB&quot;
         # GOMAXPROCS согласуется с квотой CPU во избежание троттлинга
@@ -2468,7 +2469,7 @@ spec:
     <p>В спецификации Kubernetes многие разработчики путают назначение полей <code>resources</code>:<br />
 - <code>resources.requests.memory</code> — это <strong>гарантия планирования</strong> для kube-scheduler. На уровне ядра Linux она маппится на параметр <code>memory.low</code> или <code>memory.min</code> в cgroups v2 (защита от вытеснения).<br />
 - <code>resources.limits.memory</code> — это <strong>жесткий физический потолок</strong> (<code>memory.max</code> в cgroups v2), превышение которого карается немедленной казнью процесса OOM Killer!</p>
-<p>Если вы выставляете в Go переменную <code>GOMEMLIMIT</code>, она обязана быть строго <strong>меньше</strong> <code>resources.limits.memory</code> (обычно на 10–20% меньше, то есть при <code>limits.memory = 1Gi</code> выставляйте <code>GOMEMLIMIT = 800MiB-850MiB</code>). Этот запас жизненно необходим ядру для размещения стеков горутин, структур сетевых буферов, метаданных рантайма и накладных расходов сборщика мусора!</p>
+<p>Если вы выставляете в Go переменную <code>GOMEMLIMIT</code>, она обязана быть строго <strong>меньше</strong> <code>resources.limits.memory</code> (обычно на 10–20% меньше, то есть при <code>limits.memory = 1Gi</code> выставляйте <code>GOMEMLIMIT = 800MiB-850MiB</code>). Этот запас жизненно необходим для того, что <code>GOMEMLIMIT</code> не охватывает: памяти C-библиотек (cgo), областей <code>syscall.Mmap</code>, сетевых буферов ядра и Page Cache. (Стеки горутин, метаданные рантайма и накладные расходы сборщика мусора, наоборот, уже входят в лимит рантайма.)</p>
   </div>
 </aside>
 
@@ -2513,7 +2514,7 @@ kubectl describe pod &lt;pod-name&gt; # секция Containers -&gt; Limits / R
 <ol>
 <li><strong><code>ulimit</code></strong> — проверенная временем POSIX-система ограничений, действующая на уровне процессов и сессий. Критична для управления лимитом дескрипторов <code>RLIMIT_NOFILE</code>, но не изолирует контейнеры.</li>
 <li><strong><code>cgroups v2</code></strong> — современный фундамент облачной изоляции. Обеспечивает единое дерево управления CPU (<code>cpu.max</code>), памятью (<code>memory.max</code>) и процессами (<code>pids.max</code>) на уровне ядра Linux.</li>
-<li><strong>Рантайм Go и механическое сочувствие:</strong> Go не распознает лимиты cgroups автоматически без явного указания <code>GOMEMLIMIT</code> и <code>GOMAXPROCS</code>. Пренебрежение настройкой ведет к фатальным ошибкам <code>OOMKilled</code> и задержкам из-за троттлинга CPU.</li>
+<li><strong>Рантайм Go и механическое сочувствие:</strong> Лимит памяти cgroup Go автоматически не распознаёт: <code>GOMEMLIMIT</code> нужно задавать самому. Квоту CPU рантайм учитывает сам начиная с Go 1.25 (при <code>go 1.25</code> и выше в <code>go.mod</code>); для более старых языковых версий нужны явный <code>GOMAXPROCS</code> или <code>automaxprocs</code>. Пренебрежение настройкой ведет к фатальным ошибкам <code>OOMKilled</code> и задержкам из-за троттлинга CPU.</li>
 <li><strong>Управление дескрипторами:</strong> Исчерпание <code>RLIMIT_NOFILE</code> парализует <code>netpoller</code> и сетевой стек Go с системной ошибкой <code>EMFILE</code>. На серверах production параметр <code>LimitNOFILE</code> обязан быть расширен до 65535 или выше.</li>
 <li><strong>Дисковые квоты:</strong> Предотвращают исчерпание пространства на общих разделах (<code>ENOSPC</code> / <code>EDQUOT</code>), требуя от прикладного кода дисциплины ротации данных.</li>
 </ol>

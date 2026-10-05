@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~19 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~20 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">24. strace, ltrace и чтение поведения процесса</h1>
@@ -2341,14 +2341,14 @@ sequenceDiagram
 <hr />
 <h2 id="ltrace-trassirovka-bibliotechnykh-vyzovov">ltrace: Трассировка библиотечных вызовов</h2>
 
-<p><code>ltrace</code> перехватывает вызовы динамических библиотек (<code>libpthread</code>, <code>libc</code>, <code>libssl</code> и т.д.). В отличие от <code>strace</code>, он не требует прав на <code>ptrace</code> и работает практически полностью в user-space.</p>
+<p><code>ltrace</code> перехватывает вызовы динамических библиотек (<code>libpthread</code>, <code>libc</code>, <code>libssl</code> и т.д.). Как и <code>strace</code>, он работает через <code>ptrace</code> (и требует тех же прав на трассировку процесса), но перехватывает не системные вызовы, а вызовы библиотечных функций.</p>
 <h3 id="printsip-raboty">Принцип работы</h3>
 
-<p><code>ltrace</code> не лезет в ядро. Вместо этого он использует механизм динамической линковки <code>ld.so</code>:<br />
-1. При старете процесса <code>ld.so</code> загружает нужные <code>.so</code> файлы.<br />
-2. <code>ltrace</code> перехватывает вызовы <code>mmap</code> и <code>mprotect</code> внутри <code>ld.so</code>.<br />
-3. Он находит в ELF-бинарнике таблицы импорта (<code>.rela.plt</code>) и заменяет адреса функций-заглушками (trampolines), которые прыгают в обработчик <code>ltrace</code>.<br />
-4. После логирования вызов возвращается по оригинальному адресу.</p>
+<p><code>ltrace</code> не перехватывает системные вызовы, а ловит вход в библиотечные функции, используя <code>ptrace</code> и точки останова:<br />
+1. При старте процесса <code>ld.so</code> загружает нужные <code>.so</code> файлы.<br />
+2. <code>ltrace</code> через <code>ptrace</code> (<code>PTRACE_TRACEME</code> / <code>PTRACE_ATTACH</code>) берёт процесс под контроль.<br />
+3. Он находит в ELF-бинарнике таблицы импорта (<code>.rela.plt</code>) и ставит точки останова (<code>int 3</code>) на записи PLT.<br />
+4. Когда процесс натыкается на точку останова, ядро останавливает его и будит <code>ltrace</code>; тот логирует вызов, возвращает исходную инструкцию и продолжает процесс.</p>
 
 <div class="code-block" data-lang="bash">
   <header class="code-header">
@@ -2404,7 +2404,7 @@ flowchart LR
 <p>Go-компилятор по умолчанию создает статически линкованные бинарники (<code>-linkmode=external</code> или встроенные библиотеки). Это означает:<br />
 1. <strong>Нет динамических символов</strong>: <code>ld.so</code> не знает, какие функции нужно перехватывать.<br />
 2. <strong>CGO меняет правила</strong>: Если приложение использует CGO, <code>ltrace</code> может видеть вызовы C-библиотек, но не видит вызовы внутри Go-рантайма (<code>runtime.malloc</code>, <code>netpoll</code>, <code>epoll_pwait</code>).<br />
-3. <strong>Конфликт с аллокатором</strong>: <code>LD_PRELOAD</code> (механизм, который использует <code>ltrace</code>) конфликтует с Go's custom memory allocator (<code>mmap</code> + <code>sbrk</code> эмуляция), что может привести к <code>segfault</code> или утечкам памяти.</p>
+3. <strong>Нет PLT</strong>: <code>ltrace</code> работает через <code>ptrace</code> и точки останова на записях PLT (механизм <code>LD_PRELOAD</code> он не использует). У статически собранного Go-бинарника PLT нет, а собственный аллокатор Go <code>malloc</code> из libc не вызывает.</p>
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2441,8 +2441,8 @@ flowchart LR
 </div>
 
 <ul>
-<li>Если видим <code>epoll_pwait(-1, ...)</code> -&gt; процесс ждет IO, но <code>netpoller</code> не пробуждает горутину (возможный баг в <code>netpoller</code> или блокирующий код).</li>
-<li>Если видим <code>futex(0x..., FUTEX_WAIT, ...)</code> -&gt; захвачен <code>sync.Mutex</code> или <code>channel</code> без данных.</li>
+<li>Если видим <code>epoll_pwait(-1, ...)</code> -&gt; это обычно штатное ожидание: простаивающие потоки <code>M</code> спят в <code>epoll_pwait</code> (с таймаутом до ближайшего таймера или <code>-1</code>). Сам по себе такой вызов не признак бага <code>netpoller</code>.</li>
+<li>Если видим <code>futex(0x..., FUTEX_WAIT, ...)</code> -&gt; чаще всего это штатный сон простаивающих потоков <code>M</code>. Блокировку горутины на <code>sync.Mutex</code> или канале паркует планировщик Go без системного вызова, так что по <code>futex</code> о захваченном мьютексе судить нельзя; для этого используйте профили <code>mutex</code>, <code>block</code> и <code>goroutine</code>.</li>
 <li>Если видим <code>recvfrom(0, ...)</code> -&gt; процесс ждет данные из сокета.</li>
 </ul>
 <h3 id="2-analiz-disbalansa-io">2. Анализ дисбаланса IO</h3>

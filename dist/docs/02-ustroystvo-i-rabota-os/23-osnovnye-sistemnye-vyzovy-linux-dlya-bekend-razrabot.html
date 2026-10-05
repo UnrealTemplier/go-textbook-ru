@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~23 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~24 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">23. Основные системные вызовы Linux для бэкенд-разработчика</h1>
@@ -2236,7 +2236,7 @@ flowchart TB
 <ul>
 <li><code>clone</code> (аналог <code>fork</code> в Go) — создание нового процесса или потока с разделением адресного пространства.</li>
 <li><code>exit</code>, <code>wait4</code> — завершение процесса и сбор его кода возврата.</li>
-<li><code>futex</code> (Fast Userspace Mutex) — низкоуровневый примитив синхронизации. Именно на нём построены <code>sync.Mutex</code>, <code>sync.RWMutex</code> и каналы в Go.</li>
+<li><code>futex</code> (Fast Userspace Mutex) — низкоуровневый примитив синхронизации. На нём рантайм Go усыпляет простаивающие потоки <code>M</code> и защищает свои внутренние блокировки; сами <code>sync.Mutex</code>, <code>sync.RWMutex</code> и каналы блокируют горутины средствами планировщика Go и <code>futex</code> на каждую блокировку не вызывают (подробнее — ниже).</li>
 <li><code>set_tid_address</code>, <code>set_robust_list</code> — регистрация адресов для автоматической разблокировки мьютексов при аварийном падении потока.</li>
 </ul>
 <h3 id="3-vremya-i-taymery">3. Время и таймеры</h3>
@@ -2250,7 +2250,7 @@ flowchart TB
 
 <p>Go не использует стандартную C-библиотеку (glibc/musl) для критических путей, чтобы избежать накладных расходов на вложенные абстракции и блокировки libc. Вместо этого runtime Go напрямую вызывает ядро через механизм <code>rawSyscall</code>.</p>
 <h3 id="pryamoy-vyzov-yadra-vs-libc-obyortka">Прямой вызов ядра vs libc-обёртка</h3>
-<p>В исходниках Go (например, <code>src/runtime/sys_linux_amd64.go</code>) можно найти маппинг вызовов:</p>
+<p>В исходниках Go (например, <code>src/runtime/sys_linux_amd64.s</code>) можно найти маппинг вызовов:</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2275,7 +2275,7 @@ flowchart TB
   </div>
 </div>
 
-<p>Go использует инструкцию <code>SYSCALL</code> (x86-64) или <code>SVC</code> (ARM) для перехода в Ring 0. Аргументы передаются через регистры: <code>R10</code> (первый аргумент), <code>R8</code> (второй), <code>R9</code> (третий), а номер вызова — в <code>RAX</code>.</p>
+<p>Go использует инструкцию <code>SYSCALL</code> (x86-64) или <code>SVC</code> (ARM) для перехода в Ring 0. Аргументы передаются через регистры <code>RDI</code>, <code>RSI</code>, <code>RDX</code>, <code>R10</code>, <code>R8</code>, <code>R9</code> (аргументы с первого по шестой), а номер вызова — в <code>RAX</code>.</p>
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2334,7 +2334,7 @@ flowchart TD
 <h2 id="proizvoditelnost-optimizatsiya-i-tipichnye-lovushki">Производительность, оптимизация и типичные ловушки</h2>
 
 <h3 id="stoimost-sistemnogo-vyzova">Стоимость системного вызова</h3>
-<p>Переход Ring 3 → Ring 0, проверка прав, очистка TLB, сохранение контекста и возврат занимают от 1000 до 5000 тактов CPU. При миллионе запросов в секунду это создаст узкое место даже на мощном процессоре.</p>
+<p>Переход Ring 3 → Ring 0, проверка прав, очистка TLB, сохранение контекста и возврат занимают от сотен до нескольких тысяч тактов CPU (на современном процессоре без KPTI пустой вызов обходится в десятки наносекунд, с mitigations дороже). При миллионе запросов в секунду это создаст узкое место даже на мощном процессоре.</p>
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2385,7 +2385,7 @@ flowchart TD
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Что такое <code>futex</code> и почему <code>sync.Mutex</code> не всегда вызывает syscall?<br />
-<strong>Ответ:</strong> <code>futex</code> — примитив, работающий в user space. Сначала <code>sync.Mutex</code> пытается захватить блокировку атомарной инструкцией <code>CMPXCHG</code>. Если успешно — syscall не нужен. Если занято, вызывается <code>futex(FUTEX_WAIT)</code>, где ядро усыпляет горутину. При освобождении вызывается <code>futex(FUTEX_WAKE)</code>. Это гибридный подход, сочетающий скорость user-space и надёжность ядра.</p>
+<strong>Ответ:</strong> <code>futex</code> — примитив, работающий в user space. Сначала <code>sync.Mutex</code> пытается захватить блокировку атомарной инструкцией <code>CMPXCHG</code>. Если успешно — syscall не нужен. Если занято, горутина после недолгого спина паркуется рантаймом Go (<code>runtime_SemacquireMutex</code> → <code>gopark</code>), и <code>futex</code> при этом не вызывается: поток <code>M</code> берёт другую горутину. К <code>futex(FUTEX_WAIT/WAKE)</code> рантайм обращается, когда засыпает сам поток <code>M</code> или конкурируют за внутренние блокировки рантайма. Это гибридный подход, сочетающий скорость user-space и планирование в пространстве пользователя.</p>
   </div>
 </aside>
 

@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~54 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~55 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">5. Процессы. Жизненный цикл процесса в ОС</h1>
@@ -2409,7 +2409,7 @@ stateDiagram-v2
 
        ПЕРЕКЛЮЧЕНИЕ ГОРУТИН В GO (Легковесно, ~10-200 нс)
  ┌───────────────┐                             ┌───────────────┐
- │   Горутина G1 │ ── Сохранение 14 регистров  │ Рантайм Go    │
+ │   Горутина G1 │ ── Сохранение SP,PC,BP   │ Рантайм Go    │
  │ (Стек ~2-4 КБ)│ ── CR3 НЕ МЕНЯЕТСЯ! ──────&gt; │ (User Space)  │
  └───────────────┘ ── TLB НЕ СБРАСЫВАЕТСЯ! ──&gt; └───────────────┘
                                                        │
@@ -2516,7 +2516,7 @@ func main() {
 <p>Пакет <code>os/exec</code> предоставляет три основных сценария управления порожденным процессом:</p>
 <ol>
 <li><strong>Синхронный запуск (<code>cmd.Run()</code>, <code>cmd.Output()</code>, <code>cmd.CombinedOutput()</code>):</strong><br />
-   Запускает процесс, блокирует текущую горутину (не поток <code>M</code>, а именно горутину, уступая процессор другим задачам!), считывает данные из пайпов и автоматически вызывает системный вызов <code>wait()</code>, гарантируя отсутствие зомби.</li>
+   Запускает процесс, блокирует текущую горутину (ожидание завершения дочернего процесса само блокирует поток <code>M</code> в системном вызове, но рантайм отдаёт его <code>P</code> другому потоку, так что остальные горутины продолжают работать), считывает данные из пайпов и автоматически вызывает системный вызов <code>wait()</code>, гарантируя отсутствие зомби.</li>
 <li><strong>Асинхронный запуск (<code>cmd.Start()</code>):</strong><br />
    Создает процесс, настраивает каналы I/O и немедленно возвращает управление. В поле <code>cmd.Process</code> появляется структура <code>*os.Process</code>. На этом этапе процесс работает параллельно в операционной системе.</li>
 <li><strong>Ожидание завершения (<code>cmd.Wait()</code>):</strong><br />
@@ -2530,7 +2530,7 @@ func main() {
     <span class="callout-title">Под капотом: Как Go запускает дочерние процессы</span>
   </header>
   <div class="callout-body">
-    <p>Когда в Go вызывается <code>exec.Command</code>, под капотом рантайм вызывает функцию <code>syscall.ForkExec</code> (или <code>runtime.forkExec</code>).<br />
+    <p>Когда в Go вызывается <code>exec.Command</code>, под капотом вызывается функция <code>syscall.ForkExec</code> (внутри неё работает внутренняя <code>syscall.forkExec</code>; функции <code>runtime.forkExec</code> не существует).<br />
 В Linux для создания процесса Go использует системный вызов <code>clone</code> с флагами <code>CLONE_VFORK | CLONE_VM | SIGCHLD</code>.<br />
 Это позволяет избежать дорогого дублирования таблиц страниц родителя: дочерний процесс временно делит память с родителем, пока сразу же не вызовет <code>execve()</code>, который полностью сотрет старое адресное пространство и загрузит новый бинарник. Классическая связка <code>fork + exec</code> раскрыта в <a href="6-kak-linux-sozdaet-protsessy-fork-exec-wait.html" class="wikilink">6. Как Linux создает процессы. fork, exec, wait</a>.</p>
   </div>
@@ -2588,7 +2588,7 @@ func main() {
 <p>Каждый процесс подчиняется жесткой системе квот ядра, известной как <strong>POSIX resource limits</strong>. </p>
 <p>Ядро хранит два значения для каждого лимита: <strong>Soft limit</strong> (мягкий порог, при достижении которого процесс получает ошибку или сигнал, но может сам повысить лимит до жесткого) и <strong>Hard limit</strong> (потолок, повышать который имеет право только <code>root</code>).</p>
 <p>Ключевые ограничения для высоконагруженных Go-сервисов:<br />
-- <code>RLIMIT_NOFILE</code> (<code>nofile</code>): Максимальное количество открытых файловых дескрипторов. В бэкенде сетевые соединения (TCP-сокеты), файлы логов, пайпы и каналы epoll — это всё файловые дескрипторы. Если лимит равен дефолтным 1024, сервис рухнет при попытке принять 1025-е входящее соединение (<code>accept: too many open files</code> или <code>ulimit: open files limit exceeded</code>).<br />
+- <code>RLIMIT_NOFILE</code> (<code>nofile</code>): Максимальное количество открытых файловых дескрипторов. В бэкенде сетевые соединения (TCP-сокеты), файлы логов, пайпы и каналы epoll — это всё файловые дескрипторы. Если лимит равен дефолтным 1024, сервис рухнет при попытке принять 1025-е входящее соединение (<code>accept: too many open files</code> или <code>ulimit: open files limit exceeded</code>). Оговорка: начиная с Go 1.19 рантайм при старте сам поднимает soft-лимит до hard-лимита, так что на практике вас ограничивает в основном <strong>hard</strong>-лимит (в контейнерах и под systemd он бывает занижен).<br />
 - <code>RLIMIT_NPROC</code> (<code>nproc</code>): Максимальное число процессов и потоков, доступных пользователю. Превышение лимита блокирует системные вызовы <code>clone()</code> и <code>fork()</code>.<br />
 - <code>RLIMIT_STACK</code> (<code>stack</code>): Максимальный размер стека системного потока (обычно 8 МБ).<br />
 - <code>RLIMIT_AS</code> (Address Space): Максимальный размер виртуальной памяти процесса.</p>
@@ -2606,7 +2606,6 @@ func main() {
 
 import (
     &quot;fmt&quot;
-    &quot;log&quot;
     &quot;syscall&quot;
 )
 
@@ -2618,8 +2617,7 @@ func tuneFileLimits() error {
         return fmt.Errorf(&quot;error getting rlimit: %w&quot;, err)
     }
 
-    fmt.Printf(&quot;Current limits: Cur=%d, Max=%d
-&quot;, rLimit.Cur, rLimit.Max)
+    fmt.Printf(&quot;Current limits: Cur=%d, Max=%d\n&quot;, rLimit.Cur, rLimit.Max)
 
     // Поднимаем Soft Limit до максимума Hard Limit
     rLimit.Cur = rLimit.Max
@@ -2627,8 +2625,7 @@ func tuneFileLimits() error {
         return fmt.Errorf(&quot;error setting rlimit: %w&quot;, err)
     }
 
-    fmt.Printf(&quot;Updated limits: Cur=%d, Max=%d
-&quot;, rLimit.Cur, rLimit.Max)
+    fmt.Printf(&quot;Updated limits: Cur=%d, Max=%d\n&quot;, rLimit.Cur, rLimit.Max)
     return nil
 }
 </code></pre>
@@ -2639,6 +2636,7 @@ func tuneFileLimits() error {
   </div>
 </div>
 
+<p>Код выше пригодится на Go до 1.19 и когда нужно управлять лимитом осознанно (например, понизить его в дочернем процессе); в современном Go soft-лимит уже поднят самим рантаймом, но проверить <code>Cur</code>/<code>Max</code> при старте всё равно полезно.</p>
 <p>Если процесс превышает определенные лимиты ядра (например, CPU time <code>RLIMIT_CPU</code> или размер файла <code>RLIMIT_FSIZE</code>), ядро прерывает его сигналами <code>SIGXCPU</code> или <code>SIGKILL</code>.</p>
 <h3 id="3-vopros-na-sobesedovanii">3. Вопрос на собеседовании</h3>
 
@@ -2663,7 +2661,7 @@ func tuneFileLimits() error {
 <li><strong>Переключение контекста процесса</strong> — ресурсоемкая операция ядра. Смена таблиц страниц (<code>CR3</code>), инвалидация TLB и холодные кэши требуют микросекунд драгоценного времени CPU.</li>
 <li><strong>Рантайм Go</strong> мультиплексирует тысячи горутин (<code>G</code>) на небольшое количество потоков ОС (<code>M</code>), сохраняя адресное пространство единым и снижая стоимость переключения до наносекунд.</li>
 <li>Для взаимодействия с внешними процессами в Go используется пакет <code>os/exec</code>. Не забывайте вызывать <code>cmd.Wait()</code>: иначе вы рискуете породить армию неубиваемых зомби (<code>TASK_ZOMBIE</code>) и исчерпать общесистемный лимит <code>/proc/sys/kernel/pid_max</code>.</li>
-<li>Лимиты <code>ulimit</code> (особенно <code>RLIMIT_NOFILE</code>) — первая линия обороны бэкенда. При старте высоконагруженного сервиса обязательно проверяйте квоты через <code>syscall.Getrlimit</code> и <code>syscall.Setrlimit</code>.</li>
+<li>Лимиты <code>ulimit</code> (особенно <code>RLIMIT_NOFILE</code>) — первая линия обороны бэкенда. При старте высоконагруженного сервиса обязательно проверяйте квоты через <code>syscall.Getrlimit</code> (с Go 1.19 soft-лимит поднимается рантаймом автоматически, но hard-лимит может оказаться заниженным).</li>
 </ol>
 <p>В следующей статье <a href="6-kak-linux-sozdaet-protsessy-fork-exec-wait.html" class="wikilink">6. Как Linux создает процессы. fork, exec, wait</a> мы заглянем в самое сердце рождения процессов: разберем магию системных вызов <code>fork</code>, <code>execve</code> и <code>wait</code>, раскроем трюк Copy-On-Write и посмотрим, как ядро защищает себя от перегрузок.</p>
           </div>

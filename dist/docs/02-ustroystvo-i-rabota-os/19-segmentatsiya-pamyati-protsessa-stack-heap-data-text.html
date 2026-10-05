@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~40 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~42 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">19. Сегментация памяти процесса. Stack, Heap, Data, Text</h1>
@@ -2294,12 +2294,9 @@ func main() {
     var m runtime.MemStats
     runtime.ReadMemStats(&amp;m)
 
-    fmt.Printf(&quot;HeapAlloc: %d KB
-&quot;, m.HeapAlloc/1024)
-    fmt.Printf(&quot;HeapSys:   %d KB
-&quot;, m.HeapSys/1024)
-    fmt.Printf(&quot;HeapInuse: %d KB
-&quot;, m.HeapInuse/1024)
+    fmt.Printf(&quot;HeapAlloc: %d KB\n&quot;, m.HeapAlloc/1024)
+    fmt.Printf(&quot;HeapSys:   %d KB\n&quot;, m.HeapSys/1024)
+    fmt.Printf(&quot;HeapInuse: %d KB\n&quot;, m.HeapInuse/1024)
 }
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
@@ -2367,7 +2364,7 @@ sequenceDiagram
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p>Структура стека горутины в рантайме: <code>g.stack</code>, <code>g.stackguard0</code>, <code>g.stackguard1</code>. При переполнении вызывается <code>runtime.morestack_noctxt</code>, который делает <code>mmap</code> новой страницы, копирует текущий стек в новую область и обновляет <code>g.stack</code>. Это дорого, поэтому Go-разработчики стараются минимизировать рекурсию и большие локальные массивы в горутинах.</p>
+    <p>Структура стека горутины в рантайме: <code>g.stack</code>, <code>g.stackguard0</code>, <code>g.stackguard1</code>. При переполнении вызывается <code>runtime.morestack_noctxt</code>, который берёт новый блок из пулов стеков рантайма (а не делает отдельный <code>mmap</code>), копирует текущий стек в новую область и обновляет <code>g.stack</code>. Это дорого, поэтому Go-разработчики стараются минимизировать рекурсию и большие локальные массивы в горутинах.</p>
   </div>
 </aside>
 
@@ -2469,17 +2466,17 @@ flowchart TD
 <tr>
 <td style="text-align: left;"><strong>Выделение</strong></td>
 <td style="text-align: left;">Атомарные CAS, spinlocks, иногда syscall</td>
-<td style="text-align: left;"><code>madvise</code>, <code>munmap</code>, атомарные операции в рантайме</td>
+<td style="text-align: left;">Атомарные операции в рантайме; память под арены запрашивается через <code>mmap</code></td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong>Освобождение</strong></td>
 <td style="text-align: left;"><code>free()</code> (часто не возвращает OS, копит в bin'ах)</td>
-<td style="text-align: left;"><code>madvise(MADV_DONTNEED)</code> / <code>munmap</code> при <code>sysmon</code></td>
+<td style="text-align: left;"><code>madvise(MADV_DONTNEED)</code> фонового scavenger (отображение сохраняется)</td>
 </tr>
 </tbody>
 </table></div>
-<h3 id="mekhanizm-fonovogo-vozvrata-pamyati-sysmon-i-madvise">Механизм фонового возврата памяти: sysmon и madvise</h3>
-<p>Go-рантайм использует фоновый горутину <code>sysmon</code>, которая каждые 10 мс-1с проверяет, есть ли свободная память в heap. Если да, он вызывает <code>madvise</code> с флагом <code>MADV_DONTNEED</code>, сообщая ядру, что страница больше не нужна физически. Ядро отменяет маппинг, но виртуальное адресное пространство остается занятым. При следующем запросе <code>mmap</code> возвращает тот же адрес, и ядро заново выделяет физическую страницу (zero page). Это экономит RAM в долгоживущих сервисах.</p>
+<h3 id="mekhanizm-fonovogo-vozvrata-pamyati-scavenger-i-madvise">Механизм фонового возврата памяти: scavenger и madvise</h3>
+<p>Память ядру возвращает не <code>sysmon</code>, а отдельная фоновая горутина рантайма — scavenger (<code>bgscavenge</code>); <code>sysmon</code> лишь будит её при необходимости. Она вызывает <code>madvise</code> с флагом <code>MADV_DONTNEED</code> (на Linux это значение по умолчанию), сообщая ядру, что физическая страница больше не нужна. Отображение при этом <strong>сохраняется</strong>: виртуальное адресное пространство остаётся занятым, а при следующем обращении к этой странице ядро подставляет свежую обнулённую физическую страницу (zero-fill, а не повторный <code>mmap</code>). Это экономит RAM в долгоживущих сервисах.</p>
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2499,8 +2496,8 @@ flowchart TD
 <h2 id="6-podvodnye-kamni-i-voprosy-na-sobesedovaniyakh">🥊 6. Подводные камни и вопросы на собеседованиях</h2>
 
 <ol>
-<li><strong>Stack Overflow в Go vs C:</strong> В C переполнение стека = <code>SIGSEGV</code> и падение процесса. В Go горутина получает новый стек через <code>mmap</code>, продолжает работу, но если общая память горутины превысит лимит (обычно ~1 ГБ виртуальной памяти на горуину), рантайм выбросит <code>fatal error: goroutine stack exceeds 1GB</code>.</li>
-<li><strong>Как отладить утечку памяти?</strong> Используйте <code>go tool pprof heap</code> или <code>memstats</code>. Если <code>HeapAlloc</code> растет, а <code>HeapInuse</code> стабилен, скорее всего, это <code>mmap</code>-подпись. Проверьте, не создает ли код бесконечные горутины или не держит ли ссылки в <code>sync.Pool</code>.</li>
+<li><strong>Stack Overflow в Go vs C:</strong> В C переполнение стека = <code>SIGSEGV</code> и падение процесса. В Go горутина получает новый, вдвое больший стек из пулов рантайма и продолжает работу, но если стек превысит лимит (по умолчанию 1 ГБ на горутину), рантайм завершит процесс с <code>fatal error: stack overflow</code> (в тексте перед этим печатается <code>goroutine stack exceeds 1000000000-byte limit</code>). В контейнере с лимитом памяти процесс может быть убит <code>SIGKILL</code> раньше, без всякой диагностики.</li>
+<li><strong>Как отладить утечку памяти?</strong> Используйте <code>go tool pprof heap</code> или <code>memstats</code>. Помните, что <code>HeapInuse</code> включает все занятые спаны, поэтому всегда не меньше <code>HeapAlloc</code>; разница между ними — оценка фрагментации. Если растёт <code>HeapInuse</code> при стабильном объёме живых данных (<code>HeapAlloc</code> после GC), ищите фрагментацию или удерживаемые ссылки. Проверьте, не создает ли код бесконечные горутины или не держит ли ссылки в <code>sync.Pool</code>.</li>
 <li><strong>Влияние <code>unsafe.Pointer</code> на память:</strong> Использование <code>unsafe</code> для обхода аллокатора может привести к записям в guard page стека или пересечению границ <code>span</code>'ов, что вызовет panic или corruption памяти. Всегда проверяйте выравнивание через <code>unsafe.Alignof</code>.</li>
 <li><strong>Сравнение с PHP/Java:</strong> В PHP память скрипта полностью очищается после каждого запроса. В Java heap управляется JVM и часто использует <code>brk</code>/<code>mmap</code> гибридно. Go делает heap частью процесса на весь его жизненный цикл, что требует careful tuning GC (<code>GOGC</code>, <code>GOMEMLIMIT</code>), но дает zero-GC overhead для короткоживущих данных (stack).</li>
 </ol>
@@ -2510,7 +2507,7 @@ flowchart TD
 <p>Сегментация памяти процесса — это строгий контракт между компилятором, рантаймом и операционной системой:<br />
 1. <strong>Text/Data/BSS</strong> статичны и определены на этапе компиляции: Text хранит неизменяемый машинный код, Data — начальные значения глобальных переменных, а BSS выделяется ядром в виде чистых нулей.<br />
 2. <strong>Heap</strong> в Go — это огромная <code>mmap</code>-область, управляемая собственным аллокатором через <code>span</code>'ы, что дает контроль над фрагментацией и конкурентным GC.<br />
-3. <strong>Stack</strong> горутины динамичен (2KB -&gt; grows), хранится в heap и защищен guard page.<br />
+3. <strong>Stack</strong> горутины динамичен (2KB -&gt; grows), хранится в куче рантайма; переполнение ловит проверка в прологе функции (<code>stackguard0</code>), а не guard page.<br />
 4. <strong>Mechanical Sympathy</strong> требует внимания к выравнианию, локальности данных и стоимости аллокаций (stack vs heap).</p>
 <p>Понимание этой карты позволяет писать код, который уважает кэш-линии процессора, минимизирует GC-паузы и корректно взаимодействует с системными вызовами. В следующей статье мы опустимся на уровень регистров процессора и разберем, как именно данные, аргументы и адреса возврата укладываются в кадр функции: <code>&lt;a href="20-stek-vyzovov-i-stek-kadra-funktsii.html" class="wikilink"&gt;20. Стек вызовов и стек кадра функции&lt;/a&gt;</code>.</p>
           </div>
@@ -2540,7 +2537,7 @@ flowchart TD
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#1-anatomiya-virtualnogo-adresnogo-prostranstva-protsessa">🗺️ 1. Анатомия виртуального адресного пространства процесса</a></li><li class="toc-item toc-h2"><a href="#2-klassicheskie-segmenty-pamyati-elf-binarnika">🔬 2. Классические сегменты памяти ELF-бинарника</a></li><li class="toc-item toc-h3"><a href="#0x0-zashchitnaya-stranitsa-ot-razymenovaniya-null">0x0: Защитная страница от разыменования NULL</a></li><li class="toc-item toc-h3"><a href="#1-text-code-segment-text">1. Text (Code Segment — .text)</a></li><li class="toc-item toc-h3"><a href="#2-data-i-bss-segmenty-globalnykh-sostoyaniy">2. Data и BSS (Сегменты глобальных состояний)</a></li><li class="toc-item toc-h3"><a href="#3-heap-klassicheskaya-kucha">3. Heap (Классическая куча)</a></li><li class="toc-item toc-h3"><a href="#4-stack-stek-vyzovov-potoka">4. Stack (Стек вызовов потока)</a></li><li class="toc-item toc-h2"><a href="#3-revolyutsiya-go-runtime-mmap-areny-i-dinamicheskie-steki">🚀 3. Революция Go: Runtime, Mmap-арены и динамические стеки</a></li><li class="toc-item toc-h3"><a href="#heap-go-polnyy-otkaz-ot-brk-v-polzu-mmap">Heap Go: полный отказ от brk в пользу mmap</a></li><li class="toc-item toc-h3"><a href="#goroutine-stacks-dinamicheskiy-nepreryvnyy-stek-2-kb-vmesto-8-mb">Goroutine Stacks: Динамический непрерывный стек (2 КБ вместо 8 МБ)</a></li><li class="toc-item toc-h2"><a href="#4-mechanical-sympathy-apparatnaya-effektivnost-i-keshi-cpu">⚡ 4. Mechanical Sympathy: Аппаратная эффективность и кэши CPU</a></li><li class="toc-item toc-h3"><a href="#1-vyravnivanie-struktur-i-false-sharing-kesh-liniy">1. Выравнивание структур и False Sharing кэш-линий</a></li><li class="toc-item toc-h3"><a href="#2-escape-analysis-stack-protiv-heap">2. Escape Analysis: Stack против Heap</a></li><li class="toc-item toc-h3"><a href="#3-tlb-i-fragmentation-fragmentatsiya-pamyati">3. TLB и fragmentation (фрагментация памяти)</a></li><li class="toc-item toc-h2"><a href="#5-pod-kapotom-sravnenie-glibc-malloc-i-allokatora-go">⚙️ 5. Под капотом: Сравнение glibc malloc и аллокатора Go</a></li><li class="toc-item toc-h3"><a href="#mekhanizm-fonovogo-vozvrata-pamyati-sysmon-i-madvise">Механизм фонового возврата памяти: sysmon и madvise</a></li><li class="toc-item toc-h2"><a href="#6-podvodnye-kamni-i-voprosy-na-sobesedovaniyakh">🥊 6. Подводные камни и вопросы на собеседованиях</a></li><li class="toc-item toc-h2"><a href="#itog">🎯 Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#1-anatomiya-virtualnogo-adresnogo-prostranstva-protsessa">🗺️ 1. Анатомия виртуального адресного пространства процесса</a></li><li class="toc-item toc-h2"><a href="#2-klassicheskie-segmenty-pamyati-elf-binarnika">🔬 2. Классические сегменты памяти ELF-бинарника</a></li><li class="toc-item toc-h3"><a href="#0x0-zashchitnaya-stranitsa-ot-razymenovaniya-null">0x0: Защитная страница от разыменования NULL</a></li><li class="toc-item toc-h3"><a href="#1-text-code-segment-text">1. Text (Code Segment — .text)</a></li><li class="toc-item toc-h3"><a href="#2-data-i-bss-segmenty-globalnykh-sostoyaniy">2. Data и BSS (Сегменты глобальных состояний)</a></li><li class="toc-item toc-h3"><a href="#3-heap-klassicheskaya-kucha">3. Heap (Классическая куча)</a></li><li class="toc-item toc-h3"><a href="#4-stack-stek-vyzovov-potoka">4. Stack (Стек вызовов потока)</a></li><li class="toc-item toc-h2"><a href="#3-revolyutsiya-go-runtime-mmap-areny-i-dinamicheskie-steki">🚀 3. Революция Go: Runtime, Mmap-арены и динамические стеки</a></li><li class="toc-item toc-h3"><a href="#heap-go-polnyy-otkaz-ot-brk-v-polzu-mmap">Heap Go: полный отказ от brk в пользу mmap</a></li><li class="toc-item toc-h3"><a href="#goroutine-stacks-dinamicheskiy-nepreryvnyy-stek-2-kb-vmesto-8-mb">Goroutine Stacks: Динамический непрерывный стек (2 КБ вместо 8 МБ)</a></li><li class="toc-item toc-h2"><a href="#4-mechanical-sympathy-apparatnaya-effektivnost-i-keshi-cpu">⚡ 4. Mechanical Sympathy: Аппаратная эффективность и кэши CPU</a></li><li class="toc-item toc-h3"><a href="#1-vyravnivanie-struktur-i-false-sharing-kesh-liniy">1. Выравнивание структур и False Sharing кэш-линий</a></li><li class="toc-item toc-h3"><a href="#2-escape-analysis-stack-protiv-heap">2. Escape Analysis: Stack против Heap</a></li><li class="toc-item toc-h3"><a href="#3-tlb-i-fragmentation-fragmentatsiya-pamyati">3. TLB и fragmentation (фрагментация памяти)</a></li><li class="toc-item toc-h2"><a href="#5-pod-kapotom-sravnenie-glibc-malloc-i-allokatora-go">⚙️ 5. Под капотом: Сравнение glibc malloc и аллокатора Go</a></li><li class="toc-item toc-h3"><a href="#mekhanizm-fonovogo-vozvrata-pamyati-scavenger-i-madvise">Механизм фонового возврата памяти: scavenger и madvise</a></li><li class="toc-item toc-h2"><a href="#6-podvodnye-kamni-i-voprosy-na-sobesedovaniyakh">🥊 6. Подводные камни и вопросы на собеседованиях</a></li><li class="toc-item toc-h2"><a href="#itog">🎯 Итог</a></li>
   </ul>
 </aside>
 

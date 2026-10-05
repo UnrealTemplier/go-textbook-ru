@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~22 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~23 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">29. Демоны и фоновые процессы</h1>
@@ -2262,16 +2262,23 @@ flowchart TD
     </button>
   </header>
   <pre class="language-go"><code class="language-go">func daemonize() error {
-    // 1. Fork и завершение родителя
-    pid, _, err := syscall.ForkExec(&quot;/proc/self/exe&quot;, os.Args, &amp;syscall.ProcAttr{
-        Dir: &quot;.&quot;,
+    // Защита от рекурсии: потомок запускает тот же бинарник и снова попал бы в daemonize().
+    // Поэтому помечаем потомка переменной окружения и в нём ничего не делаем.
+    if os.Getenv(&quot;DAEMONIZED&quot;) == &quot;1&quot; {
+        return nil
+    }
+
+    // 1. Fork+exec нового экземпляра и завершение родителя
+    pid, err := syscall.ForkExec(&quot;/proc/self/exe&quot;, os.Args, &amp;syscall.ProcAttr{
+        Dir:   &quot;.&quot;,
+        Env:   append(os.Environ(), &quot;DAEMONIZED=1&quot;),
         Files: []uintptr{os.Stdin.Fd(), os.Stdout.Fd(), os.Stderr.Fd()},
+        Sys:   &amp;syscall.SysProcAttr{Setsid: true}, // новая сессия: отрыв от терминала
     })
     if err != nil {
         return fmt.Errorf(&quot;fork failed: %w&quot;, err)
     }
-    fmt.Printf(&quot;Daemon started with PID: %d
-&quot;, pid)
+    fmt.Printf(&quot;Daemon started with PID: %d\n&quot;, pid)
     return nil
 }
 </code></pre>
@@ -2288,7 +2295,7 @@ flowchart TD
     <span class="callout-title">Ловушка / Gotcha</span>
   </header>
   <div class="callout-body">
-    <p>В Go <code>os/exec</code> не умеет автоматически вызывать <code>setsid()</code>. Если вы просто используете <code>exec.Command</code>, дочерний процесс унаследует группу процессов и терминал. Для правильного отрыва нужен syscall <code>setsid()</code> или использование библиотек вроде <code>github.com/sevlyar/go-daemon</code>. В современных реалиях это почти никогда не требуется, так как <code>systemd</code> делает это за вас. Более того, в многопоточном рантайме Go ручной вызов <code>fork()</code> крайне опасен, так как он копирует состояние только одного потока ОС, оставляя рантайм, горутины и мьютексы в поврежденном состоянии.</p>
+    <p>По умолчанию <code>os/exec</code> не вызывает <code>setsid()</code>: если вы просто используете <code>exec.Command</code>, дочерний процесс унаследует группу процессов и терминал. Но отрыв делается штатно: достаточно выставить <code>SysProcAttr{Setsid: true}</code> (как в примере выше), либо использовать библиотеки вроде <code>github.com/sevlyar/go-daemon</code>. В современных реалиях это почти никогда не требуется, так как <code>systemd</code> делает это за вас. Более того, в многопоточном рантайме Go ручной вызов <code>fork()</code> крайне опасен, так как он копирует состояние только одного потока ОС, оставляя рантайм, горутины и мьютексы в поврежденном состоянии.</p>
   </div>
 </aside>
 
@@ -2341,7 +2348,7 @@ flowchart TD
     ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
     defer cancel()
 
-    srv := http.NewServer()
+    srv := &amp;http.Server{Addr: &quot;:8080&quot;}
     go func() {
         &lt;-ctx.Done()
         fmt.Println(&quot;Received shutdown signal, draining...&quot;)
@@ -2368,7 +2375,7 @@ flowchart TD
 <p>Современный Linux отказался от самодиагностируемых демонов. <code>systemd</code> (PID 1) управляет сервисами через юнит-файлы <code>.service</code>. Это меняет подход к написанию Go-приложений:</p>
 <ol>
 <li><strong>Не нужно делать <code>setsid()</code> или <code>fork()</code></strong>. <code>systemd</code> сам создает изолированную среду.</li>
-<li><strong><code>Type=simple</code></strong> (по умолчанию): <code>systemd</code> считает сервис запущенным сразу после вызова <code>execve()</code>.</li>
+<li><strong><code>Type=simple</code></strong> (по умолчанию): <code>systemd</code> считает сервис запущенным сразу после <code>fork()</code> главного процесса, ещё до его <code>execve()</code> (поэтому для сервисов, которым важно, что бинарник действительно запустился, чаще лучше <code>Type=exec</code>).</li>
 <li><strong><code>Type=notify</code></strong>: Сервис должен отправить сообщение в <code>sd-daemon</code> через <code>sd_notify()</code> после инициализации. Это позволяет <code>systemd</code> ждать готовности (например, пока база данных подключится).</li>
 <li><strong><code>Type=forking</code></strong>: Для старых демонов. <code>systemd</code> ждет, пока родительский процесс завершится, и считает потомка основным.</li>
 <li><strong>Логирование</strong>: <code>systemd</code> перехватывает <code>stdout</code> и <code>stderr</code> и пишет их в <code>journald</code>. Не нужно настраивать syslog-драйверы вручную.</li>
@@ -2407,7 +2414,7 @@ WantedBy=multi-user.target
   </div>
 </div>
 
-<p>Для интеграции с <code>Type=notify</code> используется официальный пакет: <code>github.com/coreos/go-systemd/v22/sdnotify</code>.</p>
+<p>Для интеграции с <code>Type=notify</code> используется официальный пакет: <code>github.com/coreos/go-systemd/v22/daemon</code> (функция <code>daemon.SdNotify</code>).</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -2430,7 +2437,7 @@ sequenceDiagram
     Systemd-&gt;&gt;Daemon: Запуск процесса (Type=notify)
     Daemon-&gt;&gt;DB: Подключение к БД и прогрев пулов
     DB--&gt;&gt;Daemon: Успешное подключение
-    Daemon-&gt;&gt;Systemd: sdnotify.Ready() через сокет NOTIFY_SOCKET
+    Daemon-&gt;&gt;Systemd: daemon.SdNotify(SdNotifyReady) через сокет NOTIFY_SOCKET
     Note over Systemd: systemd отмечает сервис как ACTIVE (running)
     Systemd--&gt;&gt;Systemd: Запуск зависимых сервисов
   </pre>
@@ -2444,7 +2451,7 @@ sequenceDiagram
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> В чем разница между <code>Type=simple</code> и <code>Type=notify</code> в systemd?<br />
-<strong>Ответ:</strong> <code>Type=simple</code> считает процесс живым с момента запуска. Если приложение зависнет на старте (например, ждет БД), systemd не узнает об этом и может отправить <code>SIGKILL</code> по таймауту. <code>Type=notify</code> требует от приложения отправить сообщение через <code>sd_notify()</code>. Это гарантирует, что systemd знает о реальной готовности сервиса. Для Go это реализуется через <code>sdnotify.Notify()</code> после запуска HTTP-сервера и подключения к БД.</p>
+<strong>Ответ:</strong> <code>Type=simple</code> считает процесс живым с момента запуска. Если приложение зависнет на старте (например, ждет БД), systemd не узнает об этом и может отправить <code>SIGKILL</code> по таймауту. <code>Type=notify</code> требует от приложения отправить сообщение через <code>sd_notify()</code>. Это гарантирует, что systemd знает о реальной готовности сервиса. Для Go это реализуется через <code>daemon.SdNotify(false, daemon.SdNotifyReady)</code> после запуска HTTP-сервера и подключения к БД.</p>
   </div>
 </aside>
 
@@ -2473,7 +2480,7 @@ import (
     &quot;syscall&quot;
     &quot;time&quot;
 
-    &quot;github.com/coreos/go-systemd/v22/sdnotify&quot;
+    &quot;github.com/coreos/go-systemd/v22/daemon&quot;
 )
 
 func main() {
@@ -2509,7 +2516,7 @@ func main() {
     }
 
     // 6. Уведомление systemd о завершении
-    sdnotify.Stopping()
+    _, _ = daemon.SdNotify(false, daemon.SdNotifyStopping)
     fmt.Println(&quot;Server exited&quot;)
 }
 </code></pre>
@@ -2538,7 +2545,7 @@ func main() {
 <li><strong>Под капотом:</strong> Отрыв от терминала меняет принадлежность к процессной группе и сессии в ядре Linux. Это предотвращает рассылку <code>SIGHUP</code> и освобождает управляющие ресурсы.</li>
 <li><strong>Сигналы:</strong> <code>SIGTERM</code> — стандарт для остановки. Go перехватывает его через каналы. Только одна горутина может слушать канал сигналов.</li>
 <li><strong>systemd:</strong> Современный стандарт. Отказ от ручной демонизации в пользу <code>Type=notify</code> и перехвата stdout/stderr в <code>journald</code>.</li>
-<li><strong>Go-паттерн:</strong> <code>signal.NotifyContext</code> + <code>context.WithTimeout</code> + <code>srv.Shutdown()</code> + <code>sdnotify</code> = надежный сервисный код.</li>
+<li><strong>Go-паттерн:</strong> <code>signal.NotifyContext</code> + <code>context.WithTimeout</code> + <code>srv.Shutdown()</code> + <code>daemon.SdNotify</code> = надежный сервисный код.</li>
 </ol>
 <p>Мы разобрали, как процессы живут в фоне и как ОС управляет их жизненным циклом. Теперь логично перейти к тому, как именно <code>systemd</code> реализует это управление, какие директивы важны для Go-приложений и как работает активация сокетов. В следующей статье мы разберем: <code>&lt;a href="30-systemd-upravlenie-servisami-v-linux.html" class="wikilink"&gt;30. systemd. Управление сервисами в Linux&lt;/a&gt;</code>.</p>
           </div>

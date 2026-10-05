@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~41 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~40 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 5 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">47. Сетевая подсистема ОС</h1>
@@ -2440,7 +2440,7 @@ flowchart TD
 <tr>
 <td><code>net.core.somaxconn</code></td>
 <td>Максимальная длина очереди полностью установленных соединений (<code>listen</code>)</td>
-<td>Жесткий потолок для параметра <code>net.ListenConfig.Backlog</code></td>
+<td>Потолок для <code>backlog</code>: именно это значение Go читает из <code>/proc/sys/net/core/somaxconn</code> и передаёт в <code>listen()</code> (поля <code>Backlog</code> у <code>net.ListenConfig</code> нет)</td>
 </tr>
 <tr>
 <td><code>net.ipv4.tcp_rmem</code></td>
@@ -2497,7 +2497,7 @@ flowchart LR
 <p>Здесь бэкенд-разработчика подстерегают два скрытых механизма ядра:<br />
 1. <strong>Удвоение памяти:</strong> Ядро автоматически <strong>умножает</strong> запрошенное значение на 2. Зачем? Чтобы зарезервировать память не только под полезную нагрузку пакета, но и под служебные метаданные ядра (<code>struct sk_buff</code>).<br />
 2. <strong>Ограничение сверху:</strong> Полученное значение ядро жестко <strong>обрезает</strong> по лимиту <code>net.core.rmem_max</code>. Если в системе <code>rmem_max</code> равен 256 КБ, ваш запрос на 1 МБ будет молча урезан!</p>
-<p>Аналогичная ловушка кроется в очереди <code>listen</code>. Если системный лимит <code>somaxconn</code> по умолчанию равен 128, а вы передали <code>Backlog: 1024</code> в структуре <code>net.ListenConfig</code>, ядро молча проигнорирует ваше желание и выставит <code>backlog = 128</code>.<br />
+<p>Аналогичная ловушка кроется в очереди <code>listen</code>. Если системный лимит <code>somaxconn</code> мал (до ядра 5.4 по умолчанию был 128, начиная с 5.4 — 4096), а приложение запросило в <code>listen()</code> больше, ядро молча проигнорирует это желание и выставит <code>backlog = somaxconn</code>. В Go запросить своё значение нельзя: у <code>net.ListenConfig</code> нет поля <code>Backlog</code>, пакет <code>net</code> сам вызывает <code>listen(fd, somaxconn)</code>.<br />
 В моменты пикового наплыва клиентов очередь мгновенно переполнится, и ядро начнет отбрасывать входящие пакеты SYN, а клиенты получат таймауты подключения.</p>
   </div>
 </aside>
@@ -2522,9 +2522,9 @@ flowchart LR
     <span class="callout-title">Собеседование</span>
   </header>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Почему конструкция <code>net.ListenConfig{KeepAlive: 30s}</code> в Go не устанавливает детальные таймауты TCP Keep-Alive на уровне ядра Linux, и как это исправить?</p>
-<p><strong>Ответ:</strong> Стандартная опция <code>KeepAlive</code> в <code>net.ListenConfig</code> лишь активирует флаг сокета <code>SO_KEEPALIVE</code>. Однако детальные интервалы зондирования мертвого соединения (<code>tcp_keepalive_time</code>, <code>tcp_keepalive_intvl</code>, <code>tcp_keepalive_probes</code>) берутся из глобальных настроек операционной системы (<code>net.ipv4.tcp_keepalive_time</code> по умолчанию равен 7200 секундам, то есть 2 часам!). Если клиент отключится без отправки пакета <code>FIN</code> (например, оборвался кабель или выключилось питание), сервер будет удерживать сокет открытым целых два часа!</p>
-<p>Чтобы переопределить эти параметры индивидуально для сервиса, необходимо воспользоваться хуком <code>Control</code> в <code>net.ListenConfig</code> и напрямую вызвать <code>setsockopt</code> с флагами <code>TCP_KEEPIDLE</code> и <code>TCP_KEEPINTVL</code> до того, как будет выполнен системный вызов <code>listen()</code>:</p>
+    <p><strong>Вопрос:</strong> Что на самом деле делает <code>net.ListenConfig{KeepAlive: 30s}</code> в Go, и как задать детальные параметры TCP Keep-Alive (idle, interval, count)?</p>
+<p><strong>Ответ:</strong> <code>KeepAlive</code> в <code>net.ListenConfig</code> не просто включает <code>SO_KEEPALIVE</code>: пакет <code>net</code> сам выставляет на каждом принятом соединении <code>TCP_KEEPIDLE</code> (при <code>KeepAlive: 30s</code> это 30 секунд) и <code>TCP_KEEPINTVL</code> (по умолчанию 15 секунд). Даже при значении по умолчанию Go включает keep-alive с idle = 15 с и interval = 15 с, а не берёт 7200 секунд (2 часа) из <code>net.ipv4.tcp_keepalive_time</code>. Так что мёртвое соединение сервер не продержит два часа, если вы не отключите keep-alive сами.</p>
+<p>Важная ловушка: хук <code>Control</code> в <code>net.ListenConfig</code> вызывается до <code>listen()</code> на слушающем сокете, а настройки keep-alive Go выставляет уже на <em>принятых</em> соединениях и затирает ими значения из хука. Поэтому <code>setsockopt(TCP_KEEPIDLE/TCP_KEEPINTVL)</code> внутри <code>Control</code> на принятые соединения не влияет. Рабочие способы: поле <code>KeepAliveConfig</code> в <code>net.ListenConfig</code> (Go 1.23+), метод <code>SetKeepAliveConfig</code> у <code>*net.TCPConn</code> после <code>Accept</code>, либо <code>KeepAlive: -1</code> (отключает настройку Go) вместе с <code>setsockopt</code> в <code>Control</code>. Пример с <code>KeepAliveConfig</code>:</p>
   </div>
 </aside>
 
@@ -2541,41 +2541,20 @@ flowchart LR
 
 import (
     &quot;context&quot;
-    &quot;errors&quot;
     &quot;fmt&quot;
     &quot;net&quot;
-    &quot;syscall&quot;
     &quot;time&quot;
 )
 
-// keepAliveControl настраивает индивидуальные таймауты TCP Keep-Alive на сокете Linux
-func keepAliveControl(network, addr string, c syscall.RawConn) error {
-    var ctrlErr error
-    err := c.Control(func(fd uintptr) {
-        // 1. Включаем SO_KEEPALIVE на уровне SOL_SOCKET
-        if err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_KEEPALIVE, 1); err != nil {
-            ctrlErr = fmt.Errorf(&quot;ошибка SO_KEEPALIVE: %w&quot;, err)
-            return
-        }
-        // 2. Время простоя соединения до первого зонда Keep-Alive: 30 секунд (TCP_KEEPIDLE)
-        const tcpKeepIdle = 4 // В Linux syscall.TCP_KEEPIDLE равен 4
-        if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_TCP, tcpKeepIdle, 30); err != nil {
-            ctrlErr = fmt.Errorf(&quot;ошибка TCP_KEEPIDLE: %w&quot;, err)
-            return
-        }
-        // 3. Интервал между повторными зондами: 10 секунд (TCP_KEEPINTVL)
-        const tcpKeepIntvl = 5 // В Linux syscall.TCP_KEEPINTVL равен 5
-        if err := syscall.SetsockoptInt(int(fd), syscall.IPPROTO_TCP, tcpKeepIntvl, 10); err != nil {
-            ctrlErr = fmt.Errorf(&quot;ошибка TCP_KEEPINTVL: %w&quot;, err)
-            return
-        }
-    })
-    return errors.Join(err, ctrlErr)
-}
-
 func main() {
     lc := net.ListenConfig{
-        Control: keepAliveControl,
+        // Go 1.23+: детальная настройка keep-alive принятых соединений
+        KeepAliveConfig: net.KeepAliveConfig{
+            Enable:   true,
+            Idle:     30 * time.Second, // TCP_KEEPIDLE: простой до первого зонда
+            Interval: 10 * time.Second, // TCP_KEEPINTVL: интервал между зондами
+            Count:    3,                // TCP_KEEPCNT: число неудачных зондов
+        },
     }
 
     listener, err := lc.Listen(context.Background(), &quot;tcp&quot;, &quot;:8080&quot;)

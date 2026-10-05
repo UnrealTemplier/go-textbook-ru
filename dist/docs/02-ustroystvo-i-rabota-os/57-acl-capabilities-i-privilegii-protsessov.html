@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~29 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~30 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 4 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">57. ACL, capabilities и привилегии процессов</h1>
@@ -2424,7 +2424,7 @@ sequenceDiagram
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p>Проверка capabilities происходит через атомарные операции в пространстве ядра. Ядро не делает полных переключений контекста на каждый bit-check. Однако, если процесс меняет свои права через <code>capset()</code> или <code>prctl(PR_CAP_AMBIENT)</code>, это требует перехода в Ring 0 и блокировки <code>cred_guard_mutex</code> в ядре, что может вызвать конкуренцию в высокопараллельных Go-приложениях, использующих <code>os.Setuid</code>/<code>os.Setgid</code>.</p>
+    <p>Проверка capabilities происходит через атомарные операции в пространстве ядра. Ядро не делает полных переключений контекста на каждый bit-check. Однако, если процесс меняет свои права через <code>capset()</code> или <code>prctl(PR_CAP_AMBIENT)</code>, это требует перехода в Ring 0 и блокировки <code>cred_guard_mutex</code> в ядре, что может вызвать конкуренцию в высокопараллельных Go-приложениях, использующих <code>syscall.Setuid</code>/<code>syscall.Setgid</code>. Важная оговорка: в отличие от <code>syscall.Setuid</code>, вызовы <code>capset()</code> и <code>prctl(PR_CAP_AMBIENT)</code> в Go <strong>не</strong> рассылаются всем потокам: <code>unix.Capset</code> действует на один поток, остальные потоки процесса сохраняют прежние capabilities.</p>
   </div>
 </aside>
 
@@ -2468,9 +2468,9 @@ func dropPrivileges(uid, gid int) error {
         return fmt.Errorf(&quot;setuid: %w&quot;, err)
     }
 
-    // 3. Очищаем effective capabilities (для безопасности)
-    // Go не имеет прямого syscall обертки, поэтому используем syscall.CAP_CLEAR
-    // В production чаще используют capsh или nsenter, но для понимания сути:
+    // 3. Очистка capabilities здесь не показана (константы syscall.CAP_CLEAR не существует).
+    // Для управления наборами capabilities используют unix.Capset (см. статью про SELinux и AppArmor),
+    // помня, что capset действует на один поток, либо внешние средства вроде capsh.
     return nil
 }
 
@@ -2506,7 +2506,7 @@ func main() {
   </header>
   <div class="callout-body">
     <p><strong>Потеря capabilities при <code>execve</code></strong><br />
-Если вы используете <code>os/exec</code> для запуска дочерних процессов, по умолчанию capabilities <strong>НЕ наследуются</strong>, если не установлен флаг <code>NoSetuid</code>/<code>NoSetgid</code> или не настроен <code>Inheritable</code> набор. В контейнерной среде (Docker/K8s) runtime сам управляет <code>bounding set</code> и <code>effective set</code>. Попытка поднять права внутри контейнера (<code>capadd</code>) без соответствующих прав на хосте приведет к <code>EPERM</code>.</p>
+Если вы используете <code>os/exec</code> для запуска дочерних процессов, по умолчанию capabilities <strong>НЕ наследуются</strong>, если не настроен <code>Inheritable</code> набор; передать capability потомку позволяет поле <code>SysProcAttr.AmbientCaps</code>. В контейнерной среде (Docker/K8s) runtime сам управляет <code>bounding set</code> и <code>effective set</code>. Попытка поднять права внутри контейнера (<code>capadd</code>) без соответствующих прав на хосте приведет к <code>EPERM</code>.</p>
 <p><strong>Опасность <code>CAP_SYS_ADMIN</code></strong><br />
 В Docker/K8s этот capability часто дают "на всякий случай". Но он эквивалентен полному <code>root</code> и позволяет монтировать ФС, менять системное время, использовать <code>ptrace</code> и обходить многие изоляции. В современных кластерах его следует отключать (<code>drop: [SYS_ADMIN]</code>) и заменять на точечные <code>CAP_NET_ADMIN</code>, <code>CAP_SYS_PTRACE</code> и т.д.</p>
   </div>
@@ -2521,7 +2521,7 @@ func main() {
     <p><strong>Вопрос:</strong> В чем разница между <code>setuid</code> и capabilities? Почему в современных ОС предпочитают capabilities?<br />
 <strong>Ответ:</strong> <code>setuid</code> дает процессу полный <code>UID=0</code> (абсолютную власть), включая доступ к <code>/proc</code>, изменение любых файлов и отключение безопасности. Capabilities дробят эту власть на независимые биты. Процесс с <code>CAP_NET_BIND_SERVICE</code> не сможет прочитать <code>/etc/shadow</code> или изменить системное время. Это снижает поверхность атаки: если в коде произойдет RCE, злоумышленник получит только те права, которые были нужны приложению, а не полный контроль над хостом.</p>
 <p><strong>Вопрос:</strong> Как проверить, какие capabilities есть у текущего процесса в Go?<br />
-<strong>Ответ:</strong> Стандартная библиотека не предоставляет прямого API. Используют <code>syscall.Getpid()</code> для получения PID, затем парсят <code>/proc/&lt;pid&gt;/status</code> (поле <code>CapEff</code>) или используют <code>github.com/capabilities/cap</code> / <code>github.com/syndtr/gocapability</code>. В production чаще используют <code>capsh --print</code> или <code>getpcaps</code>.</p>
+<strong>Ответ:</strong> Стандартная библиотека не предоставляет прямого API. Используют <code>syscall.Getpid()</code> для получения PID, затем парсят <code>/proc/&lt;pid&gt;/status</code> (поле <code>CapEff</code>) или используют библиотеку <code>github.com/syndtr/gocapability</code>. В production чаще используют <code>capsh --print</code> или <code>getpcaps</code>.</p>
   </div>
 </aside>
 

@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~39 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~40 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">6. Как Linux создает процессы. fork, exec, wait</h1>
@@ -2404,14 +2404,13 @@ func runCommand() error {
     }
 
     // 5. Ожидание завершения (внутренне: waitpid)
-    // cmd.Wait блокирует только текущую горутину, уступая поток M другим задачам!
+    // cmd.Wait блокирует текущую горутину; в системном вызове ожидания застревает её поток M,
+    // но рантайм передаёт P другому потоку, и остальные горутины работают дальше.
     if err := cmd.Wait(); err != nil {
         return fmt.Errorf(&quot;process exited with error: %w (stderr: %s)&quot;, err, stderr.String())
     }
 
-    fmt.Printf(&quot;Output:
-%s
-&quot;, stdout.String())
+    fmt.Printf(&quot;Output:\n%s\n&quot;, stdout.String())
     return nil
 }
 
@@ -2433,13 +2432,13 @@ func main() {
 <ol>
 <li><strong><code>cmd.Start()</code> вызывает <code>os.ForkExec</code> / <code>syscall.ForkExec</code>:</strong><br />
    Классический <code>fork()</code> в многопоточной программе смертельно опасен: если в момент форка другой тред родительского процесса удерживал внутренний мьютекс аллокатора памяти, в дочернем процессе этот мьютекс навсегда останется заблокированным, что приведет к мгновенному дедлоку при любой аллокации.<br />
-   Поэтому рантайм Go написан на чистом ассемблере и низкоуровневых системных вызовах: в Linux Go вызывает системный вызов <code>clone</code> с флагами <code>CLONE_VFORK | CLONE_VM | SIGCHLD</code>. Потомок не дублирует память родителя, а временно использует ее, не совершая аллокаций, и сразу переходит к <code>execve()</code>.</li>
+   Поэтому код между созданием потомка и <code>execve</code> в пакете <code>syscall</code> (<code>forkAndExecInChild</code>) написан очень осторожно: на Go, но в режиме <code>nosplit</code> и без аллокаций (ассемблерными остаются лишь самые низкоуровневые вставки вроде <code>rawVforkSyscall</code>). В Linux Go вызывает системный вызов <code>clone</code> с флагами <code>CLONE_VFORK | CLONE_VM | SIGCHLD</code>. Потомок не дублирует память родителя, а временно использует ее, не совершая аллокаций, и сразу переходит к <code>execve()</code>.</li>
 <li><strong>Изоляция дескрипторов:</strong><br />
    Флаг <code>CLONE_FILES</code> намеренно <strong>не передается</strong>: потомку необходима независимая таблица дескрипторов, чтобы безопасно настроить пайпы и перенаправить stdin/stdout/stderr через <code>dup3</code>/<code>dup2</code> перед вызовом <code>execve</code>, не повреждая дескрипторы родительского процесса.</li>
 <li><strong>Потомок вызывает <code>execve()</code>:</strong><br />
    Образ процесса замещается указанным исполняемым файлом.</li>
-<li><strong><code>cmd.Wait()</code> вызывает <code>syscall.Wait4</code> (обертка над <code>waitpid</code>):</strong><br />
-   Горутина засыпает на канале ожидания. Фоновый поток рантайма отслеживает системные события и будит горутину, когда ядро передает статус завершения процесса. Если вы забыли вызвать <code>Wait()</code>, процесс гарантированно станет зомби, а выделенные файловые дескрипторы пайпов зависнут в открытом состоянии.</li>
+<li><strong><code>cmd.Wait()</code> ждёт завершения потомка</strong> (на современных ядрах через <code>waitid</code> по pidfd, иначе через <code>wait4</code>, обёртку над <code>waitpid</code>):<br />
+   Это обычный блокирующий системный вызов: он удерживает поток <code>M</code>, а рантайм передаёт <code>P</code> другому потоку (hand-off), так что остальные горутины продолжают работать. Когда ядро отдаёт статус завершения, вызов возвращается. Если вы забыли вызвать <code>Wait()</code>, процесс гарантированно станет зомби, а выделенные файловые дескрипторы пайпов зависнут в открытом состоянии.</li>
 </ol>
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -2481,7 +2480,7 @@ func main() {
 <li><strong>Copy-On-Write (COW)</strong> защищает систему от бессмысленного копирования терабайтов памяти: физические страницы делятся между процессами до первой попытки модификации данных.</li>
 <li>Системный вызов <strong><code>execve</code></strong> не создает новый процесс, а замещает тело и память существующего процесса новым кодом в формате ELF.</li>
 <li>Процесс, код которого завершился, остается зомби (<code>TASK_ZOMBIE</code>) в таблице ядра до тех пор, пока родитель не вызовет <strong><code>waitpid</code></strong> и не освободит его <code>PID</code>.</li>
-<li>В Go пакет <code>os/exec</code> реализует безопасное порождение процессов через ассемблерные обертки <code>clone(CLONE_VFORK | CLONE_VM)</code>. Всегда вызывайте <code>cmd.Wait()</code> или используйте готовые методы <code>cmd.Run()</code> и <code>cmd.Output()</code>, чтобы исключить утечки дескрипторов и ресурсов.</li>
+<li>В Go пакет <code>os/exec</code> реализует безопасное порождение процессов через <code>clone(CLONE_VFORK | CLONE_VM)</code> в аккуратно написанном коде <code>syscall.forkAndExecInChild</code>. Всегда вызывайте <code>cmd.Wait()</code> или используйте готовые методы <code>cmd.Run()</code> и <code>cmd.Output()</code>, чтобы исключить утечки дескрипторов и ресурсов.</li>
 </ol>
 <p>Мы разобрали, как операционная система порождает независимые процессы с изолированной памятью. Но что, если нам нужно исполнять тысячи задач параллельно внутри <em>одного и того же</em> адресного пространства? В следующей статье мы перейдем к <a href="7-potoki-vypolneniya-thread-vs-process.html" class="wikilink">7. Потоки выполнения. Thread vs Process</a> и разберем анатомию системных потоков ОС и их сопоставление с горутинами Go.</p>
           </div>

@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~39 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~40 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 4 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">48. Socket API и жизненный цикл TCP-соединения</h1>
@@ -2397,8 +2397,8 @@ flowchart LR
   <div class="callout-body">
     <p>Если ваше приложение не успевает вызывать <code>Accept()</code> (например, из-за блокировки планировщика или зависания процессора), очередь <code>accept_queue</code> быстро заполняется до предела (задаваемого параметром ядра <code>net.core.somaxconn</code> или аргументом <code>backlog</code>).  </p>
 <p>Когда <code>accept_queue</code> переполнена, ядро Linux по умолчанию молча <strong>отбрасывает входящие ACK-пакеты</strong> третьего этапа рукопожатия!<br />
-В результате клиент считает, что соединение успешно установлено (он уже перешел в <code>ESTABLISHED</code>), отправляет первый HTTP-запрос, но сервер о нем ничего не знает. Запрос зависает, клиент получает ошибку по таймауту <code>ETIMEDOUT</code> либо при повторной попытке соединения натыкается на <code>ECONNREFUSED</code>.<br />
-В Go для предотвращения этой проблемы передают увеличенный <code>backlog</code> через конфигурацию <code>net.ListenConfig</code> или явно тюнят системный параметр ядра <code>somaxconn</code>.</p>
+В результате клиент считает, что соединение успешно установлено (он уже перешел в <code>ESTABLISHED</code>), отправляет первый HTTP-запрос, но сервер о нем ничего не знает. Запрос зависает, клиент получает ошибку по таймауту <code>ETIMEDOUT</code>. (<code>ECONNREFUSED</code>, то есть RST, клиент увидит лишь при включённом <code>net.ipv4.tcp_abort_on_overflow=1</code>; по умолчанию он выключен, и ядро надеется, что очередь освободится.)<br />
+В Go <code>backlog</code> через <code>net.ListenConfig</code> не задаётся (поля <code>Backlog</code> нет: пакет <code>net</code> сам читает <code>somaxconn</code> и передаёт его в <code>listen()</code>), поэтому для предотвращения этой проблемы тюнят системный параметр ядра <code>somaxconn</code>.</p>
   </div>
 </aside>
 
@@ -2421,7 +2421,6 @@ flowchart LR
 import (
     &quot;context&quot;
     &quot;errors&quot;
-    &quot;fmt&quot;
     &quot;io&quot;
     &quot;log&quot;
     &quot;net&quot;
@@ -2543,7 +2542,7 @@ func handleConn(conn net.Conn) {
 <h2 id="lovushki-optimizatsii-i-voprosy-s-sobesedovaniy">Ловушки, оптимизации и вопросы с собеседований</h2>
 
 <h3 id="1-soreuseaddr-vs-soreuseport">1. `SO_REUSEADDR` vs `SO_REUSEPORT`</h3>
-<p>При создании сетевых слушателей Go по умолчанию включает флаги сокета:<br />
+<p>При создании сетевых слушателей Go по умолчанию включает только <code>SO_REUSEADDR</code>, а <code>SO_REUSEPORT</code> нужно включать явно (например, через <code>ListenConfig.Control</code>). Вот что делают эти флаги:<br />
 - <strong><code>SO_REUSEADDR</code>:</strong> Позволяет процессу привязаться (<code>bind</code>) к локальному порту, даже если на нем еще висят закрытые сокеты в состоянии <code>TIME_WAIT</code> или <code>CLOSE_WAIT</code>. Это гарантирует, что перезапуск вашего микросервиса не упадет с фатальной ошибкой <code>bind: address already in use</code>.<br />
 - <strong><code>SO_REUSEPORT</code>:</strong> Позволяет <strong>нескольким независимым процессам</strong> (или потокам) биндиться на один и тот же порт. Ядро Linux (начиная с версии 3.9) аппаратно балансирует входящие рукопожатия TCP между всеми слушающими сокетами, распределяя соединения по ядрам CPU без единого межпроцессного мьютекса!</p>
 <h3 id="2-tcpnodelay-i-algoritm-nagla">2. `TCP_NODELAY` и алгоритм Нагла</h3>
@@ -2597,7 +2596,7 @@ if tcpConn, ok := conn.(*net.TCPConn); ok {
 <li><strong>Сокет — это файловый дескриптор VFS</strong>, за которым скрывается сложнейшая иерархия структур ядра (<code>struct file</code> -&gt; <code>struct socket</code> -&gt; <code>struct sock</code> -&gt; <code>struct tcp_sock</code>).</li>
 <li><strong>3-way handshake</strong> обслуживается ядром автономно от приложения: сокеты последовательно проходят через очередь полуоткрытых соединений <code>syn_table</code> и очередь готовых соединений <code>accept_queue</code>. Вызов <code>Accept()</code> лишь забирает уже установленное соединение.</li>
 <li><strong>Go netpoller</strong> преобразует классические блокирующие вызовы BSD Socket API в грациозный неблокирующий асинхронный цикл на базе <code>epoll</code>/<code>kqueue</code>, позволяя одному потоку ОС обслуживать тысячи соединений с микросекундными переключениями горутин.</li>
-<li><strong>Оптимизации сокетов</strong>: Флаги <code>SO_REUSEADDR</code>, <code>SO_REUSEPORT</code> и настройка глубины очереди <code>SO_BACKLOG</code> обеспечивают бесшовный рестарт и балансировку по ядрам CPU, <code>TCP_NODELAY</code> спасает от задержек алгоритма Нагла, а понимание природы <code>TIME_WAIT</code> и <code>CLOSE_WAIT</code> защищает сервис от исчерпания сетевых портов и дескрипторов.</li>
+<li><strong>Оптимизации сокетов</strong>: Флаги <code>SO_REUSEADDR</code>, <code>SO_REUSEPORT</code> и настройка глубины очереди <code>backlog</code> (аргумент <code>listen()</code>, ограниченный <code>somaxconn</code>) обеспечивают бесшовный рестарт и балансировку по ядрам CPU, <code>TCP_NODELAY</code> спасает от задержек алгоритма Нагла, а понимание природы <code>TIME_WAIT</code> и <code>CLOSE_WAIT</code> защищает сервис от исчерпания сетевых портов и дескрипторов.</li>
 </ol>
 <p>Мы детально изучили жизненный цикл TCP-сокета от создания до закрытия. Но что происходит, когда на сервер обрушивается лавина одновременных подключений (SYN Flood или Slashdot-эффект)? Как ядро защищает очереди и при чем здесь параметры <code>somaxconn</code> и <code>tcp_max_syn_backlog</code>? Об этом в следующей главе: <a href="49-backlog-syn-queue-i-accept-queue.html" class="wikilink">49. Backlog, SYN Queue и Accept Queue</a>.</p>
           </div>

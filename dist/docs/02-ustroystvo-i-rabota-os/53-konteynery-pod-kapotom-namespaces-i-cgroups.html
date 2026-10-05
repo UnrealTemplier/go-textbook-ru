@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~36 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~37 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">53. Контейнеры под капотом. namespaces и cgroups</h1>
@@ -2244,7 +2244,7 @@ flowchart TD
 <h2 id="namespaces-virtualnye-okna-v-sistemnye-resursy">Namespaces: виртуальные окна в системные ресурсы</h2>
 
 <p><strong>Namespace</strong> — это механизм ядра Linux, который создает для группы процессов изолированное виртуальное «окно» в глобальные системные таблицы. Процесс, помещенный в namespace, не способен увидеть объекты за пределами своего окна, если только ядро явно не предоставит ему этот мост.</p>
-<p>В современном ядре Linux существует 7 фундаментальных типов namespaces:</p>
+<p>В современном ядре Linux существует 8 фундаментальных типов namespaces (к привычным семи добавлен <code>TIME</code>):</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -2288,6 +2288,11 @@ flowchart TD
 <td style="text-align: center;"><code>CGROUP</code></td>
 <td style="text-align: center;"><code>CLONE_NEWCGROUP</code></td>
 <td style="text-align: left;">Видимость виртуальной файловой системы cgroups. Предотвращает возможность контейнера увидеть пути контрольных групп хостовой машины.</td>
+</tr>
+<tr>
+<td style="text-align: center;"><code>TIME</code></td>
+<td style="text-align: center;"><code>CLONE_NEWTIME</code></td>
+<td style="text-align: left;">Смещения системных часов (<code>CLOCK_MONOTONIC</code> и <code>CLOCK_BOOTTIME</code>): например, контейнер может видеть собственное «время работы системы».</td>
 </tr>
 </tbody>
 </table></div>
@@ -2367,11 +2372,10 @@ flowchart TD
     <span class="callout-title">Ловушка / Gotcha: Аллокации памяти в Go и реакция на лимиты cgroup</span>
   </header>
   <div class="callout-body">
-    <p>В рантайме Go аллокатор памяти запрашивает виртуальную память у ядра блоками через системные вызовы <code>mmap</code> и <code>brk</code>.  </p>
-<p>Если контейнер приближается к границе <code>memory.max</code>, очередная попытка расширить кучу через <code>runtime.Grow</code> или аллокацию среза <code>make([]byte, ...)</code> не вызовет мягкой ошибки.<br />
-Если ядро не может выделить физический фрейм, вызов <code>mmap</code> вернет ошибку <code>ENOMEM</code>, которую рантайм Go немедленно преобразует в фатальное падение:<br />
-<code>fatal error: out of memory</code> или панику с разыменованием <code>nil pointer dereference</code>.<br />
-Если же память была выделена виртуально (overcommit), ядро убьет процесс через OOM Killer сигналом <code>SIGKILL</code> вообще без генерации stack trace в логах Go! Понимание разницы между утечкой в Go-коде и ограничением cgroup критично для диагностики инцидентов.</p>
+    <p>В рантайме Go аллокатор памяти запрашивает виртуальную память у ядра блоками через системный вызов <code>mmap</code> (на 64-битных системах <code>brk</code> для кучи Go не используется).  </p>
+<p>Если контейнер приближается к границе <code>memory.max</code>, очередная попытка аллокации (например, <code>make([]byte, ...)</code>) не вызовет мягкой ошибки.<br />
+Обычно <code>mmap</code> при этом <strong>не</strong> возвращает <code>ENOMEM</code>: память выделяется виртуально, а физические фреймы подставляются при первом обращении. Когда лимит <code>memory.max</code> исчерпан, ядро убьёт процесс через OOM Killer сигналом <code>SIGKILL</code> (код 137) вообще без генерации stack trace в логах Go!<br />
+<code>ENOMEM</code> от <code>mmap</code> бывает при <code>RLIMIT_AS</code>, <code>vm.overcommit_memory=2</code> или исчерпании <code>vm.max_map_count</code>; вот тогда рантайм Go превращает его в фатальное падение: <code>fatal error: runtime: out of memory</code>. Понимание разницы между утечкой в Go-коде и ограничением cgroup критично для диагностики инцидентов.</p>
   </div>
 </aside>
 
@@ -2449,8 +2453,7 @@ func main() {
     // 1. Проверяем тип файловой системы в точке монтирования /sys/fs/cgroup
     var stat unix.Statfs_t
     if err := unix.Statfs(&quot;/sys/fs/cgroup&quot;, &amp;stat); err != nil {
-        fmt.Fprintf(os.Stderr, &quot;Ошибка чтения файловой системы cgroup: %v
-&quot;, err)
+        fmt.Fprintf(os.Stderr, &quot;Ошибка чтения файловой системы cgroup: %v\n&quot;, err)
         os.Exit(1)
     }
 
@@ -2466,8 +2469,7 @@ func main() {
     currentData, err := os.ReadFile(&quot;/sys/fs/cgroup/memory.current&quot;)
     if err == nil {
         currentBytes, _ := strconv.ParseInt(strings.TrimSpace(string(currentData)), 10, 64)
-        fmt.Printf(&quot;Текущее потребление RAM в cgroup: %d байт (%.2f MB)
-&quot;, 
+        fmt.Printf(&quot;Текущее потребление RAM в cgroup: %d байт (%.2f MB)\n&quot;, 
             currentBytes, float64(currentBytes)/1024/1024)
     }
 
@@ -2479,8 +2481,7 @@ func main() {
             fmt.Println(&quot;Лимит memory.max: БЕЗ ОГРАНИЧЕНИЙ (max)&quot;)
         } else {
             limitBytes, _ := strconv.ParseInt(rawLimit, 10, 64)
-            fmt.Printf(&quot;Установленный лимит memory.max: %d байт (%.2f MB)
-&quot;, 
+            fmt.Printf(&quot;Установленный лимит memory.max: %d байт (%.2f MB)\n&quot;, 
                 limitBytes, float64(limitBytes)/1024/1024)
         }
     }

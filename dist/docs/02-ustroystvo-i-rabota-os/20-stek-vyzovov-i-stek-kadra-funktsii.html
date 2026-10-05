@@ -2278,7 +2278,7 @@ classDiagram
 <hr />
 <h2 id="3-pod-kapotom-x8664-registry-i-instruktsiya-callret">⚙️ 3. Под капотом: x86_64, регистры и инструкция CALL/RET</h2>
 
-<p>На уровне процессора стек растет вниз (от высоких адресов к низким). Указатель на вершину стека хранится в регистре <code>RSP</code>. Рамка кадра часто отслеживается через <code>RBP</code> (Frame Pointer), но в Go по умолчанию используется оптимизация <code>-fomit-frame-pointer</code> (хотя в современных версиях рантайма <code>RBP</code> сохраняется для поддержки внешних профилировщиков вроде Linux <code>perf</code> и eBPF).</p>
+<p>На уровне процессора стек растет вниз (от высоких адресов к низким). Указатель на вершину стека хранится в регистре <code>RSP</code>. Рамка кадра часто отслеживается через <code>RBP</code> (Frame Pointer), и в Go на <code>amd64</code> и <code>arm64</code> frame pointer <strong>включён всегда</strong>: каждый кадр начинается с <code>PUSHQ BP; MOVQ SP, BP</code>, что позволяет внешним профилировщикам вроде Linux <code>perf</code> и eBPF разворачивать стек по цепочке <code>RBP</code>.</p>
 <p>При вызове функции в Go компилятор генерирует ассемблерный код, который можно увидеть через <code>go build -gcflags="-S"</code>. Базовый сценарий:</p>
 
 <div class="code-block" data-lang="asm">
@@ -2413,7 +2413,7 @@ func main() {
     <span class="callout-title">Ловушка / Gotcha</span>
   </header>
   <div class="callout-body">
-    <p>В Go нет гарантированной оптимизации хвостовой рекурсии (Tail Call Optimization). Компилятор <code>gc</code> не делает её автоматически. Глубокая рекурсия в Go все еще может съесть память, так как каждый вызов может спровоцировать рост стека. При достижении лимита (обычно 1 ГБ на горутина в современных версиях) произойдет <code>fatal error: stack overflow</code>. Это не SIGSEGV, а контролируемое завершение через panic.</p>
+    <p>В Go нет гарантированной оптимизации хвостовой рекурсии (Tail Call Optimization). Компилятор <code>gc</code> не делает её автоматически. Глубокая рекурсия в Go все еще может съесть память, так как каждый вызов может спровоцировать рост стека. При достижении лимита (обычно 1 ГБ на горутина в современных версиях) произойдет <code>fatal error: stack overflow</code>. Это не SIGSEGV и не обычная паника, а фатальная ошибка рантайма (<code>throw</code>, код выхода 2).</p>
   </div>
 </aside>
 
@@ -2440,13 +2440,13 @@ func main() {
 <td><strong>Переполнение</strong></td>
 <td><code>SIGSEGV</code> (краш процесса)</td>
 <td><code>StackOverflowError</code> (runtime exception)</td>
-<td><code>fatal error: stack overflow</code> (panic + goroutine dump)</td>
+<td><code>fatal error: stack overflow</code> (<code>throw</code> + goroutine dump, не <code>panic</code>)</td>
 </tr>
 <tr>
 <td><strong>Frame Pointer</strong></td>
 <td>Часто отключен (<code>-fomit-frame-pointer</code>)</td>
 <td>Включен по умолчанию для отладки</td>
-<td>Отключен по умолчанию для скорости. Включается через <code>GOEXPERIMENT=framepointer</code></td>
+<td>Включён всегда на amd64/arm64 (раньше был экспериментом <code>GOEXPERIMENT=framepointer</code>, теперь он не нужен)</td>
 </tr>
 <tr>
 <td><strong>Хвостовая рекурсия</strong></td>
@@ -2462,8 +2462,8 @@ func main() {
     <span class="callout-title">Собеседование</span>
   </header>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Почему в Go по умолчанию отключен frame pointer (<code>RBP</code>), и как это влияет на профилирование стека?<br />
-<strong>Ответ:</strong> Отключение <code>RBP</code> освобождает регистр для использования и позволяет компилятору лучше оптимизировать выравнивание и аллокации. Однако это ломает классический способ разворачивания стека (walk stack via <code>RBP chain</code>). Go использует собственный механизм: в начале кадра сохраняется заголовок <code>stkblk</code>, который содержит ссылки на предыдущие кадры. Для отладки или <code>pprof</code> включается <code>GOEXPERIMENT=framepointer</code>, который восстанавливает цепочку <code>RBP</code> программно.</p>
+    <p><strong>Вопрос:</strong> Сохраняет ли Go frame pointer (<code>RBP</code>), и как это влияет на профилирование стека?<br />
+<strong>Ответ:</strong> Да, на amd64 и arm64 Go всегда сохраняет <code>RBP</code> в прологе кадра ценой одного регистра и пары инструкций. Взамен внешние инструменты (<code>perf</code>, eBPF) и сам рантайм могут быстро разворачивать стек по цепочке <code>RBP</code> (walk stack via <code>RBP chain</code>) без таблиц разматывания. Флаг <code>GOEXPERIMENT=framepointer</code> больше не нужен: это бывший эксперимент, ставший поведением по умолчанию.</p>
   </div>
 </aside>
 
@@ -2474,7 +2474,7 @@ func main() {
 <li><strong>Стек — это не магия</strong>, а физическая память, регистры CPU и ABI. Понимание <code>RSP</code>/<code>RBP</code> и порядка передачи аргументов критично для отладки <code>SIGSEGV</code> и <code>panic</code> трассировок.</li>
 <li><strong>Динамический непрерывный стек:</strong> Go использует динамический сегментированный стек для горутин. Это снимает проблему <code>Stack Overflow</code> на микроуровне, но вводит лимиты на рост (обычно ~1 ГБ).</li>
 <li><strong>Escape Analysis решает судьбу аллокаций:</strong> Escape Analysis решает, что лежит в стеке, а что в куче. Понимание этого критично для производительности: аллокации в стеке бесплатны (просто сдвиг <code>RSP</code>), аллокации в куче требуют работы GC.</li>
-<li><strong>Профилирование стеков:</strong> Фрейм-поинтер в Go часто отключен. Для анализа стека используйте <code>runtime.Stack()</code>, <code>pprof</code> или <code>GOEXPERIMENT=framepointer</code>, а не надейтесь на нативный <code>RBP chain</code>.</li>
+<li><strong>Профилирование стеков:</strong> Фрейм-поинтер в Go на amd64/arm64 сохраняется всегда, поэтому <code>perf</code> и eBPF умеют разворачивать стеки Go по цепочке <code>RBP</code>. Для анализа стека внутри программы используйте <code>runtime.Stack()</code> и <code>pprof</code>.</li>
 <li><strong>Защита памяти:</strong> В следующей статье мы разберем <a href="21-perepolnenie-steka-i-zashchita-pamyati.html" class="wikilink">21. Переполнение стека и защита памяти</a>, где поговорим о guard pages, ASLR и том, как ОС физически защищает вас от случайного уничтожения стека.</li>
 </ol>
           </div>

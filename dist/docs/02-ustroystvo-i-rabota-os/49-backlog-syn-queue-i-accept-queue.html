@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~35 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~36 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">49. Backlog, SYN Queue и Accept Queue</h1>
@@ -2342,8 +2342,8 @@ flowchart TD
 <h2 id="vzaimodeystvie-go-runtime-s-ocheredyami">Взаимодействие Go runtime с очередями</h2>
 
 <p>Многие разработчики на Go удивляются: почему стандартная функция <code>net.Listen("tcp", ":8080")</code> не принимает параметр <code>backlog</code>, как это принято в C (<code>listen(fd, backlog)</code>) или в Java (<code>ServerSocket.accept()</code> с параметром <code>backlog</code>)?</p>
-<p>Это осознанное проектное решение авторов Go: стандартная библиотека берет значение <code>backlog</code> напрямую из системного лимита ядра <code>somaxconn</code>. Однако для специализированных серверов под экстремальный трафик мы можем явно настроить глубину очереди через системные вызовы с помощью низкоуровневых пакетов <code>syscall</code> или <code>golang.org/x/sys/unix</code>.</p>
-<p>Ниже приведен пример создания сервера с тонкой настройкой параметра <code>backlog</code>:</p>
+<p>Это осознанное проектное решение авторов Go: стандартная библиотека берет значение <code>backlog</code> напрямую из системного лимита ядра <code>somaxconn</code>. Поэтому из Go глубину очереди не изменить: у <code>net.ListenConfig</code> нет поля <code>Backlog</code>, а <code>listen()</code> вызывает сам пакет <code>net</code>. Единственный рычаг — системный параметр <code>net.core.somaxconn</code>. Зато другие опции сокета (например, <code>SO_REUSEPORT</code>) можно выставить через хук <code>Control</code> с помощью <code>golang.org/x/sys/unix</code>.</p>
+<p>Ниже приведен пример создания сервера с настройкой опции сокета <code>SO_REUSEPORT</code>:</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2376,8 +2376,9 @@ func main() {
         Control: func(network, address string, c syscall.RawConn) error {
             var opErr error
             err := c.Control(func(fd uintptr) {
-                // Устанавливаем максимальный размер очереди сокета через SO_MAX_CONN / listen backlog
-                // В Linux параметр backlog передается ядру в сисколле listen(fd, backlog)
+                // Включаем SO_REUSEPORT. Размер очереди (backlog) так не настроить: опции SO_MAX_CONN
+                // не существует, а backlog передается ядру только аргументом listen(fd, backlog),
+                // и этот вызов делает сам пакет net (с лимитом somaxconn)
                 if err := unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1); err != nil {
                     opErr = fmt.Errorf(&quot;ошибка setsockopt SO_REUSEPORT: %w&quot;, err)
                 }
@@ -2395,22 +2396,15 @@ func main() {
     }
     defer ln.Close()
 
-    // 2. Альтернативный низкоуровневый путь через TCPListener и raw fd
-    if tcpListener, ok := ln.(*net.TCPListener); ok {
-        file, err := tcpListener.File()
-        if err == nil {
-            defer file.Close()
-            // Прямое обращение к unix.SetsockoptInt для демонстрации работы с дескриптором
-            // (SO_MAX_CONN / backlog лимиты)
-            _ = unix.SetsockoptInt(int(file.Fd()), unix.SOL_SOCKET, 1024, 65535)
-        }
-    }
+    // 2. Предупреждение: не стоит «доставать» дескриптор через tcpListener.File() и file.Fd().
+    // Fd() переводит общий дескриптор слушающего сокета в блокирующий режим, и после этого
+    // ln.Close() и server.Shutdown() могут зависнуть при висящем Accept. Для низкоуровневой работы
+    // используйте ListenConfig.Control (как выше) или tcpListener.SyscallConn().
 
     // 3. Запускаем HTTP-сервер
     mux := http.NewServeMux()
     mux.HandleFunc(&quot;/&quot;, func(w http.ResponseWriter, r *http.Request) {
-        fmt.Fprintf(w, &quot;Соединение успешно обработано из Accept Queue!
-&quot;)
+        fmt.Fprintf(w, &quot;Соединение успешно обработано из Accept Queue!\n&quot;)
     })
 
     server := &amp;http.Server{
@@ -2442,7 +2436,7 @@ func main() {
 
 <h3 id="vazhnye-nyuansy-integratsii-go-i-ocheredey">Важные нюансы интеграции Go и очередей:</h3>
 <ol>
-<li><strong>Жесткий потолок ядра:</strong> Если вы установите в коде <code>backlog = 65535</code>, но параметр ядра <code>net.core.somaxconn</code> равен <code>128</code>, ядро Linux <strong>молча усечет</strong> размер очереди до <code>128</code>! Никаких предупреждений выдано не будет.</li>
+<li><strong>Жесткий потолок ядра:</strong> Если приложение (например, на C) запросит <code>backlog = 65535</code>, а параметр ядра <code>net.core.somaxconn</code> равен <code>128</code>, ядро Linux <strong>молча усечет</strong> размер очереди до <code>128</code>! (В Go тот же потолок действует тем более: пакет <code>net</code> сам берёт <code>backlog</code> из <code>somaxconn</code>.) Никаких предупреждений выдано не будет.</li>
 <li><strong>Асинхронный поллер <code>poll.FD</code>:</strong> Стандартный пакет <code>net</code> оборачивает дескрипторы в структуру <code>poll.FD</code>. Когда вызов <code>accept()</code> возвращает новый сокет, он мгновенно регистрируется в подсистеме <code>epoll</code> (Linux) или <code>kqueue</code> (macOS/BSD) через <code>netpoller</code>. Пока входящий трафик не поступил в сокет, он не потребляет такты процессора.</li>
 <li><strong>Философия минимализма:</strong> Go не навязывает громоздких конфигураций в сигнатурах методов: язык делегирует системный тюнинг инфраструктуре операционной системы, предоставляя низкоуровневые хуки через интерфейс <code>syscall.RawConn</code>.</li>
 </ol>

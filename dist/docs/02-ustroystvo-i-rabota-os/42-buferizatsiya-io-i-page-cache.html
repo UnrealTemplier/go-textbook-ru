@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~27 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~28 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">42. Буферизация IO и Page Cache</h1>
@@ -2427,13 +2427,13 @@ func writeLogs() error {
   </div>
 </aside>
 
-<h3 id="2-os-odirect-obkhod-page-cache">2. `os.O_DIRECT` — обход Page Cache</h3>
+<h3 id="2-syscall-odirect-obkhod-page-cache">2. `syscall.O_DIRECT` — обход Page Cache</h3>
 
 <p>Иногда кэш операционной системы не помогает, а откровенно вредит. Классический пример — ядро СУБД (PostgreSQL, ScyllaDB, RocksDB) или видеостриминг терабайтных файлов:<br />
 - Данные уже закэшированы во внутреннем буферном пуле СУБД.<br />
 - Дублирование их в Page Cache ядра приводит к нерациональной трате RAM.<br />
 - Потоковое чтение гигантских файлов вымывает из кэша ядра полезные страницы других сервисов.</p>
-<p>Флаг <code>os.O_DIRECT</code> заставляет контроллер DMA передавать данные напрямую между пользовательским буфером в оперативной памяти и накопителем, полностью минуя Page Cache:</p>
+<p>Флаг <code>O_DIRECT</code> (в Go он объявлен как <code>syscall.O_DIRECT</code>: константы <code>os.O_DIRECT</code> не существует) заставляет контроллер DMA передавать данные напрямую между пользовательским буфером в оперативной памяти и накопителем, полностью минуя Page Cache:</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2447,11 +2447,12 @@ func writeLogs() error {
 
 import (
     &quot;os&quot;
+    &quot;syscall&quot;
 )
 
 func directWrite() error {
     // Открываем файл с системным флагом O_DIRECT
-    f, err := os.OpenFile(&quot;data.bin&quot;, os.O_RDWR|os.O_CREATE|os.O_DIRECT, 0644)
+    f, err := os.OpenFile(&quot;data.bin&quot;, os.O_RDWR|os.O_CREATE|syscall.O_DIRECT, 0644)
     if err != nil {
         return err
     }
@@ -2459,6 +2460,7 @@ func directWrite() error {
 
     // ОЧЕНЬ ВАЖНО: адрес памяти и размер слайса для O_DIRECT 
     // обязаны быть строго выровнены по размеру страницы (обычно 4096 байт)
+    // (make([]byte, 4096) такого не гарантирует: надёжнее взять память из syscall.Mmap, она всегда выровнена по странице)
     buf := make([]byte, 4096) 
     _, err = f.Write(buf)
     if err != nil {
@@ -2481,7 +2483,7 @@ func directWrite() error {
   </header>
   <div class="callout-body">
     <p>Флаг <code>O_DIRECT</code> требует жесточайшего выравнивания адресов памяти, смещений и размеров порций данных по границе сектора диска или страницы памяти (4096 байт). </p>
-<p>Стандартный вызов Go <code>make([]byte, 4096)</code> не гарантирует выравнивание адреса слайса по границе страницы! Попытка записи вернет системную ошибку <strong><code>EINVAL</code> (Invalid argument)</strong>. Кроме того, данные, записанные через <code>O_DIRECT</code>, не кэшируются: последующий <code>Read()</code> вызовет честный дисковый Page Miss.</p>
+<p>Стандартный вызов Go <code>make([]byte, 4096)</code> не гарантирует выравнивание адреса слайса по границе страницы! На файловых системах, строго проверяющих выравнивание (ext4, XFS), попытка записи вернет системную ошибку <strong><code>EINVAL</code> (Invalid argument)</strong>; но поведение зависит от файловой системы и версии ядра (например, на btrfs запись без выравнивания проходила без ошибки), поэтому полагаться на «починится само» нельзя. Кроме того, данные, записанные через <code>O_DIRECT</code>, не кэшируются: последующий <code>Read()</code> вызовет честный дисковый Page Miss.</p>
   </div>
 </aside>
 
@@ -2584,7 +2586,7 @@ func mmapRead(path string) ([]byte, error) {
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#pochemu-disk-uzkoe-gorlyshko-sovremennoy-sistemy">Почему диск — узкое горлышко современной системы</a></li><li class="toc-item toc-h2"><a href="#page-cache-pervyy-rubezh-zashchity-ot-medlennogo-zheleza">Page Cache: Первый рубеж защиты от медленного железа</a></li><li class="toc-item toc-h3"><a href="#mekhanizmy-chteniya-i-zapisi-hit-miss-i-dirty-pages">Механизмы чтения и записи: Hit, Miss и Dirty Pages</a></li><li class="toc-item toc-h2"><a href="#dva-urovnya-buferizatsii-prikladnoy-vs-sistemnyy">Два уровня буферизации: Прикладной vs Системный</a></li><li class="toc-item toc-h2"><a href="#upravlenie-keshirovaniem-v-go-idiomy-i-instrumenty">Управление кэшированием в Go: Идиомы и инструменты</a></li><li class="toc-item toc-h3"><a href="#1-bufio-standartnyy-podkhod">1. bufio — стандартный подход</a></li><li class="toc-item toc-h3"><a href="#2-os-odirect-obkhod-page-cache">2. os.ODIRECT — обход Page Cache</a></li><li class="toc-item toc-h3"><a href="#3-mmap-mapping-fayla-v-pamyat">3. mmap — маппинг файла в память</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-vliyanie-na-cpu-gc-i-pamyat">Mechanical Sympathy: Влияние на CPU, GC и память</a></li><li class="toc-item toc-h2"><a href="#itogi">Итоги</a></li><li class="toc-item toc-h2"><a href="#sleduyushchaya-statya">Следующая статья</a></li>
+    <li class="toc-item toc-h2"><a href="#pochemu-disk-uzkoe-gorlyshko-sovremennoy-sistemy">Почему диск — узкое горлышко современной системы</a></li><li class="toc-item toc-h2"><a href="#page-cache-pervyy-rubezh-zashchity-ot-medlennogo-zheleza">Page Cache: Первый рубеж защиты от медленного железа</a></li><li class="toc-item toc-h3"><a href="#mekhanizmy-chteniya-i-zapisi-hit-miss-i-dirty-pages">Механизмы чтения и записи: Hit, Miss и Dirty Pages</a></li><li class="toc-item toc-h2"><a href="#dva-urovnya-buferizatsii-prikladnoy-vs-sistemnyy">Два уровня буферизации: Прикладной vs Системный</a></li><li class="toc-item toc-h2"><a href="#upravlenie-keshirovaniem-v-go-idiomy-i-instrumenty">Управление кэшированием в Go: Идиомы и инструменты</a></li><li class="toc-item toc-h3"><a href="#1-bufio-standartnyy-podkhod">1. bufio — стандартный подход</a></li><li class="toc-item toc-h3"><a href="#2-syscall-odirect-obkhod-page-cache">2. syscall.ODIRECT — обход Page Cache</a></li><li class="toc-item toc-h3"><a href="#3-mmap-mapping-fayla-v-pamyat">3. mmap — маппинг файла в память</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-vliyanie-na-cpu-gc-i-pamyat">Mechanical Sympathy: Влияние на CPU, GC и память</a></li><li class="toc-item toc-h2"><a href="#itogi">Итоги</a></li><li class="toc-item toc-h2"><a href="#sleduyushchaya-statya">Следующая статья</a></li>
   </ul>
 </aside>
 

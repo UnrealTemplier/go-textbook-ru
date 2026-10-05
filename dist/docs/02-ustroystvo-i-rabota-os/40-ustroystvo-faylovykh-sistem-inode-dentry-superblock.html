@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~32 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~33 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 5 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">40. Устройство файловых систем. inode, dentry, superblock</h1>
@@ -2289,7 +2289,7 @@ flowchart LR
 *   <code>s_inodes_count</code>, <code>s_free_inodes_count</code> — суммарное и оставшееся количество доступных инодов. Если свободные иноды закончились, диск перестанет принимать новые файлы, даже если на нем свободно 500 ГБ места!<br />
 *   <code>s_maxbytes</code> — максимально допустимый размер одного файла (определяется архитектурой адресации блоков).<br />
 *   <code>s_op</code> — таблица указателей на системные функции конкретного драйвера файловой системы (<code>ext4_fill_super</code>, <code>xfs_init</code> и т.д.).</p>
-<p>Если суперблок поврежден, ядро Linux переводит ФС в защитный режим только для чтения <code>ro</code> (read-only) либо наотрез отказывается монтировать раздел. В коде на Go попытка открыть файл на таком диске вернет ошибку вызовов <code>fs.ReadStat</code> или <code>os.Stat</code> с системным кодом ошибки <code>EBADF</code> или <code>EIO</code>.</p>
+<p>Если суперблок поврежден, ядро Linux переводит ФС в защитный режим только для чтения <code>ro</code> (read-only) либо наотрез отказывается монтировать раздел. В коде на Go попытка открыть файл на таком диске вернет ошибку вызова <code>os.Stat</code> (или <code>os.Open</code>) с системным кодом ошибки <code>EBADF</code> или <code>EIO</code>.</p>
 <hr />
 <h2 id="inode-dnk-fayla-i-pochemu-tam-net-imeni">Inode: ДНК файла (и почему там нет имени)</h2>
 
@@ -2490,24 +2490,15 @@ func inspectFile(path string) {
     // Оборачиваем syscall.Stat_t в os.FileInfo для совместимости
     fileInfo := os.FileInfo(&amp;osStatWrapper{stat})
 
-    fmt.Printf(&quot;Путь к файлу:   %s
-&quot;, path)
-    fmt.Printf(&quot;Номер Inode:    %d
-&quot;, stat.Ino)
-    fmt.Printf(&quot;Hardlinks:      %d
-&quot;, stat.Nlink)
-    fmt.Printf(&quot;Размер:         %d байт
-&quot;, stat.Size)
-    fmt.Printf(&quot;Блоков (512B):  %d
-&quot;, stat.Blocks)
-    fmt.Printf(&quot;Права доступа:  %o
-&quot;, fileInfo.Mode().Perm())
-    fmt.Printf(&quot;Тип файла:      %s
-&quot;, fileInfo.Mode().Type())
-    fmt.Printf(&quot;Время mtime:    %v
-&quot;, time.Unix(stat.Mtim.Sec, int64(stat.Mtim.Nsec)))
-    fmt.Printf(&quot;Время ctime:    %v
-&quot;, time.Unix(stat.Ctim.Sec, int64(stat.Ctim.Nsec)))
+    fmt.Printf(&quot;Путь к файлу:   %s\n&quot;, path)
+    fmt.Printf(&quot;Номер Inode:    %d\n&quot;, stat.Ino)
+    fmt.Printf(&quot;Hardlinks:      %d\n&quot;, stat.Nlink)
+    fmt.Printf(&quot;Размер:         %d байт\n&quot;, stat.Size)
+    fmt.Printf(&quot;Блоков (512B):  %d\n&quot;, stat.Blocks)
+    fmt.Printf(&quot;Права доступа:  %o\n&quot;, fileInfo.Mode().Perm())
+    fmt.Printf(&quot;Тип файла:      %s\n&quot;, fileInfo.Mode().Type())
+    fmt.Printf(&quot;Время mtime:    %v\n&quot;, time.Unix(stat.Mtim.Sec, int64(stat.Mtim.Nsec)))
+    fmt.Printf(&quot;Время ctime:    %v\n&quot;, time.Unix(stat.Ctim.Sec, int64(stat.Ctim.Nsec)))
 }
 
 type osStatWrapper struct {
@@ -2516,7 +2507,18 @@ type osStatWrapper struct {
 
 func (w *osStatWrapper) Name() string       { return &quot;&quot; }
 func (w *osStatWrapper) Size() int64        { return w.Stat_t.Size }
-func (w *osStatWrapper) Mode() os.FileMode  { return os.FileMode(w.Stat_t.Mode) }
+// Простое приведение os.FileMode(w.Stat_t.Mode) было бы ошибкой: в stat тип файла лежит в битах S_IFMT
+// (S_IFDIR = 0x4000), а в os.FileMode каталог — это бит ModeDir = 1&lt;&lt;31, и IsDir() вернул бы false.
+func (w *osStatWrapper) Mode() os.FileMode {
+    m := os.FileMode(w.Stat_t.Mode &amp; 0777)
+    switch w.Stat_t.Mode &amp; syscall.S_IFMT {
+    case syscall.S_IFDIR:
+        m |= os.ModeDir
+    case syscall.S_IFLNK:
+        m |= os.ModeSymlink
+    }
+    return m
+}
 func (w *osStatWrapper) ModTime() time.Time { return time.Unix(w.Stat_t.Mtim.Sec, int64(w.Stat_t.Mtim.Nsec)) }
 func (w *osStatWrapper) IsDir() bool        { return w.Mode().IsDir() }
 func (w *osStatWrapper) Sys() interface{}   { return &amp;w.Stat_t }

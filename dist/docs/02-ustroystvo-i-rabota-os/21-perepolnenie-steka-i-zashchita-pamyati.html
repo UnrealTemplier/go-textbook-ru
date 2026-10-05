@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~21 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~23 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">21. Переполнение стека и защита памяти</h1>
@@ -2299,14 +2299,14 @@ sequenceDiagram
 
 <ol>
 <li><strong>Инициализация:</strong> Новая горутина получает стартовый стек размером <code>minStackSize</code> (обычно 2 КБ).</li>
-<li><strong>Проверка перед вызовом:</strong> При каждом вызове функции компилятор вставляет в начало функции проверку <code>gostacksplit</code>. Она сравнивает <code>g.sched.sp</code> с <code>g.stackguard0</code>.</li>
+<li><strong>Проверка перед вызовом:</strong> При каждом вызове функции компилятор вставляет в пролог функции проверку стека: она сравнивает указатель стека <code>SP</code> с <code>g.stackguard0</code> (отдельной функции-проверки вроде <code>gostacksplit</code> в рантайме нет).</li>
 <li><strong>Триггер роста:</strong> Если расстояние меньше порога (например, 8 КБ), управление передаётся в <code>runtime.morestack</code>.</li>
 <li><strong>Расширение:</strong> <code>runtime.morestack</code> вызывает <code>runtime.newstack</code>:<br />
-   - Аллоцирует новый блок памяти через <code>mmap</code> (см. <code>&lt;a href="18-mmap-otobrazhenie-faylov-i-pamyati.html" class="wikilink"&gt;18. mmap. Отображение файлов и памяти&lt;/a&gt;</code>).<br />
-   - Копирует данные со старого стека на новый (если там есть жизненно важные данные, например, параметры вызова).<br />
-   - Вызывает <code>madvise(ptr, old_size, MADV_DONTNEED)</code>. Это <strong>критически важный шаг</strong>: он сообщает ядру, что старые страницы больше не нужны, освобождая физическую RAM, но оставляя виртуальное отображение. Это предотвращает утечку виртуальной памяти.<br />
+   - Берёт новый блок из пулов стеков рантайма (<code>stackalloc</code>: <code>stackpool</code>/<code>stackcache</code>, а крупные стеки — из кучи рантайма). Отдельного <code>mmap</code> на каждое удвоение нет: память под кучу рантайма уже отображена заранее (см. <code>&lt;a href="18-mmap-otobrazhenie-faylov-i-pamyati.html" class="wikilink"&gt;18. mmap. Отображение файлов и памяти&lt;/a&gt;</code>).<br />
+   - Копирует содержимое старого стека на новый (<code>copystack</code> копирует всегда) и поправляет указатели, которые вели внутрь стека.<br />
+   - Освобождает старый стек (<code>stackfree</code>): блок возвращается в пул стеков рантайма, а не отдаётся ядру через <code>madvise</code>. Физическую память ядру при необходимости возвращает уже фоновый scavenger, и позже.<br />
    - Обновляет <code>g.stack</code>, <code>g.sched.sp</code> и сбрасывает <code>g.stackguard0</code>.</li>
-<li><strong>Возврат:</strong> Управляющая конструкция <code>gostartcall</code> восстанавливает контекст и выполняет оригинальный вызов функции уже с новым стеком.</li>
+<li><strong>Возврат:</strong> рантайм возобновляет выполнение функции уже на новом стеке. (<code>gostartcall</code> к этому не относится: он используется при <em>создании</em> горутины, а не при росте стека.)</li>
 </ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -2326,9 +2326,9 @@ flowchart TD
     B --&gt;|&quot;Нет&quot;| C[&quot;Обычное выполнение&quot;]
     B --&gt;|&quot;Да&quot;| D[&quot;runtime.morestack&quot;]
     D --&gt; E[&quot;runtime.newstack&quot;]
-    E --&gt; F[&quot;mmap нового блока памяти&quot;]
+    E --&gt; F[&quot;Новый блок из пула стеков (stackalloc)&quot;]
     F --&gt; G[&quot;Копирование данных стека&quot;]
-    G --&gt; H[&quot;madvise MADV_DONTNEED&quot;]
+    G --&gt; H[&quot;Старый стек в пул (stackfree)&quot;]
     H --&gt; I[&quot;Обновление g.stack и g.sched.sp&quot;]
     I --&gt; J[&quot;Возврат в функцию с новым стеком&quot;]
 
@@ -2360,7 +2360,7 @@ flowchart TD
 <hr />
 <h2 id="kogda-go-vsyo-zhe-padaet-s-stack-overflow">Когда Go всё же падает с stack overflow</h2>
 
-<p>Несмотря на динамический рост, у стека есть предел: <strong>лимит виртуальной памяти процесса</strong> (<code>ulimit -v</code> или <code>RLIMIT_AS</code>), либо жесткий внутренний лимит рантайма Go на максимальный размер стека одной горутины (по умолчанию 1 ГБ на 64-битных системах и 250 МБ на 32-битных). Если <code>mmap</code> не может выделить новые страницы (исчерпан лимит, или достигнут предел адресного пространства 64-битной ОС), происходит:</p>
+<p>Несмотря на динамический рост, у стека есть предел: <strong>жёсткий внутренний лимит рантайма Go</strong> на максимальный размер стека одной горутины (<code>maxstacksize</code>: по умолчанию 1 ГБ на 64-битных системах и 250 МБ на 32-битных; меняется через <code>debug.SetMaxStack</code>). Это не <code>ulimit -v</code> и не <code>RLIMIT_AS</code>. Когда стек упирается в этот лимит, происходит:</p>
 
 <div class="code-block" data-lang="text">
   <header class="code-header">
@@ -2383,7 +2383,8 @@ runtime.newstack()
   </div>
 </div>
 
-<p>Это не паника Go, а <code>SIGSEGV</code>, перехваченный рантаймом. В production это означает, что где-то в коде есть бесконечная рекурсия или аллокация гигантских структур в стеке.</p>
+<p>Это не обычная паника, а фатальная ошибка рантайма (<code>throw</code>): процесс завершается с кодом 2, и никакого <code>SIGSEGV</code> тут нет. В production это означает, что где-то в коде есть бесконечная рекурсия или аллокация гигантских структур в стеке.</p>
+<p>У этой картины есть оговорка про контейнеры. Стек растёт удвоением, и при последнем удвоении (например, 256 → 512 МБ) нужно одновременно держать старый и новый блоки, то есть около 768 МБ. Если у контейнера или cgroup лимит памяти меньше (например, <code>MemoryMax=512M</code>), процесс будет убит <code>SIGKILL</code> (код 137) раньше, чем рантайм успеет напечатать <code>fatal error: stack overflow</code>, и в логе не останется ни строчки диагностики.</p>
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2472,26 +2473,24 @@ runtime.newstack()
 </tr>
 <tr>
 <td><strong>Go</strong></td>
-<td>Динамический (Split Stacks)</td>
-<td><code>ulimit -v</code> (virtual memory)</td>
-<td><code>fatal error: stack overflow</code> (panic)</td>
+<td>Динамический (непрерывный стек, копируется при росте)</td>
+<td>1 ГБ на горутину (<code>maxstacksize</code>, <code>debug.SetMaxStack</code>)</td>
+<td><code>fatal error: stack overflow</code> (не <code>panic</code>, код выхода 2)</td>
 </tr>
 </tbody>
 </table></div>
-<p>Go жертвует небольшой накладной работой на копирование стека (<code>mmap</code> + <code>memmove</code>) ради радикального снижения потребления памяти при высокой конкурентности.</p>
+<p>Go жертвует небольшой накладной работой на копирование стека (выделение из пула + копирование) ради радикального снижения потребления памяти при высокой конкурентности.</p>
 <hr />
 <h2 id="praktika-i-otladka">Практика и отладка</h2>
 
 <h3 id="kak-otsledit-perepolnenie-v-production">Как отследить переполнение в production?</h3>
 <ol>
-<li><strong>pprof:</strong> <code>go tool pprof -top http://host/debug/pprof/stack</code> покажет, какие горутины потребляют больше всего стека.</li>
-<li><strong>strace:</strong> Отслеживайте <code>mmap</code> и <code>madvise</code>:<br />
-<code>bash
-   strace -e mmap,madvise -p &lt;pid&gt; 2&gt;&amp;1 | grep -i dontneed</code></li>
+<li><strong>pprof:</strong> профиля <code>stack</code> в <code>net/http/pprof</code> нет. Стеки всех горутин покажет профиль <code>goroutine</code> (<code>/debug/pprof/goroutine?debug=2</code>).</li>
+<li><strong>Метрики рантайма:</strong> следите за <code>StackInuse</code> и <code>StackSys</code> в <code>runtime.MemStats</code>. Рост стека не виден как отдельный системный вызов (блоки берутся из пулов рантайма), поэтому <code>strace</code> здесь почти ничего не покажет.</li>
 <li><strong>Глобальные лимиты:</strong> В контейнерах или systemd стек ограничен не только <code>ulimit</code>, но и <code>LimitAS</code> или <code>MemoryMax</code> cgroups.</li>
 </ol>
-<h3 id="idiomatichnyy-pattern-zashchity-ot-rekursii">Идиоматичный паттерн защиты от рекурсии</h3>
-<p>В критичных к производительности местах Go позволяет отключить динамический рост стека, если вы уверены в глубине вызовов:</p>
+<h3 id="gonosplit-eto-ne-zashchita-ot-rekursii">`//go:nosplit`: это не защита от рекурсии</h3>
+<p>Директива <code>//go:nosplit</code> убирает из пролога функции проверку стека, а значит, такая функция не может вызвать рост стека. Вот пример, который <em>не</em> стоит повторять:</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2516,15 +2515,15 @@ func safeRecursive(n int) {
   </div>
 </div>
 
-<p>Компилятор вставит проверку, но <strong>не будет вызывать</strong> <code>runtime.newstack</code> при достижении границы. Если стек всё же переполнится, приложение упадёт с <code>SIGSEGV</code>. Используйте только при полном понимании гарантии глубины вызова (например, в низкоуровневых системных вызовах рантайма).</p>
+<p>Проверка роста стека в прологе не вставляется, поэтому <code>runtime.newstack</code> вызван не будет. Но защитой от рекурсии это не становится: линкер следит, чтобы цепочка <code>nosplit</code>-функций укладывалась в небольшой зарезервированный запас стека, и отвергает программу с ошибкой <code>nosplit stack over N byte limit</code>. Рекурсивная <code>nosplit</code>-функция из примера выше на линковке не пройдёт. Используйте <code>//go:nosplit</code> только в низкоуровневом коде вроде системных вызовов рантайма, где глубина вызовов известна заранее.</p>
 <hr />
 <h2 id="itog">Итог</h2>
 
 <ol>
 <li><strong>Стек</strong> — это аппаратно-ориентированный механизм вызовов функций, растущий вниз по адресному пространству.</li>
 <li><strong>Guard Page</strong> — механизм ОС на уровне MMU, который превращает выход за границы стека в <code>Page Fault</code> → <code>SIGSEGV</code>.</li>
-<li><strong>Go runtime</strong> использует <code>mmap</code> + <code>madvise(MADV_DONTNEED)</code> для динамического роста стека горутин, экономя физическую память.</li>
-<li><strong>Лимит</strong> стека в Go — это лимит виртуальной памяти процесса (<code>ulimit -v</code>), а не фиксированное число мегабайт.</li>
+<li><strong>Go runtime</strong> выращивает стек горутины копированием в новый блок из своих пулов; переполнение ловит проверка в прологе функции, а не MMU. Предел стека — внутренний лимит рантайма, и его превышение даёт <code>fatal error: stack overflow</code>.</li>
+<li><strong>Лимит</strong> стека горутины в Go — внутренний <code>maxstacksize</code> (1 ГБ на 64-битных системах, меняется <code>debug.SetMaxStack</code>), а не <code>ulimit -v</code>.</li>
 <li><strong>Оптимизация:</strong> Избегайте аллокации больших структур в стеке. Используйте <code>make</code> (heap) или <code>sync.Pool</code> для кэш-линий и часто создаваемых объектов.</li>
 </ol>
 <p>В следующей статье мы детально разберем механизм системных вызовов: как именно программа просит ОС выделить ресурсы, выполнить I/O или управлять процессами. Разберем переход между Ring 3 и Ring 0, ABI, а также почему syscall в Go — это не просто <code>syscall.Syscall</code>. Читайте: <code>&lt;a href="22-sistemnye-vyzovy-kak-programma-prosit-os-chto-to-sde.html" class="wikilink"&gt;22. Системные вызовы. Как программа просит ОС что-то сделать&lt;/a&gt;</code>.</p>
@@ -2555,7 +2554,7 @@ func safeRecursive(n int) {
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#stek-vyzovov-fundament-ispolneniya">Стек вызовов: фундамент исполнения</a></li><li class="toc-item toc-h2"><a href="#mekhanizm-zashchity-pamyati-guard-pages-i-page-fault">Механизм защиты памяти: Guard Pages и Page Fault</a></li><li class="toc-item toc-h2"><a href="#go-runtime-kak-yazyk-rastyagivaet-stek-dinamicheski">Go runtime: Как язык «растягивает» стек динамически</a></li><li class="toc-item toc-h3"><a href="#kak-rabotaet-dinamicheskiy-rost">Как работает динамический рост</a></li><li class="toc-item toc-h2"><a href="#kogda-go-vsyo-zhe-padaet-s-stack-overflow">Когда Go всё же падает с stack overflow</a></li><li class="toc-item toc-h2"><a href="#sravnenie-podkhodov-c-java-php-vs-go">Сравнение подходов: C++, Java, PHP vs Go</a></li><li class="toc-item toc-h2"><a href="#praktika-i-otladka">Практика и отладка</a></li><li class="toc-item toc-h3"><a href="#kak-otsledit-perepolnenie-v-production">Как отследить переполнение в production?</a></li><li class="toc-item toc-h3"><a href="#idiomatichnyy-pattern-zashchity-ot-rekursii">Идиоматичный паттерн защиты от рекурсии</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#stek-vyzovov-fundament-ispolneniya">Стек вызовов: фундамент исполнения</a></li><li class="toc-item toc-h2"><a href="#mekhanizm-zashchity-pamyati-guard-pages-i-page-fault">Механизм защиты памяти: Guard Pages и Page Fault</a></li><li class="toc-item toc-h2"><a href="#go-runtime-kak-yazyk-rastyagivaet-stek-dinamicheski">Go runtime: Как язык «растягивает» стек динамически</a></li><li class="toc-item toc-h3"><a href="#kak-rabotaet-dinamicheskiy-rost">Как работает динамический рост</a></li><li class="toc-item toc-h2"><a href="#kogda-go-vsyo-zhe-padaet-s-stack-overflow">Когда Go всё же падает с stack overflow</a></li><li class="toc-item toc-h2"><a href="#sravnenie-podkhodov-c-java-php-vs-go">Сравнение подходов: C++, Java, PHP vs Go</a></li><li class="toc-item toc-h2"><a href="#praktika-i-otladka">Практика и отладка</a></li><li class="toc-item toc-h3"><a href="#kak-otsledit-perepolnenie-v-production">Как отследить переполнение в production?</a></li><li class="toc-item toc-h3"><a href="#gonosplit-eto-ne-zashchita-ot-rekursii">//go:nosplit: это не защита от рекурсии</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~35 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~36 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 4 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">33. Mutex, Semaphore, Spinlock на уровне ОС</h1>
@@ -2276,7 +2276,7 @@ flowchart TD
     <p><strong>Cache Thrashing (пинг-понг кэш-линий):</strong> При высокой конкуренции кэш-линия, содержащая флаг, постоянно переходит в состояние <code>Invalid</code> на ядрах, которые не владеют блокировкой. Это убивает производительность. Spinlock эффективен только при:<br />
 1. Крайне коротких критических секциях (&lt; 100 инструкций).<br />
 2. Низкой конкуренции.<br />
-3. Одноядерных средах (где переключение контекста дороже, чем спин) или в коде ядра, где поток вообще нельзя усыплять (обработчики аппаратных прерываний).</p>
+3. Коде ядра, где поток вообще нельзя усыплять (обработчики аппаратных прерываний). На одноядерной системе спинлок вообще не крутится в цикле: ядро (в сборке без SMP) в этом случае лишь отключает вытеснение, ведь пока владелец не отпустил блокировку, ждать её на единственном ядре бессмысленно.</p>
   </div>
 </aside>
 
@@ -2291,7 +2291,7 @@ flowchart TD
 <p>Фундаментальный принцип futex — <strong>разделить путь без конкуренции (Fast Path) и путь с конфликтом (Slow Path)</strong>:</p>
 <ol>
 <li><strong>Userspace Fast Path:</strong> Программа пытается захватить мьютекс атомарной инструкцией <code>CMPXCHG</code> прямо в пользовательском пространстве. Если блокировка свободна (никто не держит ресурс), значение меняется с 0 на 1 за одну машинную инструкцию (~10–15 нс). Никаких системных вызовов, никакого перехода в кольцо Ring 0!</li>
-<li><strong>Slow Path:</strong> Если флаг уже занят, userspace-код понимает, что без ожидания не обойтись, и выполняет системный вызов <code>futex()</code> с флагом <code>FUTEX_WAIT</code>. Ядро Linux находит соответствующий хэш-бакет, создает внутреннюю очередь ожидания (<code>waitqueue</code>) и переводит вызывающий поток из состояния <code>TASK_RUNNING</code> в спящее состояние <code>TASK_UNINTERRUPTIBLE</code>, паркуя его.</li>
+<li><strong>Slow Path:</strong> Если флаг уже занят, userspace-код понимает, что без ожидания не обойтись, и выполняет системный вызов <code>futex()</code> с флагом <code>FUTEX_WAIT</code>. Ядро Linux находит соответствующий хэш-бакет, создает внутреннюю очередь ожидания (<code>waitqueue</code>) и переводит вызывающий поток из состояния <code>TASK_RUNNING</code> в спящее состояние <code>TASK_INTERRUPTIBLE</code> (поэтому ожидание на <code>futex</code> прерывается сигналом и возвращает <code>EINTR</code>), паркуя его.</li>
 <li><strong>Wake Up:</strong> Когда владелец критической секции освобождает ресурс, он сбрасывает счетчик в userspace. Если он видит, что за мьютекс боролись другие потоки, он выполняет <code>syscall futex</code> с флагом <code>WAKE_OP</code> (или <code>FUTEX_WAKE</code>). Ядро будит поток из очереди ожидания, переводит его обратно в <code>TASK_RUNNING</code> и планировщик ОС возвращает ему управление.</li>
 </ol>
 
@@ -2336,7 +2336,7 @@ flowchart TD
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p>В ядре Linux структура <code>futex</code> хранится в <code>fs/futex.c</code>. Очередь ожидания — это стандартный <code>wait_queue_head_t</code>. Переход из <code>TASK_RUNNING</code> в <code>TASK_UNINTERRUPTIBLE</code> требует полного контекстного переключения, что стоит ~1000-10000 CPU-тактов.</p>
+    <p>В ядре Linux код <code>futex</code> живёт в <code>kernel/futex/</code> (в ядрах до 5.16 — в одном файле <code>kernel/futex.c</code>). Очередь ожидания — это стандартный <code>wait_queue_head_t</code>. Переход из <code>TASK_RUNNING</code> в спящее состояние требует полного контекстного переключения, что стоит ~1000-10000 CPU-тактов.</p>
 <p>Потоки идентифицируются адресом переменной в виртуальной памяти. Если память общая (<code>MAP_SHARED</code>), один и тот же <code>futex</code> может усыплять и будить потоки из <strong>разных процессов</strong>!</p>
   </div>
 </aside>
@@ -2351,7 +2351,7 @@ flowchart TD
 </ul>
 <p>Как это устроено на разных уровнях:<br />
 * <strong>Linux:</strong> Системные вызовы <code>sem_wait()</code> / <code>sem_post()</code> работают с объектами ядра через системные вызовы <code>semop()</code> (в System V) или через мультиплексирование <code>futex</code> (в POSIX <code>libpthread</code>).<br />
-* <strong>Go:</strong> В стандартной расширенной библиотеке Go пакет <code>sync/semaphore</code> (начиная с Go 1.21 и в <code>golang.org/x/sync/semaphore</code>) реализует взвешенные семафоры. Внутренне он опирается на структуру <code>semaRoot</code> с двусвязным списком (<code>next</code>, <code>prev</code>) для очередей ожидания (<code>g</code> структур), полностью обходясь без системных вызовов ядра, если конкуренция мала.</p>
+* <strong>Go:</strong> В расширенной библиотеке Go пакет <code>golang.org/x/sync/semaphore</code> (в стандартной библиотеке <code>sync/semaphore</code> нет) реализует взвешенные семафоры. Сама же блокировка горутин в рантайме Go опирается на структуру <code>semaRoot</code> с двусвязным списком (<code>next</code>, <code>prev</code>) для очередей ожидания (<code>g</code> структур) и обходится без системных вызовов ядра, если конкуренция мала.</p>
 <hr />
 <h2 id="mechanical-sympathy-cpu-kesh-linii-i-kontekstnye-pereklyucheniya">Mechanical Sympathy: CPU, кэш-линии и контекстные переключения</h2>
 
@@ -2514,7 +2514,7 @@ flowchart LR
 <p><strong>Решение:</strong> <br />
 - Используйте <code>sync.RWMutex</code> для сценариев, где чтений многократно больше, чем записей (read-heavy workload).<br />
 - Дробите гранулярность блокировок (Striping / Sharding, как сделано в высоконагруженных concurrent cache).<br />
-- Используйте <code>sync/semaphore</code> с пулом разрешений <code>N &gt; 1</code> для параллельного доступа.</p>
+- Используйте <code>golang.org/x/sync/semaphore</code> с пулом разрешений <code>N &gt; 1</code> для параллельного доступа.</p>
 <h3 id="2-priority-inversion-inversiya-prioritetov">2. Priority Inversion (Инверсия приоритетов)</h3>
 <p>Классическая беда многопоточности: низкоприоритетный поток захватывает мьютекс. Поток со средним приоритетом вытесняет его на CPU. В это время высокоприоритетный поток пытается взять мьютекс и блокируется. В итоге высокоприоритетная задача ждет среднюю, к которой вообще не имеет отношения!</p>
 <p><strong>В Go:</strong> Планировщик не имеет жестких приоритетов в классическом понимании, но <code>sync.Mutex</code> внедряет механизм защиты от голодания (Starvation Mode) через очередь <code>waitq</code>. Если горутина ждет мьютекс дольше 1 миллисекунды, мьютекс переключается в режим <em>starvation</em>: владение передается строго по очереди первой ожидающей горутине, а вновь прибывшие горутины лишаются права вклиниваться через спиннинг.</p>
@@ -2532,8 +2532,8 @@ flowchart LR
 
 <ol>
 <li><strong>Spinlock</strong> эффективен только при крайне коротких критических секциях и низкой конкуренции. Он избегает затрат на context switch, но сжигает ресурсы процессора и порождает лавину инвалидаций кэш-линий по протоколу <strong>MESI</strong>.</li>
-<li><strong>Mutex (futex)</strong> — признанный золотой стандарт системной синхронизации. Он блестяще сочетает Fast Path в userspace через инструкцию <code>CMPXCHG</code> с медленным путем засыпания в ядре (<code>FUTEX_WAIT</code> / <code>TASK_UNINTERRUPTIBLE</code>).</li>
-<li><strong>Semaphore</strong> обобщает концепцию взаимного исключения до $N$-конкурентных слотов. В Go <code>sync/semaphore</code> организован через <code>semaRoot</code> с двусвязным списком очередей горутин <code>g</code>.</li>
+<li><strong>Mutex (futex)</strong> — признанный золотой стандарт системной синхронизации. Он блестяще сочетает Fast Path в userspace через инструкцию <code>CMPXCHG</code> с медленным путем засыпания в ядре (<code>FUTEX_WAIT</code> / <code>TASK_INTERRUPTIBLE</code>).</li>
+<li><strong>Semaphore</strong> обобщает концепцию взаимного исключения до $N$-конкурентных слотов. В Go блокировка горутин на семафорах рантайма организована через <code>semaRoot</code> с двусвязным списком очередей горутин <code>g</code>, а готовый взвешенный семафор — в <code>golang.org/x/sync/semaphore</code>.</li>
 <li><strong>Go не использует системные мьютексы ОС напрямую</strong>, поскольку парковка потока ядра <code>m</code> парализовала бы все остальные горутины, назначенные на этот поток.</li>
 <li><strong>Инженерное правило:</strong> Никогда не оптимизируйте блокировки вслепую. Снимайте профили блокировок через <code>pprof</code> (блок <code>block</code> и <code>mutex</code>), заменяйте простые счетчики на <code>sync/atomic</code> и держите критические секции предельно компактными.</li>
 </ol>

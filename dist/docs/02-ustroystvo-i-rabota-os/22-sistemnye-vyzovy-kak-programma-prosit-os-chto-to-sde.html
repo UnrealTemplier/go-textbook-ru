@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~24 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~25 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">22. Системные вызовы. Как программа просит ОС что-то сделать</h1>
@@ -2375,7 +2375,7 @@ flowchart LR
 <h3 id="mekhanizm-hand-off-protsessora-p">Механизм Hand-off процессора (P)</h3>
 <ol>
 <li><strong>Вход в syscall (<code>entersyscall</code>):</strong> Рантайм сохраняет регистры горутины (PC, SP), переводит её статус в <code>_Gsyscall</code> и отвязывает логический процессор <code>P</code> от потока <code>M</code> (с сохранением временной ассоциации). Поток <code>M</code> продолжает удерживать горутину <code>G</code> и уходит в блокирующий системный вызов ядра.</li>
-<li><strong>Детекция и Hand-off (<code>handoffp</code>):</strong> Если вызов заведомо блокирующий (<code>entersyscallblock</code>), <code>P</code> отвязывается немедленно. В стандартном случае фоновый системный монитор (<code>sysmon</code>), работающий без собственного <code>P</code>, каждые 20 мкс — 10 мс опрашивает потоки <code>M</code>. Если поток <code>M</code> застрял в системном вызове дольше одного такта (~10 мс), <code>sysmon</code> принудительно отбирает у него контекст <code>P</code> (<code>handoffp</code>).</li>
+<li><strong>Детекция и Hand-off (<code>handoffp</code>):</strong> Если вызов заведомо блокирующий (<code>entersyscallblock</code>), <code>P</code> отвязывается немедленно. В стандартном случае фоновый системный монитор (<code>sysmon</code>), работающий без собственного <code>P</code>, каждые 20 мкс — 10 мс опрашивает потоки <code>M</code>. Если поток <code>M</code> провёл в системном вызове больше одного тика <code>sysmon</code> и при этом в очереди есть готовые горутины, либо нет ни одного простаивающего или ищущего работу <code>P</code>, либо прошло уже ~10 мс, <code>sysmon</code> (функция <code>retake</code>) принудительно отбирает у него контекст <code>P</code> (<code>handoffp</code>).</li>
 <li><strong>Исполнение готовых горутин:</strong> Освободившийся процессор <code>P</code> подхватывается другим свободным потоком ОС (<code>M2</code>) из пула ожидания либо создается новый поток (<code>newm</code>). Поток <code>M2</code> продолжает исполнять очередь горутин без задержек.</li>
 <li><strong>Выход из syscall (<code>exitsyscall</code>):</strong> Когда ядро возвращает результат, поток <code>M</code> пытается вернуть свой старый <code>P</code> или захватить любой свободный <code>P</code>. Если свободного <code>P</code> нет, горутина переводится в статус <code>_Grunnable</code> и отправляется в глобальную очередь (<code>sched.runqput</code>), а сам поток <code>M</code> паркуется (<code>mPark</code> / <code>notesleep</code>) до востребования.</li>
 </ol>
@@ -2405,7 +2405,7 @@ flowchart LR
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p>Фоновый системный монитор рантайма Go (<code>sysmon</code>) работает в отдельном потоке ОС без собственного <code>P</code>. Каждые 20 мкс — 10 мс <code>sysmon</code> обходит потоки <code>M</code>: если поток находится в системном вызове дольше ~10 мс и в локальной очереди есть готовые задачи, <code>sysmon</code> принудительно забирает у него контекст <code>P</code> (<code>handoffp</code>) и запускает другой поток <code>M</code> для продолжения работы.</p>
+    <p>Фоновый системный монитор рантайма Go (<code>sysmon</code>) работает в отдельном потоке ОС без собственного <code>P</code>. Каждые 20 мкс — 10 мс <code>sysmon</code> обходит потоки <code>M</code>: если поток находится в системном вызове дольше одного тика <code>sysmon</code> и при этом в очереди есть готовые задачи (либо нет свободных <code>P</code>, либо прошло ~10 мс), <code>sysmon</code> принудительно забирает у него контекст <code>P</code> (<code>handoffp</code>) и запускает другой поток <code>M</code> для продолжения работы.</p>
   </div>
 </aside>
 
@@ -2434,7 +2434,7 @@ flowchart LR
 </tr>
 <tr>
 <td>Что такое <code>futex</code> в контексте Go?</td>
-<td>Fast Userspace Mutex. Позволяет мьютексам и каналам работать в user-space. Переход в ядро только при contention (конкуренции).</td>
+<td>Fast Userspace Mutex — примитив ядра Linux. <code>sync.Mutex</code> и каналы Go блокируют горутины средствами планировщика (<code>gopark</code>), без <code>futex</code>; <code>futex</code> рантайм использует для сна потоков <code>M</code> и при конкуренции за собственные внутренние блокировки.</td>
 </tr>
 <tr>
 <td>Как оптимизировать сетевой бэкенд?</td>

@@ -2374,8 +2374,8 @@ sequenceDiagram
 import (
     &quot;bytes&quot;
     &quot;fmt&quot;
+    _ &quot;embed&quot;
     &quot;log&quot;
-    &quot;os&quot;
     &quot;time&quot;
 
     &quot;github.com/cilium/ebpf&quot;
@@ -2391,8 +2391,10 @@ type MetricEvent struct {
     Timestamp uint64
     Pid       uint32
     Syscall   uint32
-    Duration  uint64
+    Count     uint64 // число вызовов write
 }
+// Длительность вызова из одной точки sys_enter_write не получить: для этого нужна пара
+// tracepoint'ов sys_enter/sys_exit, поэтому здесь считаем число вызовов.
 
 func main() {
     // 1. Загрузка eBPF-программы из байтов
@@ -2408,9 +2410,9 @@ func main() {
     defer collection.Close()
 
     // 2. Привязка карты для передачи данных
-    var metricsMap ebpf.Map
-    if err := collection.Maps.Lookup(&quot;metrics_map&quot;).Lookup(&amp;metricsMap); err != nil {
-        log.Fatalf(&quot;Ошибка поиска карты: %v&quot;, err)
+    metricsMap := collection.Maps[&quot;metrics_map&quot;]
+    if metricsMap == nil {
+        log.Fatal(&quot;Карта metrics_map не найдена&quot;)
     }
 
     // 3. Подключение к tracepoint (например, syscalls:sys_enter_write)
@@ -2425,23 +2427,19 @@ func main() {
     }
     defer lk.Close()
 
-    // 4. Чтение метрик в реальном времени
-    events := make(chan MetricEvent)
-    go func() {
-        for {
-            var val MetricEvent
-            // Чтение из карты (первый ключ всегда 0 для простых случаев)
-            if err := metricsMap.Lookup(uint32(0), &amp;val); err != nil {
-                continue
-            }
-            events &lt;- val
-        }
-    }()
-
+    // 4. Чтение метрик: опрашиваем карту раз в секунду
+    // (опрос в цикле без паузы занял бы одно ядро на 100%)
     fmt.Println(&quot;Наблюдение за sys_enter_write... Нажмите Ctrl+C для выхода&quot;)
-    for ev := range events {
-        fmt.Printf(&quot;PID: %d, Длительность: %d ns
-&quot;, ev.Pid, ev.Duration)
+    ticker := time.NewTicker(time.Second)
+    defer ticker.Stop()
+    for range ticker.C {
+        var val MetricEvent
+        // Чтение из карты (первый ключ всегда 0 для простых случаев)
+        if err := metricsMap.Lookup(uint32(0), &amp;val); err != nil {
+            log.Printf(&quot;lookup: %v&quot;, err)
+            continue
+        }
+        fmt.Printf(&quot;PID: %d, вызовов write: %d\n&quot;, val.Pid, val.Count)
     }
 }
 </code></pre>

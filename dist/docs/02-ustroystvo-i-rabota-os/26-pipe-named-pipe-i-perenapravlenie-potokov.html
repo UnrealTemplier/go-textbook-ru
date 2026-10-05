@@ -2215,7 +2215,8 @@
     </button>
   </header>
   <pre class="language-go"><code class="language-go">// Упрощенный вызов из Go
-fds, err := syscall.Pipe2([]int{0, 1}, syscall.O_CLOEXEC)
+var fds [2]int
+err := syscall.Pipe2(fds[:], syscall.O_CLOEXEC)
 if err != nil {
     // обработка ошибки
 }
@@ -2381,7 +2382,6 @@ import (
     &quot;context&quot;
     &quot;fmt&quot;
     &quot;io&quot;
-    &quot;log&quot;
     &quot;os/exec&quot;
     &quot;strings&quot;
 )
@@ -2403,19 +2403,23 @@ func runWithPipe(ctx context.Context, cmdPath string, args []string) (string, er
         return &quot;&quot;, fmt.Errorf(&quot;start command: %w&quot;, err)
     }
 
-    // Горутина читает пайп. io.Copy закрывает пайп автоматически,
-    // когда дочерний процесс закроет свой stdout.
+    // Горутина читает пайп. io.Copy вернётся (с io.EOF), когда дочерний процесс
+    // закроет свой stdout; сам пайп закроет позже cmd.Wait().
     errCh := make(chan error, 1)
     go func() {
         _, copyErr := io.Copy(&amp;sb, stdoutPipe)
         errCh &lt;- copyErr
     }()
 
-    // Ждем завершения процесса
+    // Сначала дожидаемся окончания чтения: по документации os/exec вызывать Wait
+    // до завершения всех чтений из пайпа нельзя, иначе вывод может оказаться усечённым
+    copyErr := &lt;-errCh
+
+    // Теперь ждем завершения процесса (Wait закрывает пайп)
     waitErr := cmd.Wait()
 
     // Проверяем ошибки чтения из пайпа
-    if copyErr := &lt;-errCh; copyErr != nil {
+    if copyErr != nil {
         return &quot;&quot;, fmt.Errorf(&quot;pipe read error: %w&quot;, copyErr)
     }
 
@@ -2535,7 +2539,7 @@ sequenceDiagram
 </tr>
 <tr>
 <td><strong>Управление памятью</strong></td>
-<td>Автозакрытие пайпов при <code>io.Copy</code> завершении</td>
+<td>Пайпы закрывает <code>cmd.Wait()</code> (вызывать его нужно после завершения чтения)</td>
 <td>Ручное <code>fclose()</code> или GC (ненадежно)</td>
 <td>Ручное <code>close(fd)</code>, риск утечек</td>
 </tr>

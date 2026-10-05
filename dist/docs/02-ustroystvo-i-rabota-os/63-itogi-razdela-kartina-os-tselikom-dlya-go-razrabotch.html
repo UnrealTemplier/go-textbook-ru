@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 2</span>
-              <span class="meta-tag read-time">⏱ ~43 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~45 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 4 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">63. Итоги раздела. Картина ОС целиком для Go-разработчика</h1>
@@ -2305,7 +2305,7 @@ flowchart LR
 
 <p>Планировщик операционной системы Linux оперирует физическими системными потоками (<code>OS Thread</code>), а планировщик Go оперирует горутинами (<code>Goroutine</code>). Это совершенно разные уровни абстракции с кардинально различающейся физической стоимостью:<br />
 *   <strong>Тяжеловесный системный Context Switch:</strong> Переключение между системными потоками ОС (<code>Thread</code>) требует перехода процессора в Ring 0, сохранения полного контекста регистров, инвалидации таблицы трансляции адресов (<code>TLB miss</code>) и кэшей процессора. Это обходится процессору в тысячи тактов (от 1 до 5 микросекунд).<br />
-*   <strong>Сверхлегковесный рантайм Context Switch:</strong> Переключение между горутинами выполняется средой Go в пространстве пользователя (User Space) через связку структур <code>runtime.m</code> (поток ОС) и <code>runtime.p</code> (логический процессор). Рантайм сохраняет только минимальный набор регистров процессора (<code>rip</code>, <code>rsp</code>, <code>r12-r15</code>) и указатели на локальные кэши. Это занимает всего 10–20 наносекунд и обходится без системных вызовов в ядро.<br />
+*   <strong>Сверхлегковесный рантайм Context Switch:</strong> Переключение между горутинами выполняется средой Go в пространстве пользователя (User Space) через связку структур <code>runtime.m</code> (поток ОС) и <code>runtime.p</code> (логический процессор). Рантайм сохраняет только минимальный набор состояния в структуре <code>gobuf</code> (указатель стека <code>sp</code>, счётчик <code>pc</code>, указатель кадра <code>bp</code>, а также <code>g</code> и контекст <code>ctxt</code>). Это занимает порядка сотни наносекунд (около 140 нс на переключение через канал в замерах) и обходится без системных вызовов в ядро.<br />
 *   <strong>Архитектурная модель <code>M:N</code>:</strong> Вместо тяжелой модели 1:1, язык Go реализует мультиплексирование <code>M:N</code>, распределяя миллионы горутин по числу физических ядер, заданному переменной <code>GOMAXPROCS</code>.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -2351,7 +2351,7 @@ flowchart LR
   </header>
   <div class="callout-body">
     <p><strong>Истинное значение переменной <code>GOMAXPROCS</code>:</strong><br />
-Переменная <code>GOMAXPROCS</code> задает вовсе не предел «количества одновременно запущенных горутин». Она определяет количество потоков ОС (<code>M</code>), способных одновременно выполнять пользовательский байткод Go на разных ядрах CPU.<br />
+Переменная <code>GOMAXPROCS</code> задает вовсе не предел «количества одновременно запущенных горутин». Она определяет количество логических процессоров (<code>P</code>), то есть предел числа потоков ОС, которые могут одновременно исполнять пользовательский Go-код (скомпилированный в машинный код, не «байткод») на разных ядрах CPU. Потоков <code>M</code> в процессе при этом может быть и больше, например из-за заблокированных в системных вызовах.<br />
 Если по ошибке выставить <code>GOMAXPROCS = 1</code>, все горутины сервиса будут вынуждены исполняться на единственном ядре процессора. При возникновении тяжелых математических расчетов или невытесняемых циклов все параллельные задачи сервиса мгновенно выстроятся в очередь, даже если остальные 63 ядра мощного сервера будут абсолютно простаивать!</p>
   </div>
 </aside>
@@ -2370,7 +2370,7 @@ flowchart LR
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Что произойдет на уровне ядра Linux и рантайма Go, если одна горутина закроет сокет (<code>conn.Close()</code>), пока вторая горутина заблокирована на чтении из него (<code>conn.Read()</code>)?<br />
-<strong>Ответ:</strong> Системный селектор <code>epoll</code> мгновенно зафиксирует закрытие дескриптора и сгенерирует ядровые флаги событий <code>EPOLLHUP</code> или <code>EPOLLERR</code>. Фоновый поток <code>netpoll</code> немедленно разбудит спящую горутину, переведя ее в очередь исполнения. Горутина завершит системный вызов и получит ошибку <code>io.EOF</code> или системный код <code>syscall.EBADF</code> («Bad file descriptor»). В отличие от устаревшего вызова POSIX <code>select</code>, требующего перебора всех дескрипторов, <code>epoll</code> работает по эффективной push-модели событий.</p>
+<strong>Ответ:</strong> При локальном <code>Close()</code> рантайм сам помечает <code>pollDesc</code> закрытым и будит ожидающие горутины. Разбуженная горутина получит ошибку «use of closed network connection» (<code>net.ErrClosed</code>), а не <code>io.EOF</code> или <code>EBADF</code>. (<code>EPOLLHUP</code>/<code>EPOLLRDHUP</code> сообщают о разрыве соединения <em>удалённой</em> стороной, тогда <code>Read</code> вернёт <code>io.EOF</code>.) В отличие от устаревшего вызова POSIX <code>select</code>, требующего перебора всех дескрипторов, <code>epoll</code> работает по эффективной push-модели событий.</p>
   </div>
 </aside>
 
@@ -2395,17 +2395,17 @@ flowchart LR
 <tr>
 <td style="text-align: left;"><strong><code>sync.Mutex</code></strong></td>
 <td style="text-align: left;"><strong><code>futex</code> (Fast Userspace Mutex)</strong></td>
-<td style="text-align: left;">Быстрая блокировка в пространстве пользователя через атомарные инструкции процессора. Только при возникновении жесткой конкуренции за ресурс вызывается системный вызов <code>futex(LOCK|WAIT)</code>.</td>
+<td style="text-align: left;">Быстрый захват в пространстве пользователя через атомарные инструкции процессора. При конкуренции горутина паркуется средствами рантайма (<code>gopark</code>, семафоры) и системного вызова <code>futex</code> не вызывает; <code>futex</code> используется для сна простаивающих потоков <code>M</code> и внутренних блокировок рантайма.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong><code>Channel</code></strong></td>
-<td style="text-align: left;"><strong><code>runtime.sema</code> + <code>epoll</code> / <code>futex</code></strong></td>
+<td style="text-align: left;"><strong><code>hchan</code> + <code>gopark</code> / <code>goready</code></strong> (без <code>epoll</code> и <code>futex</code>)</td>
 <td style="text-align: left;">Потокобезопасная очередь сообщений в памяти рантайма. Блокировка и пробуждение горутин выполняются через вызовы <code>gopark</code> и <code>goready</code>.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong><code>goroutine</code></strong></td>
-<td style="text-align: left;"><strong><code>clone(CLONE_VM \| CLONE_FS \| CLONE_FILES)</code></strong></td>
-<td style="text-align: left;">Порождение системных потоков ядра с общим виртуальным адресным пространством и таблицей дескрипторов, но изолированными регистрами CPU.</td>
+<td style="text-align: left;"><strong>системного вызова нет; потоки <code>M</code> создаются через <code>clone(CLONE_VM \| CLONE_FS \| CLONE_FILES \| CLONE_SIGHAND \| CLONE_SYSVSEM \| CLONE_THREAD)</code></strong></td>
+<td style="text-align: left;">Сама горутина — структура <code>g</code> в пространстве пользователя. <code>clone</code> порождает системные потоки <code>M</code>, на которых горутины исполняются: с общим виртуальным адресным пространством и таблицей дескрипторов, но изолированными регистрами CPU.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><strong><code>mmap</code></strong></td>
@@ -2419,8 +2419,8 @@ flowchart LR
 </tr>
 <tr>
 <td style="text-align: left;"><strong><code>runtime.GC</code></strong></td>
-<td style="text-align: left;"><strong><code>madvise(MADV_DONTNEED)</code> / <code>mprotect</code></strong></td>
-<td style="text-align: left;">Ленивый возврат освобожденной памяти ядру Linux без разрушения виртуальных диапазонов и сброса таблиц <code>Page Table</code>.</td>
+<td style="text-align: left;"><strong><code>mmap(MAP_FIXED)</code> (коммит) / <code>madvise(MADV_DONTNEED)</code> (возврат)</strong></td>
+<td style="text-align: left;"><code>runtime.GC</code> сами эти вызовы не делает: коммит страниц выполняет аллокатор, а ленивый возврат освобожденной памяти ядру Linux без разрушения виртуальных диапазонов — фоновый scavenger.</td>
 </tr>
 </tbody>
 </table></div>
@@ -2466,21 +2466,22 @@ flowchart TD
     end
 
     subgraph RuntimeEngine [&quot;Ядро Go Runtime&quot;]
-        FutexShim[&quot;Атомарные CAS + runtime.futex&quot;]:::system
-        ChannelShim[&quot;hchan ringbuffer + runtime.sema&quot;]:::system
+        FutexShim[&quot;Атомарные CAS + gopark (семафоры рантайма)&quot;]:::system
+        ChannelShim[&quot;hchan ringbuffer + gopark / goready&quot;]:::system
         GMP_Engine[&quot;G-M-P Scheduler + clone()&quot;]
         NetpollEngine[&quot;netpoller + TCP_NODELAY&quot;]:::process
     end
 
     subgraph KernelSyscalls [&quot;Системные вызовы ядра Linux&quot;]
-        SysFutex[&quot;futex(FUTEX_WAIT / WAKE)&quot;]
-        SysClone[&quot;clone(CLONE_VM | CLONE_FILES)&quot;]
+        SysFutex[&quot;futex(FUTEX_WAIT / WAKE): сон простаивающих потоков M&quot;]
+        SysClone[&quot;clone(...|CLONE_VM|CLONE_FILES|CLONE_THREAD): потоки M&quot;]
         SysEpoll[&quot;epoll_ctl / epoll_wait&quot;]:::process
         SysMmap[&quot;mmap / madvise&quot;]:::process
     end
 
-    SyncMutex --&gt; FutexShim --&gt; SysFutex
-    GoChannel --&gt; ChannelShim --&gt; FutexShim
+    SyncMutex --&gt; FutexShim
+    GoChannel --&gt; ChannelShim
+    FutexShim -.-&gt;|&quot;только когда поток M простаивает&quot;| SysFutex
     GoroutineSpawn --&gt; GMP_Engine --&gt; SysClone
     NetHTTP --&gt; NetpollEngine --&gt; SysEpoll
     GMP_Engine -.-&gt; SysMmap

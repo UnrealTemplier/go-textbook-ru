@@ -2367,14 +2367,9 @@ flowchart LR
 <td>Используется при сборке <code>CGO_ENABLED=1</code> на системах со специфичными модулями NSS (LDAP, Winbind)</td>
 </tr>
 <tr>
-<td><code>go</code> (или <code>netgo</code>, по умолчанию)</td>
+<td><code>go</code> (или <code>netgo</code>)</td>
 <td>Автономный резолвер на чистом Go</td>
-<td>Дефолт для всех современных сборок Go на <code>GOOS=linux</code>, <code>darwin</code>, <code>windows</code></td>
-</tr>
-<tr>
-<td><code>experimentalgo</code></td>
-<td>Экспериментальный конкурентный резолвер с кэшированием</td>
-<td>Прототипы и бенчмарки в свежих версиях компилятора Go</td>
+<td>На <code>linux</code> Go по умолчанию использует его, пока в конфигурации (<code>nsswitch.conf</code>, переменные <code>LOCALDOMAIN</code>, <code>RES_OPTIONS</code>, <code>HOSTALIASES</code> и др.) нет ничего, что он не умеет; на <code>windows</code>, <code>darwin</code>, <code>plan9</code>, <code>android</code>, <code>ios</code> по умолчанию используется системный резолвер</td>
 </tr>
 </tbody>
 </table></div>
@@ -2383,7 +2378,7 @@ flowchart LR
 
 <p>Встроенный резолвер <code>netgo</code> самостоятельно читает и парсит <code>/etc/resolv.conf</code>, но принципиально отличается от классического libc:</p>
 <ol>
-<li><strong>Конкурентный параллельный опрос:</strong> Если в конфигурации указано несколько <code>nameserver</code>, Go не ждет 5 секунд ответа от первого! Он запускает параллельные DNS-запросы ко всем указанным серверам (или производит быстрый round-robin опрос). Первый корректный ответ немедленно возвращается приложению. Это спасает Go-сервисы от зависаний при сбое одного из серверов инфраструктуры!</li>
+<li><strong>Последовательный опрос серверов с собственными таймаутами:</strong> Если в конфигурации указано несколько <code>nameserver</code>, Go перебирает их <strong>по очереди</strong> (в цикле по числу попыток и по списку серверов), а не запрашивает все сразу. Параллельно идут лишь запросы разных типов (A и AAAA). Таймаут на каждую попытку и число попыток берутся из <code>resolv.conf</code> (<code>timeout</code>, <code>attempts</code>), поэтому зависание первого сервера задержит ответ, но не заблокирует его навсегда.</li>
 <li><strong>Интеллектуальная обработка <code>ndots</code> и <code>search</code>:</strong> Go точно следует спецификациям RFC, но оптимизирует очевидные случаи: например, Go никогда не станет подставлять суффиксы <code>search</code> к адресу <code>localhost</code> или литеральным IP-адресам.</li>
 <li><strong>Отсутствие встроенного кэширования:</strong> По умолчанию резолвер <code>netgo</code> <strong>не кэширует</strong> результаты DNS-запросов в оперативной памяти процесса! Каждый вызов <code>net.Dial</code> или <code>net.LookupIP</code> производит реальный сетевой обмен по UDP, если в системе не установлен локальный кэширующий DNS-демон.</li>
 </ol>
@@ -2433,8 +2428,7 @@ func main() {
 
     fmt.Println(&quot;Успешно получены IP-адреса через netgo:&quot;)
     for _, ip := range addrs {
-        fmt.Printf(&quot; -&gt; %s
-&quot;, ip.String())
+        fmt.Printf(&quot; -&gt; %s\n&quot;, ip.String())
     }
 }
 </code></pre>
@@ -2497,7 +2491,7 @@ sequenceDiagram
     DNS--&gt;&gt;Sys: UDP Response (A / AAAA records)
     Sys--&gt;&gt;Net: recvfrom()
     Net--&gt;&gt;G: []net.IP (слайс адресов в куче)
-    Note over Net,DNS: При таймауте Net параллельно опрашивает следующий nameserver
+    Note over Net,DNS: При таймауте Net переходит к следующему nameserver
   </pre>
 </figure>
 
@@ -2523,8 +2517,8 @@ sequenceDiagram
 <h2 id="itogi">Итоги</h2>
 
 <ol>
-<li><strong>OS vs Go</strong>: Классический libc (<code>getaddrinfo</code>) опрашивает серверы последовательно (с 5-секундным ожиданием при сбое), кэширует конфигурацию и блокирует системные потоки. Встроенный резолвер Go (<strong><code>netgo</code></strong>) опрашивает серверы параллельно, интегрируется с <code>netpoller</code> и не зависит от динамических библиотек.</li>
-<li><strong>Системный конвейер</strong>: DNS-резолвинг на уровне ядра — это быстрый обмен легковесными UDP-дейтаграммами через <code>socket</code>, <code>sendto</code>, <code>recvfrom</code>. В случае переполнения буфера (флаг <code>TC</code>) ядро прозрачно переключается на TCP.</li>
+<li><strong>OS vs Go</strong>: Классический libc (<code>getaddrinfo</code>) опрашивает серверы последовательно (с ожиданием таймаута при сбое), кэширует конфигурацию и блокирует системные потоки. Встроенный резолвер Go (<strong><code>netgo</code></strong>) тоже опрашивает серверы последовательно, но запросы A и AAAA отправляет параллельно, интегрируется с <code>netpoller</code> и не зависит от динамических библиотек.</li>
+<li><strong>Системный конвейер</strong>: DNS-резолвинг на уровне ядра — это быстрый обмен легковесными UDP-дейтаграммами через <code>socket</code>, <code>sendto</code>, <code>recvfrom</code>. В случае усечения ответа (флаг <code>TC</code>) повторный запрос по TCP делает сам резолвер (libc или Go), а не ядро.</li>
 <li><strong>musl против glibc</strong>: Для контейнеризованных Go-приложений золотым правилом остается компиляция с флагом <code>CGO_ENABLED=0</code>, исключающая несовместимости с libc хоста.</li>
 <li><strong>Механическое сочувствие и оптимизации</strong>: Избегайте аллокаций <code>[]net.IP</code> на каждый чих, внедряйте кэширование на базе <code>hashicorp/golang-lru</code>, контролируйте параметр <code>ndots</code> в Kubernetes и всегда ограничивайте DNS-запросы дедлайнами контекста <code>context.WithTimeout</code>.</li>
 </ol>
