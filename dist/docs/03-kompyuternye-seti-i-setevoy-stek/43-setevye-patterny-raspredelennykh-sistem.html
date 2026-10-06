@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~29 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~32 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">43. Сетевые паттерны распределенных систем</h1>
@@ -2249,7 +2249,6 @@ sequenceDiagram
 
 import (
     &quot;context&quot;
-    &quot;errors&quot;
     &quot;fmt&quot;
     &quot;time&quot;
 
@@ -2275,8 +2274,9 @@ func (s *Service) GetItem(ctx context.Context, id string) (*Item, error) {
     req := &amp;pb.GetItemRequest{Id: id}
     resp, err := s.grpcClient.GetItem(ctx, req)
     if err != nil {
-        // grpc errors.IsNotFound(err) или status.Code(err) == codes.NotFound
-        if errors.Is(err, context.DeadlineExceeded) {
+        // Ошибки gRPC сравнивают по коду статуса: errors.Is(err, context.DeadlineExceeded)
+        // для status.Error вернёт false, нужен status.Code(err).
+        if status.Code(err) == codes.DeadlineExceeded {
             return nil, fmt.Errorf(&quot;timeout: %w&quot;, err)
         }
         if status.Code(err) == codes.NotFound {
@@ -2300,7 +2300,7 @@ func (s *Service) GetItem(ctx context.Context, id string) (*Item, error) {
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p>Когда горутина вызывает <code>grpcClient.GetItem</code>, она блокируется на чтении/записи в TCP-сокет. Блокировка <strong>не</strong> останавливает системный тред (M). <code>netpoller</code> (под капотом <code>epoll</code> в Linux или <code>kqueue</code> в BSD/macOS) регистриует дескриптор сокета. Горутина переходит в состояние <code>Gwaiting</code>, а тред M возвращается в пул или переключается на другую горутину. Когда данные приходят, <code>netpoll</code> будит горутину через <code>runtime.wakeG</code>. Это обеспечивает обработку сотен тысяч соединений на одном трде без context switch от ядра ОС.</p>
+    <p>Когда горутина вызывает <code>grpcClient.GetItem</code>, она блокируется на чтении/записи в TCP-сокет. Блокировка <strong>не</strong> останавливает системный тред (M). <code>netpoller</code> (под капотом <code>epoll</code> в Linux или <code>kqueue</code> в BSD/macOS) регистриует дескриптор сокета. Горутина переходит в состояние <code>Gwaiting</code>, а тред M возвращается в пул или переключается на другую горутину. Когда данные приходят, <code>netpoll</code> будит горутину через <code>netpollready</code> и <code>goready</code>. Это обеспечивает обработку сотен тысяч соединений на одном трде без context switch от ядра ОС.</p>
   </div>
 </aside>
 
@@ -2379,7 +2379,7 @@ func processOrder(ctx context.Context, data []byte) error {
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Как в Go реализовать flow control для Pub/Sub потребителя, чтобы не перегрузить CPU?<br />
-<strong>Ответ:</strong> Использовать буферизованные каналы с ограниченным размером (<code>make(chan msg, 100)</code>) и блокирующий <code>for</code>-цикл чтения. Если канал заполнен, <code>sub.SetPendingLimits</code> или кастомный backoff на стороне брокера предотвратят падение. В Go 1.21+ также можно использовать <code>sync.Pool</code> для переиспользования десериализованных структур, чтобы снизить нагрузку на GC.</p>
+<strong>Ответ:</strong> Использовать буферизованные каналы с ограниченным размером (<code>make(chan msg, 100)</code>) и блокирующий <code>for</code>-цикл чтения. Если канал заполнен, <code>sub.SetPendingLimits</code> или кастомный backoff на стороне брокера предотвратят падение. Также можно использовать <code>sync.Pool</code> (он есть в Go с версии 1.3) для переиспользования десериализованных структур, чтобы снизить нагрузку на GC.</p>
   </div>
 </aside>
 
@@ -2445,6 +2445,7 @@ import (
 type CircuitBreaker struct {
     mu           sync.Mutex
     state        int // 0: Closed, 1: Open, 2: Half-Open
+    probing      bool // в Half-Open уже выпущен пробный запрос
     failures     int
     lastFailTime time.Time
     resetTimeout time.Duration
@@ -2466,11 +2467,17 @@ func (cb *CircuitBreaker) Allow() bool {
     case 1: // Open
         if time.Since(cb.lastFailTime) &gt; cb.resetTimeout {
             cb.state = 2 // Half-Open
-            return true
+            cb.probing = true
+            return true // единственный пробный запрос
         }
         return false
     case 2: // Half-Open
-        return true // Разрешаем один запрос для проверки
+        // Пробный запрос уже в полёте: остальные ждут его результата.
+        if cb.probing {
+            return false
+        }
+        cb.probing = true
+        return true
     }
     return false
 }
@@ -2479,6 +2486,7 @@ func (cb *CircuitBreaker) RecordSuccess() {
     cb.mu.Lock()
     defer cb.mu.Unlock()
     cb.state = 0
+    cb.probing = false
     cb.failures = 0
 }
 
@@ -2487,8 +2495,9 @@ func (cb *CircuitBreaker) RecordFailure() {
     defer cb.mu.Unlock()
     cb.failures++
     cb.lastFailTime = time.Now()
-    if cb.failures &gt;= 5 {
-        cb.state = 1 // Open
+    cb.probing = false
+    if cb.state == 2 || cb.failures &gt;= 5 {
+        cb.state = 1 // Open: неудачный пробный запрос возвращает в Open
     }
 }
 </code></pre>
@@ -2551,8 +2560,13 @@ type OrderReq struct {
     Amount int
 }
 
-func (s *Service) CreateOrder(ctx context.Context, req *OrderReq) error {
-    idempKey := uuid.New().String()
+// Ключ идемпотентности создаётся ОДИН раз на логическую операцию (например, при
+// создании заказа в UI) и передаётся во все повторные вызовы: если генерировать
+// uuid внутри CreateOrder, каждый внешний ретрай получит новый ключ и создаст дубль.
+func NewIdempotencyKey() string { return uuid.New().String() }
+
+// Service и pb — из предыдущих примеров (здесь они опущены, это фрагмент).
+func (s *Service) CreateOrder(ctx context.Context, req *OrderReq, idempKey string) error {
     ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
     defer cancel()
 
@@ -2575,15 +2589,15 @@ func (s *Service) CreateOrder(ctx context.Context, req *OrderReq) error {
   </div>
 </div>
 
-<p>На стороне сервера <code>idempotency-key</code> сохраняется в быстром хранилище (Redis или базе данных) с настроенным временем жизни TTL. Если поступает запрос с уже зарегистрированным ключом, сервер возвращает сохраненный результат из кэша, не проводя повторную оплату или создание сущности.</p>
+<p>На стороне сервера <code>idempotency-key</code> сохраняется в быстром хранилище (Redis или базе данных) с настроенным временем жизни TTL. Если поступает запрос с уже зарегистрированным ключом, сервер возвращает сохраненный результат из кэша, не проводя повторную оплату или создание сущности. Важно, чтобы проверка «ключ уже есть» и резервирование ключа выполнялись атомарно (например, <code>SET key NX</code> в Redis или уникальный индекс в базе): иначе два одновременных ретрая оба пройдут проверку и создадут дубль.</p>
 <hr />
 <h2 id="go-runtime-i-mechanical-sympathy-v-setevykh-patternakh">Go Runtime и Mechanical Sympathy в сетевых паттернах</h2>
 
 <ol>
 <li><strong><code>netpoller</code> и Goroutines:</strong> Горутина не привязана к системному треду навсегда. При сетевой блокировке тред освобождается. Это позволяет Go сервису держать 100k+ соединений при минимальном потреблении RAM (стеки горутин растут динамически, начиная с 2 КБ).</li>
 <li><strong>Escape Analysis:</strong> В сетевом коде критично избегать аллокаций в куче. Используйте <code>[]byte</code> pools через <code>sync.Pool</code>, передавайте буферы через <code>io.ReadCloser</code>, избегайте <code>string()</code> конверсий в hot-path. Лишние аллокации = частый Minor GC = паузы <code>pacing</code>.</li>
-<li><strong>TCP Keep-Alive vs Application Heartbeat:</strong> <code>net.Conn.SetKeepAlive(true)</code> отправляет TCP-пакеты каждые 72000 сек (по умолчанию в Linux, настраивается через <code>sysctl net.ipv4.tcp_keepalive_time</code>). Для микросервисов этого мало. Реализуйте application-level heartbeat через <code>time.Ticker</code> и <code>conn.Write</code>, иначе NAT-роутеры или cloud LB закроют "мёртвое" соединение.</li>
-<li><strong><code>SO_REUSEADDR</code> и <code>SO_REUSEPORT</code>:</strong> При graceful shutdown TCP-соединения могут оставаться в <code>TIME_WAIT</code> (~60 сек). Если вы перезапускаете сервис на том же порту, получите <code>address already in use</code>. Решение: <code>net.ListenConfig{Control: func(network, address string, c syscall.RawConn) error { return c.Control(func(fd uintptr) { syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1) }) }</code></li>
+<li><strong>TCP Keep-Alive vs Application Heartbeat:</strong> В Go TCP keep-alive для сокетов <code>net.Dial</code>/<code>net.Listen</code> уже включён по умолчанию: первая проба после 15 секунд простоя, затем каждые 15 секунд (ядерный дефолт Linux — <code>tcp_keepalive_time = 7200</code> сек, но Go его переопределяет; оно действует, если keep-alive был отключён через <code>Dialer{KeepAlive: -1}</code> и включён позже вызовом <code>SetKeepAlive(true)</code> без настройки периода). Keep-alive не заменяет прикладной heartbeat: он лишь проверяет живость TCP-стека пира, а не приложения. Реализуйте application-level heartbeat через <code>time.Ticker</code> и <code>conn.Write</code>, иначе NAT-роутеры или cloud LB закроют "мёртвое" соединение.</li>
+<li><strong><code>SO_REUSEADDR</code> и <code>SO_REUSEPORT</code>:</strong> При graceful shutdown TCP-соединения могут оставаться в <code>TIME_WAIT</code> (~60 сек). Если вы перезапускаете сервис на том же порту, получите <code>address already in use</code>. В Go для слушающих сокетов <code>SO_REUSEADDR</code> уже включён по умолчанию, так что <code>net.Listen</code> перезапускается на том же порту без этой ошибки; явно выставить опцию (или добавить <code>SO_REUSEPORT</code>) можно так: <code>net.ListenConfig{Control: func(network, address string, c syscall.RawConn) error { return c.Control(func(fd uintptr) { syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1) }) }}</code></li>
 </ol>
 <hr />
 <h2 id="lovushki-gotchas-i-voprosy-s-sobesedovaniy">Ловушки, Gotchas и вопросы с собеседований</h2>
@@ -2605,7 +2619,7 @@ func (s *Service) CreateOrder(ctx context.Context, req *OrderReq) error {
     <span class="callout-title">Ловушка / Gotcha</span>
   </header>
   <div class="callout-body">
-    <p><strong>Port Exhaustion:</strong> В высоконагруженных сервисах (например, outbound proxy) сервер может исчерпать локальные порты, так как каждое TCP-соединение занимает уникальный <code>src_ip:src_port</code>. Решение: <code>SO_REUSEPORT</code>, увеличение <code>net.ipv4.ip_local_port_range</code>, или использование connection pooling с <code>http2.Transport</code>.</p>
+    <p><strong>Port Exhaustion:</strong> В высоконагруженных сервисах (например, outbound proxy) сервер может исчерпать локальные порты, так как каждое TCP-соединение занимает уникальный <code>src_ip:src_port</code>. Решение: увеличение <code>net.ipv4.ip_local_port_range</code>, connection pooling (в том числе с HTTP/2, где много запросов идёт по одному соединению) и несколько адресов источника. <code>SO_REUSEPORT</code> не поможет: он влияет на <code>bind()</code> слушающего сокета, а не на клиентские эфемерные порты.</p>
   </div>
 </aside>
 

@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~44 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~46 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">18. TLS и HTTPS. Шифрование поверх TCP</h1>
@@ -2323,7 +2323,7 @@ sequenceDiagram
 1. <strong>Скорость (1-RTT вместо 2-RTT):</strong> TLS 1.3 совмещает согласование параметров и обмен ключами Диффи — Хеллмана в первом же пакете <code>ClientHello</code> за счет отправки долей ключей (<em>Key Shares</em>). Это экономит целый оборот сети (RTT), что в межконтинентальных соединениях снижает задержку на 100–200 мс.<br />
 2. <strong>Безопасность и Forward Secrecy:</strong> Убран статический RSA key exchange. Теперь компрометация приватного ключа сервера в будущем не позволит злоумышленнику расшифровать записанный ранее трафик.<br />
 3. <strong>Отказ от уязвимого легаси:</strong> Исключены шифры CBC, RC4, хеши SHA1/MD5. Стандартизированы только AEAD-шифры (AES-GCM, ChaCha20-Poly1305).<br />
-4. <strong>Шифрование рукопожатия:</strong> Сертификат сервера и расширения передаются уже в зашифрованном виде, защищая метаданные от прослушивания. В Go 1.21+ TLS 1.3 включен по умолчанию.</p>
+4. <strong>Шифрование рукопожатия:</strong> Сертификат сервера и расширения передаются уже в зашифрованном виде, защищая метаданные от прослушивания. В Go TLS 1.3 включён по умолчанию с версии 1.13 (с Go 1.14 отключить его через <code>GODEBUG</code> нельзя); минимальная версия по умолчанию для клиента и сервера — TLS 1.2.</p>
   </div>
 </aside>
 
@@ -2395,9 +2395,9 @@ flowchart LR
   </header>
   <div class="callout-body">
     <p>В современных версиях Go внутренняя архитектура <code>crypto/tls</code> была глубоко модернизирована:<br />
-1. Начиная с Go 1.24 добавлена интеграция с подсистемой <strong><code>crypto/internal/fips140</code></strong> для сертификации криптографических примитивов по стандарту FIPS 140-3 без необходимости компиляции со сторонним C-модулем BoringCrypto.<br />
+1. Начиная с Go 1.24 в стандартную библиотеку встроен Go Cryptographic Module для соответствия стандарту FIPS 140-3 — без необходимости компиляции со сторонним C-модулем BoringCrypto.<br />
 2. Жесткая оптимизация под лимит памяти <strong><code>GOMEMLIMIT</code></strong>. В старых версиях Go каждое рукопожатие создавало десятки короткоживущих объектов в куче: временную структуру <code>HandshakeState</code>, блоки <code>cipher.Block</code>, буферы для генерации солей и nonce. В пиковые моменты наплыва клиентов это вызывало мощный всплеск аллокаций и внеплановые паузы GC.<br />
-3. В современных версиях Go активно используется пул переиспользования памяти <strong><code>sync.Pool</code></strong> для кэширования буферов Record Layer и инстансов <code>cipher.AEAD</code>, что снизило нагрузку на сборщик мусора на <strong>30–50%</strong> под высоким RPS!</p>
+3. В современных версиях Go активно используется пул переиспользования памяти <strong><code>sync.Pool</code></strong> для буферов записи Record Layer (<code>outBufPool</code> в <code>crypto/tls/conn.go</code>), что снижает нагрузку на сборщик мусора под высоким RPS (для инстансов <code>cipher.AEAD</code> пула нет, а конкретный процент выигрыша зависит от нагрузки — измеряйте на своём профиле).</p>
   </div>
 </aside>
 
@@ -2474,7 +2474,7 @@ func init() {
 
 <p>Когда горутина вызывает <code>tlsConn.Read()</code>, а сетевой пакет еще летит по проводу, рантайм Go переводит горутину <code>G</code> в состояние ожидания <strong><code>Gwaiting</code></strong>. Планировщик Go отвязывает её от системного потока <strong><code>M</code></strong>, отправляя поток выполнять другие горутины из очереди <strong><code>runq</code></strong>.</p>
 <p>Когда прерывание сетевой карты доставляет пакет, сетевой полинг <strong><code>netpoller</code></strong> (через epoll/kqueue) будит горутину <code>G</code> и возвращает её в <code>runq</code>. <br />
-Но обратите внимание: <strong>как только зашифрованные данные получены, фаза дешифрации выполняется синхронно на потоке <code>M</code></strong>! Если сотни потоков одновременно нагружены расшифровкой криптографии, потоки <code>M</code> будут загружены на 100% CPU. Чтобы сетевой реактор не голодал, критически важно выставлять <strong><code>GOMAXPROCS</code></strong> в соответствии с числом физических ядер контейнера и использовать мультиплексирование HTTP/2 или HTTP/3 поверх одного TLS-соединения.</p>
+Но обратите внимание: <strong>как только зашифрованные данные получены, фаза дешифрации выполняется синхронно на потоке <code>M</code></strong>! Если сотни потоков одновременно нагружены расшифровкой криптографии, потоки <code>M</code> будут загружены на 100% CPU. Чтобы сетевой реактор не голодал, критически важно, чтобы <strong><code>GOMAXPROCS</code></strong> соответствовал реальному CPU-лимиту контейнера (по умолчанию он равен числу логических CPU <code>NumCPU</code>; начиная с Go 1.25 рантайм учитывает и cgroup-лимит CPU) и использовать мультиплексирование HTTP/2 или HTTP/3 поверх одного TLS-соединения.</p>
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: ChaCha20-Poly1305 против AES-GCM">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2503,11 +2503,13 @@ func init() {
   <pre class="language-go"><code class="language-go">package main
 
 import (
+    &quot;context&quot;
     &quot;crypto/tls&quot;
     &quot;crypto/x509&quot;
     &quot;fmt&quot;
     &quot;log&quot;
     &quot;net&quot;
+    &quot;time&quot;
 )
 
 // establishSecureConn создает надежное TLS-соединение с защитой от MITM
@@ -2521,8 +2523,7 @@ func establishSecureConn(target string) (*tls.Conn, error) {
     // 2. Настройка строгой конфигурации безопасности
     cfg := &amp;tls.Config{
         RootCAs:            pool,
-        MinVersion:         tls.VersionTLS12, // Минимальная допустимая версия (Go 1.21+ по умолчанию использует TLS 1.3)
-        PreferServerCipherSuites: true,
+        MinVersion:         tls.VersionTLS12, // Минимальная допустимая версия (TLS 1.3 в Go включён по умолчанию с версии 1.13)
         // Серверное имя для расширения SNI (Server Name Indication)
         ServerName:         &quot;example.com&quot;,
         GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
@@ -2535,20 +2536,27 @@ func establishSecureConn(target string) (*tls.Conn, error) {
         },
     }
 
-    // 3. Установка чистого TCP-соединения
-    conn, err := net.Dial(&quot;tcp&quot;, target)
+    // 3. Установка чистого TCP-соединения с таймаутом (без дедлайнов клиент может зависнуть)
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    dialer := &amp;net.Dialer{Timeout: 5 * time.Second}
+    conn, err := dialer.DialContext(ctx, &quot;tcp&quot;, target)
     if err != nil {
         return nil, fmt.Errorf(&quot;ошибка TCP dial: %w&quot;, err)
     }
 
-    // 4. Оборачивание в TLS и явный запуск Handshake
+    // 4. Оборачивание в TLS и явный запуск Handshake с контекстом.
+    // Handshake проверяет цепочку сертификатов и имя хоста (cfg.ServerName).
     tlsConn := tls.Client(conn, cfg)
-    if err := tlsConn.Handshake(); err != nil {
+    if err := tlsConn.HandshakeContext(ctx); err != nil {
         conn.Close()
         return nil, fmt.Errorf(&quot;ошибка TLS handshake: %w&quot;, err)
     }
 
-    // 5. Критически важная проверка: валидация имени хоста (Hostname Verification)
+    // 5. Явная повторная проверка имени хоста. При непустом ServerName и InsecureSkipVerify=false
+    // это уже сделал Handshake; ручной VerifyHostname нужен, когда проверка отключена
+    // (InsecureSkipVerify=true) и вы реализуете собственную проверку.
     if err := tlsConn.VerifyHostname(&quot;example.com&quot;); err != nil {
         tlsConn.Close()
         return nil, fmt.Errorf(&quot;несовпадение доменного имени в сертификате: %w&quot;, err)
@@ -2580,10 +2588,10 @@ func main() {
     <span class="callout-title">Собеседование</span>
   </header>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> «Зачем вызывать <code>tls.Conn.VerifyHostname()</code> вручную после <code>Handshake()</code>, если handshake завершился успешно?»<br />
+    <p><strong>Вопрос:</strong> «Нужно ли вызывать <code>tls.Conn.VerifyHostname()</code> вручную после <code>Handshake()</code>?»<br />
 <strong>Ответ:</strong><br />
-Системный вызов <code>Handshake()</code> проверяет только криптографическую валидность: что сертификат подписан доверенным центром сертификации (<code>CA</code>), срок его действия не истек, а закрытый ключ совпадает с открытым.<br />
-Но <code>Handshake()</code> на низком уровне <code>tls.Client</code> <strong>не проверяет</strong>, для какого именно домена выдан этот сертификат! Злоумышленник в ходе атаки Man-in-the-Middle (<strong><code>MITM</code></strong>) может подсунуть совершенно легитимный, валидный сертификат от доверенного Let's Encrypt, но выданный для домена <code>attacker.com</code>. Без вызова <strong><code>VerifyHostname</code></strong> клиент примет чужой сертификат и раскроет данные хакеру. Высокоуровневый <code>http.Client</code> выполняет эту проверку автоматически, но при работе с <code>crypto/tls</code> напрямую разработчик обязан проверять имя хоста сам.</p>
+Обычно нет. Метод <code>Handshake()</code> (это обычный метод Go, а не системный вызов) проверяет и цепочку доверия (сертификат подписан доверенным <code>CA</code>, срок действия не истёк), и имя хоста: оно берётся из <code>Config.ServerName</code>. Если вы выдали <code>tls.Client</code> сертификат от доверенного CA, но выданный для <code>attacker.com</code>, а <code>ServerName</code> равен <code>example.com</code>, <code>Handshake()</code> вернёт ошибку <code>x509: certificate is valid for attacker.com, not example.com</code>. Если же <code>ServerName</code> пуст и <code>InsecureSkipVerify</code> не включён, ошибкой будет <code>tls: either ServerName or InsecureSkipVerify must be specified</code>.<br />
+Ручной вызов <strong><code>VerifyHostname</code></strong> становится нужным только когда стандартная проверка отключена (<code>InsecureSkipVerify: true</code> вместе с собственной проверкой в <code>VerifyPeerCertificate</code>/<code>VerifyConnection</code>): тогда за проверку имени хоста отвечаете вы сами. Высокоуровневый <code>http.Client</code> делает всё это автоматически.</p>
   </div>
 </aside>
 
@@ -2596,7 +2604,7 @@ func main() {
 <li><strong>Утечка памяти дескрипторов TLS:</strong><br />
    В отличие от некоторых высокоуровневых объектов других сред разработки, структура <code>tls.Conn</code> в Go не полагается на сборщик мусора для закрытия сокетов. Если горутина завершилась без вызова <strong><code>Close()</code></strong>, буферы Record Layer и дескрипторы сокетов зависнут в памяти. Всегда используйте <code>defer conn.Close()</code>.</li>
 <li><strong>Контроль памяти через <code>GOMEMLIMIT</code>:</strong><br />
-   В высоконагруженных микросервисах с десятками тысяч одновременных TLS-сессий память, выделенная под буферы сокетов, способна превысить лимит, установленный через функцию <strong><code>debug.SetMemoryLimit()</code></strong>. Для предотвращения OOM-паники настраивайте параметры пула соединений в <strong><code>net/http.Transport</code></strong>: ограничивайте <strong><code>MaxIdleConns</code></strong> и выставляйте агрессивный таймаут простоя <strong><code>IdleConnTimeout</code></strong>.</li>
+   В высоконагруженных микросервисах с десятками тысяч одновременных TLS-сессий память, выделенная под буферы сокетов, способна оказаться значимой частью общего потребления процесса; при этом <code>GOMEMLIMIT</code> / <strong><code>debug.SetMemoryLimit()</code></strong> — это <em>мягкий</em> лимит для памяти, которой управляет рантайм Go, и он не учитывает буферы сокетов ядра и не вызывает «OOM-паники» при превышении (сборщик лишь работает чаще). Для ограничения потребления настраивайте параметры пула соединений в <strong><code>net/http.Transport</code></strong>: ограничивайте <strong><code>MaxIdleConns</code></strong> и выставляйте агрессивный таймаут простоя <strong><code>IdleConnTimeout</code></strong>.</li>
 <li><strong>Сравнение сетевого шифрования в разных средах:</strong><br />
    - <strong>PHP:</strong> Жесткая привязка к системному OpenSSL. Вызовы через C-биндинги создают накладные расходы на маршалинг данных в структуры <code>Zval</code>.<br />
    - <strong>Java:</strong> Использование абстракций <code>SSLSocket</code>, требующих выделения тяжелых объектов сессий в памяти JVM.<br />

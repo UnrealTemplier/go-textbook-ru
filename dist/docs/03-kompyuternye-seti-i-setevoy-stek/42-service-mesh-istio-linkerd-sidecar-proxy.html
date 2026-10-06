@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~35 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~36 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">42. Service Mesh. Istio, Linkerd, sidecar proxy</h1>
@@ -2363,8 +2363,8 @@ flowchart TD
 
 <p>Когда ваше приложение на Go помещается внутрь сетки Service Mesh, его сетевой профиль меняется:</p>
 <ol>
-<li><strong>Connection Pooling:</strong> Вызов <code>http.Transport</code> к соседнему сервису превращается в соединение к <code>127.0.0.1:15001</code>. Хотя Envoy пулит внешние mTLS-соединения к удаленным узлам, локальный пул между Go и Envoy должен быть достаточного размера, чтобы не создавать TCP-соединения на каждый запрос.</li>
-<li><strong>DNS Resolution:</strong> В классическом Go DNS резолвится локально. В сетке Service Mesh Envoy перехватывает DNS-трафик через собственный DNS-прокси, что исключает накладные расходы на CoreDNS.</li>
+<li><strong>Connection Pooling:</strong> <code>http.Transport</code> по-прежнему подключается к исходному адресу сервиса: iptables <code>REDIRECT</code> прозрачно перенаправляет соединение на порт sidecar'а, а Envoy узнаёт исходный адрес назначения через <code>SO_ORIGINAL_DST</code>. Хотя Envoy пулит внешние mTLS-соединения к удаленным узлам, пул между Go и sidecar'ом должен быть достаточного размера, чтобы не создавать TCP-соединения на каждый запрос.</li>
+<li><strong>DNS Resolution:</strong> В классическом Go DNS резолвится локально. В Istio DNS-прокси работает не в Envoy, а в <code>istio-agent</code> (<code>pilot-agent</code>) и по умолчанию выключен (включается через <code>ISTIO_META_DNS_CAPTURE</code>); при его включении часть запросов обслуживается локально и снижает нагрузку на CoreDNS.</li>
 <li><strong>Контекст распределенной трассировки:</strong> Заголовки <code>x-request-id</code>, <code>x-b3-*</code> или W3C Trace Context (<code>traceparent</code>, <code>tracestate</code>) инжектируются прокси. Go должен использовать <code>otel</code> SDK, который автоматически считывает заголовки из входящих запросов и пробрасывает их дальше, иначе граф вызовов в Jaeger или Tempo разорвется.</li>
 <li><strong>Диагностика и отладка:</strong> Обычный <code>tcpdump</code> на сетевом интерфейсе хоста покажет лишь зашифрованный TLS-трафик. Чтобы заглянуть внутрь незашифрованного обмена между приложением и сайдкаром, системные инженеры подключаются напрямую к пространству имен пода:<br />
 <code>nsenter -t &lt;pid&gt; -n tcpdump -i lo port 15001</code></li>
@@ -2381,7 +2381,6 @@ flowchart TD
   <pre class="language-go"><code class="language-go">package main
 
 import (
-    &quot;context&quot;
     &quot;net&quot;
     &quot;net/http&quot;
     &quot;time&quot;
@@ -2482,7 +2481,7 @@ func createMeshOptimizedClient() *http.Client {
     <span class="callout-title">Ловушка / Gotcha</span>
   </header>
   <div class="callout-body">
-    <p><strong>Port Exhaustion на sidecar.</strong> Если Go-приложение открывает много соединений к <code>127.0.0.1:15001</code>, локальный ephemeral port pool может исчерпаться. Решение: <code>sysctl -w net.ipv4.ip_local_port_range="1024 65535"</code>, настройка <code>SO_REUSEPORT</code>, или использование Unix domain sockets вместо TCP для app-proxy связи (в Linkerd по умолчанию).</p>
+    <p><strong>Port Exhaustion на sidecar.</strong> Если Go-приложение открывает много коротких соединений (все они проходят через sidecar), локальный ephemeral port pool может исчерпаться. Решение: пулы соединений (keep-alive), <code>sysctl -w net.ipv4.ip_local_port_range="1024 65535"</code> и, при необходимости, <code>tcp_tw_reuse</code>. <code>SO_REUSEPORT</code> тут не поможет: он влияет на <code>bind()</code> слушающего сокета. (Linkerd перехватывает трафик правилами iptables на портах 4143/4140, а не через Unix domain sockets.)</p>
   </div>
 </aside>
 
@@ -2493,7 +2492,7 @@ func createMeshOptimizedClient() *http.Client {
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Как отлаживать <code>TIME_WAIT</code> в mesh-среде?<br />
-<strong>Ответ:</strong> <code>TIME_WAIT</code> возникает, когда Go-приложение закрывает соединение, а прокси еще не отправил FIN. В sidecar-архитектуре прокси использует <code>SO_LINGER=0</code> и <code>TCP_NODELAY</code> для быстрого сброса. Если проблема в приложении, нужно использовать <code>http.Transport.DisableKeepAlives=false</code> и контролировать <code>MaxIdleConns</code>. В Kubernetes также помогает тюнинг <code>net.ipv4.tcp_tw_reuse = 1</code> для переиспользования сокетов в <code>TIME_WAIT</code> (а <code>net.ipv4.tcp_fin_timeout</code> ускоряет освобождение подвисших сокетов в <code>FIN-WAIT-2</code>).</p>
+<strong>Ответ:</strong> <code>TIME_WAIT</code> возникает, когда Go-приложение закрывает соединение, а прокси еще не отправил FIN. В sidecar-архитектуре прокси использует <code>SO_LINGER=0</code> и <code>TCP_NODELAY</code> для быстрого сброса. Если проблема в приложении, нужно использовать <code>http.Transport.DisableKeepAlives=false</code> и контролировать <code>MaxIdleConns</code>. В Kubernetes также помогает тюнинг <code>net.ipv4.tcp_tw_reuse = 1</code> (глобальный режим; по умолчанию стоит 2 — только loopback) для переиспользования сокетов в <code>TIME_WAIT</code> (а <code>net.ipv4.tcp_fin_timeout</code> ускоряет освобождение подвисших сокетов в <code>FIN-WAIT-2</code>).</p>
   </div>
 </aside>
 

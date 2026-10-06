@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~33 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~35 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 5 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">22. HTTP 2. Multiplexing, Frames, HPACK</h1>
@@ -2279,7 +2279,7 @@ flowchart TD
     A --&gt; E[&quot;Stream ID 31 бита +&lt;br&gt;Reserved&quot;]
     A --&gt; F[&quot;Payload&quot;]
 
-    B --&gt;|&quot;4 КБ макс&quot;| G[&quot;Максимальный размер&quot;]
+    B --&gt;|&quot;16 КБ по умолчанию&quot;| G[&quot;Максимальный размер&quot;]
     C --&gt;|&quot;HEADERS / DATA / PRIORITY&quot;| H[&quot;Управление потоком&quot;]
     D --&gt;|&quot;END_STREAM / END_HEADERS&quot;| I[&quot;Маркер завершения&quot;]
     E --&gt;|&quot;0 - Control / Odd - Client /&lt;br&gt;Even - Server&quot;| J[&quot;Идентификатор&quot;]
@@ -2326,7 +2326,7 @@ flowchart TD
 <li><code>HEADERS</code> — заголовки запроса/ответа (сжаты через HPACK). Может открывать новый логический поток.</li>
 <li><code>DATA</code> — тело сообщения (нагрузка запроса или ответа).</li>
 <li><code>WINDOW_UPDATE</code> — управление flow control (механизм предотвращения переполнения буферов на уровне потока или соединения в целом).</li>
-<li><code>PRIORITY</code> — дерево приоритетов потоков (сообщает серверу, какие ресурсы отдавать в первую очередь).</li>
+<li><code>PRIORITY</code> — дерево приоритетов потоков (сообщает серверу, какие ресурсы отдавать в первую очередь). Эта схема объявлена устаревшей в RFC 9113 (§5.3.2); ей на смену пришла схема приоритетов из RFC 9218 (заголовок <code>Priority</code>).</li>
 <li><code>SETTINGS</code>, <code>PING</code>, <code>GOAWAY</code> — управление соединением. <code>SETTINGS</code> согласует параметры сессии, <code>PING</code> измеряет RTT и проверяет живость канала, а <code>GOAWAY</code> обеспечивает graceful shutdown соединения.</li>
 </ol>
 <hr />
@@ -2421,7 +2421,7 @@ sequenceDiagram
 <p>Специально для HTTP/2 был разработан алгоритм сжатия <strong>HPACK</strong> (RFC 7541). Он спроектирован так, чтобы быть устойчивым к атакам утечки через компрессию, и использует два словаря:</p>
 <ul>
 <li><strong>Static Table</strong>: Фиксированный набор (например, <code>:method</code>, <code>:scheme</code>, <code>:path</code>, <code>host</code>). Индексация по номеру. Содержит 61 предопределенный индекс наиболее часто встречающихся пар заголовок-значение (например, индекс 2 — <code>method: GET</code>, индекс 3 — <code>method: POST</code>, индекс 4 — <code>path: /</code>).</li>
-<li><strong>Dynamic Table</strong>: LRU-кэш, заполняемый сервером во время сессии. Позволяет сжимать повторяющиеся заголовки (например, <code>cookie</code>, <code>user-agent</code>). Когда клиент впервые передает заголовок <code>authorization: Bearer eyJhbGci...</code>, обе стороны заносят его в динамическую таблицу под индексом 62. Во всех последующих запросах клиент отправляет всего один байт — номер индекса!</li>
+<li><strong>Dynamic Table</strong>: FIFO-таблица ограниченного размера (при переполнении вытесняется самая старая запись, а не «давно не использованная»); каждая сторона ведёт свою таблицу для того направления, которое она кодирует. Позволяет сжимать повторяющиеся заголовки (например, <code>cookie</code>, <code>user-agent</code>). Когда клиент впервые передает заголовок <code>authorization: Bearer eyJhbGci...</code>, обе стороны заносят его в динамическую таблицу под индексом 62. Во всех последующих запросах клиент отправляет всего один байт — номер индекса!</li>
 </ul>
 <p>Сжатие работает через индексацию (отправка номера в статической/динамической таблице) или Huffman-кодирование (для новых значений). Статическое дерево Хаффмана встроено в спецификацию и оптимизировано под частоту символов в заголовках ASCII.</p>
 
@@ -2452,7 +2452,7 @@ flowchart TD
         HIn[&quot;Входящий заголовок&quot;]:::warning --&gt; Check{&quot;Есть в таблице?&quot;}
         Check -- &quot;В статической (1-61)&quot; --&gt; SendStatic[&quot;Отправка 1-байтового индекса (напр. :method: GET)&quot;]
         Check -- &quot;В динамической (&gt;61)&quot; --&gt; SendDynamic[&quot;Отправка динамического индекса&quot;]
-        Check -- &quot;Новый заголовок&quot; --&gt; AddDyn[&quot;Сжатие Хаффманом + Добавление в LRU Dynamic Table&quot;]
+        Check -- &quot;Новый заголовок&quot; --&gt; AddDyn[&quot;Сжатие Хаффманом + Добавление в Dynamic Table (FIFO)&quot;]
     end
   </pre>
 </figure>
@@ -2464,7 +2464,7 @@ flowchart TD
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p>В Go реализация HPACK находится в пакете <code>golang.org/x/net/http2/hpack</code>. Динамическая таблица — это связный список (doubly-linked list) с LRU-эвакцией. При обновлении таблицы выделяются новые <code>hpack.Entry</code> (strings + uint32 index). Это создает нагрузку на GC при high-frequency запросах с уникальными заголовками.</p>
+    <p>В Go реализация HPACK находится в пакете <code>golang.org/x/net/http2/hpack</code>. Динамическая таблица — это срез записей (<code>ents</code>) с FIFO-вытеснением: при нехватке места удаляется самая старая запись (по RFC 7541). При обновлении таблицы выделяются новые <code>hpack.Entry</code> (strings + uint32 index). Это создает нагрузку на GC при high-frequency запросах с уникальными заголовками.</p>
   </div>
 </aside>
 
@@ -2516,7 +2516,7 @@ func (s *conn) newStream(id uint32, writeState writeState) *stream {
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Почему в Go <code>net/http</code> по умолчанию включает HTTP/2 только с TLS?<br />
-<strong>Ответ:</strong> Исторически это было требованием спецификации и браузеров. Хотя спецификация допускает HTTP/2 без шифрования (протокол <code>h2c</code>, HTTP/2 Cleartext), браузеры наотрез отказались реализовывать <code>h2c</code> из-за обилия старых корпоративных прокси и фаерволов, которые ломались при виде бинарного трафика на 80-м порту. TLS обеспечивает шифрование и предоставляет механизм ALPN (Application-Layer Protocol Negotiation) для согласования протокола на этапе рукопожатия без дополнительных RTT. Без TLS Go не будет апгрейдить соединение до HTTP/2 автоматически (хотя для межсервисного общения <code>h2c</code> можно включить вручную через <code>golang.org/x/net/http2/h2c</code>).</p>
+<strong>Ответ:</strong> Исторически это было требованием спецификации и браузеров. Хотя спецификация допускает HTTP/2 без шифрования (протокол <code>h2c</code>, HTTP/2 Cleartext), браузеры наотрез отказались реализовывать <code>h2c</code> из-за обилия старых корпоративных прокси и фаерволов, которые ломались при виде бинарного трафика на 80-м порту. TLS обеспечивает шифрование и предоставляет механизм ALPN (Application-Layer Protocol Negotiation) для согласования протокола на этапе рукопожатия без дополнительных RTT. Без TLS Go не будет апгрейдить соединение до HTTP/2 автоматически (хотя для межсервисного общения <code>h2c</code> можно включить вручную через <code>golang.org/x/net/http2/h2c</code>, а начиная с Go 1.24 — и средствами стандартной библиотеки: <code>http.Protocols.SetUnencryptedHTTP2</code>).</p>
   </div>
 </aside>
 
@@ -2536,9 +2536,9 @@ func (s *conn) newStream(id uint32, writeState writeState) *stream {
     <span class="callout-title">Ловушка / Gotcha</span>
   </header>
   <div class="callout-body">
-    <p><strong>HPDoS (HTTP/2 Rapid Reset / Header DoS):</strong> Осенью 2023 года мир сотрясла крупнейшая в истории интернета DDoS-атака <strong>HTTP/2 Rapid Reset</strong> (CVE-2023-44487), достигавшая сотен миллионов запросов в секунду. </p>
+    <p><strong>HTTP/2 Rapid Reset:</strong> Осенью 2023 года мир сотрясла крупнейшая в истории интернета DDoS-атака <strong>HTTP/2 Rapid Reset</strong> (CVE-2023-44487), достигавшая сотен миллионов запросов в секунду. </p>
 <p>Суть уязвимости: атакующий отправляет фрейм <code>HEADERS</code> (открывая поток и заставляя сервер выделять структуры данных <code>http2.stream</code>, буферы и проводить парсинг HPACK) и тут же отправляет фрейм <code>RST_STREAM</code> (сброс потока). Для клиента это стоило микросекунды и пары байт, а сервер тратил гигабайты памяти на создание и немедленную очистку горутин и структур.</p>
-<p>В Go защита: обязательное обновление рантайма, а также жесткая настройка параметров <code>http2.Server.MaxHeaderListSize</code> и <code>http2.Server.ReadHeaderBufferSize</code>, ограничивающих аппетиты сервера.</p>
+<p>В Go защита: обязательное обновление рантайма (CVE-2023-39325 исправлена в Go 1.20.10 и 1.21.3, <code>golang.org/x/net</code> 0.17.0). Сервер HTTP/2 ограничивает число одновременно живых обработчиков значением <code>MaxConcurrentStreams</code>: остальные потоки ждут в очереди, а если очередь превышает 4×<code>MaxConcurrentStreams</code>, соединение закрывается с <code>ENHANCE_YOUR_CALM</code>. Размер заголовков ограничивает <code>http.Server.MaxHeaderBytes</code>. (Не путайте Rapid Reset с атаками на HPACK и CONTINUATION Flood, CVE-2023-45288, исправленной в Go 1.21.9/1.22.2 и <code>x/net</code> 0.23.0.)</p>
   </div>
 </aside>
 

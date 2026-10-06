@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~38 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~39 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">20. HTTP 1.1. Структура запроса и ответа</h1>
@@ -2323,7 +2323,7 @@ flowchart TD
 +--------------------------------------------------------------------+
 | Content-Type: application/json CRLF                                |
 | Set-Cookie: session_id=xyz; HttpOnly; Secure CRLF                  | &lt;- Headers
-| Server: Golang/1.24 CRLF                                           |
+| Date: Mon, 02 Jan 2006 15:04:05 GMT CRLF                           |
 +--------------------------------------------------------------------+
 | CRLF (\r\n)                                                        | &lt;- Пустая строка
 +--------------------------------------------------------------------+
@@ -2382,7 +2382,7 @@ flowchart TD
     subgraph RESP[&quot;Структура HTTP/1.1 Ответа на уровне байтов&quot;]
         SL[&quot;Start Line: HTTP/1.1 200 OK\\r\\n&quot;]:::entry
         RH1[&quot;Content-Type: application/json; charset=utf-8\\r\\n&quot;]:::process
-        RH2[&quot;Server: Go-Server/1.24\\r\\n&quot;]:::network
+        RH2[&quot;Date: Mon, 02 Jan 2006 15:04:05 GMT\\r\\n&quot;]:::network
         RH3[&quot;Content-Length: 15\\r\\n&quot;]:::process
         RSEP[&quot;\\r\\n (Пустая строка)&quot;]
         RB[&quot;Body: {\#quot;result\#quot;:\#quot;ok\#quot;}&quot;]
@@ -2417,7 +2417,7 @@ type Request struct {
     ContentLength    int64             // Размер тела (-1 если chunked или неизвестно)
     TransferEncoding []string          // Список кодировок: [&quot;chunked&quot;]
     Host             string            // Значение обязательного заголовка Host
-    Context          context.Context   // Контекст горутины для отмены и таймаутов
+    ctx              context.Context   // Контекст запроса (поле приватное; доступ через r.Context())
     // ... внутренние поля парсера
 }
 
@@ -2501,7 +2501,7 @@ flowchart LR
 <p>Объект <code>http.Request</code> создается рантаймом в куче (<code>heap</code>) для каждого нового запроса. Заголовки запроса практически всегда совершают побег в кучу (<strong>Escape Analysis</strong>), поскольку <code>map[string][]string</code> содержит динамические слайсы строк, время жизни которых выходит за пределы функции парсера.</p>
 <h3 id="2-stroki-protiv-slaysov-bayt-byte">2. Строки против слайсов байт (`[]byte`)</h3>
 <p>В языке Go строки неизменяемы (<code>immutable</code>). Когда парсер <code>net/http</code> считывает текстовый заголовок из буфера сокета, он выполняет преобразование <code>string(buf[start:end])</code>. <br />
-Это приводит к аллокации памяти под новую строку. В Go нет автоматического string interning для заголовков. При каждом запросе создаются новые <code>string</code> объекты. Для оптимизации в высоконагруженных сервисах используют <code>[]byte</code> на этапе парсинга и избегают <code>string()</code> преобразований до последнего момента. Высокопроизводительные альтернативные движки (например, <code>fasthttp</code>) намеренно работают только со слайсами байт <code>[]byte</code> и переиспользуемыми пулами объектов <strong><code>sync.Pool</code></strong>, жертвуя совместимостью с интерфейсом <code>net/http</code> ради сокращения аллокаций до нуля.</p>
+Это приводит к аллокации памяти под новую строку. Для самых частых имён заголовков (<code>Content-Type</code>, <code>User-Agent</code>, <code>Accept</code> и т. п.) пакет <code>net/textproto</code> держит таблицу <code>commonHeader</code> и переиспользует готовые строки (своего рода interning), но значения заголовков и нестандартные имена при каждом запросе — это новые <code>string</code> объекты. Для оптимизации в высоконагруженных сервисах используют <code>[]byte</code> на этапе парсинга и избегают <code>string()</code> преобразований до последнего момента. Высокопроизводительные альтернативные движки (например, <code>fasthttp</code>) намеренно работают только со слайсами байт <code>[]byte</code> и переиспользуемыми пулами объектов <strong><code>sync.Pool</code></strong>, жертвуя совместимостью с интерфейсом <code>net/http</code> ради сокращения аллокаций до нуля.</p>
 <h3 id="3-buferizatsiya-cherez-bufio-reader-i-konechnyy-avtomat">3. Буферизация через `bufio.Reader` и конечный автомат</h3>
 <p>Чтобы не делать системный вызов <strong><code>read()</code></strong> на каждый байт или строку, <code>net/http</code> оборачивает сокет в <strong><code>bufio.Reader</code></strong> (обычно размером 4 КБ). <br />
 Парсер реализован как классический <strong>конечный автомат</strong> (<em>Finite State Machine</em>, FSM): он последовательно ищет разделители <code>\r\n</code>, выделяя метод, URI, заголовки и тело. Это позволяет вычитывать из системного буфера сокета тысячи байт за один системный вызов ядра, минимизируя накладные расходы на переключение контекста между User Space и Kernel Space.</p>
@@ -2522,7 +2522,6 @@ import (
     &quot;encoding/json&quot;
     &quot;fmt&quot;
     &quot;net/http&quot;
-    &quot;time&quot;
 )
 
 // HandleUserRequest демонстрирует идиоматичную работу с запросом в Go
@@ -2535,8 +2534,9 @@ func HandleUserRequest(w http.ResponseWriter, r *http.Request) {
     default:
     }
 
-    // 2. Защита от Slowloris и DoS: жесткое ограничение размера тела
-    // Защищает сервер от исчерпания RAM при отправке гигантского тела
+    // 2. Жесткое ограничение размера тела (от Slowloris защищает не оно, а
+    // http.Server.ReadHeaderTimeout/ReadTimeout). Защищает сервер от исчерпания RAM
+    // при отправке гигантского тела
     const maxBodyBytes = 2 * 1024 * 1024 // 2 МБ
     r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 
@@ -2576,12 +2576,12 @@ func HandleUserRequest(w http.ResponseWriter, r *http.Request) {
   </header>
   <div class="callout-body">
     <h3>1. Дублирующиеся заголовки и вызов r.Header.Get()</h3>
-<p><strong>Дублирующиеся заголовники</strong>: <code>r.Header.Get("X-Custom")</code> вернёт только первое значение, склеенное через запятую (если оно не является специфичным, например <code>Set-Cookie</code>). Для получения всех значений используйте <code>r.Header.Values("X-Custom")</code>.</p>
+<p><strong>Дублирующиеся заголовники</strong>: <code>r.Header.Get("X-Custom")</code> вернёт только первое значение (значения не склеиваются через запятую). Для получения всех значений используйте <code>r.Header.Values("X-Custom")</code>.</p>
 <h3>2. Блокирующее чтение r.Body.Read() и атака Slowloris</h3>
 <p>Метод <strong><code>r.Body.Read()</code></strong> по своей природе блокирует текущую горутину до поступления новой порции данных из TCP-сокета. Злоумышленник может открыть тысячи соединений и отправлять по 1 байту каждые 10 секунд (<strong>Slowloris DoS-атака</strong>).<br />
 <strong>Как защититься:</strong><br />
-1. Всегда оборачивайте чтение тела в <strong><code>http.MaxBytesReader</code></strong>.<br />
-2. В структуре <strong><code>http.Server</code></strong> обязательно выставляйте таймауты: <code>ReadHeaderTimeout</code>, <code>ReadTimeout</code> и <code>IdleTimeout</code>! Сервер со стандартными нулевыми таймаутами (<code>http.ListenAndServe</code>) не защищен от зависания горутин.<br />
+1. Оборачивайте чтение тела в <strong><code>http.MaxBytesReader</code></strong> — он ограничивает <em>объём</em> тела (защита памяти), но от медленной отправки по байту не спасает.<br />
+2. Именно таймауты в структуре <strong><code>http.Server</code></strong> защищают от Slowloris — выставляйте их обязательно: <code>ReadHeaderTimeout</code>, <code>ReadTimeout</code> и <code>IdleTimeout</code>! Сервер со стандартными нулевыми таймаутами (<code>http.ListenAndServe</code>) не защищен от зависания горутин.<br />
 3. Ограничивайте время жизни операций через <strong><code>context.WithTimeout</code></strong>.</p>
   </div>
 </aside>
@@ -2628,7 +2628,7 @@ func HandleUserRequest(w http.ResponseWriter, r *http.Request) {
   <div class="callout-body">
     <p><strong>Вопрос:</strong> «Почему метод <code>r.Header.Get()</code> безопаснее и быстрее прямого доступа <code>r.Header["key"]</code>?»<br />
 <strong>Ответ:</strong><br />
-1. <strong>Канонизация регистра:</strong> <code>Header.Get()</code> автоматически применяет функцию <strong><code>CanonicalMIMEHeaderKey</code></strong>. Если клиент прислал заголовок <code>authorization: Bearer xyz</code>, прямой доступ <code>r.Header["Authorization"]</code> вернет <code>nil</code> (заголовок не будет найден!). Метод <code>Get</code> нормализует ключ и гарантированно найдет запись.<br />
+1. <strong>Канонизация регистра:</strong> <code>Header.Get()</code> автоматически применяет функцию <strong><code>CanonicalMIMEHeaderKey</code></strong>. Сервер Go при разборе запроса сам приводит ключи к каноническому виду, поэтому если клиент прислал заголовок <code>authorization: Bearer xyz</code>, то <code>r.Header["Authorization"]</code> вернёт значение, а вот прямой доступ с неканоническим ключом <code>r.Header["authorization"]</code> вернёт <code>nil</code> (заголовок не будет найден!). Метод <code>Get</code> нормализует ключ за вас и поэтому безопаснее.<br />
 2. <strong>Защита от паники:</strong> При отсутствии ключа <code>Header.Get()</code> возвращает пустую строку <code>""</code>, а прямой доступ к отсутствующему ключу мапы возвращает пустой nil-слайс, попытка индексации которого <code>r.Header["X-Key"][0]</code> вызовет мгновенную панику (<code>panic: runtime error: index out of range</code>).</p>
 <p><strong>Вопрос:</strong> «Как среда выполнения Go обрабатывает потоковую передачу данных с заголовком <code>Transfer-Encoding: chunked</code>?»<br />
 <strong>Ответ:</strong><br />

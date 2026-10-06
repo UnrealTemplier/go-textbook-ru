@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~24 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~26 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">30. Service Discovery и балансировка в микросервисах</h1>
@@ -2300,14 +2300,14 @@ flowchart LR
 <hr />
 <h2 id="dns-kak-bazovyy-mekhanizm-discovery-v-go">DNS как базовый механизм discovery в Go</h2>
 
-<p>Kubernetes и многие облачные провайдеры реализуют SD через DNS. При запросе <code>svc.default.svc.cluster.local</code> CoreDNS возвращает список IP подов. Go использует встроенный <code>net.Resolver</code> для преобразования имени в IP.</p>
+<p>Kubernetes и многие облачные провайдеры реализуют SD через DNS. При запросе <code>svc.default.svc.cluster.local</code> CoreDNS для обычного Service возвращает один виртуальный <code>ClusterIP</code> (балансировку между подами затем делает kube-proxy на уровне L4), а список IP подов отдаёт только headless-сервис (<code>clusterIP: None</code>). Go использует встроенный <code>net.Resolver</code> для преобразования имени в IP.</p>
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p>В стандартной библиотеке Go резолвер <code>net.Resolver</code> <strong>не кэширует</strong> DNS-ответы. Однако в HTTP-микросервисах часто возникает иллюзия «залипания DNS» (<strong>stale DNS</strong>). Это происходит из-за пула постоянных соединений <code>http.Transport</code>: однажды установив TCP-соединение с инстансом по DNS-имени, клиент на Go переиспользует открытый Keep-Alive сокет для последующих HTTP-запросов, вообще не выполняя повторных DNS-запросов! Если целевой pod был пересоздан с новым IP, клиент продолжит отправлять пакеты в старый сокет до истечения <code>IdleConnTimeout</code> или получения ошибки. В динамических средах это решается тюнингом <code>IdleConnTimeout</code> (например, 15–30 с) или переходом на клиентскую балансировку (gRPC/xDS).</p>
+    <p>В стандартной библиотеке Go резолвер <code>net.Resolver</code> <strong>не кэширует</strong> DNS-ответы. Однако в HTTP-микросервисах часто возникает иллюзия «залипания DNS» (<strong>stale DNS</strong>). Это происходит из-за пула постоянных соединений <code>http.Transport</code>: однажды установив TCP-соединение с инстансом по DNS-имени, клиент на Go переиспользует открытый Keep-Alive сокет для последующих HTTP-запросов, вообще не выполняя повторных DNS-запросов! Если целевой pod был пересоздан с новым IP, клиент продолжит отправлять пакеты в старый сокет, пока соединение не закроется или не вернёт ошибку. Важно: <code>IdleConnTimeout</code> закрывает только <em>простаивающие</em> соединения — соединение, по которому идёт постоянный трафик, он не затронет, поэтому тюнинг <code>IdleConnTimeout</code> сам по себе устаревший DNS не лечит. В динамических средах помогают клиентская балансировка (gRPC/xDS), явное закрытие соединений (<code>CloseIdleConnections</code>, <code>Connection: close</code> или graceful shutdown на стороне сервера).</p>
   </div>
 </aside>
 
@@ -2362,7 +2362,6 @@ func NewResolver() *net.Resolver {
   <pre class="language-go"><code class="language-go">package main
 
 import (
-    &quot;context&quot;
     &quot;fmt&quot;
     &quot;net&quot;
     &quot;net/http&quot;
@@ -2531,11 +2530,11 @@ sequenceDiagram
     <span class="callout-title">Ловушка / Gotcha</span>
   </header>
   <div class="callout-body">
-    <p><strong>DNS TTL vs IdleConnTimeout</strong>: Если TTL DNS = 10с, а <code>IdleConnTimeout</code> = 90с, Go будет держать 80 секунд тупое соединение. При деплое это вызывает <code>connection refused</code> для 80% запросов.<br />
+    <p><strong>DNS TTL vs пул соединений</strong>: DNS-имя резолвится только при установке нового соединения. Пока pooled-соединение живо, смена DNS-записи (даже с TTL 10 с) на него не влияет, а <code>IdleConnTimeout</code> (90 с у <code>DefaultTransport</code>) закрывает лишь простаивающие соединения. При деплое старые соединения могут вести на уже удалённый pod и давать ошибки <code>connection refused</code>/<code>broken pipe</code>.<br />
 <strong>Решение</strong>: <br />
-1. Устанавливать <code>IdleConnTimeout &lt; DNS_TTL</code>.<br />
+1. Не полагаться на соотношение <code>IdleConnTimeout</code> и DNS TTL: управляйте жизнью соединений явно (graceful shutdown с <code>Connection: close</code>/GOAWAY на сервере, клиентская балансировка).<br />
 2. Использовать <code>Transport.DialContext</code> с кастомным resolver, который форсирует re-resolution при <code>err == ErrConnectionClosed</code>.<br />
-3. В Kubernetes использовать <code>ExternalIPs</code> или <code>Headless Services</code> с <code>publishNotReadyAddresses: true</code>.</p>
+3. В Kubernetes для клиентской балансировки использовать <code>Headless Service</code> (DNS отдаёт IP подов). Поле <code>publishNotReadyAddresses: true</code> для этого не нужно: оно публикует <em>неготовые</em> адреса (обычно нужно для peer discovery у StatefulSet) и как совет по балансировке вредно.</p>
   </div>
 </aside>
 

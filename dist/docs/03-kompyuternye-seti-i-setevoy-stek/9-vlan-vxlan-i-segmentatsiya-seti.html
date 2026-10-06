@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~47 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~50 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 5 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">9. VLAN, VXLAN и сегментация сети</h1>
@@ -2330,18 +2330,16 @@ flowchart LR
     subgraph TaggedEth [&quot;Кадр с тегом VLAN 802.1Q&quot;]
         EthHdr2[&quot;Eth Header (14B)&quot;]
         VLAN_Tag[&quot;802.1Q Tag (4B)&quot;]
-        Payload2[&quot;IP-пакет (уменьшен до 1496 байт)&quot;]
+        Payload2[&quot;IP-пакет (MTU по-прежнему 1500 байт)&quot;]
         EthFCS2[&quot;FCS (4B)&quot;]
     end
   </pre>
 </figure>
 
 
-<h3 id="1-problema-umensheniya-mtu-mtu-reduction">1. Проблема уменьшения MTU (MTU Reduction)</h3>
-<p>Стандартный максимальный размер полезной нагрузки Ethernet-кадра составляет <strong><code>1500</code> байт</strong>. Добавление 4-байтного заголовка 802.1Q увеличивает общий размер кадра с 1518 до 1522 байт. <br />
-Если физический сетевой интерфейс сервера или промежуточный коммутатор не настроен на прием слегка увеличенных кадров (Baby Giant Frames), операционная система вынуждена уменьшать эффективный MTU со значения <code>1500</code> до <strong><code>1496</code> байт</strong>.</p>
-<p>Если высокопроизводительный сервис на Go отправляет UDP-датаграмму размером ровно <code>1500</code> байт через сокет <code>net.UDPConn</code>, ядро Linux возвратит ошибку операционной системы:<br />
-<strong><code>message too long</code></strong> при вызове метода <strong><code>Write</code></strong>.<br />
+<h3 id="1-vlan-teg-i-mtu-pochemu-mtu-ne-umenshaetsya">1. VLAN-тег и MTU (почему MTU не уменьшается)</h3>
+<p>Стандартный максимальный размер полезной нагрузки Ethernet-кадра составляет <strong><code>1500</code> байт</strong>. Добавление 4-байтного заголовка 802.1Q увеличивает общий размер кадра с 1518 до 1522 байт (IEEE 802.3ac), а <strong>MTU остаётся равным <code>1500</code></strong>: на VLAN-подинтерфейсе Linux (<code>ip link add link eth0 name eth0.10 type vlan id 10</code>) вы увидите <code>mtu 1500</code>. Цена тега — не 4 байта MTU, а требование к оборудованию: порты и коммутаторы должны принимать кадры до 1522 байт («Baby Giant Frames»). Если какое-то устройство на пути режет кадры по старому пределу 1518 байт, большие пакеты теряются — это и есть «чёрная дыра», а не «MTU 1496» на хосте.</p>
+<p>Что увидит Go-сервис, если отправить UDP-датаграмму больше MTU? Само по себе превышение MTU ошибки <code>message too long</code> не вызывает: ядро фрагментирует IP-пакет (датаграмма <code>1473</code>–<code>65507</code> байт при <code>Write</code> уходит успешно). <code>EMSGSIZE</code> (<code>message too long</code>) возникает, если выставлен запрет фрагментации (<code>IP_PMTUDISC_DO</code>/флаг DF) или размер превышает 65 507 байт (для IPv4).<br />
 В протоколах TCP и HTTP (<code>net/http</code>) при передаче больших тел ответов с заголовком <strong><code>Content-Length</code></strong> несовпадение MTU приводит к «черным дырам» PMTU Discovery: соединение зависает посреди передачи данных, а клиент бесконечно ждет завершения ответа.</p>
 <h3 id="2-izolyatsiya-shirokoveshchatelnykh-domenov-broadcast-domains">2. Изоляция широковещательных доменов (Broadcast Domains)</h3>
 <p>VLAN изолирует широковещательный трафик. Это необходимо для локализации штормов ARP, однако может нарушить работу механизмов обнаружения сервисов (mDNS, SSDP, Gossip-протоколы кластеров), если сервисы случайно разнесены по разным VLAN. </p>
@@ -2431,10 +2429,10 @@ flowchart LR
     classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
     classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
     classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-    OuterEth[&quot;Внешний Ethernet (14B)&quot;]:::process --&gt; OuterIP[&quot;Внешний IP (20B)&quot;]
+    OuterEth[&quot;Внешний Ethernet (14B, не входит в оверхед MTU)&quot;]:::process --&gt; OuterIP[&quot;Внешний IP (20B)&quot;]
     OuterIP --&gt; OuterUDP[&quot;Внешний UDP: Port 4789 (8B)&quot;]
     OuterUDP --&gt; VXLAN_Hdr[&quot;VXLAN Header: VNI (8B)&quot;]
-    VXLAN_Hdr --&gt; InnerEth[&quot;Внутренний Ethernet-кадр пода (Payload)&quot;]
+    VXLAN_Hdr --&gt; InnerEth[&quot;Внутренний Ethernet-кадр пода: заголовок 14B + Payload&quot;]
   </pre>
 </figure>
 
@@ -2442,11 +2440,11 @@ flowchart LR
 <ol>
 <li><strong>VXLAN Header (8 байт):</strong> Содержит служебные флаги и главное поле — <strong>VNI (VXLAN Network Identifier)</strong> разрядностью <strong>24 бита</strong>!<br />
    В отличие от жалких 4094 сетей в VLAN, 24 бита VNI дают <strong>$2^{24} = 16\,777\,216$ уникальных виртуальных сетей</strong>! Этого с избытком хватает для изоляции миллионов клиентов любого глобального облака.</li>
-<li><strong>Outer UDP Header (8 байт):</strong> Порт назначения по стандарту IANA (RFC 7348) равен <strong><code>4789</code></strong> (в ранних реализациях ядра Linux и некоторых оверлеях исторически использовался порт по умолчанию <code>8472</code>). Исходный порт выбирается как хэш от внутренних заголовков пакета.</li>
+<li><strong>Outer UDP Header (8 байт):</strong> Порт назначения по стандарту IANA (RFC 7348) равен <strong><code>4789</code></strong>; если при создании VXLAN-интерфейса в Linux не указать <code>dstport</code>, ядро использует собственное нестандартное значение по умолчанию <strong><code>8472</code></strong> (его же по умолчанию берут и некоторые оверлеи, например flannel). Исходный порт выбирается как хэш от внутренних заголовков пакета.</li>
 <li><strong>Outer IP Header (20 байт для IPv4 / 40 байт для IPv6):</strong> Реальные IP-адреса хостов-отправителей и получателей туннеля (VTEP).</li>
-<li><strong>Outer Ethernet Header (14 байт):</strong> Физические MAC-адреса серверов и шлюзов underlay-сети.</li>
+<li><strong>Inner Ethernet Header (14 байт):</strong> VXLAN переносит <em>целый</em> внутренний Ethernet-кадр пода, и его 14-байтный заголовок тоже вычитается из MTU underlay. Внешний Ethernet-заголовок (MAC-адреса серверов и шлюзов underlay) в оверхед MTU не входит: MTU считается по IP-пакету.</li>
 </ol>
-<p>Итоговый суммарный оверхед туннелирования:<br />
+<p>Итоговый суммарный оверхед туннелирования (8 VXLAN + 8 UDP + 20 IP + 14 внутренний Ethernet):<br />
 $$\mathbf{8 + 8 + 20 + 14 = 50 \text{ байт}}$$</p>
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Катастрофа MTU в оверлейных сетях">
   <header class="callout-header">
@@ -2457,10 +2455,10 @@ $$\mathbf{8 + 8 + 20 + 14 = 50 \text{ байт}}$$</p>
     <p>Дополнительные 50 байт оверхеда VXLAN порождают так называемый <strong>MTU Crisis</strong> в облачных средах.  </p>
 <p>Если физическая underlay-сеть хоста настроена со стандартным MTU <strong><code>1500</code> байт</strong>, то внутри контейнера максимальный доступный размер кадра падает:<br />
 $$1500 - 50 = \mathbf{1450 \text{ байт}}$$</p>
-<p>Если же инфраструктура дополнительно использует тегирование VLAN (еще <strong><code>-4</code></strong> байта) и внешний IPv6-заголовок (еще <strong><code>-20</code></strong> байт), полезное пространство для полезной нагрузки сокета Go падает до катастрофических <strong><code>1426</code> байт</strong>!  </p>
+<p>Если же внешний (underlay) заголовок IPv6, а не IPv4, он больше на 20 байт: оверхед растёт до 70 байт, и внутренний MTU падает до <strong><code>1430</code> байт</strong>. (VLAN-тег на эту арифметику не влияет — он MTU не уменьшает.)  </p>
 <p>Если ваше Go-приложение или сетевой стек попытается передать стандартный пакет 1500 байт с установленным флагом DF (Don't Fragment), пакет будет молча отброшен туннельным интерфейсом. TCP-сессии зависают на фазе отправки больших данных, а метрики сервиса показывают лавинообразный рост <code>TIME_WAIT</code>.  </p>
 <p><strong>Инженерное решение:</strong><br />
-В современных дата-центрах на всех физических портах коммутаторов и VTEP-нод включают поддержку <strong>Jumbo Frames с MTU 9000 байт</strong>. Это гарантирует, что даже с оверхедом туннелей полезная нагрузка контейнеров сохранит полноценный размер без деградации.</p>
+В современных дата-центрах на всех физических портах коммутаторов и VTEP-нод включают (там, где инфраструктура это допускает) поддержку <strong>Jumbo Frames с MTU 9000 байт</strong>. Это гарантирует, что даже с оверхедом туннелей полезная нагрузка контейнеров сохранит полноценный размер без деградации.</p>
   </div>
 </aside>
 
@@ -2594,7 +2592,11 @@ func queryInternalService(ctx context.Context, targetURL string) error {
         KeepAlive: 30 * time.Second,
     }
 
+    // Транспорт создаётся один раз и переиспользуется; в реальном сервисе его
+    // выносят из функции. Proxy нужно задать явно: у нулевого Transport он nil,
+    // в отличие от http.DefaultTransport.
     transport := &amp;http.Transport{
+        Proxy:               http.ProxyFromEnvironment,
         DialContext:         dialer.DialContext,
         TLSHandshakeTimeout: 3 * time.Second,
         MaxIdleConns:        100,
@@ -2666,7 +2668,7 @@ func main() {
 <p><strong>Вопрос:</strong> Как Go-бэкенд должен реагировать на сетевую изоляцию сегментов, вызванную политиками Kubernetes NetworkPolicy или сбоями Service Mesh?<br />
 <strong>Ответ:</strong><br />
 При блокировке трафика политиками <strong><code>networkpolicy</code></strong> или фильтрами sidecar-прокси в <strong><code>service-mesh</code></strong> (<a href="42-service-mesh-istio-linkerd-sidecar-proxy.html" class="wikilink">42. Service Mesh. Istio, Linkerd, sidecar proxy</a>) запросы не просто «висят» — они завершаются специфическими ошибками:<br />
-* На уровне L4 ядро или файрвол возвращает отказ в соединении <strong><code>ECONNREFUSED</code></strong> либо пакеты молча отбрасываются, вызывая ошибку <strong><code>network unreachable</code></strong> или таймаут <strong><code>timeout</code></strong>;<br />
+* На уровне L4: если правило <em>отбрасывает</em> пакеты (<code>DROP</code>, типичное поведение NetworkPolicy), клиент видит только таймаут (<code>i/o timeout</code>); <code>ECONNREFUSED</code> появляется лишь при явном отказе (<code>REJECT</code>, RST или ICMP port unreachable), а <code>network is unreachable</code> связан с отсутствием маршрута, а не с политиками;<br />
 * На уровне L7 сервисный прокси (Envoy) возвращает статус <strong><code>503</code> Service Unavailable</strong>.<br />
 Приложение на Go обязано оборачивать вызовы в <strong><code>context.WithTimeout</code></strong>, корректно извлекать тип ошибки <strong><code>net.OpError</code></strong> и отличать временные таймауты от постоянной недоступности сетевого сегмента, активируя паттерн Circuit Breaker.</p>
   </div>
@@ -2677,9 +2679,9 @@ func main() {
 
 <p>Сегментация сети — это фундамент информационной безопасности, мультитенантности и масштабируемости современных облачных инфраструктур:</p>
 <ol>
-<li><strong>VLAN (802.1Q):</strong> Классическая аппаратная изоляция на втором уровне (L2). Добавляет 4-байтный тег с кодом <code>0x8100</code>, разделяя свитч максимум на 4094 сети. Уменьшает эффективный MTU до 1496 байт.</li>
+<li><strong>VLAN (802.1Q):</strong> Классическая аппаратная изоляция на втором уровне (L2). Добавляет 4-байтный тег с кодом <code>0x8100</code>, разделяя свитч максимум на 4094 сети. Максимальный размер кадра растёт с 1518 до 1522 байт; MTU (1500) не меняется.</li>
 <li><strong>VXLAN (RFC 7348):</strong> Современный стандарт облачных оверлеев (MAC-in-UDP). Расширяет пространство изоляции до 16 миллионов сетей за счет 24-битного идентификатора VNI.</li>
-<li><strong>Оверхед туннелей:</strong> VXLAN добавляет ровно <strong>50 байт</strong> к каждому пакету (<code>8 + 8 + 20 + 14 = 50 байт</code>). В продакшене это требует обязательного включения Jumbo Frames (MTU 9000) для предотвращения фрагментации и ошибок <code>message too long</code>.</li>
+<li><strong>Оверхед туннелей:</strong> VXLAN добавляет ровно <strong>50 байт</strong> к каждому пакету (<code>8 + 8 + 20 + 14 = 50 байт</code>). В продакшене это требует обязательного включения Jumbo Frames (MTU 9000) для предотвращения фрагментации и «чёрных дыр» PMTU (ошибка <code>message too long</code> возникает при запрете фрагментации DF).</li>
 <li><strong>Транспорт UDP (порт 4789 / 8472):</strong> Гарантирует бесшовный проход через NAT, поддержку аппаратного offload на сетевых картах и балансировку ECMP на физических фабриках ЦОД.</li>
 <li><strong>Роль Go-разработчика:</strong> Пакет <code>net</code> абстрагирует детали туннелирования, но понимание реального MTU, механики CNI-интерфейсов (<code>veth</code>, <code>flannel.1</code>) и сокетных опций критично для исключения зависаний при высокой нагрузке.</li>
 </ol>
@@ -2712,7 +2714,7 @@ func main() {
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#vlan-802-1q-apparatnaya-segmentatsiya-na-l2">VLAN (802.1Q): Аппаратная сегментация на L2</a></li><li class="toc-item toc-h2"><a href="#ustroystvo-tega">Устройство тега</a></li><li class="toc-item toc-h2"><a href="#vliyanie-na-go-prilozheniya">Влияние на Go-приложения</a></li><li class="toc-item toc-h3"><a href="#1-problema-umensheniya-mtu-mtu-reduction">1. Проблема уменьшения MTU (MTU Reduction)</a></li><li class="toc-item toc-h3"><a href="#2-izolyatsiya-shirokoveshchatelnykh-domenov-broadcast-domains">2. Изоляция широковещательных доменов (Broadcast Domains)</a></li><li class="toc-item toc-h2"><a href="#vxlan-programmnaya-segmentatsiya-poverkh-l3">VXLAN: Программная сегментация поверх L3</a></li><li class="toc-item toc-h2"><a href="#ustroystvo-vxlan-paketa">Устройство VXLAN-пакета</a></li><li class="toc-item toc-h2"><a href="#pochemu-udp-a-ne-tcp-ili-esp">Почему UDP, а не TCP или ESP?</a></li><li class="toc-item toc-h2"><a href="#segmentatsiya-v-ekosisteme-go-i-konteynerizatsii">Сегментация в экосистеме Go и контейнеризации</a></li><li class="toc-item toc-h3"><a href="#kak-go-vidit-etu-set">Как Go видит эту сеть</a></li><li class="toc-item toc-h3"><a href="#diagnostika-mtu-i-setevykh-interfeysov-v-go">Диагностика MTU и сетевых интерфейсов в Go</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#vlan-802-1q-apparatnaya-segmentatsiya-na-l2">VLAN (802.1Q): Аппаратная сегментация на L2</a></li><li class="toc-item toc-h2"><a href="#ustroystvo-tega">Устройство тега</a></li><li class="toc-item toc-h2"><a href="#vliyanie-na-go-prilozheniya">Влияние на Go-приложения</a></li><li class="toc-item toc-h3"><a href="#1-vlan-teg-i-mtu-pochemu-mtu-ne-umenshaetsya">1. VLAN-тег и MTU (почему MTU не уменьшается)</a></li><li class="toc-item toc-h3"><a href="#2-izolyatsiya-shirokoveshchatelnykh-domenov-broadcast-domains">2. Изоляция широковещательных доменов (Broadcast Domains)</a></li><li class="toc-item toc-h2"><a href="#vxlan-programmnaya-segmentatsiya-poverkh-l3">VXLAN: Программная сегментация поверх L3</a></li><li class="toc-item toc-h2"><a href="#ustroystvo-vxlan-paketa">Устройство VXLAN-пакета</a></li><li class="toc-item toc-h2"><a href="#pochemu-udp-a-ne-tcp-ili-esp">Почему UDP, а не TCP или ESP?</a></li><li class="toc-item toc-h2"><a href="#segmentatsiya-v-ekosisteme-go-i-konteynerizatsii">Сегментация в экосистеме Go и контейнеризации</a></li><li class="toc-item toc-h3"><a href="#kak-go-vidit-etu-set">Как Go видит эту сеть</a></li><li class="toc-item toc-h3"><a href="#diagnostika-mtu-i-setevykh-interfeysov-v-go">Диагностика MTU и сетевых интерфейсов в Go</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

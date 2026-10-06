@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~42 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~43 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">14. UDP. Когда ненадежный транспорт лучше TCP</h1>
@@ -2183,7 +2183,7 @@
 
 <blockquote>
 <p><em>"Сделайте вещь настолько простой, насколько это возможно, но не проще."</em><br />
-— Альберт Эйнштейн</p>
+— приписывается Альберту Эйнштейну</p>
 </blockquote>
 <p>В мире сетевого программирования существует две диаметрально противоположные философии общения. </p>
 <p>Первая — это телефонный звонок (<strong>TCP</strong>). Вы набираете номер, ждете гудков, абонент поднимает трубку, вы обмениваетесь приветствиями (<em>Handshake</em>), непрерывно уточняете: «Ты меня слышишь? Повтори последнее слово» (<em>ACK</em>, <em>Retransmit</em>), аккуратно подстраиваете темп речи под скорость собеседника (<em>Flow &amp; Congestion Control</em>) и в конце церемонно прощаетесь (<em>FIN/ACK</em>). Это надежно, но требует времени, ресурсов и постоянного поддержания состояния.</p>
@@ -2351,12 +2351,12 @@ flowchart TD
 <hr />
 <h2 id="go-realizatsiya-net-udpconn-i-netpoll">Go-реализация: net.UDPConn и netpoll</h2>
 
-<p>В стандартной библиотеке Go работа с UDP инкапсулирована в тип <strong><code>net.UDPConn</code></strong>, который встраивает универсальный <strong><code>net.IPConn</code></strong> (и реализует интерфейсы <code>net.Conn</code> и <code>net.PacketConn</code>).</p>
-<h3 id="podklyuchennyy-i-nepodklyuchennyy-soket-conn-connect">Подключенный и неподключенный сокет: conn.Connect</h3>
+<p>В стандартной библиотеке Go работа с UDP инкапсулирована в тип <strong><code>net.UDPConn</code></strong>, у которого есть собственная реализация поверх общего внутреннего типа <code>conn</code> (он реализует интерфейсы <code>net.Conn</code> и <code>net.PacketConn</code>; типом <code>net.IPConn</code> не встраивается).</p>
+<h3 id="podklyuchennyy-i-nepodklyuchennyy-soket-dialudp">Подключенный и неподключенный сокет: DialUDP</h3>
 
 <p>В отличие от TCP-соединений, UDP-сокет по своей физической природе <strong>не имеет состояния подключения</strong>. Однако в Socket API и в Go существует два режима работы:<br />
 1. <strong>Неподключенный сокет (<code>net.ListenUDP</code>):</strong> Сервер слушает конкретный порт и готов принимать датаграммы от кого угодно, используя <code>ReadFromUDP</code>. Отвечать можно на любой адрес через <code>WriteToUDP</code>.<br />
-2. <strong>Подключенный сокет (<code>net.DialUDP</code> или <code>conn.Connect(addr)</code>):</strong> Вы можете вызвать <code>conn.Connect(addr)</code> на UDP-сокете. Приведет ли это к отправке сетевых пакетов? <strong>Нет, ни единого байта не уйдет в сеть!</strong> </p>
+2. <strong>Подключенный сокет (<code>net.DialUDP</code> или <code>net.Dial("udp", addr)</code>):</strong> У <code>*net.UDPConn</code> нет метода <code>Connect</code>; «подключённый» сокет получают, создавая его через <code>net.DialUDP</code>, под капотом это системный вызов <code>connect(2)</code>. Приведет ли это к отправке сетевых пакетов? <strong>Нет, ни единого байта не уйдет в сеть!</strong> </p>
 <p>В ядре Linux вызов <code>connect(2)</code> для <code>SOCK_DGRAM</code> сокета выполняет сугубо локальные действия:<br />
 - Записывает адрес и порт удаленного хоста в поля структуры сокета <strong><code>sk-&gt;sk_daddr</code></strong> и <strong><code>sk-&gt;sk_dport</code></strong> (<code>sk_daddr</code> / <code>sk_dport</code>).<br />
 - Привязывает сокет к маршруту в таблице FIB (<em>Forwarding Information Base</em>), исключая повторные поиски шлюза при каждом пакете (ускоряет отправку на 10–15%).<br />
@@ -2393,7 +2393,7 @@ flowchart TD
         U_ICMP[&quot;ICMP Port Unreachable&quot;] -.-&gt;|&quot;Ядро отбрасывает: сокет не привязан&quot;| U_SOCK
     end
 
-    subgraph CONNECTED[&quot;Подключенный сокет (DialUDP / conn.Connect)&quot;]
+    subgraph CONNECTED[&quot;Подключенный сокет (DialUDP / connect(2))&quot;]
         direction TB
         C_IN[&quot;Пакеты ТОЛЬКО от Client A&quot;]:::entry --&gt; C_SOCK[&quot;Сокет привязан&lt;br&gt;sk_daddr = IP_A, sk_dport = Port_A&quot;]
         C_SOCK --&gt; C_APP[&quot;Read(buf)&lt;br&gt;Write(buf)&quot;]
@@ -2423,6 +2423,7 @@ flowchart TD
   <pre class="language-go"><code class="language-go">package main
 
 import (
+    &quot;errors&quot;
     &quot;fmt&quot;
     &quot;net&quot;
     &quot;os&quot;
@@ -2459,24 +2460,23 @@ func main() {
     go func() {
         &lt;-sigChan
         fmt.Println(&quot;\nЗавершение работы UDP-сервера...&quot;)
-        conn.Close()
-        os.Exit(0)
+        conn.Close() // разблокирует ReadFromUDP; цикл ниже выйдет по net.ErrClosed
     }()
 
     // 3. Цикл приема датаграмм
-    // Буфер 1500 байт (стандартный Ethernet MTU) гарантирует чтение целого пакета без усечения
+    // Внимание: если датаграмма больше буфера, она молча усекается (n == 1500, err == nil;
+    // признак MSG_TRUNC виден только через ReadMsgUDP). 1500 байт — это MTU, а не максимум датаграммы:
+    // выбирайте размер по максимальной датаграмме вашего протокола.
     buf := make([]byte, 1500)
     for {
         n, remoteAddr, err := conn.ReadFromUDP(buf)
         if err != nil {
-            // При закрытии сокета во время shutdown ReadFromUDP вернет ошибку
-            select {
-            case &lt;-sigChan:
+            // При закрытии сокета во время shutdown ReadFromUDP вернет net.ErrClosed
+            if errors.Is(err, net.ErrClosed) {
                 return
-            default:
-                fmt.Fprintf(os.Stderr, &quot;Ошибка чтения: %v\n&quot;, err)
-                continue
             }
+            fmt.Fprintf(os.Stderr, &quot;Ошибка чтения: %v\n&quot;, err)
+            continue
         }
 
         // Выводим полученное сообщение
@@ -2582,7 +2582,7 @@ func main() {
 <p>В отличие от TCP, который в такой ситуации шлет нулевое окно (<code>rwnd = 0</code>) и принудительно останавливает отправителя, UDP <strong>молча выбрасывает вновь прибывшие пакеты в мусорную корзину</strong>. Ваша программа не получит ни ошибки, ни предупреждения!  </p>
 <p><strong>Как защититься:</strong><br />
 - Всегда увеличивайте буфер сокета через <code>conn.SetReadBuffer(size)</code> (например, <code>conn.SetReadBuffer(4 * 1024 * 1024)</code>) до начала первого вызова чтения.<br />
-- Мониторьте системные счетчики дропов пакетов в Linux через <code>netstat -su</code> или <code>ss -u -a</code> (строка <code>RcvbufErrors</code> / <code>drops</code>).</p>
+- Мониторьте системные счетчики дропов пакетов в Linux через <code>netstat -su</code> (строка <code>receive buffer errors</code>) или <code>nstat</code> (счётчик <code>UdpRcvbufErrors</code>); команда <code>ss -u -a</code> показывает очереди сокетов, но не этот счётчик.</p>
 <h3>2. Размер MTU, флаг DF и фрагментация</h3>
 <p>UDP не фрагментирует данные прикладного уровня самостоятельно. Если размер вашей датаграммы превышает <strong>Path MTU</strong> (максимальный размер нефрагментируемого блока на пути следования), ядро будет вынуждено фрагментировать IP-пакет на уровне L3.  </p>
 <p>Если хотя бы один фрагмент из десяти потеряется в пути — весь IP-пакет будет отброшен приемником целиком! Более того, если в IP-заголовке установлен флаг <strong><code>DF</code></strong> (<em>Don't Fragment</em>), маршрутизатор с меньшим MTU просто уничтожит датаграмму и вернет сообщение ICMP <strong><code>Fragmentation needed</code></strong>.  </p>
@@ -2608,9 +2608,9 @@ $$\text{Payload}</em>{\text{IPv6}} \le 1500\text{ (MTU)} - 40\text{ (IP)} - 8\te
 3. <strong>Таймауты и ретрансмиссия:</strong> Отправитель взводит таймер для каждого неподтвержденного пакета и переотправляет его при истечении времени.<br />
 4. <strong>Скользящее окно (Sliding Window) и Congestion Control:</strong> Чтобы не завалить сеть пакетами, реализуется механизм управления скоростью (например, адаптация BBR или Cubic в userspace).  </p>
 <p>Ключевая прелесть построения надежности поверх UDP заключается в том, что мы берем только те гарантии, которые действительно нужны нашей задаче, избавляясь от жесткой блокировки очереди (Head-of-Line Blocking) TCP.»</p>
-<p><strong>Вопрос:</strong> «В чем фундаментальная разница между <code>conn.Connect()</code> на UDP-сокете и обычным TCP-соединением?»<br />
+<p><strong>Вопрос:</strong> «В чем фундаментальная разница между «подключённым» UDP-сокетом (<code>net.DialUDP</code>, системный <code>connect(2)</code>) и обычным TCP-соединением?»<br />
 <strong>Ожидаемый ответ:</strong><br />
-«Вызов <code>conn.Connect()</code> на UDP-сокете не инициирует сетевого трафика и не выполняет handshake. На уровне ядра Linux он лишь заполняет поля адреса назначения в структуре сокета (<code>sk_daddr</code> и <code>sk_dport</code>). Это переводит сокет в статус <em>connected</em>:<br />
+«Вызов <code>connect(2)</code> на UDP-сокете не инициирует сетевого трафика и не выполняет handshake. На уровне ядра Linux он лишь заполняет поля адреса назначения в структуре сокета (<code>sk_daddr</code> и <code>sk_dport</code>). Это переводит сокет в статус <em>connected</em>:<br />
 - Позволяет использовать системные вызовы <code>read(2)</code> / <code>write(2)</code> (в Go методы <code>Read()</code> и <code>Write()</code>) без передачи адреса в каждом пакете.<br />
 - Ядро фильтрует входящие датаграммы, отбрасывая пакеты от любых других хостов, кроме подключенного.<br />
 - Ядро кэширует маршрут в FIB, снижая накладные расходы CPU на отправку.<br />
@@ -2656,7 +2656,7 @@ $$\text{Payload}</em>{\text{IPv6}} \le 1500\text{ (MTU)} - 40\text{ (IP)} - 8\te
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#udp-filosofiya-i-ustroystvo">UDP: Философия и устройство</a></li><li class="toc-item toc-h2"><a href="#pod-kapotom-yadro-linux-i-datagrammy">Под капотом: Ядро Linux и датаграммы</a></li><li class="toc-item toc-h3"><a href="#put-otpravki-dannykh-tx-path">Путь отправки данных (TX Path)</a></li><li class="toc-item toc-h3"><a href="#klyuchevoe-otlichie-granitsy-soobshcheniy-message-boundaries">Ключевое отличие: Границы сообщений (Message Boundaries)</a></li><li class="toc-item toc-h2"><a href="#go-realizatsiya-net-udpconn-i-netpoll">Go-реализация: net.UDPConn и netpoll</a></li><li class="toc-item toc-h3"><a href="#podklyuchennyy-i-nepodklyuchennyy-soket-conn-connect">Подключенный и неподключенный сокет: conn.Connect</a></li><li class="toc-item toc-h3"><a href="#vzaimodeystvie-s-netpoll">Взаимодействие с netpoll</a></li><li class="toc-item toc-h3"><a href="#prakticheskiy-primer-vysokonagruzhennyy-udp-server-na-go">Практический пример: Высоконагруженный UDP-сервер на Go</a></li><li class="toc-item toc-h2"><a href="#kogda-udp-vyigryvaet-u-tcp">Когда UDP выигрывает у TCP</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#udp-filosofiya-i-ustroystvo">UDP: Философия и устройство</a></li><li class="toc-item toc-h2"><a href="#pod-kapotom-yadro-linux-i-datagrammy">Под капотом: Ядро Linux и датаграммы</a></li><li class="toc-item toc-h3"><a href="#put-otpravki-dannykh-tx-path">Путь отправки данных (TX Path)</a></li><li class="toc-item toc-h3"><a href="#klyuchevoe-otlichie-granitsy-soobshcheniy-message-boundaries">Ключевое отличие: Границы сообщений (Message Boundaries)</a></li><li class="toc-item toc-h2"><a href="#go-realizatsiya-net-udpconn-i-netpoll">Go-реализация: net.UDPConn и netpoll</a></li><li class="toc-item toc-h3"><a href="#podklyuchennyy-i-nepodklyuchennyy-soket-dialudp">Подключенный и неподключенный сокет: DialUDP</a></li><li class="toc-item toc-h3"><a href="#vzaimodeystvie-s-netpoll">Взаимодействие с netpoll</a></li><li class="toc-item toc-h3"><a href="#prakticheskiy-primer-vysokonagruzhennyy-udp-server-na-go">Практический пример: Высоконагруженный UDP-сервер на Go</a></li><li class="toc-item toc-h2"><a href="#kogda-udp-vyigryvaet-u-tcp">Когда UDP выигрывает у TCP</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

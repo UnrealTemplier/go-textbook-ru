@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~28 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~30 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">33. DDoS, Rate Limiting и базовая защита сетевых сервисов</h1>
@@ -2307,13 +2307,18 @@ import (
     &quot;golang.org/x/time/rate&quot;
 )
 
-// Limiter оборачивает rate.Limiter для потокобезопасного использования.
+type ipEntry struct {
+    lim      *rate.Limiter
+    lastSeen time.Time
+}
+
+// Limiter объединяет глобальный лимитер и лимитеры по IP.
 type Limiter struct {
     global     *rate.Limiter
     perIPLimit rate.Limit
     perIPBurst int
-    mu         sync.RWMutex
-    limiters   map[string]*rate.Limiter
+    mu         sync.Mutex
+    limiters   map[string]*ipEntry
 }
 
 // NewLimiter создает глобальный и per-IP лимитеры.
@@ -2322,33 +2327,45 @@ func NewLimiter(globalLimit rate.Limit, globalBurst int, perIPLimit rate.Limit, 
         global:     rate.NewLimiter(globalLimit, globalBurst),
         perIPLimit: perIPLimit,
         perIPBurst: perIPBurst,
-        limiters:   make(map[string]*rate.Limiter),
+        limiters:   make(map[string]*ipEntry),
     }
 }
 
 // Allow проверяет доступность токенов. Возвращает false, если лимит исчерпан.
 func (rl *Limiter) Allow(ip string) bool {
-    // Потокобезопасная проверка глобального лимита (rate.Limiter внутренне защищен мьютексом)
-    if !rl.global.Allow() {
+    // Сначала per-IP: один злоупотребляющий адрес не должен тратить глобальный бюджет.
+    if !rl.ipLimiter(ip).Allow() {
         return false
     }
+    // rate.Limiter внутренне защищен мьютексом
+    return rl.global.Allow()
+}
 
-    // Пер-IP лимит требует блокировки только при первом обращении или обновлении
-    rl.mu.RLock()
-    lim, exists := rl.limiters[ip]
-    rl.mu.RUnlock()
+func (rl *Limiter) ipLimiter(ip string) *rate.Limiter {
+    rl.mu.Lock()
+    defer rl.mu.Unlock()
 
-    if !exists {
-        rl.mu.Lock()
-        // Double-check pattern для предотвращения race при создании
-        if lim, exists = rl.limiters[ip]; !exists {
-            lim = rate.NewLimiter(rl.perIPLimit, rl.perIPBurst)
-            rl.limiters[ip] = lim
-        }
-        rl.mu.Unlock()
+    e, ok := rl.limiters[ip]
+    if !ok {
+        e = &amp;ipEntry{lim: rate.NewLimiter(rl.perIPLimit, rl.perIPBurst)}
+        rl.limiters[ip] = e
     }
+    e.lastSeen = time.Now()
+    return e.lim
+}
 
-    return lim.Allow()
+// Cleanup удаляет лимитеры адресов, неактивных дольше ttl.
+// Вызывайте периодически (например, из time.Ticker), иначе карта растёт без границ.
+func (rl *Limiter) Cleanup(ttl time.Duration) {
+    cutoff := time.Now().Add(-ttl)
+
+    rl.mu.Lock()
+    defer rl.mu.Unlock()
+    for ip, e := range rl.limiters {
+        if e.lastSeen.Before(cutoff) {
+            delete(rl.limiters, ip)
+        }
+    }
 }
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
@@ -2364,7 +2381,7 @@ func (rl *Limiter) Allow(ip string) bool {
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p><code>sync.Mutex</code> в Go реализован через <code>sync.runtime_SemacquireMutex</code>. При высокой конкуренции (например, при DDoS с одного IP) мьютекс переходит в состояние фаззинга (futex), что вызывает переход в ядро ОС. Это дорого. Для read-heavy сценариев (<code>RLock</code>/<code>RUnlock</code>) Go использует оптимизированный путь, позволяющий множеству горутин читать состояние одновременно без блокировки. Однако, если атакующий генерирует уникальный IP для каждого запроса, таблица <code>map[string]*rate.Limiter</code> будет расти неограниченно, вызывая утечку памяти. В production обязательно добавляйте TTL-очистку или используйте <code>sync.Map</code> с ограниченными ключами.</p>
+    <p><code>sync.Mutex</code> в Go при конкуренции сначала немного «спинит», а затем паркует горутину через семафор рантайма (<code>runtime_SemacquireMutex</code>); если ожидание затягивается, мьютекс переходит в <em>режим starvation</em> — передача владения строго по очереди. Это дороже быстрого пути без конкуренции. Если атакующий генерирует уникальный IP для каждого запроса, карта лимитеров будет расти неограниченно и вызовет утечку памяти — поэтому в листинге выше есть метод <code>Cleanup</code>, который нужно вызывать периодически (TTL-очистка). Альтернативы — шардирование карты по хэшу IP или внешний LRU с ограниченным размером.</p>
   </div>
 </aside>
 
@@ -2443,7 +2460,6 @@ flowchart TD
     IdleTimeout:    120 * time.Second,
     ReadTimeout:    10 * time.Second,
     WriteTimeout:   30 * time.Second,
-    // В Go 1.21+ появился новый сервер, но параметры остаются актуальными для контроля ресурсов.
 }
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
@@ -2491,9 +2507,9 @@ func protectedHandler(w http.ResponseWriter, r *http.Request) {
 <p>Защита от DDoS напрямую влияет на работу рантайма Go и ОС:</p>
 <ol>
 <li><strong>GC Pressure:</strong> Высокая частота запросов генерирует аллокации (новые <code>context</code>, <code>map</code>, <code>[]byte</code>). При атаке GC переходит в режим "stop-the-world" чаще, увеличивая p99 latency. Решение: <code>sync.Pool</code> для повторного использования буферов, избежание аллокаций в hot path.</li>
-<li><strong>Goroutine Scheduling:</strong> Каждая горутина требует стека. При исчерпании лимита дескрипторов (<code>ulimit -n</code> по умолчанию 1024 в Docker) <code>net.Listen</code> начнёт падать с <code>too many open files</code>. Планировщик Go (G-M-P model) не может создать новые P (processor), если ОС не может выделить файловые дескрипторы для сокетов.</li>
+<li><strong>Goroutine Scheduling:</strong> Каждая горутина требует стека. При исчерпании лимита дескрипторов (<code>ulimit -n</code> по умолчанию 1024 в Docker) <code>net.Listen</code> начнёт падать с <code>too many open files</code>. Число <code>P</code> (processor) в планировщике Go задаётся <code>GOMAXPROCS</code> и к дескрипторам не относится; нехватка файловых дескрипторов проявляется ошибками <code>accept</code>/<code>dial</code> (<code>too many open files</code>). С Go 1.19 рантайм при старте сам поднимает мягкий лимит <code>RLIMIT_NOFILE</code> до жёсткого.</li>
 <li><strong>TCP Backlog:</strong> При SYN-флуде <code>net.Listen(backlog)</code> упирается в <code>net.core.somaxconn</code>. Если очередь заполнена, ядро начинает отбрасывать SYN-пакеты. Go не может это обойти на уровне приложения.</li>
-<li><strong>Context Propagation:</strong> В Go контекст передается по ссылке. При атаке с миллионами запросов создание <code>context.WithTimeout</code> для каждого соединения создает нагрузку на GC. Используйте <code>context.Background()</code> или пул контекстов для health-check endpoints.</li>
+<li><strong>Context Propagation:</strong> В Go контекст передается по ссылке. При атаке с миллионами запросов создание <code>context.WithTimeout</code> для каждого соединения создает нагрузку на GC. Пула контекстов в Go нет, а убирать таймаут нельзя: без него запрос может висеть бесконечно. Создание <code>context.WithTimeout</code> дёшево; если профиль показывает, что это узкое место, ограничивайте число одновременных запросов (семафор), а не отказывайтесь от дедлайнов.</li>
 </ol>
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
@@ -2517,7 +2533,7 @@ func protectedHandler(w http.ResponseWriter, r *http.Request) {
     <p><strong>Типичные вопросы Middle+/Senior:</strong><br />
 1. <em>Как отличить легитимный spike трафика от DDoS?</em> Анализ паттернов: DDoS часто имеет равномерную частоту, одинаковые User-Agent, отсутствие cookies/sessions, или атакует один endpoint. Легитимный трафик неравномерен.<br />
 2. <em>Почему <code>sync.Mutex</code> хуже <code>atomic</code> для rate limiter в hot path?</em> <code>Mutex</code> при конкуренции вызывает sleep/wakeup горутин (syscall <code>futex</code>). <code>atomic</code> работает через кэш-линии CPU (LLSC/LOCK CMPXCHG) и не вызывает переключение контекста, пока нет реальной коллизии.<br />
-3. <em>Как Go обрабатывает TIME_WAIT соединения?</em> См. <a href="39-time-wait-port-exhaustion-i-drugie-problemy-tcp-serv.html" class="wikilink">39. TIME_WAIT, Port Exhaustion и другие проблемы TCP-сервисов</a>. При атаке порт исчерпывается, новые подключения падают с <code>bind: address already in use</code>. Решение: <code>SO_REUSEADDR</code>, <code>SO_REUSEPORT</code>, или балансировка через L4.<br />
+3. <em>Как Go обрабатывает TIME_WAIT соединения?</em> См. <a href="39-time-wait-port-exhaustion-i-drugie-problemy-tcp-serv.html" class="wikilink">39. TIME_WAIT, Port Exhaustion и другие проблемы TCP-сервисов</a>. При атаке эфемерные порты исчерпываются, и новые исходящие подключения падают с <code>cannot assign requested address</code>. <code>SO_REUSEADDR</code>/<code>SO_REUSEPORT</code> тут не помогают: они действуют на <code>bind()</code> слушающего сокета. Решение — пулы соединений, расширение <code>ip_local_port_range</code>, несколько адресов источника (подробнее в статье 39).<br />
 4. <em>В чем разница между L4 и L7 балансировкой в контексте защиты?</em> L4 (iptables/IPVS) отбрасывает пакеты до их обработки Go, экономя CPU. L7 (nginx/envoy) парсит HTTP, проверяет заголовки и тело, но стоит дороже по latency.</p>
   </div>
 </aside>

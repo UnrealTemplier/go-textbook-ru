@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~32 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~34 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">41. Kubernetes Networking. CNI, Pod Network, Service, Ingress</h1>
@@ -2315,7 +2315,7 @@ flowchart LR
   </header>
   <div class="callout-body">
     <p><strong>conntrack table exhaustion.</strong> И iptables, и IPVS используют <code>nf_conntrack</code> для отслеживания состояний TCP-соединений. В высоконагруженных Go-сервисах (10k+ RPS с короткими коннектами) таблица коннектов быстро переполняется. Ядро начинает дропать пакеты, а Go-клиент получает <code>connection reset by peer</code> или <code>timeout</code>.<br />
-Решение: <code>sysctl -w net.netfilter.nf_conntrack_max=1048576</code> на всех узлах, а также настройка <code>nf_conntrack_tcp_timeout_established</code> и использование <code>ipvs</code> вместо <code>iptables</code>.</p>
+Решение: <code>sysctl -w net.netfilter.nf_conntrack_max=1048576</code> на всех узлах, а также настройка <code>nf_conntrack_tcp_timeout_established</code> (режим <code>ipvs</code> вместо <code>iptables</code> — вариант, но см. оговорку выше о его статусе).</p>
   </div>
 </aside>
 
@@ -2362,7 +2362,7 @@ options ndots:5
 <p>Это увеличивает задержку первого сетевого подключения на 500–1000 мс и генерирует шквал паразитных DNS-запросов к CoreDNS.<br />
 <strong>Решение:</strong> Всегда использовать абсолютные FQDN с точкой на конце (<code>api.stripe.com.</code> или <code>my-service.default.svc.cluster.local.</code>) либо явно настраивать <code>dnsConfig</code> пода с параметром <code>ndots:2</code> (или в <code>kube-dns</code> config).</p>
 <h3 id="2-tcp-keep-alive-i-cloud-nat">2. TCP Keep-Alive и Cloud NAT</h3>
-<p>Облачные балансировщики и NAT-шлюзы (AWS NLB, GCP Cloud NAT, Azure LB) молча сбрасывают неактивные TCP-трансляции из таблицы conntrack через 350–1000 секунд без отправки RST-пакета. Чтобы удерживаемые в пуле Go <code>http.Transport</code> соединения не умирали «втихую», необходимо настраивать регулярные L4-зонды через <code>net.Dialer.KeepAlive</code> и согласовывать <code>IdleConnTimeout</code>:</p>
+<p>Облачные балансировщики и NAT-шлюзы (AWS NLB, GCP Cloud NAT, Azure LB) сбрасывают неактивные TCP-трансляции из таблицы conntrack после простоя: у AWS NAT Gateway и NLB — 350 секунд, у Azure LB — 4 минуты по умолчанию (настраивается до 100 минут), у GCP Cloud NAT для установленных TCP-соединений — 1200 секунд (сверяйтесь с актуальной документацией провайдера). Это не всегда «молча»: например, AWS NAT Gateway отвечает RST, когда вы пытаетесь продолжить забытое соединение. Чтобы удерживаемые в пуле Go <code>http.Transport</code> соединения не умирали «втихую», необходимо настраивать регулярные L4-зонды через <code>net.Dialer.KeepAlive</code> и согласовывать <code>IdleConnTimeout</code>:</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2407,10 +2407,11 @@ func createK8sOptimizedClient() *http.Client {
   </div>
 </div>
 
-<p>В Kubernetes также стоит явно настроить <code>net.TCPConn.SetKeepAlive(true)</code> и <code>SetKeepAlivePeriod()</code>, чтобы пробрасывать TCP keep-alive пакеты через облачные прокси и NAT.</p>
+<p>В Go TCP keep-alive для сокетов <code>net.Dial</code> уже включён по умолчанию, так что <code>SetKeepAlive(true)</code> вызывать не нужно; в Kubernetes стоит настроить именно <em>период</em> (<code>net.Dialer.KeepAlive</code>, <code>SetKeepAlivePeriod</code>), чтобы зонды укладывались в таймаут облачного NAT.</p>
+<p>Отдельно учтите, что <code>kube-proxy</code> балансирует нагрузку на уровне L4 <em>при установке соединения</em>. Поэтому keep-alive-соединения <code>http.Transport</code>, HTTP/2 и gRPC к <code>ClusterIP</code> остаются «прилипшими» к одному поду, и <code>MaxIdleConnsPerHost: 100</code> сам по себе распределения по подам не даёт (для этого нужны headless-сервис с клиентской балансировкой или L7-прокси).</p>
 <h3 id="3-netpoller-i-epoll">3. Netpoller и epoll</h3>
 <p>Go использует <code>epoll</code> (Linux) для асинхронного I/O. В K8s это работает нативно, но overlay-сети (VXLAN, Wireguard) могут вызывать:<br />
-- <strong>Fragmentation</strong>: Если MTU не настроен, пакеты фрагментируются. Go TCP не умеет эффективно обрабатывать фрагментированные пакеты, что ведет к retransmission.<br />
+- <strong>Fragmentation</strong>: Если MTU не настроен, пакеты фрагментируются. Сборкой фрагментов занимается ядро, а не Go; но фрагментация повышает вероятность потерь (потеря одного фрагмента означает потерю всего IP-пакета) и ведет к retransmission.<br />
 - <strong>Reordering</strong>: eBPF/Cilium или балансировщики могут переставлять пакеты. Go TCP congestion control (CUBIC) воспринимает это как потерю и снижает window, деградируя throughput.</p>
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -2419,7 +2420,7 @@ func createK8sOptimizedClient() *http.Client {
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Почему <code>curl</code> внутри пода падает с <code>NXDOMAIN</code>, а <code>wget</code> работает? Или почему первый запрос к сервису занимает 500ms?<br />
-<strong>Ответ:</strong> Из-за <code>ndots:5</code> в <code>/etc/resolv.conf</code>. Go resolver перебирает search domains. <code>wget</code> может использовать <code>getent</code> или другой механизм. Фикс: добавить точку в конце домена (<code>service.ns.svc.cluster.local.</code>) или уменьшить <code>ndots</code>.</p>
+<strong>Ответ:</strong> Из-за <code>ndots:5</code> в <code>/etc/resolv.conf</code>. Любой резолвер, настроенный по <code>resolv.conf</code>, перебирает search domains; для Go-программ это делает Go resolver, а <code>curl</code> и <code>wget</code> — не Go-программы и Go resolver не используют (они работают через libc). Фикс: добавить точку в конце домена (<code>service.ns.svc.cluster.local.</code>) или уменьшить <code>ndots</code>.</p>
 <p><strong>Вопрос:</strong> Как Go netpoller взаимодействует с K8s network namespaces?<br />
 <strong>Ответ:</strong> Netpoller работает на уровне файлового дескриптора сокета. Namespace изолирует сетевой стек, но дескриптор остается валидным. Epoll не знает про namespace, он видит только события ядра. Поэтому производительность не падает, но при пересоздании пода сокет отбрасывается, и Go должен пересоздать listener. Важно использовать <code>SO_REUSEPORT</code> для graceful restart.</p>
   </div>
@@ -2430,7 +2431,7 @@ func createK8sOptimizedClient() *http.Client {
 
 <ol>
 <li><strong>Модель Flat Network:</strong> CNI создает плоскую сеть без NAT между подами через Linux network namespaces и пары виртуальных интерфейсов <code>veth</code>. Накладные расходы на overlay-сети (VXLAN) минимизируются правильной настройкой MTU и включением аппаратных флагов <code>GSO/GRO</code>.</li>
-<li><strong>Services и IPVS:</strong> Стабильные виртуальные IP-адреса <code>ClusterIP</code> транслируются в реальные поды через <code>kube-proxy</code>. В высоконагруженных окружениях режим <code>IPVS</code> категорически предпочтительнее <code>iptables</code> благодаря константному времени поиска $O(1)$.</li>
+<li><strong>Services и IPVS:</strong> Стабильные виртуальные IP-адреса <code>ClusterIP</code> транслируются в реальные поды через <code>kube-proxy</code>. В высоконагруженных окружениях режим <code>IPVS</code> исторически рекомендовали вместо <code>iptables</code> благодаря константному времени поиска $O(1)$, но рекомендации меняются: в Kubernetes режим <code>nftables</code> вышел в GA в версии 1.33, а режим <code>IPVS</code> объявлен устаревшим (deprecated) в 1.35, так что проверяйте актуальную документацию вашей версии.</li>
 <li><strong>conntrack как узкое горлышко:</strong> Таблица <code>nf_conntrack</code> — главный источник скрытых сбоев в K8s под нагрузкой. Переполнение таблицы приводит к молчаливому отбрасыванию пакетов ядром.</li>
 <li><strong>DNS и сетевой тюнинг в Go:</strong> Использование абсолютных FQDN решает проблему задержек из-за <code>ndots:5</code>, а явная настройка <code>KeepAlive</code> в <code>net.Dialer</code> защищает пул соединений от внезапных разрывов со стороны облачных NAT-шлюзов.</li>
 <li><strong>Совместимость с netpoller:</strong> Сетевой планировщик Go нативно и прозрачно исполняется внутри network namespaces, не теряя скорости $O(1)$ мультиплексирования <code>epoll</code>.</li>

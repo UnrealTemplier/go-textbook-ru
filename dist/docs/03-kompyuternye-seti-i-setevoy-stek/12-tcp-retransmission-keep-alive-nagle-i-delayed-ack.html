@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~48 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~50 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 4 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">12. TCP Retransmission, Keep Alive, Nagle и Delayed ACK</h1>
@@ -2182,7 +2182,7 @@
             <h1>TCP Retransmission, Keep Alive, Nagle и Delayed ACK</h1>
 <blockquote>
 <p><em>«Преждевременная оптимизация — корень всех зол; и все же мы не вправе игнорировать физические законы сетевого кабеля».</em>  <br />
-— Перефразируя Дональда Кнута</p>
+— Дональд Кнут (первая часть цитаты, 1974); продолжение — авторское</p>
 </blockquote>
 <p>Представьте разговор двух полярных исследователей сквозь свирепый вой арктической метели. Один радист диктует шифрограмму по рации: <em>«Семь... четыре... девять...»</em>. Если напарник не крикнул в ответ <em>«Принял!»</em>, первый повторяет цифру снова, но уже громче и четче. Если радиоэфир забит помехами, опытный радист не орет в микрофон непрерывно: он выжидает секунду, затем две, четыре, восемь секунд — это экспоненциальное отступление (Exponential Backoff), сохраняющее заряд батареи и не засоряющее эфир.</p>
 <p>А теперь представьте, что радист решил сэкономить чернила в блокноте: он не передает цифру сразу, а ждет, пока наберется пять цифр, чтобы продиктовать их одним словом — это <strong>алгоритм Нейгла (Nagle's Algorithm)</strong>. Принимающий радист одновременно решает сэкономить силы голосовых связок и не кричать <em>«Принял!»</em> на каждую отдельную цифру, а ждать две цифры подряд — это <strong>отложенное подтверждение (Delayed ACK)</strong>. </p>
@@ -2283,7 +2283,7 @@ sequenceDiagram
 
 
 <p>Как только отправитель получает ровно <strong>3 дубликата ACK (3 DupACKs)</strong>, срабатывает механизм <strong>Fast Retransmit (RFC 5681)</strong>:<br />
-1. <strong>Почему именно три?</strong> В пакетных сетях пакеты могут приходить с легкой перестановкой мест (Out-of-Order Delivery) из-за многопутевой маршрутизации ECMP. Один или два дубликата могут быть следствием обычной перестановки. Но три дубликата подряд с вероятностью более 99.9% свидетельствуют о реальной потере пакета.<br />
+1. <strong>Почему именно три?</strong> В пакетных сетях пакеты могут приходить с легкой перестановкой мест (Out-of-Order Delivery) из-за многопутевой маршрутизации ECMP. Один или два дубликата могут быть следствием обычной перестановки. Но три дубликата подряд (порог из RFC 5681) принято считать достаточным признаком реальной потери пакета.<br />
 2. <strong>Мгновенная реакция:</strong> Ядро немедленно переотправляет потерянный сегмент №2, не дожидаясь истечения таймера RTO.<br />
 3. <strong>Fast Recovery:</strong> Окно перегрузки <strong><code>cwnd</code></strong> не сбрасывается в пол, а уменьшается пропорционально (в 2 раза), после чего соединение продолжает работу в режиме предотвращения перегрузки. Пропускная способность канала не проседает.</p>
 <aside class="callout callout-info" aria-label="Под капотом: Математика RTO и алгоритм Jacobson/Karels">
@@ -2298,8 +2298,8 @@ $$SRTT = (1 - \alpha) \times SRTT + \alpha \times RTT_{sample}$$<br />
 Одновременно вычисляется дисперсия задержки (RTTVAR):<br />
 $$RTTVAR = (1 - \beta) \times RTTVAR + \beta \times |SRTT - RTT_{sample}|$$<br />
 Итоговое значение таймаута вычисляется по формуле:<br />
-$$RTO = SRTT + \max(\mathbf{K}, \text{DELAYED_ACK_TIME}) \times 4$$<br />
-где константа $\mathbf{K} = 4 \times RTTVAR$.<br />
+$$RTO = SRTT + \max(G, K \times RTTVAR)$$<br />
+где $K = 4$, а $G$ — гранулярность таймера (в Linux порядка миллисекунд); в Linux итог дополнительно не опускается ниже минимума <code>RTO_min</code> (по умолчанию 200 мс).<br />
 Если сеть работает стабильно, RTO держится близко к RTT. Если в сети начинаются скачки задержки (джиттер), RTO адаптивно увеличивается, предотвращая ложные повторные отправки.</p>
   </div>
 </aside>
@@ -2315,7 +2315,7 @@ $$RTO = SRTT + \max(\mathbf{K}, \text{DELAYED_ACK_TIME}) \times 4$$<br />
    При каждой последующей неудачной попытке значение таймаута удваивается:<br />
    $$\mathbf{RTO <em>= 2}$$<br />
    $200 \text{ мс} \to 400 \text{ мс} \to 800 \text{ мс} \to 1600 \text{ мс} \dots$ вплоть до системного максимума </em><em><code>TCP_RTO_MAX</code></em><em> (в Linux по умолчанию равен </em><em>120 секундам</em><em>).<br />
-4. Лимит попыток: Количество повторных попыток регламентируется системным параметром ядра </em><em><code>tcp_retries2</code></em>* (по умолчанию 15 попыток). Если за 15 итераций ни один пакет не был подтвержден, ядро принудительно разрывает сокет с ошибкой таймаута (в реальном времени это занимает от 13 до 30 минут!).</p>
+4. Лимит попыток: Количество повторных попыток регламентируется системным параметром ядра </em><em><code>tcp_retries2</code></em>* (по умолчанию 15 попыток). Если за 15 итераций ни один пакет не был подтвержден, ядро принудительно разрывает сокет с ошибкой таймаута (в реальном времени при значениях по умолчанию это занимает около 15 минут: примерно 924 секунды).</p>
 <hr />
 <h3 id="3-go-i-nastroyka-retransmission">3. Go и настройка Retransmission</h3>
 
@@ -2358,7 +2358,8 @@ $ sysctl -w net.ipv4.tcp_retries2=15
         // Таймаут сетевой операции (сработал дедлайн Go или таймаут ядра)
     }
     // Внимание: метод netErr.Temporary() официально признан deprecated начиная с Go 1.18.
-    // Для надежной retry-логики проверяйте netErr.Timeout() или errors.Is(err, context.Canceled).
+    // Для retry-логики проверяйте netErr.Timeout(); операцию, отменённую контекстом
+    // (errors.Is(err, context.Canceled)), повторять не нужно.
 }
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
@@ -2391,7 +2392,7 @@ $ sysctl -w net.ipv4.tcp_retries2=15
 <p>Механизм <strong><code>Delayed ACK</code> (RFC 1122)</strong> предписывает приемнику придержать отправку подтверждения:<br />
 1. Либо до прихода <strong>второго полноразмерного пакета данных</strong> (тогда один кумулятивный ACK подтвердит сразу оба сегмента);<br />
 2. Либо до момента, когда приложению понадобится отправить ответные данные (тогда флаг ACK будет бесплатно «подсажен» в исходящий пакет данных — техника Piggybacking);<br />
-3. Либо до истечения защитного системного таймера (в ядре Linux константа <code>TCP_DELACK_MAX</code> составляет около <strong>40 мс</strong>, хотя исторически в BSD достигала 200–500 мс).</p>
+3. Либо до истечения защитного системного таймера (в ядре Linux таймер адаптивен: минимум <code>TCP_DELACK_MIN</code> — <strong>40 мс</strong>, максимум <code>TCP_DELACK_MAX</code> — <strong>200 мс</strong>; в типичном зависании Nagle + Delayed ACK именно эти ~40 мс вы и увидите).</p>
 <hr />
 <h3 id="stsenariy-zavisaniya-nagle-delayed-ack">Сценарий зависания (Nagle + Delayed ACK)</h3>
 
@@ -2418,7 +2419,7 @@ sequenceDiagram
     Client-&gt;&gt;Server: Сегмент 1 (100 байт)
     Note over Client: Клиент хочет отправить тело RPC (200 байт).&lt;br/&gt;НО Nagle видит: Пакет 1 не подтвержден!&lt;br/&gt;Отправка БЛОКИРУЕТСЯ.
 
-    Note over Server: Сервер получил 100 байт.&lt;br/&gt;Delayed ACK ждет 2-й пакет или ответных данных.&lt;br/&gt;Запущен таймер tcp_delack_max (40 мс).
+    Note over Server: Сервер получил 100 байт.&lt;br/&gt;Delayed ACK ждет 2-й пакет или ответных данных.&lt;br/&gt;Запущен таймер отложенного ACK (~40 мс).
 
     Note over Client,Server: 💥 ТИШИНА В ЭФИРЕ: Клиент ждет ACK, Сервер ждет 2-й пакет! 💥
 
@@ -2436,7 +2437,7 @@ sequenceDiagram
 <li>Заголовок (100 байт) уходит в сеть первым пакетом.</li>
 <li>Тело (200 байт) попадает в буфер ядра клиента. Алгоритм Нагла видит: размер меньше MSS (200 &lt; 1460), а предыдущий пакет №1 еще не подтвержден! Алгоритм Нагла <strong>замораживает отправку</strong>.</li>
 <li>Сервер принимает 100 байт. Механизм Delayed ACK ждет второго пакета, чтобы подтвердить оба сразу. Но второй пакет не придет, потому что клиент ждет ACK!</li>
-<li><strong>Взаимная блокировка длится ровно 40 миллисекунд</strong>, пока на сервере не сработает аварийный таймаут <code>tcp_delack_max</code>. Сервер наконец отправляет пустой ACK, клиент разблокируется и отсылает оставшиеся 200 байт.</li>
+<li><strong>Взаимная блокировка длится ровно 40 миллисекунд</strong>, пока на сервере не сработает таймер отложенного ACK (около 40 мс). Сервер наконец отправляет пустой ACK, клиент разблокируется и отсылает оставшиеся 200 байт.</li>
 </ol>
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: 40-миллисекундный ад в микросервисах">
   <header class="callout-header">
@@ -2452,7 +2453,7 @@ sequenceDiagram
 <hr />
 <h3 id="reshenie">Решение</h3>
 
-<p>Фундаментальное решение этой проблемы — полное отключение алгоритма Нагла на стороне отправителя с помощью установки сокетного флага <strong><code>TCP_NODELAY</code></strong> (<strong><code>TCP_NODELAY=1</code></strong>).</p>
+<p>Фундаментальное решение этой проблемы — полное отключение алгоритма Нагла на стороне отправителя с помощью установки сокетного флага <strong><code>TCP_NODELAY</code></strong> (<strong><code>TCP_NODELAY=1</code></strong>). В Go это уже сделано за вас: <code>net</code> ставит <code>TCP_NODELAY=1</code> на каждое TCP-соединение.</p>
 <p>В стандартной библиотеке Go авторы языка проявили заботу о разработчиках:<br />
 <strong>В Go флаг <code>TCP_NODELAY</code> включен по умолчанию (<code>true</code>) для абсолютно всех TCP-соединений</strong>, создаваемых через функции <code>net.Dial</code> и <code>net.Listen</code>!</p>
 <p>Если по какой-то экзотической причине вам требуется явно управлять этим параметром, в Go используется метод <code>SetNoDelay</code>:</p>
@@ -2541,14 +2542,14 @@ sequenceDiagram
     <p>Настройки по умолчанию (<code>tcp_keepalive_time = 7200 секунд</code>) были придуманы в эпоху университетских сетей 1980-х годов.<br />
 облачные балансировщики (AWS ALB, Cloud NAT) и межсетевые экраны.<br />
 Большинство NAT-устройств стирают неактивные записи из своих таблиц трансляции уже через <strong>5–15 минут</strong> неактивности!<br />
-Если сокет простаивает 2 часа, NAT-шлюз уже давно разорвал сессию. Контрольный зонд ядра через 7200 секунд просто наткнется на сброс <code>RST</code> от маршрутизатора. Дефолтный TCP Keep-Alive в современном интернете абсолютно бесполезен без переопределения таймингов!</p>
+Если сокет простаивает 2 часа, NAT-шлюз уже давно разорвал сессию. Контрольный зонд ядра через 7200 секунд просто наткнется на сброс <code>RST</code> от маршрутизатора. Поэтому ядерный дефолт (2 часа) за NAT почти бесполезен — это верно для сокетов, где keep-alive включили, не меняя тайминги (C, Java, Python). <strong>Go так не делает:</strong> для соединений из <code>net.Dial</code>/<code>net.Listen</code> он сам включает keep-alive с периодом простоя 15 с, интервалом 15 с и 9 пробами. Это короче типичных NAT-таймаутов, но при <code>http.DefaultTransport</code> период простоя — 30 с.</p>
   </div>
 </aside>
 
 <hr />
 <h3 id="nastroyka-v-go">Настройка в Go</h3>
 
-<p>Начиная с релиза Go 1.16, разработчики получили удобный стандартный метод управления периодом Keep-Alive прямо из структуры <code>net.TCPConn</code>:</p>
+<p>Метод <code>SetKeepAlivePeriod</code> у <code>net.TCPConn</code> существует ещё с Go 1.2. Учтите, что keep-alive в Go уже включён по умолчанию, поэтому <code>SetKeepAlive(true)</code> ниже — лишь явное подтверждение; а смысл вызова зависит от версии: с Go 1.23 <code>SetKeepAlivePeriod</code> меняет только время простоя (<code>TCP_KEEPIDLE</code>), а до Go 1.23 менял и интервал между пробами (<code>TCP_KEEPINTVL</code>). Для полного контроля начиная с Go 1.23 есть структура <code>net.KeepAliveConfig</code> (<code>Enable</code>, <code>Idle</code>, <code>Interval</code>, <code>Count</code>) и метод <code>SetKeepAliveConfig</code>.</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2564,7 +2565,7 @@ sequenceDiagram
         return fmt.Errorf(&quot;ошибка SetKeepAlive: %w&quot;, err)
     }
 
-    // Агрессивный интервал: проверка каждые 30 секунд вместо 2 часов!
+    // Агрессивный период простоя: первая проба через 30 секунд вместо 2 часов ядерного дефолта
     if err := tcpConn.SetKeepAlivePeriod(30 * time.Second); err != nil {
         return fmt.Errorf(&quot;ошибка SetKeepAlivePeriod: %w&quot;, err)
     }
@@ -2636,12 +2637,12 @@ sequenceDiagram
 
 <p>В Go работа с сетевыми параметрами распределяется по двум ключевым уровням:<br />
 1. <strong>Socket Options (<code>net.Conn</code>):</strong> Управление на уровне прикладного сокета через методы <code>SetNoDelay</code>, <code>SetKeepAlive</code>, <code>SetKeepAlivePeriod</code>, <code>SetReadBuffer</code>, <code>SetWriteBuffer</code>.<br />
-2. <strong>Параметры ядра Linux (<code>sysctl</code>):</strong> Глобальные настройки сетевого стека — <code>tcp_rto_min</code>, <code>tcp_delack_max</code>, <code>tcp_keepalive_*</code>, <code>tcp_slow_start_after_idle</code>.</p>
+2. <strong>Параметры ядра Linux (<code>sysctl</code>):</strong> Глобальные настройки сетевого стека — <code>tcp_rto_min_us</code>, <code>tcp_rto_max_ms</code>, <code>tcp_keepalive_*</code>, <code>tcp_slow_start_after_idle</code>.</p>
 <h3 id="prakticheskie-rekomendatsii-dlya-bekenda">Практические рекомендации для бэкенда</h3>
 <ul>
 <li><strong>Для Low-Latency RPC и микросервисов:</strong> Всегда оставляйте включенным <strong><code>SetNoDelay(true)</code></strong> (по умолчанию в Go).</li>
 <li><strong>Для Bulk-Transfer (файлы, большие payload):</strong> Использование <strong><code>SetNoDelay(false)</code></strong> может повысить пропускную способность за счет объединения пакетов и уменьшения накладных расходов на заголовки.</li>
-<li><strong>Тюнинг задержек ACK:</strong> Для интерактивных сервисов с высокой частотой запросов настройки ядра <code>sysctl -w net.ipv4.tcp_delack_min=1</code> и <code>tcp_delack_max=1</code> снижают задержки подтверждений до минимума.</li>
+<li><strong>Тюнинг задержек ACK:</strong> Для интерактивных сервисов с высокой частотой запросов учтите: sysctl-параметров <code>tcp_delack_min</code>/<code>tcp_delack_max</code> в Linux нет (в <code>/proc/sys/net/ipv4</code> их не существует); верхний предел отложенного ACK можно задать на сокете опцией <code>TCP_DELACK_MAX_US</code> в новых ядрах, а проблему Nagle + Delayed ACK в Go решает уже включённый <code>TCP_NODELAY</code>.</li>
 <li><strong>Пулы соединений в <code>net/http.Transport</code> и <code>gRPC</code>:</strong> Пул соединений переиспользует сокеты. Настройки, примененные к <code>conn</code>, действуют с момента первого вызова <code>Dial</code>. Для многоинтерфейсных серверов и высоконагруженных контейнеров в Kubernetes используйте системные сокетные опции <strong><code>SO_REUSEPORT</code></strong> и <strong><code>SO_BINDTODEVICE</code></strong>.</li>
 </ul>
 <hr />

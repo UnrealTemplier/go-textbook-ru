@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~55 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~57 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 5 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">11. TCP Handshake, Flow Control и Congestion Control</h1>
@@ -2200,7 +2200,7 @@
 <hr />
 <h2 id="tcp-handshake-tri-etapa-ustanovleniya-soedineniya">TCP Handshake: Три этапа установления соединения</h2>
 
-<p>Любое TCP-соединение начинается со строгого ритуала — <strong>3-Way Handshake (трехстороннее рукопожатие)</strong>. Это фундаментальный протокол согласования контекста между двумя независимыми узлами, стандартизированный в RFC 793.</p>
+<p>Любое TCP-соединение начинается со строгого ритуала — <strong>3-Way Handshake (трехстороннее рукопожатие)</strong>. Это фундаментальный протокол согласования контекста между двумя независимыми узлами, стандартизированный в RFC 793 (ныне заменён RFC 9293).</p>
 <p>Рукопожатие решает три важнейшие инженерные задачи:<br />
 * Убедиться в двусторонней физической доступности: клиент слышит сервер, а сервер слышит клиента;<br />
 * Согласовать начальные порядковые номера последовательностей (<strong>ISN — Initial Sequence Number</strong>), от которых начнется отсчет байт потока;<br />
@@ -2267,7 +2267,7 @@ sequenceDiagram
   </header>
   <div class="callout-body">
     <p>Если злоумышленник отправляет на сервер миллионы пакетов <code>SYN</code> с поддельных IP-адресов, ядро сервера послушно отвечает пакетами <code>SYN-ACK</code> и переводит каждую сессию в состояние <strong><code>SYN_RECV</code></strong>.<br />
-Поскольку ответные пакеты уходят в пустоту, финальный <code>ACK</code> никогда не вернется. Соединения висят в памяти до истечения системного таймера ядра <strong><code>tcp_synack_timer</code></strong>.<br />
+Поскольку ответные пакеты уходят в пустоту, финальный <code>ACK</code> никогда не вернется. Полуоткрытые соединения висят в памяти, пока ядро повторно отправляет <code>SYN-ACK</code> (число попыток задаёт <code>net.ipv4.tcp_synack_retries</code>) и не сдастся по таймеру.<br />
 Очередь <code>SYN Queue</code> мгновенно переполняется, после чего ядро Linux начинает беспощадно отбрасывать запросы легитимных пользователей:</p>
 
 <div class="code-block" data-lang="text">
@@ -2278,7 +2278,7 @@ sequenceDiagram
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-text"><code class="language-text">TCP: possible SYN flooding on port 8080. Dropping request.
+  <pre class="language-text"><code class="language-text">TCP: request_sock_TCP: Possible SYN flooding on port &lt;адрес&gt;:8080. Dropping request.
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
     <div class="retro-code-vhs-layer"></div>
@@ -2287,6 +2287,7 @@ sequenceDiagram
   </div>
 </div>
 
+<p>(Такое сообщение с <code>Dropping request</code> ядро печатает при <code>tcp_syncookies = 0</code>; при значении по умолчанию <code>1</code> оно пишет <code>Sending cookies.</code> и продолжает принимать клиентов.)</p>
 <p><strong>Защита в современном Linux (SYN Cookies):</strong><br />
 При переполнении очереди ядро включает механизм <strong>SYN Cookies</strong> (<code>net.ipv4.tcp_syncookies = 1</code>). Ядро вообще перестает аллоцировать память под структуру сокета при получении <code>SYN</code>! Вместо этого начальный номер <code>seq = Y</code> генерируется как криптографический хэш от IP-адресов, портов и секретного ключа ядра. Когда легитимный клиент возвращает финальный <code>ACK</code>, ядро проверяет хэш в номере подтверждения и только в этот момент создает сокет.</p>
   </div>
@@ -2372,8 +2373,7 @@ flowchart LR
 <h3 id="kak-eto-rabotaet-pod-kapotom-yadra-linux">Как это работает под капотом ядра Linux:</h3>
 
 <ol>
-<li>При создании сокета ядро выделяет кольцевой буфер приема <strong><code>sk_rcvbuf</code></strong>. Его размер по умолчанию и границы настраиваются через параметры ядра Linux:<br />
-<code>net.core.rmem_default</code> и <code>net.core.rmem_max</code>.</li>
+<li>При создании сокета ядро выделяет кольцевой буфер приема <strong><code>sk_rcvbuf</code></strong>. Для TCP его начальный размер и границы автонастройки задаёт <code>net.ipv4.tcp_rmem</code> (минимум, значение по умолчанию, максимум); <code>net.core.rmem_default</code> — размер по умолчанию для прочих протоколов (например, UDP), а <code>net.core.rmem_max</code> ограничивает значение, которое приложение запрашивает явно через <code>SetReadBuffer</code>/<code>SO_RCVBUF</code>.</li>
 <li>Сетевая карта складывает входящие Ethernet-кадры в ядерные структуры <code>sk_buff</code>.</li>
 <li>Данные копируются в буфер сокета. Когда ваше Go-приложение вызывает метод <strong><code>conn.Read()</code></strong> (системные вызовы <code>read</code> или <code>recv</code>), байты копируются из буфера ядра в пользовательский буфер Go-среза.</li>
 <li>При каждом исходящем пакете <code>ACK</code> ядро вычисляет актуальный остаток свободного места: <code>Window = Buffer_Size - Used_Space</code> и записывает полученное число в заголовок пакета.</li>
@@ -2603,8 +2603,10 @@ import (
 // Тонкая настройка сокетных параметров соединения TCP
 func setupTCPConn(conn net.Conn) error {
     // 1. Увеличение системных буферов сокета в ядре Linux (sk_rcvbuf / sk_sndbuf)
-    // Позволяет расширить скользящее окно Flow Control для высокоскоростных каналов.
-    // Внимание: Go удваивает переданное значение на уровне ядра!
+    // Явный SO_RCVBUF отключает для этого сокета автотюнинг приёма в ядре: размер
+    // буфера фиксируется (и ограничивается net.core.rmem_max), поэтому для каналов
+    // с большим BDP это может не расширить, а сузить окно. Используйте осознанно.
+    // Внимание: Linux удваивает переданное значение!
     if err := conn.(*net.TCPConn).SetReadBuffer(1024 * 1024); err != nil {
         return fmt.Errorf(&quot;ошибка настройки SetReadBuffer: %w&quot;, err)
     }
@@ -2612,18 +2614,20 @@ func setupTCPConn(conn net.Conn) error {
         return fmt.Errorf(&quot;ошибка настройки SetWriteBuffer: %w&quot;, err)
     }
 
-    // 2. Включение проверок пульса TCP Keep-Alive
+    // 2. Настройка TCP Keep-Alive. В Go он уже включён по умолчанию (15 с простоя,
+    // 15 с интервал, 9 проб); явный вызов SetKeepAlive(true) безвреден.
     // Позволяет вовремя обнаружить «молчаливую» смерть клиента или сброс таблицы NAT
     if err := conn.(*net.TCPConn).SetKeepAlive(true); err != nil {
         return fmt.Errorf(&quot;ошибка настройки SetKeepAlive: %w&quot;, err)
     }
-    // Устанавливаем интервал контрольных зондов Keep-Alive
+    // Задаём период простоя до первой пробы (с Go 1.23 меняется только TCP_KEEPIDLE;
+    // до Go 1.23 заодно менялся и интервал между пробами TCP_KEEPINTVL)
     if err := conn.(*net.TCPConn).SetKeepAlivePeriod(30 * time.Second); err != nil {
         return fmt.Errorf(&quot;ошибка настройки SetKeepAlivePeriod: %w&quot;, err)
     }
 
-    // 3. Отключение алгоритма Нейгла (TCP_NODELAY)
-    // Критично для low-latency RPC (gRPC, Kafka), исключает задержки в 40 мс при отправке мелких пакетов
+    // 3. Алгоритм Нейгла (TCP_NODELAY). В Go TCP_NODELAY=1 уже установлен по умолчанию,
+    // поэтому вызов лишь фиксирует намерение (Нейгл выключается, задержек в 40 мс нет)
     if tcpConn, ok := conn.(*net.TCPConn); ok {
         if err := tcpConn.SetNoDelay(true); err != nil {
             return fmt.Errorf(&quot;ошибка настройки SetNoDelay: %w&quot;, err)
@@ -2696,8 +2700,8 @@ func handleConn(ctx context.Context, conn net.Conn) {
   </header>
   <div class="callout-body">
     <p>При вызове функций <strong><code>SetReadBuffer</code></strong> и <strong><code>SetWriteBuffer</code></strong> в среде Go операционная система Linux автоматически <strong>удваивает</strong> переданное вами значение!<br />
-Это историческое платформенное наследие сокетного API BSD: ядро резервирует половину выделенной памяти под служебные структуры данных ядра (<code>struct sk_buff</code>, заголовки и метаданные пакетов).<br />
-Если вы передадите в вызов ровно 1 МБ памяти (<code>1024 * 1024</code>), ядро выделит <strong>2 МБ</strong> оперативной памяти под сокет. Если вы хотите выделить ровно 1 МБ памяти под буфер, передавайте в метод половину требуемого объема: <strong><code>512 * 1024</code></strong>!</p>
+Так устроен Linux (см. <code>man 7 socket</code>): запрошенное значение удваивается, чтобы учесть накладные расходы на служебные структуры данных ядра (<code>struct sk_buff</code>, заголовки и метаданные пакетов); ядро при этом сначала ограничивает запрос значением <code>rmem_max</code>/<code>wmem_max</code>.<br />
+Если вы передадите в вызов ровно 1 МБ (<code>1024 * 1024</code>), лимит учёта памяти сокета станет <strong>2 МБ</strong> (это предел, а не немедленная аллокация). Если вы хотите выделить ровно 1 МБ памяти под буфер, передавайте в метод половину требуемого объема: <strong><code>512 * 1024</code></strong>!</p>
   </div>
 </aside>
 
@@ -2710,7 +2714,7 @@ func handleConn(ctx context.Context, conn net.Conn) {
 <li><strong>Flow Control:</strong> Механизм скользящего окна (<code>Window Size</code>), защищающий буфер получателя <code>sk_rcvbuf</code>. Сигнал Zero Window принудительно замораживает передачу данных отправителем, а зонды Zero Window Probes исключают взаимные тупиковые блокировки.</li>
 <li><strong>Congestion Control:</strong> Защищает глобальную сеть от перегрузки за счет адаптивного расчета окна <code>cwnd</code> по принципам AIMD (Slow Start, Congestion Avoidance, Fast Recovery).</li>
 <li><strong>Связь с рантаймом Go:</strong> Подсистема <code>netpoller</code> превращает синхронный код горутин в неблокирующие системные вызовы через <code>epoll</code>, исключая дорогостоящие переключения контекста тредов ОС при заполнении окон или ожидании готовности сети.</li>
-<li><strong>Инженерный тюнинг:</strong> Тонкая настройка буферов (<code>SetReadBuffer</code> с учетом удвоения ядра), включение <code>SetKeepAlive</code> и отключение алгоритма Нейгла (<code>SetNoDelay</code>) — обязательный арсенал разработчика высокопроизводительных сетевых систем.</li>
+<li><strong>Инженерный тюнинг:</strong> Тонкая настройка буферов (<code>SetReadBuffer</code> с учетом удвоения ядра), настройка периода <code>SetKeepAlivePeriod</code> и понимание того, что keep-alive и <code>TCP_NODELAY</code> в Go включены по умолчанию, — обязательный арсенал разработчика высокопроизводительных сетевых систем.</li>
 </ol>
 <p>Мы подробно изучили динамику управления потоками в TCP. Но как работают механизмы повторной передачи при физической потере пакетов, почему алгоритм Нейгла может вызвать необъяснимую задержку в 40 миллисекунд в вашем HTTP-сервере, и как Delayed ACK взаимодействует со скользящим окном?</p>
 <p>В следующей лекции мы детально изучим надежность на микроуровне: разберем RTO, Fast Retransmit, Keep-Alive и подводные камни буферизации в <a href="12-tcp-retransmission-keep-alive-nagle-i-delayed-ack.html" class="wikilink">12. TCP Retransmission, Keep Alive, Nagle и Delayed ACK</a>.</p>

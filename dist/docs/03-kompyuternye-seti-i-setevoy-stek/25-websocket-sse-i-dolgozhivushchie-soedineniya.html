@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~33 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~34 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 4 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">25. WebSocket, SSE и долгоживущие соединения</h1>
@@ -2184,7 +2184,7 @@
 <p>Классическая архитектура Всемирной паутины строилась по принципу коротких дискретных взаимодействий: клиент постучался, задал вопрос, сервер ответил, соединение закрылось. Классическая HTTP-модель <code>request-response</code> требует открытия нового TCP-соединения (или повторного использования через Keep-Alive) для каждой операции. Это создает накладные расходы на рукопожатия, задержки и потребление памяти на стороне сервера.</p>
 <p>Представьте себе биржевого трейдера, который каждые 200 миллисекунд отправляет курьера на биржу с запиской: «Изменилась ли цена акций?». В 99% случаев курьер возвращается с ответом «Нет». Этот подход, известный как <strong>Short Polling</strong> (периодический опрос), сжигает процессорные такты, переполняет таблицы маршрутизации и забивает сеть бесполезными HTTP-заголовками. Позже инженеры придумали костыль <strong>Long Polling</strong> (когда сервер удерживает запрос открытым, пока не появятся данные), но и он оставался неуклюжей имитацией двусторонней связи.</p>
 <p>Для сценариев, где клиенту критично получать обновления в реальном времени (чат, биржевые тикеры, live-логирование, коллаборативные редакторы), сервер должен сам инициировать отправку данных клиенту.</p>
-<p>Для этого используются <strong>долгоживущие соединения (Persistent Connections)</strong>. В Go они реализуются двумя основными протоколами: <strong>SSE (Server-Sent Events)</strong> и <strong>WebSocket</strong>. Оба строятся на механизме <code>HTTP Upgrade</code>, но имеют принципиальные архитектурные различия.</p>
+<p>Для этого используются <strong>долгоживущие соединения (Persistent Connections)</strong>. В Go они реализуются двумя основными протоколами: <strong>SSE (Server-Sent Events)</strong> и <strong>WebSocket</strong>. Но устроены они по-разному: WebSocket начинается с механизма <code>HTTP Upgrade</code>, а SSE — это обычный HTTP-ответ с <code>Content-Type: text/event-stream</code> без <code>Upgrade</code> и без <code>101</code>.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -2232,7 +2232,7 @@ flowchart TD
 <hr />
 <h2 id="http-upgrade-kak-rozhdaetsya-dolgozhivushchee-soedinenie">HTTP Upgrade: Как рождается долгоживущее соединение</h2>
 
-<p>Любое долгоживущее соединение начинается как обычный HTTP-запрос. Клиент отправляет заголовок <code>Upgrade</code>, а сервер отвечает кодом <code>101 Switching Protocols</code>. После этого TCP-соединение не закрывается, а протокол на транспортном уровне меняется.</p>
+<p>WebSocket-соединение начинается как обычный HTTP-запрос. Клиент отправляет заголовок <code>Upgrade</code>, а сервер отвечает кодом <code>101 Switching Protocols</code>. После этого TCP-соединение не закрывается, а протокол на транспортном уровне меняется.</p>
 <p>Клиент отправляет стандартный заголовок рукопожатия:</p>
 
 <div class="code-block" data-lang="http">
@@ -2279,7 +2279,7 @@ Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
   </div>
 </div>
 
-<p>В Go это реализуется через интерфейс <code>http.Hijacker</code>. Рантайм Go проверяет заголовок, подтверждает смену протокола, а затем «перекидывает» (<code>hijack</code>) сырой <code>net.Conn</code> из <code>net/http</code> в ваш код. Управление над потоком байтов передается вам, а <code>http.Server</code> перестает парсить заголовки и тело.</p>
+<p>В Go это реализуется через интерфейс <code>http.Hijacker</code>. Проверку заголовков и ответ <code>101</code> выполняет не <code>net/http</code>, а библиотека WebSocket (например, <code>gorilla/websocket</code>), которая «перекидывает» (<code>hijack</code>) сырой <code>net.Conn</code> из <code>net/http</code> в ваш код. Управление над потоком байтов передается вам, а <code>http.Server</code> перестает парсить заголовки и тело.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -2348,7 +2348,7 @@ data: {&quot;symbol&quot;: &quot;BTCUSD&quot;, &quot;price&quot;: 95000}\n\n
 
 <h3 id="pochemu-sse">Почему SSE?</h3>
 <ul>
-<li>Работает через любой HTTP-прокси и NAT (нет необходимости в <code>Upgrade</code> для некоторых реализаций, хотя стандарт предполагает его).</li>
+<li>Работает через любой HTTP-прокси и NAT (<code>Upgrade</code> для SSE не нужен: это обычный HTTP-ответ).</li>
 <li>Автоматический reconnect, heartbeat и ID-механизм встроены в браузерный <code>EventSource</code>. Если соединение прерывается, браузер сам переподключается и передает заголовок <code>Last-Event-ID: 42</code>, позволяя серверу дослать только упущенные события.</li>
 <li>Нет накладных расходов на бинарный фрейминг.</li>
 </ul>
@@ -2526,8 +2526,9 @@ flowchart LR
     ReadBufferSize:  4096,
     WriteBufferSize: 4096,
     CheckOrigin: func(r *http.Request) bool {
-        // В продакшене проверяйте origin строго!
-        return true
+        // Нельзя возвращать true безусловно: это отключает стандартную проверку
+        // same-origin. Сверяйте Origin со списком разрешённых источников.
+        return r.Header.Get(&quot;Origin&quot;) == &quot;https://example.com&quot;
     },
 }
 
@@ -2539,8 +2540,13 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
     }
     defer conn.Close() // Всегда закрываем соединение
 
+    // Ограничиваем размер входящего сообщения (иначе клиент может прислать гигантский кадр)
+    conn.SetReadLimit(1 &lt;&lt; 20)
+
     // Чтение в отдельной горутине для асинхронной обработки
+    done := make(chan struct{})
     go func() {
+        defer close(done)
         for {
             _, msg, err := conn.ReadMessage()
             if err != nil {
@@ -2560,8 +2566,9 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
     for {
         select {
-        case &lt;-r.Context().Done():
-            // Клиент отключился
+        case &lt;-done:
+            // Клиент отключился (цикл чтения завершился). Контекст r.Context() после Hijack
+            // не отменяется, поэтому на него рассчитывать нельзя.
             conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, &quot;&quot;))
             return
         case &lt;-ticker.C:
@@ -2588,7 +2595,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Почему в <code>gorilla/websocket</code> чтение и запись требуют синхронизации или отдельных горутин?<br />
-<strong>Ответ:</strong> <code>websocket.Conn</code> не является потокобезопасным для одновременного вызова <code>ReadMessage</code> и <code>WriteMessage</code>. Это ограничение дизайна: фрейминг и чтение длины payload требуют согласованного состояния. Для многопоточной записи используют <code>sync.Mutex</code> или паттерн <code>single writer goroutine</code> с каналами.</p>
+<strong>Ответ:</strong> По документации <code>gorilla/websocket</code>, соединение поддерживает <strong>одного параллельного читателя и одного параллельного писателя</strong>: одновременные <code>ReadMessage</code> и <code>WriteMessage</code> из двух горутин допустимы, а вот несколько писателей (или несколько читателей) — нет. Для нескольких горутин-писателей используют <code>sync.Mutex</code> или паттерн <code>single writer goroutine</code> с каналами.</p>
   </div>
 </aside>
 
@@ -2625,7 +2632,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
     <span class="callout-title">Ловушка / Gotcha</span>
   </header>
   <div class="callout-body">
-    <p><strong>Goroutine Leak:</strong> Если клиент разорвал соединение, но сервер продолжает писать в канал или не проверяет <code>r.Context().Done()</code>, горутина навсегда заблокируется на <code>chan send</code> или <code>conn.Write</code>. Это классическая утечка памяти в Go-бэкенде. Всегда используйте <code>select</code> с <code>context</code> или <code>conn.SetReadDeadline</code>.</p>
+    <p><strong>Goroutine Leak:</strong> Если клиент разорвал соединение, но сервер продолжает писать в канал или не проверяет признак отключения, горутина навсегда заблокируется на <code>chan send</code> или <code>conn.Write</code>. Для SSE таким признаком служит <code>r.Context().Done()</code>; для WebSocket после <code>Hijack</code> контекст запроса не отменяется, поэтому ориентируйтесь на завершение цикла чтения и <code>conn.SetReadDeadline</code>. Это классическая утечка памяти в Go-бэкенде. Всегда используйте <code>select</code> с <code>context</code> или дедлайнами.</p>
   </div>
 </aside>
 

@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~27 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~28 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">38. Как Go работает с сетью. net, net/http, netpoller, epoll</h1>
@@ -2196,7 +2196,7 @@
 <p>Представьте банковское отделение с 8 окнами обслуживания (логические процессоры <code>P</code> и системные потоки <code>M</code>):<br />
 - <strong>Классическая блокирующая модель:</strong> Клиент (запрос) подходит к окну и говорит: «Мне нужно подтверждение от нотариуса из другого города» (<code>conn.Read()</code>). Банковский клерк (тред ОС) садится на стул, складывает руки и 15 минут неподвижно смотрит в стену, ожидая курьера. На улице выстраивается очередь из сотен разгневанных людей, хотя все 8 окон формально «заняты».<br />
 - <strong>Модель Go (<code>netpoller</code>):</strong> Клиент подходит к клерку и сообщает о запросе. Клерк мгновенно регистрирует задачу, вручает клиенту карманный вибропейджер (<code>gopark</code>), отправляет его отдохнуть в зал ожидания (<code>Gwaiting</code>) и через микросекунду начинает обслуживать следующего посетителя. <br />
-В банке работает автоматическая система слежения за курьерами (<code>epoll</code>). Как только курьер привозит ответ от нотариуса, пейджер клиента начинает вибрировать (<code>netpollReady</code> $\to$ <code>wakeG</code>). Клиент встает в очередь к любому освободившемуся клерку (<code>P</code>) и мгновенно забирает свой документ. В результате 8 клерков непрерывно работают на 100% мощности, успевая обслужить 100 000 клиентов.</p>
+В банке работает автоматическая система слежения за курьерами (<code>epoll</code>). Как только курьер привозит ответ от нотариуса, пейджер клиента начинает вибрировать (<code>netpollready</code> $\to$ <code>goready</code>). Клиент встает в очередь к любому освободившемуся клерку (<code>P</code>) и мгновенно забирает свой документ. В результате 8 клерков непрерывно работают на 100% мощности, успевая обслужить 100 000 клиентов.</p>
 <hr />
 <h2 id="abstraktsiya-net-i-faylovye-deskriptory">Абстракция `net` и файловые дескрипторы</h2>
 
@@ -2216,7 +2216,6 @@
 dialer := net.Dialer{
     Timeout:   5 * time.Second,
     KeepAlive: 30 * time.Second,
-    DualStack: true,
 }
 
 conn, err := dialer.DialContext(ctx, &quot;tcp&quot;, &quot;127.0.0.1:8080&quot;)
@@ -2271,7 +2270,7 @@ sequenceDiagram
     Poller-&gt;&gt;OS: epoll_ctl(EPOLL_CTL_ADD, fd, events)
     Poller-&gt;&gt;Gor: gopark (усыпление G)
     OS--&gt;&gt;Poller: epoll_wait() вернул fd
-    Poller-&gt;&gt;Gor: netpollReady -&gt; wakeG (пробуждение G)
+    Poller-&gt;&gt;Gor: netpollready -&gt; goready (пробуждение G)
     Gor-&gt;&gt;App: syscalls.Read() возвращает данные
   </pre>
 </figure>
@@ -2280,21 +2279,21 @@ sequenceDiagram
 <p>Когда горутина вызывает <code>conn.Read()</code>, а данных нет:<br />
 1. Go проверяет <code>netpoller</code>. Если FD уже в пуле и готов к чтению — данные берутся сразу через неблокирующий системный вызов <code>read()</code> / <code>recvmsg()</code>.<br />
 2. Если данных нет и ядро возвращает ошибку <code>EAGAIN</code> / <code>EWOULDBLOCK</code>, горутина вызывает <code>gopark</code> и переводится в состояние <code>Gwaiting</code>.<br />
-3. FD регистрируется в подсистеме ядра через <code>epoll_ctl</code> (флаг <code>EPOLL_CTL_ADD</code> с событием <code>EPOLLIN | EPOLLET</code>).<br />
+3. FD регистрируется в подсистеме ядра через <code>epoll_ctl</code> (регистрация выполняется один раз: <code>EPOLL_CTL_ADD</code> с событиями <code>EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET</code>; повторно <code>epoll_ctl</code> при ожидании не вызывается).<br />
 4. Текущий системный тред (M) освобождается и немедленно берет на исполнение другую исполняемую горутину из очереди процессора <code>P</code>.<br />
-5. Фоновый опрос в <code>epoll_wait()</code> обнаруживает поступление сетевого пакета. Ядро будит поток, <code>netpoller</code> извлекает <code>pollDesc</code>, определяет связанную горутину <code>rg</code> и вызывает <code>runtime.wakeG</code>.</p>
+5. Опрос поллера (<code>netpoll</code> вызывают планировщик в <code>findRunnable</code>, <code>sysmon</code> и поток <code>M</code>, которому нечего делать; выделенного фонового потока нет) через <code>epoll_pwait</code> обнаруживает поступление сетевого пакета. <code>netpoll</code> извлекает <code>pollDesc</code>, определяет связанную горутину <code>rg</code> (<code>netpollready</code> → <code>netpollunblock</code>) и ставит её в очередь на исполнение (<code>injectglist</code>/<code>goready</code>).</p>
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
     <span class="callout-title">Ловушка / Gotcha</span>
   </header>
   <div class="callout-body">
-    <p><code>netpoller</code> имеет лимит на количество отслеживаемых FD. В современных версиях Go он динамически масштабируется, но при открытии десятков тысяч соединений (например, в прокси или базе данных клиентов) стоит следить за лимитами ОС (<code>ulimit -n</code>) и использовать <code>http2.Transport</code> или кастомные пулы соединений.</p>
+    <p>У <code>netpoller</code> нет собственного лимита на число отслеживаемых FD: рантайм использует один глобальный <code>epoll</code>-дескриптор, а предел задаёт только <code>RLIMIT_NOFILE</code> процесса. При открытии десятков тысяч соединений (например, в прокси или базе данных клиентов) стоит следить за лимитами ОС (<code>ulimit -n</code>) и использовать <code>http2.Transport</code> или кастомные пулы соединений.</p>
   </div>
 </aside>
 
 <hr />
-<h2 id="planirovanie-gorutin-pri-io-gopark-i-wakeg">Планирование горутин при IO: `gopark` и `wakeG`</h2>
+<h2 id="planirovanie-gorutin-pri-io-gopark-i-goready">Планирование горутин при IO: `gopark` и `goready`</h2>
 
 <p>В Go нет прямой связи «горутина = тред ОС». Планировщик (<code>sched</code>) оперирует абстракцией GMP (Goroutine, Machine/Thread, Processor):<br />
 - <strong>G (Goroutine):</strong> Сверхлегковесный тред рантайма с начальным стеком всего в 2 КБ.<br />
@@ -2327,7 +2326,7 @@ stateDiagram-v2
     [*] --&gt; Grunning: Создание горутины (go func)
     Grunning --&gt; Gwaiting: conn.Read() -&gt; EAGAIN (gopark)
     note right of Gwaiting: Сокет в epoll.&lt;br&gt;Поток M переключился на другую G
-    Gwaiting --&gt; Grunnable: Событие epoll_wait (wakeG)
+    Gwaiting --&gt; Grunnable: Событие epoll (goready)
     Grunnable --&gt; Grunning: Планировщик назначил P
     Grunning --&gt; [*]: Завершение работы
   </pre>
@@ -2338,7 +2337,7 @@ stateDiagram-v2
 - Она сохраняет своё состояние в стеке и структуре <code>g</code>.<br />
 - Через <code>gopark</code> она снимается с текущего <code>P</code> (logical processor) и помещается в очередь ожидания <code>netpoll</code>.<br />
 - Системный поток (M) не блокируется! Он немедленно берет следующую горутину из локальной очереди очереди <code>runq</code> процессора <code>P</code> или выполняет Work Stealing у соседнего <code>P</code>.<br />
-- После пробуждения <code>runtime.wakeG</code> возвращает горутину в runqueue <code>P</code>.<br />
+- После пробуждения <code>goready</code> (вызываемый из <code>netpoll</code> через <code>netpollready</code>/<code>injectglist</code>) возвращает горутину в runqueue <code>P</code>.<br />
 - <strong>Важно:</strong> Пробуждение не гарантирует, что горутина сразу получит CPU. Она станет <code>runnable</code> и будет выполнена следующим доступным <code>P</code> или в момент next schedule point.</p>
 <p>Кроме того, системный фоновый монитор <strong>sysmon</strong>, работающий в выделенном системном потоке без процессора <code>P</code>, периодически (каждые 20 мкс — 10 мс) вызывает неблокирующий <code>netpoll(0)</code> и проверяет, не поступили ли данные для спящих горутин, гарантируя отсутствие зависаний сетевых задач.</p>
 <hr />
@@ -2408,7 +2407,7 @@ client := &amp;http.Client{
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Чем отличается <code>client.Timeout</code> от <code>dialer.Timeout</code>?<br />
-<strong>Ответ:</strong> <code>dialer.Timeout</code> контролирует только установку TCP-соединения (SYN/SYN-ACK). <code>client.Timeout</code> применяется ко всему циклу: подключение + отправка запроса + ожидание ответа + чтение тела. Если сервер медленно отвечает, <code>client.Timeout</code> сработает, но соединение уже будет установлено.</p>
+<strong>Ответ:</strong> <code>dialer.Timeout</code> ограничивает всё установление соединения целиком: он включает разрешение DNS и делится между несколькими адресами (а не только обмен SYN/SYN-ACK). <code>client.Timeout</code> применяется ко всему циклу: подключение + отправка запроса + ожидание ответа + чтение тела. Если сервер медленно отвечает, <code>client.Timeout</code> сработает, но соединение уже будет установлено.</p>
   </div>
 </aside>
 
@@ -2420,7 +2419,7 @@ client := &amp;http.Client{
 <li><strong>Снижение контекстных переключений:</strong> Благодаря <code>epoll</code> и неблокирующим FD, Go избегает блокирующих системных вызовов <code>read/write</code> на каждой итерации. Один системный вызов <code>epoll_wait</code> обслуживает события тысяч соединений оптом.</li>
 <li><strong>Кэш-локальность:</strong> <code>net/http</code> и <code>net</code> активно используют <code>sync.Pool</code> для буферов (например, <code>bufio.Reader</code>, <code>http2.frame</code>). Это размещает часто используемые объекты в кэшах L1/L2 CPU, снижая cache misses и исключая фрагментацию страниц памяти.</li>
 <li><strong>Escape Analysis и GC:</strong> При чтении больших тел ответов Go старается избегать аллокаций в куче. Если буфер передается в <code>sync.Pool</code>, сборщик мусора GC не трогает его. Однако, если вы создаете <code>[]byte</code> внутри цикла обработки запросов без пула, GC (особенно в современных версиях Go с GOGC по умолчанию 100) будет чаще запускать Stop-The-World паузы. Всегда закрывайте <code>http.Response.Body.Close()</code> и используйте <code>io.CopyBuffer</code> с кастомными пулами для high-load.</li>
-<li><strong>Syscall cost:</strong> Каждый <code>epoll_ctl</code> и <code>epoll_wait</code> — это системный переход в ядро. В современных версиях Go рантайм минимизирует количество регистраций дескрипторов и применяет <code>epoll_pwait2</code> (в Linux 5.11+) для наносекундных таймаутов без необходимости создавать отдельные дескрипторы таймеров <code>timerfd</code>.</li>
+<li><strong>Syscall cost:</strong> Каждый <code>epoll_ctl</code> и <code>epoll_wait</code> — это системный переход в ядро. В современных версиях Go рантайм регистрирует дескриптор в <code>epoll</code> один раз (<code>EPOLL_CTL_ADD</code>, режим <code>EPOLLET</code>), а таймауты ожидания реализует собственными таймерами рантайма; для ожидания событий используется <code>epoll_pwait</code> (вызов <code>epoll_pwait2</code> в рантайме не применяется).</li>
 </ol>
 <hr />
 <h2 id="lovushki-i-voprosy-na-sobesedovaniyakh">Ловушки и вопросы на собеседованиях</h2>
@@ -2438,7 +2437,7 @@ client := &amp;http.Client{
 1. <code>netpoller</code> полностью берет на себя рутину низкоуровневой работы с <code>epoll</code>/<code>kqueue</code>/<code>IOCP</code>.<br />
 2. Горутины пишутся в естественном синхронном стиле, но исполняются полностью асинхронно без накладных расходов на потоки ОС.<br />
 3. Пакет <code>net/http</code> добавляет поверх промышленный пулинг TCP-соединений, управление жизненным циклом и поддержку HTTP/1.1 и HTTP/2.<br />
-4. Слаженная работа планировщика <code>gopark</code>, <code>runtime.wakeG</code> и системного монитора <code>sysmon</code> позволяет сервису на Go удерживать сотни тысяч одновременных сетевых соединений в рамках единого процесса.</p>
+4. Слаженная работа планировщика <code>gopark</code>, <code>goready</code> и системного монитора <code>sysmon</code> позволяет сервису на Go удерживать сотни тысяч одновременных сетевых соединений в рамках единого процесса.</p>
 <p>Мы разобрали, как Go виртуозно управляет сетевыми соединениями на уровне рантайма. Однако в боевом продакшене даже самый оптимизированный сетевой сервис может внезапно отказать из-за фундаментальных ограничений самого протокола TCP на уровне ОС. В следующей лекции <a href="39-time-wait-port-exhaustion-i-drugie-problemy-tcp-serv.html" class="wikilink">39. TIME_WAIT, Port Exhaustion и другие проблемы TCP-сервисов</a> мы исследуем, почему TCP-соединения не закрываются мгновенно, как бороться с исчерпанием эфемерных портов и почему тысячи сокетов зависают в состояниях <code>TIME_WAIT</code>, <code>FIN_WAIT</code> и <code>CLOSE_WAIT</code>.</p>
           </div>
 
@@ -2467,7 +2466,7 @@ client := &amp;http.Client{
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#vvedenie-go-kak-sobytiyno-orientirovannyy-runtime">Введение: Go как событийно-ориентированный runtime</a></li><li class="toc-item toc-h3"><a href="#bytovaya-analogiya-elektronnaya-ochered-i-vibropeydzhery-v-banke">Бытовая аналогия: Электронная очередь и вибропейджеры в банке</a></li><li class="toc-item toc-h2"><a href="#abstraktsiya-net-i-faylovye-deskriptory">Абстракция net и файловые дескрипторы</a></li><li class="toc-item toc-h2"><a href="#netpoller-pod-kapotom-epoll-kqueue-iocp">netpoller под капотом: epoll, kqueue, IOCP</a></li><li class="toc-item toc-h2"><a href="#planirovanie-gorutin-pri-io-gopark-i-wakeg">Планирование горутин при IO: gopark и wakeG</a></li><li class="toc-item toc-h2"><a href="#nethttp-i-http-transport-puli-konteksty-i-taymauty">net/http и http.Transport: пули, контексты и таймауты</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-cpu-keshi-syscalls-gc">Mechanical Sympathy: CPU кэши, syscalls, GC</a></li><li class="toc-item toc-h2"><a href="#lovushki-i-voprosy-na-sobesedovaniyakh">Ловушки и вопросы на собеседованиях</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#vvedenie-go-kak-sobytiyno-orientirovannyy-runtime">Введение: Go как событийно-ориентированный runtime</a></li><li class="toc-item toc-h3"><a href="#bytovaya-analogiya-elektronnaya-ochered-i-vibropeydzhery-v-banke">Бытовая аналогия: Электронная очередь и вибропейджеры в банке</a></li><li class="toc-item toc-h2"><a href="#abstraktsiya-net-i-faylovye-deskriptory">Абстракция net и файловые дескрипторы</a></li><li class="toc-item toc-h2"><a href="#netpoller-pod-kapotom-epoll-kqueue-iocp">netpoller под капотом: epoll, kqueue, IOCP</a></li><li class="toc-item toc-h2"><a href="#planirovanie-gorutin-pri-io-gopark-i-goready">Планирование горутин при IO: gopark и goready</a></li><li class="toc-item toc-h2"><a href="#nethttp-i-http-transport-puli-konteksty-i-taymauty">net/http и http.Transport: пули, контексты и таймауты</a></li><li class="toc-item toc-h2"><a href="#mechanical-sympathy-cpu-keshi-syscalls-gc">Mechanical Sympathy: CPU кэши, syscalls, GC</a></li><li class="toc-item toc-h2"><a href="#lovushki-i-voprosy-na-sobesedovaniyakh">Ловушки и вопросы на собеседованиях</a></li><li class="toc-item toc-h2"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

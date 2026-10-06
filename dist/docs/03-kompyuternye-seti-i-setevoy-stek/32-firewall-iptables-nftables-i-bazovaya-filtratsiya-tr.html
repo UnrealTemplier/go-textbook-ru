@@ -2191,7 +2191,8 @@
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-go"><code class="language-go">conn, err := net.DialContext(ctx, &quot;tcp&quot;, &quot;db.internal:5432&quot;)
+  <pre class="language-go"><code class="language-go">var d net.Dialer
+conn, err := d.DialContext(ctx, &quot;tcp&quot;, &quot;db.internal:5432&quot;)
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
     <div class="retro-code-vhs-layer"></div>
@@ -2201,7 +2202,7 @@
 </div>
 
 <p>легко поддаться иллюзии, будто между пользовательским процессом и удаленной базой данных протянут прямой, беспрепятственный провод. В реальности каждый сетевой байт проходит через бдительный пограничный контроль, встроенный в самое сердце ядра Linux — подсистему пакетной фильтрации.</p>
-<p>Для Go-бэкенд-разработчика фаервол перестает быть абстрактной «стеной» в инфраструктуре, когда вы начинаете отлаживать сетевые проблемы в продакшене, настраивать сетевые политики в Kubernetes или оптимизировать производительность сетевого стека. Понимание того, как ядро Linux обрабатывает пакеты, почему возникают <code>ECONNREFUSED</code> или <code>ETIMEDOUT</code>, и как работает отслеживание состояний (stateful inspection) — критически важно для системного дизайна и понимания границ ответственности между приложением и инфраструктурой.</p>
+<p>Для Go-бэкенд-разработчика фаервол перестает быть абстрактной «стеной» в инфраструктуре, когда вы начинаете отлаживать сетевые проблемы в продакшене, настраивать сетевые политики в Kubernetes или оптимизировать производительность сетевого стека. Понимание того, как ядро Linux обрабатывает пакеты, почему возникают <code>ECONNREFUSED</code> (получен RST или ICMP-отказ) или <code>ETIMEDOUT</code> (пакеты молча отброшены), и как работает отслеживание состояний (stateful inspection) — критически важно для системного дизайна и понимания границ ответственности между приложением и инфраструктурой.</p>
 <p>Если сетевой экран настроен на действие <code>REJECT</code>, он вежливо и мгновенно возвращает клиенту TCP-сегмент с флагом <code>RST</code> (или ICMP Port Unreachable), и Go тут же получает ошибку <code>connection refused</code>. Но если фаервол настроен на действие <code>DROP</code>, он молча поглощает пакет, словно черная дыра. Клиентский код в Go зависает в ожидании ответа, пока не сработает локальный контекстный таймаут.</p>
 <hr />
 <h2 id="netfilter-skelet-filtratsii-v-linux">Netfilter: Скелет фильтрации в Linux</h2>
@@ -2380,7 +2381,7 @@ nft add rule ip filter whitelist input ip saddr @whitelist accept
 <p><strong>Как это влияет на Go-сервис:</strong><br />
 Go использует <code>netpoller</code> (epoll/kqueue) для асинхронной работы с сокетами. Когда вы делаете <code>net.Dial()</code> или принимаете соединение через <code>net.Listen()</code>, вы взаимодействуете с локальным сокетом. Но если соединение проходит через NAT, балансировщик или сетевую политику, <code>conntrack</code> решает, куда его направить и разрешить ли ответный трафик.</p>
 <p><strong>Критическая проблема: <code>nf_conntrack: table full</code></strong><br />
-Таблица <code>conntrack</code> имеет жесткий лимит (<code>net.netfilter.nf_conntrack_max</code>). При высокой нагрузке (например, миллионы коротких соединений от Go-сервиса к внешним API или БД) таблица переполняется. Новые соединения отбрасываются на этапе PREROUTING, еще не дойдя до вашего приложения. Вы получите <code>ECONNREFUSED</code> или <code>ETIMEDOUT</code>, хотя сам Go-сервис абсолютно жив, память свободна, а CPU не загружен.</p>
+Таблица <code>conntrack</code> имеет жесткий лимит (<code>net.netfilter.nf_conntrack_max</code>). При высокой нагрузке (например, миллионы коротких соединений от Go-сервиса к внешним API или БД) таблица переполняется. Новые соединения отбрасываются на этапе PREROUTING, еще не дойдя до вашего приложения. Клиент получит таймаут (<code>ETIMEDOUT</code>/<code>i/o timeout</code>): пакет отброшен молча. <code>ECONNREFUSED</code> в этом сценарии не возникнет — он приходит только от RST или ICMP, а не от <code>DROP</code>. И всё это при том, что сам Go-сервис абсолютно жив, память свободна, а CPU не загружен.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -2445,9 +2446,10 @@ sequenceDiagram
 ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 defer cancel()
 
-conn, err := net.DialContext(ctx, &quot;tcp&quot;, &quot;db.internal:5432&quot;)
+var d net.Dialer
+conn, err := d.DialContext(ctx, &quot;tcp&quot;, &quot;db.internal:5432&quot;)
 if err != nil {
-    // Если err == context.DeadlineExceeded, проверьте фаервол, маршрутизацию и conntrack
+    // Если ошибка — таймаут (errors.Is(err, context.DeadlineExceeded) или i/o timeout), проверьте фаервол, маршрутизацию и conntrack
     log.Printf(&quot;Connection failed: %v&quot;, err)
     return err
 }

@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~29 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~31 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 4 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">27. Прокси, Reverse Proxy и API Gateway</h1>
@@ -2543,11 +2543,11 @@ transport := &amp;http.Transport{
 <p>Если клиент разрывает соединение до получения ответа, горутина, читающая бэкенд, может зависнуть. <br />
 <strong>Решение:</strong> Всегда используйте <code>context.Context</code> с таймаутом. <code>httputil.ReverseProxy</code> поддерживает <code>http.Server.ReadHeaderTimeout</code> и <code>http.Server.IdleTimeout</code>, но для гарантированного cleanup используйте <code>context.WithTimeout</code> на уровне middleware.</p>
 <h3 id="2-zagolovok-host">2. Заголовок `Host`</h3>
-<p>Бэкенды (особенно Go <code>http.Server</code>) требуют корректного <code>Host</code>. <code>httputil.ReverseProxy</code> устанавливает его автоматически, но если вы модифицируете URI в Director, обязательно проверьте <code>req.Host</code>.</p>
+<p>Бэкенды (особенно Go <code>http.Server</code>) требуют корректного <code>Host</code>. <code>httputil.ReverseProxy</code> (в том числе <code>NewSingleHostReverseProxy</code>) сам заголовок <code>Host</code> на хост бэкенда <strong>не</strong> переписывает: бэкенд получит исходный <code>Host</code> клиента (например, <code>api.example.com</code>). Если бэкенду нужен собственный <code>Host</code>, задайте <code>req.Host = target.Host</code> в <code>Director</code> (или используйте <code>Rewrite</code> с <code>SetURL</code>), и обязательно проверьте <code>req.Host</code>, если вы модифицируете URI.</p>
 <h3 id="3-http2-i-multiplexing">3. HTTP/2 и multiplexing</h3>
-<p>Go 1.11+ автоматически использует HTTP/2 для соединений к бэкендам, если они поддерживают ALPN. Это устраняет <strong>Head of Line Blocking</strong> (статья <a href="23-http-3-i-quic-pochemu-budushchee-ukhodit-ot-tcp.html" class="wikilink">23. HTTP 3 и QUIC. Почему будущее уходит от TCP</a>). В прокси-слое это критично: один TCP-сокет обслуживает сотни потоков запросов, экономя память CPU и сетевой стек.</p>
+<p>Go автоматически использует HTTP/2 для соединений к бэкендам по TLS, если они поддерживают ALPN (клиентская поддержка HTTP/2 в <code>net/http</code> — с Go 1.6; у кастомного <code>http.Transport</code>, где заданы <code>DialContext</code> или <code>TLSClientConfig</code>, автоматический HTTP/2 отключается, пока не выставлен <code>ForceAttemptHTTP2: true</code>, появившийся в Go 1.13). Это устраняет <strong>Head of Line Blocking</strong> (статья <a href="23-http-3-i-quic-pochemu-budushchee-ukhodit-ot-tcp.html" class="wikilink">23. HTTP 3 и QUIC. Почему будущее уходит от TCP</a>). В прокси-слое это критично: один TCP-сокет обслуживает сотни потоков запросов, экономя память CPU и сетевой стек.</p>
 <h3 id="4-buffering-vs-streaming">4. Buffering vs Streaming</h3>
-<p><code>FlushInterval</code> в <code>ReverseProxy</code> контролирует, когда ответ буферизуется и когда отправляется клиенту. Значение <code>0</code> включает немедленный flush (высокая latency для небольших ответов, нагрузка на сеть). Значение <code>&gt;0</code> буферизует до таймаута (лучший throughput, но задержка).</p>
+<p><code>FlushInterval</code> в <code>ReverseProxy</code> контролирует, когда ответ буферизуется и когда отправляется клиенту. Значение <code>0</code> означает, что периодического flush нет (данные сбрасываются по мере заполнения внутренних буферов <code>ResponseWriter</code>). Значение <code>&gt;0</code> сбрасывает буфер с заданным периодом (баланс latency/throughput), а отрицательное значение — сбрасывает после каждой записи в ответ. Независимо от значения, ответы с <code>Content-Type: text/event-stream</code> и с неизвестной длиной (<code>ContentLength == -1</code>) сбрасываются сразу.</p>
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>

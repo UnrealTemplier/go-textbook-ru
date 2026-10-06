@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~42 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~43 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">19. Сертификаты, PKI, mTLS и процесс TLS Handshake</h1>
@@ -2280,9 +2280,9 @@ flowchart TD
 <ol>
 <li><strong>Криптографическая верификация подписи:</strong> Клиент берет публичный ключ Intermediate CA и проверяет подпись на Leaf-сертификате. Затем берет публичный ключ Root CA из локального хранилища ОС и проверяет подпись на Intermediate CA. Если цепочка не замыкается на доверенный локальный Root CA, вызов завершается фатальной ошибкой <strong><code>x509: certificate signed by unknown authority</code></strong>.</li>
 <li><strong>Временные рамки:</strong> Текущее время машины обязано находиться строго между метками <strong><code>NotBefore</code></strong> и <strong><code>NotAfter</code></strong>. Если системные часы на сервере сбились — сертификат будет отвергнут.</li>
-<li><strong>Проверка отозванности (Revocation):</strong> Сертификат может быть скомпрометирован до истечения срока. Для проверки используются протоколы:<br />
+<li><strong>Проверка отозванности (Revocation):</strong> Сертификат может быть скомпрометирован до истечения срока. Для проверки используются протоколы (важно: стандартный <code>crypto/x509</code> и <code>crypto/tls</code> в Go проверку отзыва по умолчанию <strong>не выполняют</strong> — <code>Certificate.Verify</code> прямо предупреждает: «this function doesn't do any revocation checking»; её нужно реализовывать самостоятельно):<br />
    - <strong><code>CRL</code></strong> (<em>Certificate Revocation List</em>) — скачивание полного списка отозванных сертификатов (громоздко и не масштабируется).<br />
-   - <strong><code>OCSP</code></strong> (<em>Online Certificate Status Protocol</em>) — точечный сетевой запрос к серверу CA: «Действителен ли сертификат с серийным номером X?». В современном бэкенде используется <strong>OCSP Stapling</strong>: веб-сервер сам периодически запрашивает у CA подписанный статус и «прикрепляет» его к TLS Handshake, экономя RTT клиенту.</li>
+   - <strong><code>OCSP</code></strong> (<em>Online Certificate Status Protocol</em>) — точечный сетевой запрос к серверу CA: «Действителен ли сертификат с серийным номером X?». Долгое время стандартом считался <strong>OCSP Stapling</strong>: веб-сервер сам периодически запрашивает у CA подписанный статус и «прикрепляет» его к TLS Handshake, экономя RTT клиенту. Но индустрия уходит от OCSP: например, Let's Encrypt отключил свои OCSP-серверы 6 августа 2025 года и оставил только CRL, так что сверяйтесь с актуальной политикой вашего CA.</li>
 <li><strong>Сопоставление доменного имени:</strong> Проверяется расширение <strong><code>Subject Alternative Name</code></strong> (<strong><code>SAN</code></strong>). Если вы подключаетесь к <code>api.example.com</code>, это имя обязано явно присутствовать в списке <code>DNS Names</code> сертификата (устаревшее поле <code>Common Name</code> / CN современными реализациями Go игнорируется).</li>
 </ol>
 <hr />
@@ -2450,8 +2450,7 @@ func NewMTLSConfig(caPath, certPath, keyPath string) (*tls.Config, error) {
         // Собственные сертификаты для предъявления встречной стороне
         Certificates: []tls.Certificate{cert},
         // Форсируем современный стандарт TLS 1.3
-        MinVersion:               tls.VersionTLS13,
-        PreferServerCipherSuites: true,
+        MinVersion: tls.VersionTLS13,
     }, nil
 }
 
@@ -2535,7 +2534,7 @@ type Certificate struct {
     RawSubject              []byte // Данные субъекта в DER
     RawIssuer               []byte // Данные издателя в DER
     Signature               []byte // Цифровая подпись CA
-    SignatureAlgorithm      CertificateSignatureAlgorithm
+    SignatureAlgorithm      SignatureAlgorithm
     PublicKeyAlgorithm      PublicKeyAlgorithm
     PublicKey               interface{} // *rsa.PublicKey, *ecdsa.PublicKey или ed25519.PublicKey
     Version                 int
@@ -2577,7 +2576,7 @@ type Certificate struct {
 </tr>
 <tr>
 <td><strong>Как отозвать скомпрометированный сертификат?</strong></td>
-<td>Через механизмы <strong>OCSP</strong> (<em>Online Certificate Status Protocol</em>) или списки <strong>CRL</strong> (<em>Certificate Revocation List</em>). В Go проверка настраивается через структуру <strong><code>x509.VerifyOptions</code></strong>.</td>
+<td>Через механизмы <strong>OCSP</strong> (<em>Online Certificate Status Protocol</em>) или списки <strong>CRL</strong> (<em>Certificate Revocation List</em>). <code>x509.VerifyOptions</code> проверку отзыва не выполняет: в Go её нужно писать самостоятельно в <code>tls.Config.VerifyPeerCertificate</code> / <code>VerifyConnection</code> (разбор CRL — <code>x509.ParseRevocationList</code>, OCSP — <code>golang.org/x/crypto/ocsp</code>).</td>
 </tr>
 <tr>
 <td><strong>В чем разница между mTLS и JWT-авторизацией?</strong></td>

@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~41 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~42 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">2. Модели OSI и TCP IP. Как данные проходят путь от приложения до провода</h1>
@@ -2188,7 +2188,7 @@
 
 <p>В компьютерных науках сосуществуют две ключевые концептуальные модели сетевого взаимодействия:<br />
 1.  <strong>Модель OSI (Open Systems Interconnection):</strong> Академический эталон из 7 уровней, разработанный Международной организацией по стандартизации (ISO) в конце 1970-х годов. Это строгая теоретическая модель, призванная стандартизировать сетевые протоколы.<br />
-2.  <strong>Стек протоколов TCP/IP (модель DARPA / Internet):</strong> Практическая прагматичная реализация из 4 (или 5) уровней, рожденная в исследовательских центрах Bell Labs, DARPA и университете Беркли. Именно на этой модели построен весь современный интернет.</p>
+2.  <strong>Стек протоколов TCP/IP (модель DARPA / Internet):</strong> Практическая прагматичная реализация из 4 (или 5) уровней, рожденная в исследованиях DARPA и университетов (Стэнфорд, Беркли) и в компаниях-подрядчиках вроде BBN. Именно на этой модели построен весь современный интернет.</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -2381,7 +2381,8 @@ flowchart TD
 
 import (
     &quot;context&quot;
-    &quot;fmt&quot;
+    &quot;errors&quot;
+    &quot;io&quot;
     &quot;log&quot;
     &quot;net&quot;
     &quot;time&quot;
@@ -2403,6 +2404,9 @@ func main() {
         // Под капотом вызывает syscall accept() и epoll_ctl.
         conn, err := listener.Accept()
         if err != nil {
+            if errors.Is(err, net.ErrClosed) {
+                return // слушатель закрыт: выходим, а не крутим цикл вхолостую
+            }
             log.Printf(&quot;accept error: %v&quot;, err)
             continue
         }
@@ -2416,14 +2420,17 @@ func main() {
 func handleConnection(ctx context.Context, conn net.Conn) {
     defer conn.Close()
 
-    // Установка таймаута чтения. В Go это не блокирует системный тред,
-    // а регистрирует таймер в netpoller и планирует пробуждение.
-    _ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
-
     buf := make([]byte, 4096)
     for {
+        // Таймаут простоя обновляем на каждой итерации. В Go это не блокирует
+        // системный тред, а регистрирует таймер в netpoller и планирует пробуждение.
+        _ = conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+
         n, err := conn.Read(buf)
         if err != nil {
+            if err == io.EOF {
+                return // штатное закрытие соединения клиентом
+            }
             if netErr, ok := err.(net.Error); ok &amp;&amp; netErr.Timeout() {
                 log.Println(&quot;read timeout&quot;)
                 return
@@ -2451,12 +2458,12 @@ func handleConnection(ctx context.Context, conn net.Conn) {
 
 <p>Когда в коде на Go выполняется строка <code>net.Listen(":8080")</code>, рантайм производит строгую и последовательную цепочку системных вызовов к ядру Linux:</p>
 <ol>
-<li><strong><code>socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)</code>:</strong><br />
-    Ядро Linux создает внутреннюю структуру сокета <code>struct socket</code> и связанную с ней структуру <code>struct sock</code>, возвращая приложению файловый дескриптор (<code>fd</code>).</li>
+<li><strong><code>socket(AF_INET6, SOCK_STREAM|SOCK_NONBLOCK|SOCK_CLOEXEC, IPPROTO_TCP)</code>:</strong><br />
+    Для адреса <code>:8080</code> Go по умолчанию создаёт dual-stack IPv6-сокет (он принимает и IPv4-клиентов); для явного IPv4-адреса вроде <code>0.0.0.0:8080</code> будет <code>AF_INET</code>. Ядро Linux создает внутреннюю структуру сокета <code>struct socket</code> и связанную с ней структуру <code>struct sock</code>, возвращая приложению файловый дескриптор (<code>fd</code>).</li>
 <li><strong><code>setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, ...)</code>:</strong><br />
-    Рантайм принудительно включает флаг повторного использования адреса. Это позволяет сервису моментально перезапуститься на том же порту без ожидания истечения двухминутного таймаута сокетов в состоянии <code>TIME_WAIT</code>.</li>
-<li><strong><code>bind(fd, {family: AF_INET, port: 8080})</code>:</strong><br />
-    Системный вызов <code>bind(fd, {family: AF_INET, port: 8080})</code> связывает абстрактный дескриптор сокета с конкретным сетевым IP-адресом интерфейса и локальным TCP-портом 8080.</li>
+    Рантайм принудительно включает флаг повторного использования адреса. Это позволяет сервису моментально перезапуститься на том же порту без ожидания истечения минутного (60 с) таймаута сокетов в состоянии <code>TIME_WAIT</code>.</li>
+<li><strong><code>bind(fd, {family: AF_INET6, port: 8080})</code>:</strong><br />
+    Системный вызов <code>bind(fd, {family: AF_INET6, port: 8080})</code> связывает абстрактный дескриптор сокета с конкретным сетевым IP-адресом интерфейса и локальным TCP-портом 8080.</li>
 <li><strong><code>listen(fd, backlog)</code>:</strong><br />
     Системный вызов <code>listen(fd, backlog)</code> переводит сокет из пассивного состояния в слушающее, аллоцируя две системные очереди ядра: очередь полуоткрытых соединений (SYN Queue) и очередь полностью готовых соединений (Accept Queue).</li>
 <li><strong><code>epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &amp;event)</code>:</strong><br />
@@ -2518,7 +2525,7 @@ flowchart TD
 <li><strong>Промахи строк кэша CPU (L1/L2/L3 Cache Misses):</strong><br />
     При приеме сетевых пакетов контроллер сетевой карты помещает байты в память ядра через прямой доступ к памяти (DMA). Затем операционная система копирует эти данные в память пользовательского процесса. Каждое такое копирование безжалостно вымывает данные прикладного кода из L1/L2 кэша процессора. В высоконагруженных Go-сервисах критично минимизировать аллокации буферов с помощью пулов <code>sync.Pool</code> и повторного использования срезов через <code>bufio</code>.</li>
 <li><strong>Технологии Zero-Copy (<code>splice()</code>, <code>sendfile()</code>):</strong><br />
-    В высокопроизводительных обратных прокси (таких как <code>nginx</code> или <code>envoy</code>) передача больших статических файлов или пересылка трафика между сокетами осуществляется с помощью системных вызовов <code>sendfile</code> и <code>splice()</code>. Функция <code>splice()</code> перебрасывает страницы данных между буферами ядра в оперативной памяти вообще без копирования в пространство пользователя. В Go этот системный интерфейс доступен через вызов <code>syscall.Splice</code>, хотя стандартный HTTP-сервер <code>net/http</code> по умолчанию применяет классическое копирование ради универсальной совместимости с TLS-шифрованием.</li>
+    В высокопроизводительных обратных прокси передача больших статических файлов или пересылка трафика между сокетами осуществляется с помощью системных вызовов <code>sendfile</code> и <code>splice()</code>. Функция <code>splice()</code> перебрасывает страницы данных между буферами ядра в оперативной памяти вообще без копирования в пространство пользователя. (<code>splice</code> умеет, например, HAProxy — опции <code>option splice-*</code>; <code>nginx</code> его не использует.) В Go этот интерфейс доступен через <code>syscall.Splice</code>, а стандартная библиотека применяет его сама: <code>io.Copy</code> между TCP-соединениями использует <code>splice</code>, а <code>net/http</code> при отдаче <code>*os.File</code> в <code>*net.TCPConn</code> — <code>sendfile</code>. Поверх TLS эти оптимизации недоступны: данные приходится шифровать в пространстве пользователя.</li>
 <li><strong>Аппаратный DMA и процессорные прерывания <code>softirq</code>:</strong><br />
     Сетевой адаптер (NIC) использует механизм DMA (Direct Memory Access), записывая кадры напрямую в оперативную память RAM без участия центрального процессора. Однако при экстремальном сетевом потоке (миллионы пакетов в секунду) процессор перегружается обработкой программных прерываний (<code>softirq</code>), что может приводить к росту времени простоя виртуальных машин (<code>steal time</code>) и потере пакетов в кольцевом буфере карты (NIC Ring Buffer Drops).</li>
 </ol>

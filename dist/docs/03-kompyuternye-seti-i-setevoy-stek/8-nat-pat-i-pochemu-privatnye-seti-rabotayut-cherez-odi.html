@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~50 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~51 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 6 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">8. NAT, PAT и почему приватные сети работают через один IP</h1>
@@ -2318,7 +2318,7 @@ flowchart LR
   <div class="callout-body">
     <p>В операционной системе Linux механизм трансляции адресов построен на базе модулей ядра <strong>Netfilter</strong> и подсистемы отслеживания состояний соединений <strong><code>nf_conntrack</code></strong> (<a href="32-firewall-iptables-nftables-i-bazovaya-filtratsiya-tr.html" class="wikilink">32. Firewall, iptables, nftables и базовая фильтрация трафика</a>).  </p>
 <p>NAT является <strong>состоятельным (Stateful)</strong>: ядро обязано помнить историю каждого установленного TCP- или UDP-потока. Для каждого соединения создается структура данных в кэше ядра, отслеживающая фазы жизненного цикла: <code>SYN_SENT</code>, <code>ESTABLISHED</code>, <code>TIME_WAIT</code> и закрытие соединения.<br />
-Если для неактивного TCP-соединения не поступает пакетов, запись хранится в памяти до истечения таймаута: для установленных сессий <code>ESTABLISHED</code> по умолчанию в Linux таймаут составляет <strong>432 000 секунд (5 суток)</strong>, однако в облачных NAT-шлюзах (AWS NAT Gateway, GCP Cloud NAT) его часто принудительно урезают до <strong>350 секунд</strong> ради экономии памяти!</p>
+Если для неактивного TCP-соединения не поступает пакетов, запись хранится в памяти до истечения таймаута: для установленных сессий <code>ESTABLISHED</code> по умолчанию в Linux таймаут составляет <strong>432 000 секунд (5 суток)</strong>, однако в облачных NAT-шлюзах его принудительно урезают: у AWS NAT Gateway таймаут простоя TCP составляет <strong>350 секунд</strong>, у GCP Cloud NAT для установленных TCP-соединений по умолчанию <strong>1200 секунд</strong> (проверяйте текущие значения в документации провайдера). Причём при попытке продолжить «забытое» соединение AWS NAT Gateway отвечает RST, а не молчит.</p>
   </div>
 </aside>
 
@@ -2387,7 +2387,7 @@ flowchart TD
     <p>Память ядра Linux не бесконечна. Максимальный размер таблицы отслеживания соединений строго лимитирован системным параметром:<br />
 <code>net.netfilter.nf_conntrack_max</code>.  </p>
 <p>Каждая запись в <code>nf_conntrack</code> занимает около <strong>320–352 байт</strong> невыгружаемой оперативной памяти ядра (SLAB-кэш). Если на сервере развернут высоконагруженный Go-сервис, который делает сотни тысяч коротких исходящих HTTP/gRPC запросов без повторного использования соединений (HTTP Keep-Alive отключен или пулы коннектов не настроены), таблица мгновенно заполняется устаревшими записями в состоянии <code>TIME_WAIT</code>.  </p>
-<p>Когда лимит исчерпан, ядро Linux начинает беспощадно отбрасывать любые новые пакеты (политика <code>DROP</code> с системной пометкой <code>NO ROUTE</code>):</p>
+<p>Когда лимит исчерпан, ядро Linux начинает беспощадно отбрасывать любые новые пакеты (политика <code>DROP</code>):</p>
 
 <div class="code-block" data-lang="text">
   <header class="code-header">
@@ -2407,9 +2407,7 @@ flowchart TD
 </div>
 
 <p><strong>Симптомы в коде на Go:</strong><br />
-Клиентские вызовы начинают падать с загадочными ошибками:<br />
-<code>dial tcp: connect: no route to host</code><br />
-либо запросы зависают по таймауту контекста, не дождавшись TCP SYN-ACK. Сетевой поллер Go (<code><a href="38-kak-go-rabotaet-s-setyu-net-net-http-netpoller-epoll.html" class="wikilink">38. Как Go работает с сетью. net, net/http, netpoller, epoll</a></code>) просто бесконечно ждет ответа от дескриптора сокета.  </p>
+Пакет отбрасывается молча, поэтому клиентские вызовы падают с таймаутом: <code>dial tcp: i/o timeout</code> (или по дедлайну контекста), не дождавшись TCP SYN-ACK. Ошибки <code>no route to host</code> при этом не будет: она рождается из ICMP/ARP-сценариев, а не из <code>DROP</code>. Сетевой поллер Go (<code><a href="38-kak-go-rabotaet-s-setyu-net-net-http-netpoller-epoll.html" class="wikilink">38. Как Go работает с сетью. net, net/http, netpoller, epoll</a></code>) просто бесконечно ждет ответа от дескриптора сокета.  </p>
 <p><strong>Диагностика и мониторинг:</strong><br />
 Всегда ставьте алерты на текущий размер таблицы:</p>
 
@@ -2627,7 +2625,7 @@ flowchart TD
 При этом в операционных системах клиента и сервера сокеты продолжают находиться в статусе <strong><code>ESTABLISHED</code></strong>! Ни один из узлов не отправлял управляющие флаги <code>FIN</code> или <code>RST</code>.  </p>
 <p>Когда Go-приложение попытается отправить очередной пакет с данными в существующий сокет <code>net.Conn</code>, NAT-шлюз не найдет соответствия в чистой таблице и просто отбросит пакет, либо сервер вернет флаг <code>RST</code> в ответ на неожиданный номер последовательности <code>ACK</code>. Если же сокет простаивает без передачи данных, клиент может сутками ждать ответа, заблокировав горутину.  </p>
 <p><strong>Методы защиты в коде на Go:</strong><br />
-1. Включение системного механизма <strong>TCP KeepAlive</strong> в структуре <code>net.Dialer{KeepAlive: 15 * time.Second}</code> (<a href="12-tcp-retransmission-keep-alive-nagle-i-delayed-ack.html" class="wikilink">12. TCP Retransmission, Keep Alive, Nagle и Delayed ACK</a>). Ядро периодически отправляет пустые контрольные зонды, предотвращая удаление записи из NAT-таблицы по таймауту неактивности и быстро детектируя разрыв соединения.<br />
+1. Настройка <strong>TCP KeepAlive</strong>: Go уже включает его по умолчанию (15 с простоя), а <code>net.Dialer{KeepAlive: ...}</code> задаёт период простоя до первой пробы; значение нужно держать меньше таймаута NAT (<a href="12-tcp-retransmission-keep-alive-nagle-i-delayed-ack.html" class="wikilink">12. TCP Retransmission, Keep Alive, Nagle и Delayed ACK</a>). Ядро периодически отправляет пустые контрольные зонды, предотвращая удаление записи из NAT-таблицы по таймауту неактивности и быстро детектируя разрыв соединения.<br />
 2. Реализация прикладных проверок пульса (<strong>Application-Level Heartbeats / Ping-Pong</strong>) в протоколах WebSocket, gRPC и SSE (<a href="25-websocket-sse-i-dolgozhivushchie-soedineniya.html" class="wikilink">25. WebSocket, SSE и долгоживущие соединения</a>).<br />
 3. Рантайм Go не восстанавливает разорванные TCP-сокета самостоятельно. В прикладном коде всегда должна быть заложена логика автоматического переподключения (Reconnect Loop с Exponential Backoff).</p>
   </div>
@@ -2691,7 +2689,7 @@ flowchart LR
 <ol>
 <li><strong>Назначение NAT/PAT:</strong> Позволяет многотысячным пулам внутренних компьютеров и контейнеров делить один общий публичный IP-адрес за счет динамической подмены портов L4.</li>
 <li><strong>Stateful-природа:</strong> Ядро Linux непрерывно поддерживает состояние каждого потока через таблицу <code>nf_conntrack</code>. Любая модификация пакета требует пересчета контрольных сумм L3 и L4.</li>
-<li><strong>Уязвимость Conntrack:</strong> Переполнение таблицы <code>net.netfilter.nf_conntrack_max</code> приводит к тихому отбрасыванию пакетов с ошибками <code>dial tcp: connect: no route to host</code> в Go.</li>
+<li><strong>Уязвимость Conntrack:</strong> Переполнение таблицы <code>net.netfilter.nf_conntrack_max</code> приводит к тихому отбрасыванию пакетов (в <code>dmesg</code>: <code>nf_conntrack: table full, dropping packet</code>), и в Go это видно как <code>dial tcp: i/o timeout</code>.</li>
 <li><strong>Асимметрия входящего трафика:</strong> NAT блокирует любые прямые входящие соединения из внешнего мира, требуя использования Ingress-контроллеров, реверс-прокси или техник NAT Traversal (STUN/TURN).</li>
 <li><strong>Бесшумный разрыв сессий:</strong> Перезагрузка NAT-маршрутизатора уничтожает сокетные сессии без отправки <code>FIN</code>/<code>RST</code>. Разработчик на Go обязан защищать соединения с помощью TCP KeepAlive и прикладных heartbeat-проверок.</li>
 <li><strong>Будущее за IPv6:</strong> Протокол IPv6 со сквозными адресами префиксов <code>/64</code> полностью устраняет потребность в трансляции адресов, возвращая интернету изначальную простоту архитектуры End-to-End.</li>

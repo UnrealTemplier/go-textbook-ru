@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~27 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~28 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">40. Head of Line Blocking, Slowloris и деградация под нагрузкой</h1>
@@ -2327,7 +2327,7 @@ sequenceDiagram
 * Выделенный файловый дескриптор <code>net.FD</code>.<br />
 * Буфер <code>bufio.Reader</code> (по умолчанию 4 КБ на соединение).<br />
 * Горутина, ожидающая чтения из сокета (стек 2-4 КБ, блокировка в <code>netpoller</code>).<br />
-* При достижении лимита <code>http.Server.MaxConns</code> (или системного предела <code>ulimit -n</code>) новые подключения отклоняются или попадают в очередь ожидания.</p>
+* Поля <code>http.Server.MaxConns</code> в стандартной библиотеке нет: число одновременных соединений сервера не ограничено ничем, кроме системного предела <code>ulimit -n</code> (при его исчерпании <code>accept</code> возвращает <code>EMFILE</code>). Явное ограничение делают на уровне listener'а, например <code>netutil.LimitListener</code> из <code>golang.org/x/net/netutil</code>.</p>
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2382,10 +2382,11 @@ func createSecureServer(handler http.Handler) *http.Server {
         WriteTimeout:      30 * time.Second, // Время на отправку ответа
         IdleTimeout:       60 * time.Second, // Сколько держать idle-соединение в пуле
         MaxHeaderBytes:    1 &lt;&lt; 20,          // 1 MB лимит на заголовки (защита от переполнения)
-        // Базовый контекст для запросов (Go 1.13+)
+        // Базовый контекст (Go 1.13+). Внимание: BaseContext вызывается один раз на listener
+        // при Serve, а не для каждого запроса, поэтому время начала запроса сюда класть нельзя —
+        // его фиксируют в middleware (и не строковым ключом context.WithValue: это антипаттерн).
         BaseContext: func(listener net.Listener) context.Context {
-            ctx := context.Background()
-            return context.WithValue(ctx, &quot;start_time&quot;, time.Now())
+            return context.Background()
         },
     }
 }
@@ -2437,19 +2438,19 @@ client := &amp;http.Client{
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Что произойдет, если <code>MaxIdleConnsPerHost</code> установлен в 0 или не задан?<br />
-<strong>Ответ:</strong> Go создаст неограниченное количество idle-соединений. При атаке Slowloris или при работе с тысячами downstream-сервисов это приведет к исчерпанию file descriptors (<code>ulimit -n</code>) и утечке памяти. Всегда ограничивайте пул через <code>MaxIdleConnsPerHost</code> или используйте <code>http2.Transport</code> с соответствующими лимитами.</p>
+<strong>Ответ:</strong> Будет использовано значение по умолчанию <code>DefaultMaxIdleConnsPerHost = 2</code> (документация: «If zero, DefaultMaxIdleConnsPerHost is used»), а не «неограниченно»: при высокой параллельности лишние соединения после запроса закрываются, и сервис постоянно открывает новые (рост <code>TIME_WAIT</code>, задержек на handshake). Безлимитность относится к <code>MaxIdleConns = 0</code> (общее число idle-соединений во всём пуле). Для тысяч downstream-сервисов ограничивайте пул осознанно, а число <em>одновременных</em> соединений ограничивает <code>MaxConnsPerHost</code>.</p>
   </div>
 </aside>
 
 <h3 id="3-vzaimodeystvie-s-netpoller">3. Взаимодействие с `netpoller`</h3>
-<p>Когда горутина блокируется на чтении из сокета (из-за Slowloris или HoL), она переходит в состояние <code>waiting</code> и перестает потреблять CPU. <code>netpoller</code> (epoll/kqueue) регистриует fd и ждет событий. Когда таймаут срабатывает, <code>http.Server</code> вызывает <code>conn.Close()</code>, что генерирует событие <code>read</code> с ошибкой <code>EOF</code> или <code>timeout</code>. Горутина разблокируется, буферы <code>bufio</code> сбрасываются, и ресурсы возвращаются в пул.</p>
+<p>Когда горутина блокируется на чтении из сокета (из-за Slowloris или HoL), она переходит в состояние <code>waiting</code> и перестает потреблять CPU. <code>netpoller</code> (epoll/kqueue) регистриует fd и ждет событий. Когда таймаут срабатывает, срабатывает дедлайн чтения, и <code>Read</code> возвращает ошибку <code>i/o timeout</code> (<code>os.ErrDeadlineExceeded</code>); затем сервер закрывает соединение. Горутина разблокируется, буферы <code>bufio</code> сбрасываются, и ресурсы возвращаются в пул.</p>
 <hr />
 <h2 id="itogi-i-voprosy-dlya-sobesedovaniya">Итоги и вопросы для собеседования</h2>
 
 <ol>
-<li><strong>Как HTTP/2 решает проблему HoL?</strong> Через мультиплексирование кадров (frames) поверх одного TCP-соединения. Потеря пакета влияет только на конкретный stream, а не на весь поток.</li>
+<li><strong>Как HTTP/2 решает проблему HoL?</strong> Через мультиплексирование кадров (frames) поверх одного TCP-соединения. HTTP/2 решает HoL на уровне HTTP, но поверх TCP потеря пакета всё равно задерживает все потоки соединения (HoL уровня TCP); только HTTP/3 поверх QUIC изолирует потерю в конкретном stream.</li>
 <li><strong>Почему Slowloris опасен для Go-сервера?</strong> Истощает file descriptors, память (буферы <code>bufio</code>) и пул горутин, не нагружая CPU. Дефолтный <code>http.Server</code> без таймаутов не защитит от него.</li>
-<li><strong>Как отличить HoL от реальной медленной бэкенд-логики?</strong> Используйте <code>http.ServerMetrics</code> или OpenTelemetry spans. Если <code>conn_duration</code> растет, но <code>cpu_time</code> низкий — проблема в сети или ожидании внешних зависимостей.</li>
+<li><strong>Как отличить HoL от реальной медленной бэкенд-логики?</strong> Используйте метрики (например, Prometheus) или OpenTelemetry spans (типа <code>http.ServerMetrics</code> в <code>net/http</code> нет). Если <code>conn_duration</code> растет, но <code>cpu_time</code> низкий — проблема в сети или ожидании внешних зависимостей.</li>
 <li><strong>Что делает <code>MaxConnsPerHost</code> в <code>http.Transport</code>?</strong> Ограничивает количество активных соединений к одному хосту. Превышение лимита заставляет запрос ждать освобождения коннекта в очереди, предотвращая <code>Too many open files</code>.</li>
 </ol>
 <hr />

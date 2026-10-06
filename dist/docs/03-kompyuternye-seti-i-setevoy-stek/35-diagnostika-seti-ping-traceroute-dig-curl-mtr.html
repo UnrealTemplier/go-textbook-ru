@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~28 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~30 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">35. Диагностика сети. ping, traceroute, dig, curl, mtr</h1>
@@ -2327,7 +2327,7 @@ func pingHost(ctx context.Context, addr string) error {
     <span class="callout-title">Ловушка / Gotcha</span>
   </header>
   <div class="callout-body">
-    <p>Сырые сокеты блокируют системный тред (M) до завершения <code>syscalls</code> <code>sendto</code>/<code>recvfrom</code>. В Go это означает, что если асинхронный обработчик использует сырой сокет без <code>runtime.LockOSThread</code> или пула горутин, он может вызвать <strong>scheduler blocking</strong> и деградацию планировщика. Всегда используйте <code>golang.org/x/net/icmp</code> или <code>github.com/go-ping/ping</code>, которые управляют горутинным пулом.</p>
+    <p>Сокеты, которые создают <code>net.ListenIP</code>/<code>net.DialIP</code> и <code>golang.org/x/net/icmp</code>, в Go неблокирующие (<code>SOCK_NONBLOCK</code>): <code>Read</code> паркует горутину через netpoller, и поток <code>M</code> не блокируется, так что <code>runtime.LockOSThread</code> и особый пул горутин для этого не нужны. Реальная ловушка — привилегии: для <code>"ip4:icmp"</code> нужны root или <code>CAP_NET_RAW</code>; без них используйте непривилегированный ICMP-сокет <code>icmp.ListenPacket("udp4", ...)</code> (на Linux его доступность зависит от <code>net.ipv4.ping_group_range</code>).</p>
   </div>
 </aside>
 
@@ -2420,9 +2420,9 @@ conn.SetControlMessage(ipv4.FlagTTL, true)
 <p><code>dig</code> запрашивает DNS-записи напрямую, минуя системный кеш. В Go DNS-резолвинг управляется пакетом <code>net</code> и конфигурацией <code>net.Resolver</code>.</p>
 <h3 id="pod-kapotom">Под капотом</h3>
 <ol>
-<li>Клиент отправляет UDP-запрос на порт 53. Если ответ &gt; 512 байт, сервер ставит флаг <code>DO</code> (EDNS0) и ожидает TCP-перехода.</li>
+<li>Клиент отправляет UDP-запрос на порт 53. Если ответ не помещается в UDP-датаграмму (512 байт без EDNS0; у Go с EDNS0 — 1232), сервер усекает ответ и ставит флаг <code>TC</code>, после чего клиент повторяет запрос по TCP. (Флаг <code>DO</code> — это совсем другое: «DNSSEC OK».)</li>
 <li>Резолвер проверяет <code>/etc/resolv.conf</code>, <code>nsswitch.conf</code> и системные кэши (<code>systemd-resolved</code>, <code>dnsmasq</code>).</li>
-<li>Go по умолчанию использует стратегию <code>go</code> (Cgo resolver), которая делегирует резолвинг libc (<code>getaddrinfo</code>). Это обеспечивает поддержку <code>systemd-resolved</code> и <code>mDNS</code>, но добавляет зависимость от Cgo.</li>
+<li>Стратегия <code>go</code> в Go — это чистый Go-резолвер, и на Linux он используется по умолчанию (стратегия <code>cgo</code> делегирует резолвинг libc через <code>getaddrinfo</code>; она нужна, например, для источников <code>nsswitch</code> вроде <code>mdns</code>, но добавляет зависимость от Cgo, а на macOS и Windows cgo-резолвер предпочитается по умолчанию).</li>
 </ol>
 <h3 id="nastroyka-v-go">Настройка в Go</h3>
 <p>Для production-систем часто требуется отключить Cgo-резолвер и использовать pure-Go DNS для предсказуемости и безопасности:</p>
@@ -2526,7 +2526,6 @@ func NewTransport() *http.Transport {
         DialContext: (&amp;net.Dialer{
             Timeout:   5 * time.Second,
             KeepAlive: 30 * time.Second,
-            DualStack: true,
         }).DialContext,
 
         // Force attempt HTTP/2
@@ -2608,16 +2607,21 @@ func runContinuousProbe(ctx context.Context, dest string, interval time.Duration
     defer ticker.Stop()
 
     var wg sync.WaitGroup
-    for range ticker.C {
-        wg.Add(1)
-        go func() {
-            defer wg.Done()
-            if err := pingOnce(ctx, dest); err != nil {
-                log.Printf(&quot;probe failed: %v&quot;, err)
-            }
-        }()
+    defer wg.Wait()
+    for {
+        select {
+        case &lt;-ctx.Done():
+            return // остановка по контексту; defer дождётся запущенных проб
+        case &lt;-ticker.C:
+            wg.Add(1)
+            go func() {
+                defer wg.Done()
+                if err := pingOnce(ctx, dest); err != nil {
+                    log.Printf(&quot;probe failed: %v&quot;, err)
+                }
+            }()
+        }
     }
-    wg.Wait()
 }
 
 func pingOnce(ctx context.Context, addr string) error {
@@ -2659,7 +2663,7 @@ func pingOnce(ctx context.Context, addr string) error {
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Чем <code>mtr</code> лучше <code>traceroute</code> для диагностики микроперебоев?<br />
-<strong>Ответ:</strong> <code>traceroute</code> делает одноразовую трассировку, которая может быть искажена динамическим изменением маршрутов. <code>mtr</code> собирает статистику за время, показывая паттерны потерь на конкретных hop-ах. Если потери появляются на hop-2, но исчезают на hop-3 — проблема на сетевом оборудовании провайдера, а не на сервере.</p>
+<strong>Ответ:</strong> <code>traceroute</code> делает одноразовую трассировку, которая может быть искажена динамическим изменением маршрутов. <code>mtr</code> собирает статистику за время, показывая паттерны потерь на конкретных hop-ах. Если потери появляются на hop-2, но исчезают на hop-3 — это ещё не доказательство проблемы оборудования: смотрите на последний хоп. Надёжнее ориентироваться на ситуацию, когда потери, появившись на каком-то хопе, сохраняются на всех последующих (в <code>man mtr</code> резкий рост потерь, как правило, указывает на плохой канал).</p>
   </div>
 </aside>
 
@@ -2668,8 +2672,8 @@ func pingOnce(ctx context.Context, addr string) error {
 
 <p>Инструменты диагностики наглядно демонстрируют взаимодействие пользовательского пространства с ядром Linux:</p>
 <ol>
-<li><strong>Сырые сокеты vs Dgram</strong>: <code>ping</code> и <code>traceroute</code> (UDP mode) требуют манипуляции с IP-хедером. В Linux это делается через <code>setsockopt(SOL_IP, IP_TTL, val)</code> или <code>IP_HDRINCL</code>. Go не поддерживает <code>IP_HDRINCL</code> в стандартной <code>net</code> из-за ограничений безопасности, поэтому используются обертки <code>golang.org/x/net/icmp</code>.</li>
-<li><strong>Планировщик и блокировки</strong>: Сырые сокеты используют синхронные <code>syscalls</code>. Если горутина вызывает <code>conn.ReadFrom()</code> и пакет не приходит, тред (M) блокируется в ядре. Планировщик Go (G-M-P) видит это и переносит работу на другой тред, но сам тред остается занятым. Это может привести к исчерпанию пула OS-тредов (<code>GOMAXPROCS</code> не ограничивает треды ОС, только потоки).</li>
+<li><strong>Сырые сокеты vs Dgram</strong>: <code>ping</code> и <code>traceroute</code> (UDP mode) требуют манипуляции с IP-хедером. В Linux это делается через <code>setsockopt(SOL_IP, IP_TTL, val)</code> или <code>IP_HDRINCL</code>. Пакет <code>net</code> сам не выставляет <code>IP_HDRINCL</code> (причина не в «безопасности»: управлять опцией можно через <code>SyscallConn</code> или <code>golang.org/x/net/ipv4.RawConn</code>), поэтому для ICMP обычно используют <code>golang.org/x/net/icmp</code>.</li>
+<li><strong>Планировщик и блокировки</strong>: Сокеты <code>net.ListenIP</code>/<code>icmp.ListenPacket</code> в Go неблокирующие: если горутина вызывает <code>conn.ReadFrom()</code> и пакет не приходит, она паркуется в netpoller, а поток <code>M</code> продолжает выполнять другие горутины. Блокирует поток только прямой вызов <code>syscall.Read</code> над блокирующим дескриптором, который вы создали сами.</li>
 <li><strong>eBPF и современный стек</strong>: В современных ядрах (4.9+) сырые сокеты для мониторинга заменяются на <code>eBPF</code> (см. статью <a href="36-ebpf-i-xdp-dlya-analiza-i-uskoreniya-setevogo-trafik.html" class="wikilink">36. eBPF и XDP для анализа и ускорения сетевого трафика</a>). eBPF позволяет перехватывать пакеты в ядре без блокировки пользовательских тредов и без <code>CAP_NET_RAW</code>.</li>
 </ol>
 <aside class="callout callout-interview" aria-label="Собеседование">
@@ -2679,7 +2683,7 @@ func pingOnce(ctx context.Context, addr string) error {
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Почему в Go нельзя просто <code>import "syscall"</code> и создать сырой сокет для production-кода?<br />
-<strong>Ответ:</strong> Во-первых, это требует <code>CAP_NET_RAW</code> (root), что нарушает принцип минимальных привилегий. Во-вторых, синхронные syscalls на сырых сокетах блокируют M-thread, что может вызвать scheduler pressure. В-третьих, Go's <code>netpoller</code> (epoll/kqueue) не управляет сырыми сокетами так же эффективно, как <code>SOCK_STREAM</code>/<code>SOCK_DGRAM</code>, что ведет к непредсказуемой производительности под нагрузкой.</p>
+<strong>Ответ:</strong> Во-первых, это требует <code>CAP_NET_RAW</code> (root), что нарушает принцип минимальных привилегий. Во-вторых, самодельный сырой сокет через <code>syscall</code> придётся вручную переводить в неблокирующий режим и самостоятельно организовывать ожидание готовности, а готовые обёртки (<code>net.ListenIP</code>, <code>golang.org/x/net/icmp</code>) уже делают это: их сокеты неблокирующие и работают через netpoller, так что блокировки потоков не возникает.</p>
   </div>
 </aside>
 
@@ -2692,7 +2696,7 @@ func pingOnce(ctx context.Context, addr string) error {
 <li><strong>dig</strong> демонстрирует важность <code>net.Resolver</code> и отключения Cgo-резолвера в изолированных средах. Всегда используйте <code>context.WithTimeout</code>.</li>
 <li><strong>curl</strong> отражает архитектуру <code>http.Transport</code>. Таймауты (<code>TLSHandshakeTimeout</code>, <code>ResponseHeaderTimeout</code>) и пулинг соединений — обязательный минимум для production.</li>
 <li><strong>mtr</strong> показывает паттерны потерь в реальном времени. В Go реализуется через тикер + асинхронные probe-горутины.</li>
-<li><strong>Системный уровень</strong>: Сырые сокеты обходят <code>netpoller</code>, блокируют треды и требуют root. Современная альтернатива — <code>eBPF</code>.</li>
+<li><strong>Системный уровень</strong>: Сырые сокеты требуют привилегий (root или <code>CAP_NET_RAW</code>); при использовании <code>net</code>/<code>x/net/icmp</code> они работают через <code>netpoller</code> и треды не блокируют. Дополнительная альтернатива — <code>eBPF</code>.</li>
 </ol>
 <p>Мы завершили обзор классических инструментов диагностики. В следующей статье мы перейдем к современному методу перехвата и анализа трафика без блокировки тредов: <a href="36-ebpf-i-xdp-dlya-analiza-i-uskoreniya-setevogo-trafik.html" class="wikilink">36. eBPF и XDP для анализа и ускорения сетевого трафика</a>.</p>
           </div>

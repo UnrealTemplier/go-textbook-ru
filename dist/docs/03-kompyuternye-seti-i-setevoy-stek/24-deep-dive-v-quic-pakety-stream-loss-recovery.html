@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~33 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~34 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 4 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">24. Deep Dive в QUIC. Пакеты, Stream, Loss Recovery</h1>
@@ -2221,7 +2221,7 @@ flowchart TD
     subgraph Userspace [&quot;Пространство пользователя (Go Runtime)&quot;]
         App[&quot;Приложение (HTTP/3 Handlers)&quot;]
         StreamEngine[&quot;Движок Streams &amp; Flow Control&quot;]:::process
-        LossRecovery[&quot;Loss Recovery (PTO, BBRv2, ACK Tracker)&quot;]
+        LossRecovery[&quot;Loss Recovery (PTO, Congestion Control, ACK Tracker)&quot;]
         CryptoEngine[&quot;TLS 1.3 Engine (Шифрование фреймов)&quot;]
         PacketMux[&quot;Демультиплексор пакетов (Connection ID)&quot;]
         BufferPool[&quot;sync.Pool буферов памяти&quot;]:::accent
@@ -2358,7 +2358,7 @@ flowchart LR
     <span class="callout-title">Ловушка / Gotcha</span>
   </header>
   <div class="callout-body">
-    <p>Заголовок Short Header шифруется с использованием ключей, полученных на этапе рукопожатия. Если клиент или сервер потеряют эти ключи (например, после миграции соединения), они не смогут расшифровать данные, даже если IP-адреса совпадают. QUIC использует <strong>Connection ID</strong> именно для этого: он позволяет менять IP-пакет (5-tuple), сохраняя контекст соединения.</p>
+    <p>Заголовок Short Header шифруется с использованием ключей, полученных на этапе рукопожатия. Если клиент или сервер потеряют эти ключи, они не смогут расшифровать данные, даже если IP-адреса совпадают. При этом сами ключи не привязаны к 5-tuple, поэтому миграция соединения их не обнуляет: QUIC использует <strong>Connection ID</strong> именно для того, чтобы менять IP-адрес и порт (5-tuple), сохраняя контекст соединения; новый путь проверяется фреймами <code>PATH_CHALLENGE</code>/<code>PATH_RESPONSE</code>.</p>
   </div>
 </aside>
 
@@ -2406,7 +2406,7 @@ flowchart LR
 QUIC использует оконный контроль на двух независимых уровнях:<br />
 1. <strong>Connection-level</strong>: общий лимит на входящий трафик для всего соединения в целом (фрейм <code>MAX_DATA</code>).<br />
 2. <strong>Stream-level</strong>: лимит на конкретный поток (фрейм <code>MAX_STREAM_DATA</code>).</p>
-<p>Если <code>MAX_DATA</code> или <code>MAX_STREAM_DATA</code> исчерпаны, отправитель должен ждать <code>WINDOW_UPDATE</code> фрейма. Это предотвращает OOM на стороне получателя и позволяет тонко настраивать приоритеты (например, притормозить загрузку изображений, пока грузится JS).</p>
+<p>Если <code>MAX_DATA</code> или <code>MAX_STREAM_DATA</code> исчерпаны, отправитель должен ждать увеличения лимита фреймами <code>MAX_DATA</code> / <code>MAX_STREAM_DATA</code> (<code>WINDOW_UPDATE</code> — это HTTP/2; в QUIC ещё есть <code>MAX_STREAMS</code>). Это предотвращает OOM на стороне получателя и позволяет тонко настраивать приоритеты (например, притормозить загрузку изображений, пока грузится JS).</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -2455,9 +2455,9 @@ flowchart TD
 <p>В TCP loss recovery встроен в ядро Linux. В QUIC он реализован в userspace (в пакете <code>quic-go</code>). Это даёт гибкость, но снимает аппаратное ускорение (TSO, GRO, checksum offload).</p>
 <p><strong>Ключевые механизмы:</strong><br />
 * <strong>ACK-фреймы</strong>: Отправляются с задержкой (<code>AckDelay</code>), кодируют диапазон потерянных пакетов и ECN-маркеры. QUIC использует <code>ACK Frequency</code> и <code>ACK Delay</code> для снижения overhead. Вместо единичных подтверждений фрейм <code>ACK</code> передает список диапазонов (ACK Ranges), компактно описывая, какие именно пакеты были получены.<br />
-* <strong>PTO (Probe Timeout)</strong>: Вместо TCP RTO (Retransmission Timeout), QUIC использует PTO: <code>RTT + 4 * SmoothedRTT + MaxAckDelay</code>. Если PTO истекает, отправитель шлёт <code>PING</code> или пустой пакет, чтобы подтвердить живость пути. Это не считается потерей пакета и предотвращает преждевременный сброс окна перегрузки.<br />
-* <strong>ECN (Explicit Congestion Notification)</strong>: QUIC читает поля ECN-Ce и ECN-Echo из IP-заголовка. Если ядро помечает пакеты как CE, QUIC немедленно снижает окно перегрузки, не дожидаясь потери пакета.<br />
-* <strong>Congestion Control</strong>: По умолчанию используется <strong>BBRv2</strong> (в <code>quic-go</code> настраивается). BBR строит модель пропускной способности и задержки пути, не полагаясь на потерю пакетов как на сигнал перегрузки.</p>
+* <strong>PTO (Probe Timeout)</strong>: Вместо TCP RTO (Retransmission Timeout), QUIC использует PTO: <code>smoothed_rtt + max(4 * rttvar, kGranularity) + max_ack_delay</code> (RFC 9002 §6.2.1). Если PTO истекает, отправитель шлёт <code>PING</code> или пустой пакет, чтобы подтвердить живость пути. Это не считается потерей пакета и предотвращает преждевременный сброс окна перегрузки.<br />
+* <strong>ECN (Explicit Congestion Notification)</strong>: QUIC читает ECN-кодпоинты (ECT(0), ECT(1), CE) из IP-заголовка и возвращает счётчики отправителю во фрейме <code>ACK_ECN</code> (поле «ECN-Echo» — это флаг TCP). Если на пути пакеты помечены как CE, QUIC немедленно снижает окно перегрузки, не дожидаясь потери пакета.<br />
+* <strong>Congestion Control</strong>: По умолчанию RFC 9002 описывает NewReno; <code>quic-go</code> использует Cubic/Reno-подобный алгоритм, а BBR в нём не реализован. BBR (как алгоритм) строит модель пропускной способности и задержки пути, не полагаясь на потерю пакетов как на сигнал перегрузки.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -2518,7 +2518,7 @@ Go-рантайм компенсирует это за счёт <code>netpoll</c
 
 <p>Стандартная библиотека Go до сих пор не содержит production-ready QUIC. Индустрия использует <code>github.com/quic-go/quic-go</code>. Архитектура строится вокруг трёх столпов:</p>
 <ol>
-<li><strong><code>net.UDPConn</code> + <code>poll.FD</code></strong>: Прямой доступ к файловому дескриптору UDP-сокета. <code>netpoll</code> регистрирует его в epoll/kqueue для событий <code>readable</code>/<code>writable</code>.</li>
+<li><strong><code>net.UDPConn</code></strong>: Работа с UDP-сокетом через стандартную библиотеку; внутри <code>net</code> дескриптор регистрируется в netpoller (epoll/kqueue) для событий <code>readable</code>/<code>writable</code>. (Внутренний пакет <code>internal/poll</code> в <code>quic-go</code> не импортируется.)</li>
 <li><strong><code>sync.Pool</code> для пакетов</strong>: Буферы пакетов (32KB-1MB) выделяются в пуле. Это критично для снижения давления на GC.</li>
 <li><strong>Горутина на соединение/поток</strong>: <code>quic-go</code> создаёт горутину на каждое соединение и дополнительные горутины на активные потоки. Планировщик Go обрабатывает это эффективно, но при 100k+ соединений нужно учитывать overhead контекста.</li>
 </ol>
@@ -2531,7 +2531,7 @@ Go-рантайм компенсирует это за счёт <code>netpoll</c
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-go"><code class="language-go">// Упрощённый пример управления буфером пакета в quic-go
+  <pre class="language-go"><code class="language-go">// Упрощённая иллюстрация (не код из quic-go) управления буфером пакета.
 // Показывает работу с sync.Pool и Escape Analysis
 
 var packetPool = sync.Pool{
@@ -2542,19 +2542,12 @@ var packetPool = sync.Pool{
     },
 }
 
-func (c *connection) readLoop(fd *poll.FD) error {
+func (c *connection) readLoop(conn *net.UDPConn) error {
     buf := packetPool.Get().([]byte)
     defer packetPool.Put(buf) // Возврат в пул до выхода
 
-    // netpoll ждёт события на сокете (epoll_wait)
-    if err := fd.Read(); err != nil {
-        return err
-    }
-
-    n, _, err := fd.SyscallConn().Read(func(fd uintptr) error {
-        // syscall readv для UDP
-        return readUDP(fd, buf)
-    })
+    // Горутина паркуется в netpoller, пока в сокете нет данных (epoll)
+    n, _, err := conn.ReadFromUDPAddrPort(buf)
     if err != nil {
         return fmt.Errorf(&quot;udp read: %w&quot;, err)
     }

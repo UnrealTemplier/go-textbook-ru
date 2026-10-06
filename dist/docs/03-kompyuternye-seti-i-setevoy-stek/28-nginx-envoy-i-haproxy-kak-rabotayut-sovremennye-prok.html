@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~25 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~26 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">28. nginx, Envoy и HAProxy. Как работают современные прокси</h1>
@@ -2254,7 +2254,7 @@ flowchart TD
 <h3 id="pod-kapotom-i-zero-copy">Под капотом и Zero-Copy</h3>
 <ul>
 <li>Каждый воркер имеет свой пул файловых дескрипторов и собственную кучу (malloc).</li>
-<li><code>nginx</code> активно использует системные вызовы <strong><code>sendfile()</code></strong> и <strong><code>splice()</code></strong> для zero-copy передачи файлов с диска на сетевой интерфейс, минуя пользовательское пространство. Данные перекачиваются напрямую из page cache ядра в буфер сетевой карты по DMA (Direct Memory Access), не загрязняя кэш L1/L2 процессора.</li>
+<li><code>nginx</code> использует системный вызов <strong><code>sendfile()</code></strong> для zero-copy передачи <em>статических файлов</em> с диска на сетевой интерфейс, минуя пользовательское пространство (<code>splice()</code> в исходниках nginx не используется; <code>sendfile</code> не работает для проксирования ответов бэкенда и поверх TLS — без kTLS данные приходится шифровать в user-space). Данные перекачиваются напрямую из page cache ядра в буфер сетевой карты по DMA (Direct Memory Access), не загрязняя кэш L1/L2 процессора.</li>
 <li>Конфигурация статична при запуске. Для динамического обновления используется <code>open_file_cache</code> и <code>reconfigure</code> через <code>SIGHUP</code>.</li>
 </ul>
 
@@ -2333,10 +2333,10 @@ func main() {
 <hr />
 <h2 id="haproxy-l4-master-i-proizvoditelnost">HAProxy: L4-мастер и производительность</h2>
 
-<p><code>HAProxy</code> (High Availability Proxy) исторически позиционируется как высокопроизводительный балансировщик, делающий акцент на <strong>L4 и L7</strong>. В отличие от <code>nginx</code>, он часто используется в режиме single-threaded event loop для конкретных бэков.</p>
+<p><code>HAProxy</code> (High Availability Proxy) исторически позиционируется как высокопроизводительный балансировщик, делающий акцент на <strong>L4 и L7</strong>. Исторически он был однопоточным event loop-ом, но с версии 1.8 поддерживает многопоточность: параметр <code>nbthread</code> по умолчанию равен числу доступных CPU (на платформах с привязкой к CPU; иначе — 1).</p>
 <ul>
-<li><strong>Архитектура:</strong> Один основной поток обрабатывает все входящие соединения через <code>epoll</code>. Архитектура спроектирована так, чтобы минимизировать контекстные переключения.</li>
-<li><strong>Пользовательское пространство TCP:</strong> <code>HAProxy</code> реализует часть логики TCP прямо в user-space (например, управление окном перегрузки, ACK-пакеты), что снижает нагрузку на ядро ОС.</li>
+<li><strong>Архитектура:</strong> Каждый поток обрабатывает свои соединения через <code>epoll</code> (в старых версиях — один поток на процесс). Архитектура спроектирована так, чтобы минимизировать контекстные переключения.</li>
+<li><strong>TCP остаётся в ядре:</strong> Управление окном перегрузки и ACK выполняет ядро ОС, а не HAProxy. HAProxy экономит копирования с помощью <code>splice()</code> (опции <code>option splice-auto/request/response</code>), перекладывая данные между сокетами внутри ядра.</li>
 <li><strong>Zero-copy и буферизация:</strong> Использует фиксированные пулы буферов (memory pools) для избежания фрагментации кучи. Данные копируются минимальное количество раз между буферами.</li>
 </ul>
 <aside class="callout callout-info" aria-label="Под капотом">
@@ -2352,7 +2352,7 @@ func main() {
 <hr />
 <h2 id="envoy-data-plane-xds-i-service-mesh">Envoy: Data Plane, xDS и Service Mesh</h2>
 
-<p><code>Envoy</code> — прокси нового поколения, написанный на C++ и LLVM инженерами Lyft, а ныне флагманский проект CNCF. Он стал де-факто стандартом для Service Mesh (Istio, Linkerd) благодаря разделению на <strong>Control Plane</strong> и <strong>Data Plane</strong>.</p>
+<p><code>Envoy</code> — прокси нового поколения, написанный на C++ инженерами Lyft, а ныне флагманский проект CNCF. Он стал основой Service Mesh, например Istio (у Linkerd собственный прокси <code>linkerd2-proxy</code> на Rust), благодаря разделению на <strong>Control Plane</strong> и <strong>Data Plane</strong>.</p>
 <ul>
 <li><strong>Data Plane:</strong> Сам <code>Envoy</code> (sidecar или gateway). Не имеет состояния. Все конфигурации приходят динамически.</li>
 <li><strong>xDS API:</strong> Протокол для передачи конфигурации от control plane к data plane (поверх gRPC-стримов). Включает:</li>
@@ -2452,7 +2452,7 @@ flowchart LR
 </li>
 <li>
 <p><strong>В чем разница между <code>sendfile</code> и <code>splice</code> в контексте прокси?</strong><br />
-<code>sendfile</code> копирует данные из page cache в socket buffer. <code>splice</code> перемещает данные между файловыми дескрипторами (например, от сокета к диску) через ядро, вообще не заходя в user-space. <code>nginx</code> использует <code>splice</code> для <code>aio</code> и <code>tcp_nopush</code>.</p>
+<code>sendfile</code> копирует данные из page cache в socket buffer. <code>splice</code> перемещает данные между файловыми дескрипторами (например, от сокета к диску) через ядро, вообще не заходя в user-space. <code>nginx</code> использует <code>sendfile</code> для статических файлов (опция <code>tcp_nopush</code> работает вместе с <code>sendfile</code>), а <code>splice</code> для проксирования поддерживает, например, HAProxy.</p>
 </li>
 <li>
 <p><strong>Как прокси влияют на GC в Go?</strong><br />

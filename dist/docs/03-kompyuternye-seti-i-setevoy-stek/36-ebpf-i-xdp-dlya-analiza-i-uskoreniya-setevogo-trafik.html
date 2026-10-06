@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~39 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~40 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">36. eBPF и XDP для анализа и ускорения сетевого трафика</h1>
@@ -2231,7 +2231,7 @@ flowchart TD
     end
 
     subgraph Kernel[&quot;Пространство ядра (Kernel Space / Ring 0)&quot;]
-        GoApp --&gt;|&quot;sys_bpf(BPF_PROG_LOAD)&quot;| Verifier[&quot;Статический Верификатор&lt;br&gt;(DAG, безопасность памяти, лимиты)&quot;]
+        GoApp --&gt;|&quot;sys_bpf(BPF_PROG_LOAD)&quot;| Verifier[&quot;Статический Верификатор&lt;br&gt;(завершение, безопасность памяти, лимиты)&quot;]
         Verifier --&gt;|&quot;Одобрено&quot;| JIT[&quot;JIT-компилятор&lt;br&gt;(x86_64 / ARM64 / RISC-V)&quot;]
         JIT --&gt; Native[&quot;Машинный код CPU (Ring 0)&quot;]
 
@@ -2251,7 +2251,7 @@ flowchart TD
 - <strong>JIT-компиляция (Just-In-Time):</strong> После валидации ядро мгновенно компилирует байткод eBPF в машинные инструкции конкретного хостового процессора (x86_64, ARM64, RISC-V). С этого момента программа работает на голой скорости процессора без эмуляции и интерпретации.</p>
 <h3 id="2-verifier-verifikator-dokazatelstvo-bezopasnosti-koda">2. Verifier (Верификатор): Доказательство безопасности кода</h3>
 <p>Верификатор — фундамент безопасности Linux при работе с eBPF. Он выполняет математическое доказательство того, что загружаемый код гарантированно не сломает ядро:<br />
-- <strong>Отсутствие бесконечных циклов:</strong> Программа анализируется как ориентированный ациклический граф (DAG). Количество инструкций ограничено (до 1 000 000 проверенных инструкций в современных версиях ядра).<br />
+- <strong>Гарантированное завершение:</strong> Верификатор обходит все пути исполнения и доказывает, что программа завершится. Исторически циклы были запрещены вовсе (граф потока управления — DAG); начиная с ядра 5.3 допускаются <em>ограниченные</em> циклы (bounded loops), а с 5.17 есть вспомогательная функция <code>bpf_loop</code>. Количество проверенных инструкций ограничено (до 1 000 000 в современных версиях ядра).<br />
 - <strong>Абсолютная безопасность памяти:</strong> Запрещен произвольный доступ по указателям. Любое обращение за пределы буфера пакета приводит к отказу загрузки на этапе компиляции. Указатели строго типизированы.<br />
 - <strong>Инициализация регистров:</strong> Нельзя читать регистры до того, как в них было записано значение.<br />
 - <strong>Отказ от Kernel Panic:</strong> Если верификатор находит хотя бы один потенциальный путь исполнения с нарушением границ памяти, код отвергается с возвратом ошибки <code>EINVAL</code> или <code>EACCES</code>.</p>
@@ -2330,7 +2330,7 @@ flowchart TD
 - <code>XDP_ABORTED</code>: Сигнал об ошибке в программе eBPF, пакет отбрасывается с записью в трассировочные счетчики.</p>
 <h3 id="rezhimy-raboty-xdp-execution-modes">Режимы работы XDP (Execution Modes)</h3>
 <p>В зависимости от аппаратной базы и драйверов, XDP может выполняться в одном из трех режимов:<br />
-1. <strong>Offloaded Mode (SmartNIC):</strong> eBPF-код компилируется в микрокод сетевого адаптера (например, Mellanox ConnectX, Netronome Agilio) и исполняется на процессоре самой сетевой карты. Ядро хоста и центральный процессор сервера вообще не задействуются!<br />
+1. <strong>Offloaded Mode (SmartNIC):</strong> eBPF-код компилируется в микрокод сетевого адаптера (например, Netronome Agilio с драйвером <code>nfp</code>; поддержка аппаратного offload у других производителей ограничена и зависит от модели) и исполняется на процессоре самой сетевой карты. Ядро хоста и центральный процессор сервера вообще не задействуются!<br />
 2. <strong>Native / Driver Mode:</strong> Программа eBPF выполняется в контексте драйвера сетевой карты до аллокации <code>sk_buff</code>. Поддерживается всеми промышленными сетевыми картами (Intel <code>ixgbe</code>, <code>i40e</code>, Mellanox <code>mlx5</code>, Broadcom <code>bnxt</code>).<br />
 3. <strong>Generic Mode:</strong> Режим совместимости для тестирования. Программа вызывается после аллокации <code>sk_buff</code>, но до входа в сетевой стек IP. Работает на любых сетевых адаптерах, но теряет ключевое преимущество производительности.</p>
 <hr />
@@ -2351,7 +2351,6 @@ flowchart TD
 
 import (
     &quot;log&quot;
-    &quot;os&quot;
     &quot;time&quot;
 
     &quot;github.com/cilium/ebpf&quot;
@@ -2359,7 +2358,7 @@ import (
     &quot;github.com/cilium/ebpf/ringbuf&quot;
 )
 
-//go:generate go build -ldflags '-s -w' -o xdp_prog.xdp xdp.c
+//go:generate clang -O2 -g -target bpf -c xdp.c -o xdp_prog.o
 // xdp.c должен содержать @license SPDX-License-Identifier: GPL-2.0
 
 func main() {
@@ -2377,14 +2376,14 @@ func main() {
     defer coll.Close()
 
     // 3. Привязка к сетевому интерфейсу (XDP driver mode)
-    link, err := link.AttachXDP(&amp;link.XDPOpts{
+    xdpLink, err := link.AttachXDP(link.XDPOptions{
         Program:   coll.Programs[&quot;xdp_filter&quot;],
         Interface: 2, // Пример: eth1
     })
     if err != nil {
         log.Fatalf(&quot;ошибка привязки XDP: %v&quot;, err)
     }
-    defer link.Close()
+    defer xdpLink.Close()
 
     // 4. Чтение карты (map) из пользовательского пространства
     var count uint64
@@ -2474,13 +2473,13 @@ func main() {
 <li><strong>Отсутствие копирования:</strong> XDP работает с сырыми DMA-буферами NIC. Нет аллокации <code>sk_buff</code>, нет копирования заголовков.</li>
 <li><strong>Минимизация контекстных переключений:</strong> Код исполняется в контексте драйвера NIC (или в softirq), минуя <code>netfilter</code> hook-систему и маршрутизацию.</li>
 <li><strong>JIT-компиляция:</strong> Никакой интерпретации байткода. Код выполняется как нативный C.</li>
-<li><strong>NIC Offload:</strong> Современные сетевые карты (Mellanox, Intel, Marvell) поддерживают <strong>XDP eXpress Data Path with Hardware Offload</strong>. eBPF-программа компилируется в микрокод карты, и фильтрация происходит внутри ASIC. Ядро Linux вообще не участвует в обработке пакета.</li>
+<li><strong>NIC Offload:</strong> Отдельные сетевые карты (в первую очередь Netronome с драйвером <code>nfp</code>) поддерживают <strong>XDP eXpress Data Path with Hardware Offload</strong>. eBPF-программа компилируется в микрокод карты, и фильтрация происходит внутри ASIC. Ядро Linux вообще не участвует в обработке пакета.</li>
 </ol>
 <h3 id="ogranicheniya-ebpf">Ограничения eBPF</h3>
 <ul>
 <li><strong>Лимиты верификатора:</strong> Циклы ограничены ~1M инструкций. Рекурсия запрещена. Сложная логика должна выноситься в userspace.</li>
 <li><strong>Память ядра:</strong> eBPF-программы исполняются в контексте ядра. Утечка памяти или неосвобождённые ресурсы приводят к утечке памяти ядра (kernel memory leak), которую сложно отследить.</li>
-<li><strong>Блокировка ядра:</strong> Если eBPF-программа зависает или зацикливается, она может заблокировать CPU на уровне ядра, что приведёт к <code>soft lockup</code> и зависанию системы.</li>
+<li><strong>Блокировка ядра:</strong> Благодаря верификатору программа гарантированно завершается, поэтому «зависнуть» навечно она не может; настоящая опасность — слишком дорогая программа в hot path (она замедляет обработку каждого пакета) и неверная логика фильтра (можно отбросить нужный трафик).</li>
 </ul>
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
@@ -2550,7 +2549,7 @@ func main() {
    - <strong>TC (clsact/qdisc):</strong> Позднее. После маршрутизации, но до передачи сокету. Удобно для QoS, мониторинга.<br />
    - <strong>kprobe/tracepoint:</strong> Хуки на функции/события ядра. Для отладки и профилирования, а не фильтрации пакетов.</li>
 <li><strong>Как Go-приложение безопасно обновляет eBPF-программу на лету?</strong><br />
-   Через <code>link.AttachXDP</code> с флагом <code>Replace: true</code> или через <code>ebpf.CollectionSpec</code> с последующей заменой программы. Важно правильно освобождать старые ссылки, чтобы избежать <code>EBUSY</code> и утечки ресурсов ядра.</li>
+   Через метод <code>Update</code> у уже созданного линка (<code>xdpLink.Update(newProg)</code>), который атомарно подменяет программу без разрыва обработки (у <code>link.XDPOptions</code> флага <code>Replace</code> нет). Важно правильно освобождать старые ссылки, чтобы избежать <code>EBUSY</code> и утечки ресурсов ядра.</li>
 </ol>
 <hr />
 <h2 id="itog">Итог</h2>

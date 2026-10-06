@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~49 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~50 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 5 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">5. ARP, Neighbor Discovery и поиск узла в локальной сети</h1>
@@ -2397,7 +2397,7 @@ sequenceDiagram
 <p>Когда программист на Go пишет высоконагруженный бэкенд, среда исполнения Go (Go runtime) не занимается ручной сборкой кадров ARP или NDP. Язык Go следует классическому принципу Unix: прикладной код работает с абстракциями сокетов, а всю механику L2/L3 прозрачно выполняет ядро операционной системы.</p>
 <h3 id="vnutrennosti-yadra-linux">Внутренности ядра Linux</h3>
 
-<p>В ядре Linux вся информация о соседях по локальной сети сосредоточена в универсальной модульной подсистеме ядра <strong><code>neighbour</code></strong>. Для протокола IPv4 она использует таблицы <code>arp_tables</code>, а для протокола IPv6 — модуль <code>ndisc</code> (Neighbor Discovery).</p>
+<p>В ядре Linux вся информация о соседях по локальной сети сосредоточена в универсальной модульной подсистеме ядра <strong><code>neighbour</code></strong>. Для протокола IPv4 она работает через код ARP (<code>net/ipv4/arp.c</code>) и общее ядро <code>neighbour.c</code> (не путайте с <code>arp_tables</code> — это фильтр <code>arptables</code>, а не таблица соседей), а для протокола IPv6 — модуль <code>ndisc</code> (Neighbor Discovery).</p>
 <p>Каждая запись о соседе в памяти ядра проходит через строгий конечный автомат состояний (Neighbor Unreachability Detection, NUD):</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -2606,7 +2606,7 @@ func main() {
 1. <strong>Широковещательный шторм (Broadcast Storm):</strong> Сеть заполняется миллионами broadcast-кадров, парализуя работу коммутаторов и съедая процессорное время серверов.<br />
 2. <strong>Переполнение ARP-таблицы ядра:</strong> Таблица <code>neighbour</code> имеет фиксированный размер. Если лимиты исчерпаны, ядро выводит фатальную ошибку:<br />
 <code>neighbor table overflow!</code><br />
-   В этот момент сервер полностью теряет способность устанавливать исходящие соединения, и все вызовы <code>net.Dial()</code> в Go начинают падать с ошибкой <code>no route to host</code>.  </p>
+   В этот момент сервер полностью теряет способность устанавливать исходящие соединения, и новые пакеты к ещё не известным соседям отбрасываются (в ядре аллокация записи соседа завершается <code>ENOBUFS</code>), а <code>net.Dial()</code> в Go при этом, как правило, не получает мгновенной ошибки: <code>connect()</code> игнорирует эту ошибку отправки SYN, SYN ретранслируется, и вызов заканчивается таймаутом (<code>i/o timeout</code>). Ошибка <code>no route to host</code> (<code>EHOSTUNREACH</code>) — другое: она возникает, когда ARP-запрос остался без ответа и запись соседа перешла в состояние FAILED.  </p>
 <p><strong>Тюнинг ядра под высокую нагрузку:</strong><br />
 В конфигурационном файле <code>/etc/sysctl.conf</code> необходимо увеличить пороги сборщика мусора для подсистемы <code>gc_*</code>:</p>
 
@@ -2656,7 +2656,7 @@ net.ipv4.neigh.default.gc_thresh3 = 8192
 <li><strong>Необходимость разделения:</strong> Слой L3 отвечает за глобальную сквозную маршрутизацию, а физическая коммутация на слое L2 опирается исключительно на аппаратные MAC-адреса.</li>
 <li><strong>ARP в IPv4:</strong> Опирается на широковещательные запросы <code>FF:FF:FF:FF:FF:FF</code> с кодом <code>0x0806</code>. Прост, но уязвим для атак подмены (ARP Spoofing) и создает избыточную broadcast-нагрузку.</li>
 <li><strong>NDP в IPv6:</strong> Эволюционный шаг вперед. Построен на служебных протоколах ICMPv6 (типы 135 и 136) и специализированных групповых рассылках Solicited-Node Multicast (<code>ff02::1:ffXX:XXXX</code>), снижающих нагрузку на процессоры и поддерживающих безопасное расширение SEND.</li>
-<li><strong>Ядро Linux:</strong> Полностью берет на себя управление жизненным циклом записей через модули <code>neighbour</code>, <code>arp_tables</code> и <code>ndisc</code>. Управлять параметрами кэша можно через <code>/proc/sys/net/ipv4/neigh/</code> и утилиту <code>ip neighbour</code>.</li>
+<li><strong>Ядро Linux:</strong> Полностью берет на себя управление жизненным циклом записей через модули <code>neighbour</code>, <code>arp</code> и <code>ndisc</code>. Управлять параметрами кэша можно через <code>/proc/sys/net/ipv4/neigh/</code> и утилиту <code>ip neighbour</code>.</li>
 <li><strong>Роль Go-разработчика:</strong> Сетевой стек Go делегирует разрешение адресов операционной системе. Однако понимание состояний NUD, параметров <code>gc_*</code> и специфики широковещательных пакетов необходимо для предотвращения сбоев в высоконагруженных микросервисных кластерах.</li>
 </ol>
 <p>Мы досконально изучили, как компьютеры находят друг друга внутри одной локальной сети. Но как сетевой пакет выходит за границы домашней или офисной подсети и находит дорогу к серверам на другом конце света?</p>

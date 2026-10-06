@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~50 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~51 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 5 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">3. Ethernet, MAC-адреса и локальные сети</h1>
@@ -2189,7 +2189,7 @@
 <li><strong>Облачные платформы, Kubernetes и Container Networking:</strong><br />
     В современных кластерах контейнеры изолируются в собственных пространствах имен (Network Namespaces). Сетевые плагины CNI (Cilium, Calico, Flannel) связывают эти контейнеры виртуальными кабелями — виртуальными парами интерфейсов <code>veth</code> — и объединяют их через программные мосты Linux Bridge или оверлейные сети (VXLAN), инкапсулируя Ethernet-кадры поверх обычных IP-пакетов.</li>
 <li><strong>Низкоуровневая диагностика и наблюдаемость:</strong><br />
-    Когда утилита <code>curl</code> падает с необъяснимыми ошибками <code>ECONNREFUSED</code> или <code>ETIMEDOUT</code>, а метрики сервера показывают нормальную нагрузку, корень проблемы нередко скрывается именно на уровне L2: переполнение таблицы коммутации коммутатора (FDB exhaustion), шторм широковещательного трафика или аппаратные ошибки FCS (Frame Check Sequence) на портах сервера.</li>
+    Когда утилита <code>curl</code> падает с необъяснимыми таймаутами (<code>ETIMEDOUT</code>) или нестабильными задержками, а метрики сервера показывают нормальную нагрузку, корень проблемы нередко скрывается именно на уровне L2: переполнение таблицы коммутации коммутатора (FDB exhaustion; коммутатор при этом начинает заливать кадры во все порты, и трафик теряется или деградирует — отказом <code>ECONNREFUSED</code> это не проявляется), шторм широковещательного трафика или аппаратные ошибки FCS (Frame Check Sequence) на портах сервера.</li>
 <li><strong>Разработка сетевого инструментария и инфраструктурных демонов:</strong><br />
     Агенты мониторинга, балансировщики трафика, утилиты типа <code>tcpdump</code> и системы обнаружения вторжений (IDS) в экосистеме Go регулярно взаимодействуют с интерфейсами через системный пакет <code>net</code> и структуру <code>net.Interface</code>.</li>
 </ol>
@@ -2441,7 +2441,7 @@ MAC-3 -&gt; Порт 3&quot;]
 <h2 id="kak-go-rabotaet-s-setevym-interfeysom-i-mac">Как Go работает с сетевым интерфейсом и MAC</h2>
 
 <p>Язык Go предоставляет доступ к сетевым адаптерам операционной системы через абстракцию <code>net.Interface</code> в стандартном пакете <code>net</code>.</p>
-<p>Под капотом Go считывает эту информацию из системных псевдофайлов Linux в каталоге <code>/sys/class/net/</code> (или через системные интерфейсы Netlink), а на платформе Windows вызывает системную функцию <code>GetAdaptersInfo</code>.</p>
+<p>Под капотом на Linux Go запрашивает эту информацию у ядра через сокет Netlink (<code>NetlinkRIB</code>), а на платформе Windows вызывает системную функцию <code>GetAdaptersAddresses</code>.</p>
 <p>Рассмотрим практическую программу на Go для аудита сетевых интерфейсов, аппаратных адресов и размера MTU:</p>
 
 <div class="code-block" data-lang="go">
@@ -2508,7 +2508,7 @@ func main() {
     <p><strong>Вопрос:</strong> Почему поле <code>iface.HardwareAddr</code> в структуре <code>net.Interface</code> может быть равно <code>nil</code>?<br />
 <strong>Ответ:</strong> Поле <code>HardwareAddr</code> равно <code>nil</code> на интерфейсах, у которых отсутствует аппаратный канальный адрес L2. Классические примеры:<br />
 1. Локальный псевдоинтерфейс обратной петли <strong>loopback (<code>lo</code>)</strong> — ядро Linux замыкает трафик в памяти без формирования Ethernet-кадров.<br />
-2. Сетевые виртуальные туннели третьего уровня <strong><code>tun/tap</code></strong> (например, VPN WireGuard или OpenVPN в режиме TUN), оперирующие чистыми IP-пакетами без L2-кадрирования.<br />
+2. Виртуальные туннели третьего уровня в режиме <strong>TUN</strong> (например, WireGuard или OpenVPN в режиме TUN), оперирующие чистыми IP-пакетами без L2-кадрирования. (Режим TAP, напротив, работает с Ethernet-кадрами и имеет MAC-адрес.)<br />
 3. Точечные соединения Point-to-Point (PPP) или GRE-туннели.</p>
   </div>
 </aside>
@@ -2516,7 +2516,7 @@ func main() {
 <h3 id="privyazka-k-konkretnomu-interfeysu-socket-options">Привязка к конкретному интерфейсу (Socket Options)</h3>
 
 <p>В системах с несколькими сетевыми картами (Multi-homed хосты) или в кластерах с разделением сетей управления и трафика данных высоконагруженному Go-сервису требуется принудительно слушать конкретный физический порт.</p>
-<p>В Linux это достигается установкой низкоуровневой опции сокета <strong><code>SO_BINDTODEVICE</code></strong> через системные вызовы пакета <code>syscall</code> или с помощью расширенной библиотеки <code>golang.org/x/net/ipv4</code>:</p>
+<p>В Linux это достигается установкой низкоуровневой опции сокета <strong><code>SO_BINDTODEVICE</code></strong> через <code>net.ListenConfig.Control</code> (Go 1.11+) и системный вызов <code>setsockopt</code> из пакета <code>syscall</code>:</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2526,8 +2526,22 @@ func main() {
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-go"><code class="language-go">// Привязка сокета к физическому интерфейсу eth0 через SO_BINDTODEVICE
-// Требует привилегии CAP_NET_RAW в ядре Linux
+  <pre class="language-go"><code class="language-go">// Привязка сокета к физическому интерфейсу eth0 через SO_BINDTODEVICE (только Linux).
+// В Linux 5.7+ привилегия CAP_NET_RAW для непривязанного сокета не нужна;
+// в более старых ядрах требуется CAP_NET_RAW.
+lc := net.ListenConfig{
+    Control: func(network, address string, c syscall.RawConn) error {
+        var sockErr error
+        err := c.Control(func(fd uintptr) {
+            sockErr = syscall.SetsockoptString(int(fd), syscall.SOL_SOCKET, syscall.SO_BINDTODEVICE, &quot;eth0&quot;)
+        })
+        if err != nil {
+            return err
+        }
+        return sockErr
+    },
+}
+ln, err := lc.Listen(context.Background(), &quot;tcp&quot;, &quot;:8080&quot;)
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
     <div class="retro-code-vhs-layer"></div>
@@ -2624,7 +2638,7 @@ sequenceDiagram
 <li><strong>Канальный фундамент:</strong> Протокол Ethernet обеспечивает фрейминг, структурируя полезную нагрузку в кадры с полями MAC-адресов, EtherType и контрольной суммы FCS (CRC-32).</li>
 <li><strong>Целостность без гарантий доставки:</strong> Ethernet отбрасывает битые кадры аппаратно, делегируя надежность доставки и повторные передачи протоколу TCP.</li>
 <li><strong>Коммутаторы и FDB:</strong> Современные L2-сети работают на аппаратных ASIC-коммутаторах в полнодуплексном режиме, исключая коллизии и направляя кадры по таблице соответствия MAC-адресов и портов.</li>
-<li><strong>Go на уровне L2:</strong> Стандартная библиотека абстрагирует адаптеры в структуре <code>net.Interface</code>. На интерфейсах loopback (<code>lo</code>) и туннелях <code>tun/tap</code> аппаратный адрес <code>iface.HardwareAddr</code> равен <code>nil</code>.</li>
+<li><strong>Go на уровне L2:</strong> Стандартная библиотека абстрагирует адаптеры в структуре <code>net.Interface</code>. На интерфейсах loopback (<code>lo</code>) и туннелях TUN аппаратный адрес <code>iface.HardwareAddr</code> равен <code>nil</code>.</li>
 <li><strong>Mechanical Sympathy:</strong> В высокоскоростных сетях критичны аппаратная разгрузка чексумм (<code>GRO/GSO</code>), привязка сетевой карты к локальному NUMA-узлу процессора и технологии kernel-bypass (<code>AF_XDP</code>).</li>
 </ol>
 <p>Мы детально исследовали канальный уровень L2 и передачу кадров внутри локального сегмента. Однако Ethernet не способен пересылать данные между различными сетями и дата-центрами планеты. Для глобальной адресации и маршрутизации необходим сетевой протокол третьего уровня. </p>

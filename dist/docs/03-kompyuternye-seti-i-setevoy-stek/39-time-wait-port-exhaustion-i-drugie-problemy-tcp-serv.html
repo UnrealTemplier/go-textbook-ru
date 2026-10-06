@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~29 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~32 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">39. TIME_WAIT, Port Exhaustion и другие проблемы TCP-сервисов</h1>
@@ -2192,7 +2192,7 @@
 <h3 id="bytovaya-analogiya-prokatnyy-avtopark-i-zona-dezinfektsii">Бытовая аналогия: Прокатный автопарк и зона дезинфекции</h3>
 
 <p>Представьте популярную службу каршеринга в аэропорту:<br />
-- В диспетчерской на стене висит ровно 28 000 номерных жетонов и ключей от машин — это диапазон исходящих эфемерных портов хоста (<code>32768-60999</code>).<br />
+- В диспетчерской на стене висит ровно 28 000 номерных жетонов и ключей от машин — это диапазон исходящих эфемерных портов хоста (<code>32768-60999</code>); строго говоря, лимит действует на каждую комбинацию «адрес источника — адрес и порт назначения» (4-tuple): к разным адресам назначения тот же номер порта можно использовать снова.<br />
 - Каждый раз, когда горутина делает короткий исходящий HTTP-запрос без переиспользования соединения, она берет ключи, садится за руль, проезжает 20 метров до шлагбаума и тут же сдает машину обратно (<code>FIN</code>).<br />
 - Но по правилам безопасности автопарка (спецификация RFC 793) сданную машину запрещено отдавать новому водителю сразу. Автомобиль отправляется в зону карантина и дезинфекции ровно на 60 секунд — это и есть состояние <strong><code>TIME_WAIT</code></strong>, равное удвоенному времени жизни пакета (<code>2 * MSL</code>). Зачем? Чтобы убедиться, что от предыдущей поездки не долетели запоздалые штрафы и забытый багаж.<br />
 - Если ваш сервис генерирует 1 000 коротких запросов в секунду, то через 28 секунд <strong>все 28 000 машин окажутся запертыми на карантинной стоянке <code>TIME_WAIT</code></strong>! На доске ключей не останется ни одного свободного номера. Следующий клиент, пришедший за машиной, получает жесткий отказ: <code>cannot assign requested address</code>, хотя стоянка ломится от исправных автомобилей.</p>
@@ -2258,7 +2258,7 @@ $$\text{Socket} = (\text{SrcIP}, \text{SrcPort}, \text{DstIP}, \text{DstPort})$$
 - $\text{SrcIP}$ — локальный адрес сервера;<br />
 - $\text{DstIP}$ — адрес целевого сервера базы или API;<br />
 - $\text{DstPort}$ — порт целевого сервиса (например, 5432 или 443).</p>
-<p>Единственной переменной в этой формуле остается <strong>$\text{SrcPort}$</strong> — локальный эфемерный порт (ephemeral port), который ядро автоматически выделяет из пула <code>net.ipv4.ip_local_port_range</code>. По умолчанию в Linux этот диапазон составляет от <code>32768</code> до <code>60999</code> — то есть всего около <strong>28 232 портов</strong>.</p>
+<p>Единственной переменной в этой формуле остается <strong>$\text{SrcPort}$</strong> — локальный эфемерный порт (ephemeral port), который ядро автоматически выделяет из пула <code>net.ipv4.ip_local_port_range</code>. По умолчанию в Linux этот диапазон составляет от <code>32768</code> до <code>60999</code> — то есть всего около <strong>28 232 портов</strong> на каждую комбинацию (<code>SrcIP</code>, <code>DstIP</code>, <code>DstPort</code>): к другому адресу или порту назначения тот же <code>SrcPort</code> используется заново, поэтому «28 000» — не абсолютный лимит хоста (в облачных NAT-шлюзах действуют другие ограничения: например, у AWS NAT Gateway — до 55 000 одновременных соединений на каждый уникальный адрес назначения, а у GCP Cloud NAT по умолчанию выделяется 64 порта на ВМ).</p>
 <p>Если ваш Go-сервис выполняет частые короткоживущие запросы к одному и тому же целевому адресу без повторного использования соединений (например, 10k RPS к внешнему API или базе данных с <code>pool_size = 1</code>), пул свободных портов истощается за считанные секунды. Каждое закрытое соединение блокирует свой номер порта в состоянии <code>TIME_WAIT</code> на 60 секунд.</p>
 <h3 id="kharakternye-simptomy-katastrofy">Характерные симптомы катастрофы:</h3>
 <ul>
@@ -2298,7 +2298,8 @@ $$\text{Socket} = (\text{SrcIP}, \text{SrcPort}, \text{DstIP}, \text{DstPort})$$
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-bash"><code class="language-bash"># Разрешить повторное использование TIME_WAIT для исходящих соединений (безопасно в современных ядрах)
+  <pre class="language-bash"><code class="language-bash"># Разрешить повторное использование TIME_WAIT для исходящих соединений
+# (по умолчанию в современных ядрах значение 2 — только для loopback; 1 включает глобально)
 net.ipv4.tcp_tw_reuse = 1
 
 # Расширить диапазон эфемерных портов (для клиентов)
@@ -2320,19 +2321,19 @@ net.ipv4.tcp_max_tw_buckets = 524288
     <span class="callout-title">Собеседование</span>
   </header>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Почему <code>SO_REUSEADDR</code> не спасает от <code>TIME_WAIT</code> на сервере при перезапуске?<br />
-<strong>Ответ:</strong> <code>SO_REUSEADDR</code> лишь разрешает <code>bind()</code> к занятому адресу. Он не удаляет активные состояния <code>TIME_WAIT</code> из таблицы conntrack. Для мгновенного освобождения нужно ждать завершения таймера или использовать <code>SO_REUSEPORT</code> с несколькими воркерами, либо настраивать <code>tcp_tw_reuse</code> (только для исходящих соединений).</p>
+    <p><strong>Вопрос:</strong> Спасает ли <code>SO_REUSEADDR</code> от <code>TIME_WAIT</code> на сервере при перезапуске и при исчерпании портов?<br />
+<strong>Ответ:</strong> От проблемы перезапуска — да: <code>SO_REUSEADDR</code> разрешает <code>bind()</code> на порт слушающего сокета, пока на нём остались старые соединения в <code>TIME_WAIT</code> (в Go эта опция уже включена на слушающих сокетах). Но сами записи <code>TIME_WAIT</code> он не удаляет, и на исчерпание <em>клиентских</em> эфемерных портов не влияет — там помогают пулы соединений, расширение <code>ip_local_port_range</code> и <code>tcp_tw_reuse</code> (только для исходящих соединений). К таблице <code>conntrack</code> эта опция отношения не имеет.</p>
   </div>
 </aside>
 
 <h3 id="3-connection-pooling-pul-postoyannykh-soedineniy">3. Connection Pooling (Пул постоянных соединений)</h3>
-<p>Самый надежный способ победить <code>TIME_WAIT</code> — не закрывать TCP-соединения после каждого запроса, а держать их открытыми через HTTP Keep-Alive. В Go пулинг встроен в <code>net/http.Transport</code>. Если <code>IdleConnTimeout</code> слишком мал (&lt; 60 сек на Linux), соединения будут закрываться до завершения <code>TIME_WAIT</code>, вызывая постоянный цикл <code>SYN -&gt; FIN</code>. Это убивает производительность и быстро исчерпывает порты.</p>
+<p>Самый надежный способ победить <code>TIME_WAIT</code> — не закрывать TCP-соединения после каждого запроса, а держать их открытыми через HTTP Keep-Alive. В Go пулинг встроен в <code>net/http.Transport</code>. <code>IdleConnTimeout</code> задаёт время жизни <em>простаивающего</em> соединения в пуле и к длительности <code>TIME_WAIT</code> отношения не имеет (она определяется стороной, закрывшей соединение первой). Чем он меньше, тем чаще пул закрывает неиспользуемые соединения и тем чаще вам придётся открывать новые; практическое правило — клиентский <code>IdleConnTimeout</code> держать меньше серверного/балансировщика, чтобы клиент не использовал соединение, которое сервер уже закрыл.</p>
 <hr />
 <h2 id="go-spetsifika-nethttp-netpoll-i-sistemnye-vyzovy">Go-специфика: net/http, netpoll и системные вызовы</h2>
 
 <h3 id="kak-go-upravlyaet-soedineniyami">Как Go управляет соединениями</h3>
 <ul>
-<li>При вызове <code>net.Listen</code> рантайм Go последовательно выполняет внутренние системные вызовы: <code>sysSocket</code> -&gt; <code>bind</code> -&gt; <code>listen</code>. При включенном <code>SO_REUSEPORT</code> ядро балансирует входящие <code>accept</code> между сокетами разных потоков.</li>
+<li>При вызове <code>net.Listen</code> рантайм Go последовательно выполняет внутренние системные вызовы: <code>sysSocket</code> -&gt; <code>bind</code> -&gt; <code>listen</code>. <code>SO_REUSEADDR</code> на слушающем сокете Go ставит сам, а <code>SO_REUSEPORT</code> — нет: ядро балансирует <code>accept</code> между сокетами только если приложение само открыло несколько listener'ов с этой опцией.</li>
 <li>Клиентский пакет <code>net/http</code> по умолчанию использует транспорт <code>http.Transport</code> с глобальным пулом открытых соединений. Критичные поля пула: <code>MaxIdleConns</code>, <code>MaxIdleConnsPerHost</code>, <code>IdleConnTimeout</code>.</li>
 <li>Планировщик ввода-вывода <code>netpoll</code> (epoll/kqueue) непрерывно мониторит файловые дескрипторы. Каждый сокет — это FD. При исчерпании системного лимита файловых дескрипторов (<code>ulimit -n</code>) или системных таблиц ядра системный вызов <code>accept</code> начинает возвращать ошибки <code>EMFILE</code> («Too many open files») или <code>ENFILE</code> («Too many open files in system»).</li>
 </ul>
@@ -2342,7 +2343,7 @@ net.ipv4.tcp_max_tw_buckets = 524288
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p>В Go 1.21+ планировщик использует <code>netpoll</code> для асинхронного приема соединений. При высокой нагрузке на <code>TIME_WAIT</code> сокеты не потребляют CPU, но занимают память в ядре. Когда таблица <code>conntrack</code> переполняется, ядро начинает <code>drop</code> пакеты, что вызывает silent retransmissions и рост latency.</p>
+    <p>Рантайм Go использует <code>netpoll</code> для асинхронного приема соединений с самых первых версий (с Go 1.1). При высокой нагрузке на <code>TIME_WAIT</code> сокеты не потребляют CPU, но занимают память в ядре. Когда таблица <code>conntrack</code> переполняется, ядро начинает <code>drop</code> пакеты, что вызывает silent retransmissions и рост latency.</p>
   </div>
 </aside>
 
@@ -2375,7 +2376,7 @@ func createProductionClient() *http.Client {
     transport := &amp;http.Transport{
         MaxIdleConns:        100,
         MaxIdleConnsPerHost: 100, // Важно! В DefaultTransport по умолчанию всего 2!
-        IdleConnTimeout:     90 * time.Second, // Должен быть &gt; 2 * MSL (60s)
+        IdleConnTimeout:     90 * time.Second, // Время жизни простаивающего соединения в пуле (к TIME_WAIT не относится)
         DisableKeepAlives:   false,
         TLSHandshakeTimeout: 10 * time.Second,
     }
@@ -2387,7 +2388,8 @@ func createProductionClient() *http.Client {
 }
 
 func createOptimizedListener(addr string) (net.Listener, error) {
-    // Для высоконагруженных серверов: включаем SO_REUSEPORT и SO_REUSEADDR
+    // SO_REUSEADDR Go на слушающем сокете уже ставит сам; SO_REUSEPORT имеет смысл,
+    // если процесс (или несколько процессов) открывает несколько listener'ов на один порт
     lc := net.ListenConfig{
         Control: func(network, address string, c syscall.RawConn) error {
             var opErr error
@@ -2469,7 +2471,7 @@ func main() {
 <ol>
 <li><strong>Природа <code>TIME_WAIT</code>:</strong> Состояние <code>TIME_WAIT</code> существует ради надежности сети и защиты от коллизий пакетов. Его длительность (<code>2 * MSL</code>, 60 секунд в Linux) жестко зафиксирована в ядре и не является багом приложения.</li>
 <li><strong>Анатомия Port Exhaustion:</strong> Исчерпание портов возникает при лавинообразном открытии короткоживущих TCP-соединений. Проблема решается расширением диапазона эфемерных портов (<code>ip_local_port_range</code>), включением <code>tcp_tw_reuse</code> и правильным пулингом соединений.</li>
-<li><strong>Go-специфика:</strong> <code>net/http.Transport</code> автоматически организует пулинг соединений, но параметр <code>IdleConnTimeout</code> обязан превышать 60 секунд на Linux, а <code>MaxIdleConnsPerHost</code> не должен оставаться равным 2. Флаг <code>SO_REUSEPORT</code> снимает блокировки на системном вызове <code>accept</code> и распределяет сетевой трафик по всем ядрам CPU.</li>
+<li><strong>Go-специфика:</strong> <code>net/http.Transport</code> автоматически организует пулинг соединений, но параметр <code>IdleConnTimeout</code> настраивается независимо от <code>TIME_WAIT</code>, а <code>MaxIdleConnsPerHost</code> не должен оставаться равным 2. Флаг <code>SO_REUSEPORT</code> (его Go сам не включает) при нескольких listener'ах распределяет входящие соединения между сокетами и ядрами CPU.</li>
 <li><strong>Коварство conntrack:</strong> Сокеты в <code>TIME_WAIT</code> не тратят ресурсы CPU, но перегружают таблицу <code>conntrack</code> и память ядра. При ее переполнении ядро начинает молча отбрасывать входящие пакеты (<code>silent drops</code>), маскируя системную проблему под сбои приложения.</li>
 </ol>
 <p>Мы изучили жизненный цикл TCP-соединений, коварство состояний <code>TIME_WAIT</code> и способы защиты от нехватки портов на уровне операционной системы. Однако узкие места сетевого стека кроются не только в исчерпании ресурсов хоста, но и в самой природе потоковых протоколов и поведении недобросовестных клиентов. В следующей статье <a href="40-head-of-line-blocking-slowloris-i-degradatsiya-pod-n.html" class="wikilink">40. Head of Line Blocking, Slowloris и деградация под нагрузкой</a> мы исследуем, как медленные запросы могут парализовать веб-сервер и как современные протоколы борются с блокировками в начале очереди.</p>

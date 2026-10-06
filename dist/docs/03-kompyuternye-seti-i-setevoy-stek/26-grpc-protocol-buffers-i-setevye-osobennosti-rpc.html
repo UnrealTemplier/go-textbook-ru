@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~29 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~30 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">26. gRPC, Protocol Buffers и сетевые особенности RPC</h1>
@@ -2411,7 +2411,7 @@ sequenceDiagram
 
 <h3 id="upravlenie-kontekstom-i-otmena">Управление контекстом и отмена</h3>
 
-<p>Контекст в gRPC — это не просто таймаут. Он транслируется в HTTP/2 фреймы <code>GOAWAY</code> или <code>CANCEL</code>. При отмене контекста клиент отправляет <code>RST_STREAM</code>, сервер прекращает обработку и освобождает ресурсы.</p>
+<p>Контекст в gRPC — это не просто таймаут. При отмене контекста клиент отправляет HTTP/2 фрейм <code>RST_STREAM</code> с кодом <code>CANCEL</code> (<code>GOAWAY</code> относится ко всему соединению, а не к одному вызову), сервер прекращает обработку и освобождает ресурсы.</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2426,17 +2426,19 @@ stream, err := client.Chat(ctx)
 if err != nil {
     return fmt.Errorf(&quot;create stream: %w&quot;, err)
 }
-defer stream.CloseSend() // Важно закрыть отправку, чтобы сигнализировать серверу
 
 // Чтение в горутине
+done := make(chan error, 1)
 go func() {
     for {
         resp, err := stream.Recv()
         if err == io.EOF {
+            done &lt;- nil // сервер завершил поток
             return
         }
         if err != nil {
             // Логика обработки ошибки (например, context.Canceled)
+            done &lt;- err
             return
         }
         // Обработка resp
@@ -2449,6 +2451,13 @@ for _, msg := range messages {
         return fmt.Errorf(&quot;send: %w&quot;, err)
     }
 }
+
+// Сообщаем серверу, что отправлять мы закончили, и дожидаемся io.EOF на чтении:
+// без этого функция вернётся раньше, чем придут ответы.
+if err := stream.CloseSend(); err != nil {
+    return fmt.Errorf(&quot;close send: %w&quot;, err)
+}
+return &lt;-done
 </code></pre>
   <div class="retro-code-effects" aria-hidden="true">
     <div class="retro-code-vhs-layer"></div>
@@ -2526,7 +2535,7 @@ for _, msg := range messages {
 <ol>
 <li><strong>Утечка памяти в стриминге:</strong> Забытое чтение до <code>io.EOF</code> или отмена контекста без закрытия <code>Stream</code>.</li>
 <li><strong>Игнорирование контекста:</strong> Сервер не проверяет <code>ctx.Done()</code> при длительных операциях, тратя CPU впустую.</li>
-<li><strong>Правильная работа с <code>grpc.Dial</code>:</strong> Использование <code>grpc.WithBlock()</code> в production убьет инициализацию приложения при недоступности БД. Всегда используйте таймауты или async dial.</li>
+<li><strong>Правильная работа с <code>grpc.Dial</code>:</strong> Использование <code>grpc.WithBlock()</code> в production убьет инициализацию приложения при недоступности БД. Всегда используйте таймауты или async dial. В актуальных версиях <code>grpc-go</code> для создания клиента рекомендуется <code>grpc.NewClient</code> (он подключается лениво, и <code>WithBlock</code> не нужен); <code>grpc.Dial</code> оставлен для совместимости.</li>
 <li><strong>TLS Handshake:</strong> gRPC требует TLS по умолчанию. Внутренние сервисы могут использовать <code>grpc.WithTransportCredentials(insecure.NewCredentials())</code> для dev, но в prod обязательно mTLS.</li>
 </ol>
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
@@ -2542,7 +2551,7 @@ for _, msg := range messages {
 <h3 id="voprosy-na-sobesedovanii-middlesenior">Вопросы на собеседовании (Middle+/Senior)</h3>
 
 <ul>
-<li><strong>Как gRPC реализует cancellation?</strong> Контекст транслируется в HTTP/2 <code>CANCEL</code> фрейм. Сервер должен проверять <code>ctx.Err()</code> или читать из <code>ctx.Done()</code>.</li>
+<li><strong>Как gRPC реализует cancellation?</strong> Контекст транслируется в HTTP/2 фрейм <code>RST_STREAM</code> с кодом <code>CANCEL</code>. Сервер должен проверять <code>ctx.Err()</code> или читать из <code>ctx.Done()</code>.</li>
 <li><strong>Почему Protobuf быстрее JSON?</strong> Нет парсера строк, нет выделения памяти под ключи объектов, VLQ-кодирование, бинарный формат.</li>
 <li><strong>Как избежать HLB в gRPC?</strong> Использовать несколько TCP-соединений (<code>grpc.WithInitialConnWindowSize</code>, пулинг), или перейти на <code>&lt;a href="23-http-3-i-quic-pochemu-budushchee-ukhodit-ot-tcp.html" class="wikilink"&gt;23. HTTP 3 и QUIC. Почему будущее уходит от TCP&lt;/a&gt;</code> (QUIC решает HLB на транспортном уровне).</li>
 <li><strong>Как профилировать gRPC-сервис?</strong> <code>pprof</code> по CPU/Memory + <code>grpc-go</code> internal metrics (<code>grpc_server_started_count</code>, <code>grpc_server_handled_count</code>). Используйте <code>grpc-go</code> tracing для анализа задержек внутри <code>transport</code>.</li>

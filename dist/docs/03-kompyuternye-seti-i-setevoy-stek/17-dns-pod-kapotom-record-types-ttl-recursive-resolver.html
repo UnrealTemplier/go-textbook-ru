@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~42 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~43 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 4 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">17. DNS под капотом. Record Types, TTL, Recursive Resolver, кеширование</h1>
@@ -2285,7 +2285,7 @@ flowchart TD
   </header>
   <div class="callout-body">
     <p>Ранние реализации DNS ограничивали UDP-пакет <strong>512 байтами</strong>. Если ответ был больше, сервер ставил флаг <strong><code>TC</code></strong> (Truncated) в заголовке. Клиент должен был переоткрыть соединение по TCP на тот же порт и отправить запрос заново. </p>
-<p>С появлением <strong>EDNS0</strong> (Extension Mechanisms for DNS, RFC 6891) в секцию <code>Additional</code> внедряется псевдозапись <code>OPT</code>. С её помощью клиент сообщает серверу параметр <strong><code>udp-max</code></strong> (максимальный поддерживаемый размер UDP-буфера, обычно <strong>4096 байт</strong> — фактически сколько влезет в <strong><code>MTU</code></strong> сети с учётом IP/UDP заголовков). Флаг <code>TC</code> в EDNS0 игнорируется, если ответ укладывается в объявленный <code>udp-max</code>.</p>
+<p>С появлением <strong>EDNS0</strong> (Extension Mechanisms for DNS, RFC 6891) в секцию <code>Additional</code> внедряется псевдозапись <code>OPT</code>. С её помощью клиент сообщает серверу максимальный поддерживаемый размер UDP-буфера (отдельной опции <code>udp-max</code> нет: размер передаётся в поле CLASS записи <code>OPT</code>). RFC 6891 лишь <em>рекомендует</em> стартовое значение <strong>4096 байт</strong>, а Go-резолвер объявляет <strong>1232 байта</strong>, чтобы ответ гарантированно проходил без IP-фрагментации. Флаг <code>TC</code> в EDNS0 игнорируется, если ответ укладывается в объявленный <code>udp-max</code>.</p>
   </div>
 </aside>
 
@@ -2520,7 +2520,7 @@ flowchart TD
 <p>В Go процесс разрешения имен управляется пакетом <strong><code>net</code></strong>. Ключевые компоненты:<br />
 - <strong><code>net.LookupIP(host)</code></strong> — простая глобальная функция, использующая дефолтный <code>net.Resolver</code>.<br />
 - <strong><code>net.Resolver</code></strong> — кастомизируемый резолвер, позволяющий настраивать собственные DNS-серверы, поисковые домены и таймауты.<br />
-- <strong><code>net.DialContext</code></strong> — при подключении к строковому адресу хоста прозрачно вызывает резолвинг внутри себя.</p>
+- <strong><code>(*net.Dialer).DialContext</code></strong> — при подключении к строковому адресу хоста прозрачно вызывает резолвинг внутри себя.</p>
 <p>По умолчанию Go компилируется с встроенным чистым резолвером <strong><code>netgo</code></strong>. Он парсит конфигурационный файл <code>/etc/resolv.conf</code> вручную и поддерживает следующие директивы:<br />
 - <strong><code>nameserver</code></strong> — список IP-адресов рекурсивных резолверов.<br />
 - <strong><code>search</code></strong> — домены поиска для разрешения неполных (коротких) имен.<br />
@@ -2528,7 +2528,7 @@ flowchart TD
 - <strong><code>timeout</code></strong> и <strong><code>attempts</code></strong> — время ожидания ответа и число повторных попыток перед возвратом ошибки.<br />
 - <strong><code>options</code></strong>:<br />
   - <strong><code>rotate</code></strong> — балансировка запросов Round-Robin между указанными серверами <code>nameserver</code>.<br />
-  - <strong><code>single-request-reopen</code></strong> — открывать новый UDP-сокет для каждого A и AAAA запроса (обходит баг некоторых домашних NAT-роутеров, теряющих второй ответ).<br />
+  - <strong><code>single-request-reopen</code></strong> — отправлять A и AAAA запросы последовательно, а не параллельно (обходит баг некоторых домашних NAT-роутеров, теряющих второй ответ); в реализации Go <code>single-request</code> и <code>single-request-reopen</code> разбираются одним и тем же <code>case</code> и ведут себя одинаково.<br />
   - <strong><code>use-vc</code></strong> — принудительно использовать виртуальный канал (TCP) вместо UDP для всех запросов.<br />
   - <strong><code>edns0</code></strong> — включение расширения EDNS0.</p>
 <p>Если программа скомпилирована с использованием <code>cgo</code>, Go делегирует резолвинг системной библиотеке <strong><code>glibc</code></strong> (<code>getaddrinfo</code>). Поведение программы становится зависимым от окружения хоста, что делает скомпилированные бинарники непереносимыми между разными дистрибутивами Linux (например, между Alpine на musl и Ubuntu на glibc) без жесткой фиксации <strong><code>CGO_ENABLED=0</code></strong>.</p>
@@ -2636,7 +2636,7 @@ func main() {
   </header>
   <div class="callout-body">
     <ol>
-<li><strong><code>PreferGo: true</code> vs <code>cgo</code>:</strong> В минималистичных контейнерах (Alpine на базе <code>musl libc</code>, Distroless) стандартной библиотеки glibc попросту нет. Сборка с активным <code>cgo</code> либо завершится аварией при запуске, либо приведет к непредсказуемым утечкам памяти при резолвинге. Всегда собирайте production-образы с флагом <strong><code>CGO_ENABLED=0</code></strong> и явно задавайте <strong><code>PreferGo: true</code></strong> в <code>net.Resolver</code>.</li>
+<li><strong><code>PreferGo: true</code> vs <code>cgo</code>:</strong> В минималистичных контейнерах (Alpine на базе <code>musl libc</code>, Distroless) стандартной библиотеки glibc попросту нет. Сборка с активным <code>cgo</code> либо завершится аварией при запуске, либо приведет к непредсказуемым утечкам памяти при резолвинге. Для статических образов собирайте с флагом <strong><code>CGO_ENABLED=0</code></strong> (тогда cgo-резолвера в бинарнике нет), а <code>PreferGo: true</code> в <code>net.Resolver</code> ставьте тогда, когда вам действительно нужно обойти cgo-путь (см. ограничения <code>nsswitch</code> в статье 16). Учтите, что при <code>CGO_ENABLED=0</code> и образе <code>scratch</code> в контейнере нет CA-бандла: корневые сертификаты нужно добавить в образ или встроить (<code>x509.SetFallbackRoots</code>, Go 1.20+).</li>
 <li><strong><code>ndots: 5</code> в Kubernetes:</strong> По умолчанию Kubernetes выставляет в подах директиву <code>options ndots:5</code>. Короткое имя сервиса <code>api</code> резолвер пытается разрешить через 5 последовательных запросов:<br />
    - <code>api.default.svc.cluster.local</code><br />
    - <code>api.svc.cluster.local</code><br />
@@ -2653,11 +2653,11 @@ func main() {
 
 <ol>
 <li><strong>DNS-пакет:</strong> Компактная бинарная структура с 12-байтным заголовком (<strong><code>Header (12 байт)</code></strong>), полями <code>ID</code>, <code>QR</code>, <code>Opcode</code>, <code>AA</code>, <code>TC</code>, <code>RD</code>, <code>RA</code>, <code>RCODE</code> и счетчиками секций <code>Question</code>, <code>Answer</code>, <code>Authority</code>, <code>Additional</code>.</li>
-<li><strong>Транспорт:</strong> Быстрый UDP 53 по умолчанию. При превышении лимита сервер выставляет флаг <strong><code>TC</code></strong>, и клиент повторяет запрос по надежному TCP 53. Расширение <strong><code>EDNS0</code></strong> снимает старый лимит 512 байт, расширяя буфер до 4096 байт через опцию <strong><code>udp-max</code></strong>.</li>
+<li><strong>Транспорт:</strong> Быстрый UDP 53 по умолчанию. При превышении лимита сервер выставляет флаг <strong><code>TC</code></strong>, и клиент повторяет запрос по надежному TCP 53. Расширение <strong><code>EDNS0</code></strong> снимает старый лимит 512 байт: клиент объявляет больший размер буфера в записи <code>OPT</code> (RFC 6891 рекомендует 4096 байт; Go объявляет 1232).</li>
 <li><strong>Иерархия:</strong> Иерархия <code>Stub -&gt; Recursive -&gt; Root -&gt; TLD -&gt; Auth</code> обеспечивает масштабируемость, но добавляет сетевые задержки. Запрос идет от клиентского <code>Stub Resolver</code> через кэширующий <code>Recursive Resolver</code> (8.8.8.8, 1.1.1.1) к корневым серверам (<code>Root</code>), зонам TLD и авторитетным серверам (<code>Authoritative</code>).</li>
 <li><strong>Типы записей:</strong> Фундаментальные <code>A</code> (IPv4) и <code>AAAA</code> (IPv6), канонические алиасы <code>CNAME</code>, почтовые <code>MX</code>, текстовые <code>TXT</code> (SPF/DKIM) и конфигурационные <code>SRV</code> (Service Discovery).</li>
 <li><strong>TTL и кэширование:</strong> Определяет актуальность записей и скорость переключения трафика при деплоях. стандартный <code>net.Resolver</code> в Go не кэширует DNS-ответы между последовательными запросами, полагаясь на системный кэш ОС или постоянные TCP-пулы <code>http.Transport</code>.</li>
-<li><strong>Go-резолвер:</strong> Чистый <strong><code>netgo</code></strong> парсит <code>/etc/resolv.conf</code>, поддерживает опции <code>rotate</code>, <code>single-request-reopen</code>, <code>use-vc</code>, не блокирует треды ОС и должен использоваться с <strong><code>PreferGo: true</code></strong> и контекстными таймаутами.</li>
+<li><strong>Go-резолвер:</strong> Чистый <strong><code>netgo</code></strong> парсит <code>/etc/resolv.conf</code>, поддерживает опции <code>rotate</code>, <code>single-request-reopen</code>, <code>use-vc</code>, не блокирует треды ОС и при необходимости включается через <strong><code>PreferGo: true</code></strong>, а работать должен использоваться с контекстными таймаутами.</li>
 </ol>
 <p>Мы досконально изучили, как приложения находят IP-адрес нужного сервера. Но передача данных в открытом виде через кабель опасна: любой промежуточный маршрутизатор может подслушать или подменить пакеты. В следующей статье мы перейдем к фундаментальным механизмам безопасности и шифрования: <a href="18-tls-i-https-shifrovanie-poverkh-tcp.html" class="wikilink">18. TLS и HTTPS. Шифрование поверх TCP</a>.</p>
           </div>

@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~29 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~31 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">44. Итоги раздела. Полная картина сетевого стека для Go-разработчика</h1>
@@ -2236,7 +2236,7 @@ flowchart TD
 
     subgraph GoRuntime[&quot;3. Рантайм Go (Userspace / Netpoller)&quot;]
         EP --&gt;|&quot;epoll_wait&quot;| NP[&quot;netpoller (runtime/netpoll.go)&quot;]
-        NP --&gt;|&quot;runtime.wakeG&quot;| SCHED[&quot;Планировщик Go (G-M-P)&quot;]
+        NP --&gt;|&quot;runtime.goready&quot;| SCHED[&quot;Планировщик Go (G-M-P)&quot;]
         SCHED --&gt; RUNQ[&quot;Очередь runq процессора P&quot;]
     end
 
@@ -2256,7 +2256,7 @@ flowchart TD
 - Либо блокировать поток ОС на каждом сетевом вызове <code>read</code>/<code>write</code> (что губит сервер при масштабировании до тысяч клиентов);<br />
 - Либо вручную писать сложнейшие асинхронные конечные автоматы на системных вызовах <code>select</code>/<code>poll</code>/<code>epoll</code> с неизбежным кошмаром callback hell.</p>
 <p>Go решает эту проблему на уровне архитектуры языка, вынося всю асинхронную диспетчеризацию внутрь рантайма через подсистему <code>&lt;a href="38-kak-go-rabotaet-s-setyu-net-net-http-netpoller-epoll.html" class="wikilink"&gt;38. Как Go работает с сетью. net, net/http, netpoller, epoll&lt;/a&gt;</code>.</p>
-<p>В основе сетевого рантайма лежит <strong><code>netpoller</code></strong>. На Linux он использует системный мультиплексор <code>epoll</code> (в современных версиях Go 1.22+ оптимизированный edge-triggered режим для снижения оверхеда), на macOS/BSD — <code>kqueue</code>, на Windows — <code>IOCP</code>.</p>
+<p>В основе сетевого рантайма лежит <strong><code>netpoller</code></strong>. На Linux он использует системный мультиплексор <code>epoll</code> (в режиме edge-triggered — он используется с первых версий Go — для снижения оверхеда), на macOS/BSD — <code>kqueue</code>, на Windows — <code>IOCP</code>.</p>
 <p>Когда горутина вызывает <code>net.Dial()</code> или <code>conn.Read()</code>, рантайм выполняет строгую последовательность шагов:<br />
 1. Создает системный сокет и переводит его в неблокирующий режим (<code>O_NONBLOCK</code>).<br />
 2. Регистрирует сокет в экземпляре ядра <code>epoll</code> через системный вызов <code>epoll_ctl(EPOLL_CTL_ADD)</code>.<br />
@@ -2305,7 +2305,7 @@ flowchart TD
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p><code>netpoller</code> не выделяет отдельные системные треды под каждый сокет. Опрос сетевых событий встроен прямо в планировщик Go: любой рабочий поток M при поиске задач (<code>findrunnable</code>) или системный поток мониторинга <code>sysmon</code> вызывает <code>netpoll()</code>, считывая за один системный вызов пачку до 1024 готовых событий (<code>epoll_wait</code>) и переводя ожидающие горутины в состояние <code>_Grunnable</code>. Это обеспечивает колоссальную плотность сетевых соединений на единицу ресурсов ОС.</p>
+    <p><code>netpoller</code> не выделяет отдельные системные треды под каждый сокет. Опрос сетевых событий встроен прямо в планировщик Go: любой рабочий поток M при поиске задач (<code>findrunnable</code>) или системный поток мониторинга <code>sysmon</code> вызывает <code>netpoll()</code>, считывая за один системный вызов пачку до 128 готовых событий (<code>epoll_pwait</code>) и переводя ожидающие горутины в состояние <code>_Grunnable</code>. Это обеспечивает колоссальную плотность сетевых соединений на единицу ресурсов ОС.</p>
   </div>
 </aside>
 
@@ -2327,7 +2327,7 @@ flowchart TD
     <span class="callout-title">Ловушка / Gotcha</span>
   </header>
   <div class="callout-body">
-    <p><code>http.Client</code> по умолчанию кэширует соединения. Если вы создаете новый <code>http.Client</code> в каждом запросе, вы теряете пул и создаете тысячу новых TCP-рукопожатий. Всегда переиспользуйте <code>http.DefaultClient</code> или кастомный <code>http.Transport</code>.</p>
+    <p><code>http.Client</code> по умолчанию кэширует соединения. Пул соединений принадлежит <code>http.Transport</code>, а не клиенту: если вы создаете новый <code>http.Client</code> с новым <code>Transport</code> в каждом запросе, вы теряете пул и создаете тысячу новых TCP-рукопожатий (клиенты с общим <code>Transport</code> пул делят). Переиспользуйте один <code>http.Transport</code> (или <code>http.DefaultTransport</code>); <code>http.DefaultClient</code> годится не всегда: у него нет <code>Timeout</code>.</p>
   </div>
 </aside>
 
@@ -2337,7 +2337,7 @@ flowchart TD
 <p>В высоконагруженных прокси, файловых хранилищах и стриминговых платформах используйте <code>syscall.Sendmsg</code> с векторными буферами <code>iovec</code>, системный вызов <code>sendfile</code> (через <code>io.Copy</code> для файлов на диске) или <code>splice</code> для передачи данных напрямую из кэша страниц ядра в сетевую карту с нулевым участием CPU.</p>
 <h3 id="3-dns-i-blokirovka-planirovshchika">3. DNS и блокировка планировщика</h3>
 
-<p>Стандартный вызов <code>net.LookupIP()</code> — это синхронная операция, которая блокирует текущую горутину до получения ответа от DNS-сервера. В современных версиях Go добавлен <code>net.Resolver.LookupContext</code>, но при определенных конфигурациях CGO он все равно может вызывать блокирующие системные вызовы операционной системы (<code>getaddrinfo</code>). </p>
+<p>Стандартный вызов <code>net.LookupIP()</code> — это синхронная операция, которая блокирует текущую горутину до получения ответа от DNS-сервера. У <code>net.Resolver</code> есть методы с контекстом (<code>LookupHost</code>, <code>LookupIPAddr</code>, <code>LookupNetIP</code>), но при определенных конфигурациях CGO он все равно может вызывать блокирующие системные вызовы операционной системы (<code>getaddrinfo</code>). </p>
 <p>В микросервисной архитектуре DNS-резолвер обязан быть либо асинхронным, либо агрессивно кэшироваться в памяти приложения. Обратитесь к материалам лекции <code>&lt;a href="17-dns-pod-kapotom-record-types-ttl-recursive-resolver.html" class="wikilink"&gt;17. DNS под капотом. Record Types, TTL, Recursive Resolver, кеширование&lt;/a&gt;</code>, чтобы досконально понимать, почему <code>dig</code> может работать быстрее, чем ваш код, и как избежать задержек CoreDNS из-за <code>ndots:5</code> в Kubernetes.</p>
 <hr />
 <h2 id="sistemnyy-dizayn-i-raspredelennye-sistemy">Системный дизайн и распределенные системы</h2>
@@ -2347,7 +2347,7 @@ flowchart TD
 
 <p>Развитие веб-протоколов отражает непрерывную борьбу инженеров с задержками:<br />
 - Стандарт HTTP/2 <code>&lt;a href="22-http-2-multiplexing-frames-hpack.html" class="wikilink"&gt;22. HTTP 2. Multiplexing, Frames, HPACK&lt;/a&gt;</code> устранил проблему Head-of-Line Blocking на уровне прикладных запросов благодаря мультиплексированию фреймов внутри одного TCP-соединения. Но если в сети теряется хотя бы один TCP-пакет, ядро останавливает выдачу байт для всех параллельных потоков HTTP/2 сразу!<br />
-- Протокол HTTP/3 и транспорт QUIC <code>&lt;a href="23-http-3-i-quic-pochemu-budushchee-ukhodit-ot-tcp.html" class="wikilink"&gt;23. HTTP 3 и QUIC. Почему будущее уходит от TCP&lt;/a&gt;</code>, <code>&lt;a href="24-deep-dive-v-quic-pakety-stream-loss-recovery.html" class="wikilink"&gt;24. Deep Dive в QUIC. Пакеты, Stream, Loss Recovery&lt;/a&gt;</code> полностью ликвидировали блокировку очередей на транспортном уровне, перенеся управление независимыми потоками поверх датаграмм UDP. В современных версиях Go поддержка HTTP/3 осуществляется стабильно через <code>http3.Transport</code>. Для чувствительных к потерям пакетов и задержкам сервисов (мобильный трафик, стриминг, финансовые шлюзы) переход на QUIC становится стандартом индустрии.</p>
+- Протокол HTTP/3 и транспорт QUIC <code>&lt;a href="23-http-3-i-quic-pochemu-budushchee-ukhodit-ot-tcp.html" class="wikilink"&gt;23. HTTP 3 и QUIC. Почему будущее уходит от TCP&lt;/a&gt;</code>, <code>&lt;a href="24-deep-dive-v-quic-pakety-stream-loss-recovery.html" class="wikilink"&gt;24. Deep Dive в QUIC. Пакеты, Stream, Loss Recovery&lt;/a&gt;</code> полностью ликвидировали блокировку очередей на транспортном уровне, перенеся управление независимыми потоками поверх датаграмм UDP. Поддержка HTTP/3 в Go обеспечивается сторонней библиотекой через <code>http3.Transport</code> из <code>github.com/quic-go/quic-go/http3</code> (в стандартной библиотеке <code>net/http</code> HTTP/3 пока нет). Для чувствительных к потерям пакетов и задержкам сервисов (мобильный трафик, стриминг, финансовые шлюзы) переход на QUIC становится стандартом индустрии.</p>
 <h3 id="otkazoustoychivost-i-circuit-breaker">Отказоустойчивость и Circuit Breaker</h3>
 
 <p>В распределенных системах архитектурные паттерны <code>&lt;a href="43-setevye-patterny-raspredelennykh-sistem.html" class="wikilink"&gt;43. Сетевые паттерны распределенных систем&lt;/a&gt;</code> требуют жесткого управления деградацией. Таймауты в системе обязаны быть строго иерархичными:<br />
@@ -2371,18 +2371,18 @@ flowchart TD
 <h2 id="lovushki-i-voprosy-na-sobesedovaniyakh">Ловушки и вопросы на собеседованиях</h2>
 
 <ol>
-<li><strong><code>net.Dial</code> vs <code>net.Listen</code>:</strong> Вызов <code>Dial</code> блокирует горутину до завершения трехэтапного рукопожатия TCP Handshake или истечения таймаута. В Go нет асинхронных сокетов "из коробки" без участия планировщика <code>netpoller</code>. Вызов <code>Dial</code> в цикле без передачи <code>context.Context</code> гарантированно приведет к утечке горутин при сетевом сбое.</li>
-<li><strong><code>SO_REUSEPORT</code>:</strong> Механизм Linux, позволяющий нескольким процессам или потокам привязаться (<code>bind</code>) к одному и тому же сетевому порту. Go использует это для балансировки входящих соединений между логическими процессорами <code>p</code>, полностью устраняя межъядерную конкуренцию (contention) на мьютексах сетевого стека.</li>
-<li><strong><code>TCP_NODELAY</code>:</strong> По умолчанию в сетевом стеке активирован алгоритм Нагла (Nagle Algorithm, подробнее в <a href="12-tcp-retransmission-keep-alive-nagle-i-delayed-ack.html" class="wikilink">12. TCP Retransmission, Keep Alive, Nagle и Delayed ACK</a>), который объединяет мелкие порции данных в один большой пакет. В низколатентных RPC и микросервисах на базе gRPC <code>&lt;a href="26-grpc-protocol-buffers-i-setevye-osobennosti-rpc.html" class="wikilink"&gt;26. gRPC, Protocol Buffers и сетевые особенности RPC&lt;/a&gt;</code> его отключение через <code>conn.SetNoDelay(true)</code> обязательно для исключения паразитных задержек в 40–200 мс.</li>
-<li><strong>Кэширование DNS в Go:</strong> Встроенный резолвер <code>net.Resolver</code> не кэширует DNS-ответы в памяти процесса, а полагается на системные библиотеки ОС (nsswitch). Если вы хотите реализовать надежное кэширование, используйте принципы из лекции <code>&lt;a href="17-dns-pod-kapotom-record-types-ttl-recursive-resolver.html" class="wikilink"&gt;17. DNS под капотом. Record Types, TTL, Recursive Resolver, кеширование&lt;/a&gt;</code> или подключайте внешние библиотеки.</li>
-<li><strong><code>context</code> и сетевые соединения:</strong> Вызов функции отмены <code>context.CancelFunc</code> не приводит к мгновенному физическому разрыву TCP-сокета на уровне сетевой карты. Он лишь немедленно возвращает ошибку <code>context.Canceled</code> вызывающему коду при попытке чтения или записи. Соединение обязано быть закрыто явно через <code>conn.Close()</code>, иначе сокет останется висеть в памяти ядра и перейдет в состояние <code>TIME_WAIT</code>.</li>
+<li><strong><code>net.Dial</code> vs <code>net.Listen</code>:</strong> Вызов <code>Dial</code> блокирует горутину до завершения трехэтапного рукопожатия TCP Handshake или истечения таймаута. В Go нет асинхронных сокетов "из коробки" без участия планировщика <code>netpoller</code>. Вызов <code>Dial</code> без <code>context.Context</code> и таймаута может надолго подвесить горутину при сетевом сбое (установление соединения ограничивается лишь системным таймаутом <code>connect</code>); утечку вызывает вообще любой блокирующий <code>Read</code>/<code>Write</code> без дедлайна.</li>
+<li><strong><code>SO_REUSEPORT</code>:</strong> Механизм Linux, позволяющий нескольким процессам или потокам привязаться (<code>bind</code>) к одному и тому же сетевому порту, при этом ядро распределяет входящие соединения между такими сокетами. Go эту опцию сам <strong>не</strong> включает (на слушающих сокетах он ставит <code>SO_REUSEADDR</code>); <code>SO_REUSEPORT</code> имеет смысл, только если приложение само открывает несколько listener'ов на один порт (<code>net.ListenConfig.Control</code>).</li>
+<li><strong><code>TCP_NODELAY</code>:</strong> Алгоритм Нагла (Nagle Algorithm, подробнее в <a href="12-tcp-retransmission-keep-alive-nagle-i-delayed-ack.html" class="wikilink">12. TCP Retransmission, Keep Alive, Nagle и Delayed ACK</a>) в ядре Linux включён по умолчанию и объединяет мелкие порции данных в один большой пакет, но <strong>в Go он уже выключен</strong>: <code>net</code> ставит <code>TCP_NODELAY=1</code> на каждое TCP-соединение. Поэтому в низколатентных RPC и микросервисах на базе gRPC <code>&lt;a href="26-grpc-protocol-buffers-i-setevye-osobennosti-rpc.html" class="wikilink"&gt;26. gRPC, Protocol Buffers и сетевые особенности RPC&lt;/a&gt;</code> вызывать <code>conn.SetNoDelay(true)</code> не нужно (он лишь подтвердит значение по умолчанию); паразитные задержки в 40–200 мс возможны, только если вы сами включили Нагла через <code>SetNoDelay(false)</code>.</li>
+<li><strong>Кэширование DNS в Go:</strong> Встроенный резолвер <code>net.Resolver</code> не кэширует DNS-ответы в памяти процесса (кэш, если он нужен, обычно живёт на уровне ОС или локального DNS-кэша вроде <code>systemd-resolved</code>). Если вы хотите реализовать надежное кэширование, используйте принципы из лекции <code>&lt;a href="17-dns-pod-kapotom-record-types-ttl-recursive-resolver.html" class="wikilink"&gt;17. DNS под капотом. Record Types, TTL, Recursive Resolver, кеширование&lt;/a&gt;</code> или подключайте внешние библиотеки.</li>
+<li><strong><code>context</code> и сетевые соединения:</strong> Отмена контекста, переданного в <code>DialContext</code>, действует только на установление соединения: после его завершения вызов функции отмены уже не прерывает <code>Read</code>/<code>Write</code> и не возвращает <code>context.Canceled</code> на уже работающем соединении. Для прерывания чтения и записи используйте дедлайны (<code>SetDeadline</code>) или закрывайте соединение явно через <code>conn.Close()</code> — иначе горутина останется заблокированной, а сокет будет висеть в памяти ядра. (<code>TIME_WAIT</code> — отдельное явление: он возникает у стороны, первой закрывшей соединение.)</li>
 </ol>
 <hr />
 <h2 id="itog">Итог</h2>
 
 <p>Сетевой стек в Go — это не просто библиотека сокетов, а виртуозный инженерный симбиоз между рантайм-планировщиком <code>netpoller</code>, ядром Linux, структурами памяти <code>sk_buff</code> и физическими возможностями кремния.</p>
 <p>Настоящий Senior-инженер:<br />
-- Знает, когда включать <code>SO_REUSEPORT</code> и отключать алгоритм Нагла;<br />
+- Знает, когда нужен <code>SO_REUSEPORT</code> (Go сам его не включает) и что алгоритм Нагла в Go отключён по умолчанию;<br />
 - Понимает, как настраивать пулинг <code>http.Transport</code> под конкретный профиль микросервисной нагрузки;<br />
 - Осознает фундаментальные причины перехода от TCP к QUIC и HTTP/3 в условиях потери пакетов;<br />
 - Умеет предотвратить исчерпание портов хоста и переполнение таблиц <code>conntrack</code> в кластерах Kubernetes.</p>

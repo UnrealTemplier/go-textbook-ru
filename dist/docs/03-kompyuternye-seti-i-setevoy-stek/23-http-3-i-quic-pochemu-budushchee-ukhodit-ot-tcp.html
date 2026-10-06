@@ -2172,7 +2172,7 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 3</span>
-              <span class="meta-tag read-time">⏱ ~26 мин чтения</span>
+              <span class="meta-tag read-time">⏱ ~27 мин чтения</span>
               <span class="meta-tag mermaid-tag">📐 4 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">23. HTTP 3 и QUIC. Почему будущее уходит от TCP</h1>
@@ -2272,7 +2272,7 @@ flowchart TD
     classDef data     fill:#132d29,stroke:#2dd4bf,stroke-width:1px,color:#f8fafc
     classDef network  fill:#881337,stroke:#fb7185,stroke-width:1px,color:#f8fafc
     classDef accent   fill:#1e1b4b,stroke:#818cf8,stroke-width:1px,color:#f8fafc
-    App[&quot;Приложение Go&quot;]:::network --&gt;|&quot;HTTP/2 Frames&quot;| QUIC[&quot;QUIC Layer&quot;]
+    App[&quot;Приложение Go&quot;]:::network --&gt;|&quot;HTTP/3 Frames (QPACK)&quot;| QUIC[&quot;QUIC Layer&quot;]
     QUIC --&gt;|&quot;Multiplexed Streams / TLS 1.3&quot;| UDP[&quot;UDP Datagram&quot;]
     UDP --&gt;|&quot;sendto / recvfrom&quot;| Net[&quot;Сеть / NAT / Роутер&quot;]
     Net --&gt;|&quot;UDP Packet&quot;| ServerUDP[&quot;UDP Socket (Сервер)&quot;]
@@ -2290,8 +2290,8 @@ flowchart TD
 
 <p>В отличие от TCP, где ядро управляет буферами, окнами и таймерами, <code>quic-go</code> реализует весь стек в user-space:<br />
 - <strong>Loss Recovery</strong>: Алгоритм отслеживает последовательные номера пакетов. При потере определяется, какой пакет не дошел, и инициируется ретрансмиссия без блокировки остальных потоков.<br />
-- <strong>Congestion Control</strong>: Реализованы Cubic и BBR прямо в Go. Нет вызовов <code>setsockopt</code> для ядра. Алгоритм работает на уровне Go-планировщика, что дает предсказуемость в Kubernetes-нодах.<br />
-- <strong>Connection Migration</strong>: QUIC использует 64-bit <code>Connection ID</code>. При смене IP (Wi-Fi ↔ 5G) соединение не рвется, так как ядро не привязывает сокет к конкретному IP, а <code>quic-go</code> маппит новые UDP-пакеты на существующий <code>Connection ID</code>.</p>
+- <strong>Congestion Control</strong>: Алгоритмы контроля перегрузки (по умолчанию в <code>quic-go</code> — NewReno-совместимый режим с Cubic-вариантом; BBR в <code>quic-go</code> нет) реализованы прямо в Go. Нет вызовов <code>setsockopt</code> для ядра. Алгоритм работает на уровне Go-планировщика, что дает предсказуемость в Kubernetes-нодах.<br />
+- <strong>Connection Migration</strong>: QUIC использует <code>Connection ID</code> (до 20 байт в QUIC v1; на практике часто 64 бита). При смене IP (Wi-Fi ↔ 5G) соединение не рвется, так как ядро не привязывает сокет к конкретному IP, а <code>quic-go</code> маппит новые UDP-пакеты на существующий <code>Connection ID</code>.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -2350,7 +2350,7 @@ sequenceDiagram
 2. <code>ClientHello</code> ↔ <code>ServerHello</code> (1 RTT TLS).<br />
 3. Обмен ключами и сертификатами (еще 1 RTT TLS 1.2).</p>
 <p>TLS 1.3 уже сократил handshake до 1-RTT. QUIC объединил рукопожатие транспортного уровня и TLS 1.3 в один шаг: за <strong>1-RTT</strong> устанавливается и криптографическая сессия, и транспортный канал.</p>
-<p>Более того, QUIC добавляет возможность <strong>0-RTT</strong> (early data). Клиент сохраняет session tickets и ключи. При повторном подключении он может отправить данные вместе с первым пакетом <code>ClientHello</code>. Сервер валидирует их после завершения handshake.</p>
+<p>Более того, QUIC добавляет возможность <strong>0-RTT</strong> (early data). Клиент сохраняет session tickets и ключи. При повторном подключении он может отправить данные вместе с первым пакетом <code>ClientHello</code>. Сервер может принять и обработать их ещё до завершения handshake — именно поэтому защита от replay остаётся на прикладном уровне (см. ниже).</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -2388,7 +2388,7 @@ sequenceDiagram
     <span class="callout-title">Ловушка / Gotcha</span>
   </header>
   <div class="callout-body">
-    <p>0-RTT уязвим к <strong>Replay-атакам</strong>. Данные, отправленные в 0-RTT, могут быть перехвачены и отправлены повторно. В Go необходимо использовать <code>http3.Client</code> с <code>TLSConfig.NextProtos</code> и валидировать <code>http.Request</code> на сервере через middleware, проверяя заголовок <code>Early-Data</code> или состояние сессии. Неидемпотентные запросы (<code>POST /api/pay</code>) категорически нельзя выполнять в фазе 0-RTT!</p>
+    <p>0-RTT уязвим к <strong>Replay-атакам</strong>. Данные, отправленные в 0-RTT, могут быть перехвачены и отправлены повторно. В Go клиент HTTP/3 в <code>quic-go</code> — это <code>http3.Transport</code> (типа <code>http3.Client</code> нет), а на сервере необходимо валидировать <code>http.Request</code> на сервере через middleware, проверяя заголовок <code>Early-Data</code> или состояние сессии. Неидемпотентные запросы (<code>POST /api/pay</code>) категорически нельзя выполнять в фазе 0-RTT!</p>
   </div>
 </aside>
 
@@ -2397,11 +2397,11 @@ sequenceDiagram
 <p>Каждый stream имеет независимый <code>StreamID</code>. Потеря пакета в stream 0 не влияет на stream 1. Это решает проблему HoL-блокировки, характерную для <code>&lt;a href="10-tcp-ustroystvo-garantii-i-zhiznennyy-tsikl-soedineni.html" class="wikilink"&gt;10. TCP. Устройство, гарантии и жизненный цикл соединения&lt;/a&gt;</code>. Если в потоке передачи аудиофайла потерян UDP-пакет, ядро и рантайм продолжают бесперебойно передавать байты критического потока управления.</p>
 <h3 id="3-ustoychivost-k-nat-i-mobilnosti">3. Устойчивость к NAT и мобильности</h3>
 
-<p>QUIC использует <code>Connection ID</code> вместо связки <code>IP:Port</code>. Это позволяет клиентам менять сеть без разрыва соединения. Для обхода NAT используется механизм <code>UDP hole punching</code>, встроенный в <code>quic-go</code> через ICE/STUN аналоги.</p>
+<p>QUIC использует <code>Connection ID</code> вместо связки <code>IP:Port</code>. Это позволяет клиентам менять сеть без разрыва соединения. Для миграции соединения используются <code>PATH_CHALLENGE</code>/<code>PATH_RESPONSE</code>. Механизма <code>UDP hole punching</code> (ICE/STUN) в <code>quic-go</code> нет; при необходимости обхода NAT его реализуют отдельно.</p>
 <hr />
 <h2 id="praktika-v-go-podderzhka-http3">Практика в Go: Поддержка HTTP/3</h2>
 
-<p>Для включения HTTP/3 в Go-сервере или клиенте используется пакет <code>golang.org/x/net/http3</code> (или напрямую библиотека <code>github.com/quic-go/quic-go/http3</code>).</p>
+<p>Для включения HTTP/3 в Go-сервере или клиенте используется пакет <code>github.com/quic-go/quic-go/http3</code> (пакет <code>golang.org/x/net/http3</code> существует, но сейчас это заготовка без публичного API, непригодная для production).</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -2457,7 +2457,7 @@ func main() {
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p>При вызове <code>ListenAndServeTLS</code>, <code>http3.Server</code> автоматически создает <code>net.UDPConn</code> на указанном порту. <code>netpoller</code> начинает мониторить сокет. При входящем UDP-пакете <code>quic-go</code> парсит заголовок, извлекает <code>ConnectionID</code>, находит или создает <code>Connection</code> state, дешифрует TLS 1.3 и маршрутизирует HTTP/2 фреймы по <code>StreamID</code>. Весь процесс занимает ~2-5 мкс на CPU без блокировки OS threads.</p>
+    <p>При вызове <code>ListenAndServeTLS</code>, <code>http3.Server</code> автоматически создает <code>net.UDPConn</code> на указанном порту. <code>netpoller</code> начинает мониторить сокет. При входящем UDP-пакете <code>quic-go</code> парсит заголовок, извлекает <code>ConnectionID</code>, находит или создает <code>Connection</code> state, дешифрует TLS 1.3 и маршрутизирует HTTP/3 фреймы по <code>StreamID</code>. Весь процесс занимает ~2-5 мкс на CPU без блокировки OS threads.</p>
   </div>
 </aside>
 
@@ -2489,7 +2489,7 @@ func main() {
 <h2 id="itog">Итог</h2>
 
 <p>HTTP/3 переносит мультиплексирование и контроль перегрузок из ядра ОС в user-space, решая фундаментальную проблему HoL-блокировки TCP. Для Go-разработчика это означает:<br />
-- Использование <code>golang.org/x/net/http3</code> для нативной поддержки.<br />
+- Использование <code>github.com/quic-go/quic-go/http3</code> (в стандартной библиотеке и <code>golang.org/x/net/http3</code> готового HTTP/3 пока нет).<br />
 - Понимание работы <code>netpoller</code> с UDP и <code>sync.Pool</code> для пакетов.<br />
 - Учет рисков 0-RTT replay-атак и необходимости PMTU discovery.<br />
 - Преимущество перед традиционными бэкенд-стеками в контейнеризованных средах.</p>
