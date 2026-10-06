@@ -12,7 +12,8 @@
 > 1. **Исторический релизный baseline содержания (`v1.0.2`):** Содержание всех 22 тематических модулей (1413 статей) полностью написано и вычитано по Кернигановскому стандарту.  
 > 2. **Сквозной UI/UX рефакторинг (Stages 1–4):** Поверх релизной базы реализована трёхтемная дизайн-система (`paper`, `light`, `dark`), семантический HTML5, адаптивная подсветка Prism и компонентный полиш.  
 > 3. **QA-харденинг и Mermaid Bugfix:** Устранена синтаксическая регрессия в диаграммах, защищён жизненный цикл Mermaid и расширен сквозной аудит (0 broken links, 0 filesystem errors, 0 Mermaid errors).  
-> 4. **Documentation Sync:** Инженерный регламент `AGENTS.md` приведён в строгое соответствие с кодовой базой и историей Git.
+> 4. **Documentation Sync:** Инженерный регламент `AGENTS.md` приведён в строгое соответствие с кодовой базой и историей Git (последняя сверка — 2026-10-06).  
+> 5. **Фактчек v2 (в работе):** Многоролевой фактчек по первоисточникам (§ 11.4) завершён для модулей 1–4; для модулей 5–22 в корне лежат промежуточные отчёты-скауты.
 
 ---
 
@@ -49,7 +50,10 @@
 * **Работа без сети:** Весь портал обязан безупречно открываться и функционировать напрямую из локальной файловой системы по протоколу `file:///`, с USB-носителя в изолированном контуре или со статического веб-сервера (GitHub Pages, Nginx, S3).
 * **Никаких runtime-серверов:** Отсутствуют бэкенд-процессы, базы данных рантайма и динамические API.
 * **Никаких внешних CDN:** Категорически запрещены обращения к `fonts.googleapis.com`, `cdnjs.cloudflare.com`, `unpkg.com` и любым иным внешним сетевым ресурсам. Все стили, клиентские скрипты (Prism, Mermaid 10.9.1) и математические шрифты KaTeX поставляются локально в репозитории.
-* **Никакого npm/node.js в рантайме:** Генератор работает на стандартном Python 3, клиентский код — на чистом Vanilla JavaScript.
+* **Никакого npm/node.js в рантайме:** Генератор работает на Python 3, клиентский код — на чистом Vanilla JavaScript.
+* **Зависимости инструментов разработчика (не сайта):**
+  - Сборка: Python 3 и **единственный сторонний пакет** `markdown` (Python-Markdown; расширения `fenced_code`, `tables`, `sane_lists`, `nl2br`). Проверено на Python 3.14 + `markdown` 3.10. Остальной код генератора использует только стандартную библиотеку.
+  - Аудит: дополнительно Firefox для рантайм-разбора Mermaid (§ 9); без него аудит запускается с `--no-mermaid-runtime`.
 * **Только относительные пути:** Все внутренние ссылки, пути к стилям, скриптам и иконкам используют относительную адресацию (`./`, `../`).
 
 ### 1.4. Версионирование проекта (Canonical Version)
@@ -69,12 +73,14 @@
 go-textbook/
 ├── sources/               # Source of Truth контента: 22 тематических модуля (.md файлы)
 ├── builder/               # Source of Truth генератора и инструментов QA
-│   ├── build_all.py       # Главный сборочный конвейер (--all, --pilot, --module N, --limit N)
-│   ├── scanner.py         # Сканирование sources/, парсинг метаданных, граф wikilinks
-│   ├── converter.py       # Парсер Markdown в семантический HTML, автосанитизация Mermaid
-│   ├── template.py        # Каркас HTML5, шаблоны страниц, навигация, сайдбар, TOC
+│   ├── __init__.py        # Делает builder/ пакетом (импорты вида builder.scanner)
+│   ├── build_all.py       # Главный сборочный конвейер (--all, --pilot, --module N, --limit N, --sources, --dist)
+│   ├── scanner.py         # Сканирование sources/, парсинг метаданных, slugify, граф wikilinks
+│   ├── converter.py       # Парсер Markdown в семантический HTML, callouts, автосанитизация Mermaid
+│   ├── template.py        # Каркас HTML5, шаблоны страниц, навигация, сайдбар, TOC, версия, anti-flicker
 │   ├── audit_all.py       # Сквозной QA-аудит (ОС-совместимость, ссылки, анкоры, Mermaid + рантайм-разбор в headless Firefox)
 │   ├── verify_editorial.py# Инструмент верификации авторской редактуры ДО и ПОСЛЕ
+│   ├── batch_runner.py    # ⚠️ Исторический скрипт пакетной конвертации модулей 2–22 (не запускать, см. ниже)
 │   └── assets/            # Исходные статические ассеты (стили, скрипты, вендор)
 │       ├── themes/        # Реестр и CSS-токены тем (один файл — одна тема)
 │       │   ├── manifest.json  # Реестр тем: порядок, label, icon, default
@@ -83,14 +89,29 @@ go-textbook/
 │       │   └── paper.css      # [data-theme="paper"] CSS Custom Properties
 │       ├── style.css      # Дизайн-система: :root-токены, компонентные правила (без блоков тем)
 │       ├── main.js        # Клиентская логика (Vanilla JS, без фреймворков)
-│       └── vendor/        # Локальные вендорные библиотеки (Prism, Mermaid 10.9.1, KaTeX шрифты)
+│       ├── favicon.ico / favicon.svg  # Копии иконок (сборщик берёт иконки из корня репозитория)
+│       └── vendor/        # Локальные вендорные библиотеки
+│           ├── prism-bundle.min.js    # Prism + языки (подключается страницами статей)
+│           ├── prism*.min.js/.css     # Исходные модули Prism (копируются, но страницами не подключаются)
+│           ├── mermaid.min.js         # Mermaid 10.9.1
+│           └── katex/                 # katex.min.js/.css, contrib/auto-render.min.js, fonts/
+├── fact-checks/           # Архив отчётов фактчека v2 по модулям (mod1/ … mod4/), см. § 11.4
+├── .github/workflows/
+│   └── pages.yml          # Деплой каталога dist/ на GitHub Pages при push в main (без сборки в CI)
 ├── dist/                  # Скомпилированный статический сайт (артефакт, коммитится в Git)
+├── favicon.ico / favicon.svg  # Иконки портала (источник для dist/ и dist/assets/)
 ├── README.md              # Публичная витрина проекта
 └── AGENTS.md              # Архитектурный регламент и операционные инструкции для AI-агентов
 ```
 
+> [!WARNING]
+> **`builder/batch_runner.py` — наследие начальной конвертации.** Скрипт пересобирает модули 2–22 по одному, переписывает `AGENTS.md` регулярными выражениями под давно удалённый формат дорожной карты и **сам делает `git commit`**. В текущем процессе он не нужен и запускать его нельзя; для сборки используйте `build_all.py`.
+
 ### Гигиена репозитория:
-Корень репозитория поддерживается в абсолютной чистоте. В корне разрешены только служебные системные файлы проекта (`sources/`, `builder/`, `dist/`, `AGENTS.md`, `README.md`, `favicon.ico`, `favicon.svg`, `.gitignore`). Категорически запрещено коммитить в корень отладочные скрипты, временные дампы, черновики планов или скриншоты.
+Корень репозитория поддерживается в абсолютной чистоте. В корне разрешены только служебные системные файлы проекта (`sources/`, `builder/`, `dist/`, `fact-checks/`, `.github/`, `AGENTS.md`, `README.md`, `favicon.ico`, `favicon.svg`, `.gitignore`). Категорически запрещено коммитить в корень отладочные скрипты, временные дампы, черновики планов или скриншоты.
+
+> [!NOTE]
+> **Известное временное исключение.** Коммит `2b7c9945` положил в корень 20 промежуточных отчётов фактчека для модулей 5–22 (`{N}-gemini-scout.md`, а также `5-sonnet-alt.md` и `6-sonnet-alt.md`). Они переносятся в `fact-checks/mod{N}/` по мере завершения фактчека модуля (§ 11.4); новые такие файлы в корень не добавлять.
 
 ---
 
@@ -98,18 +119,28 @@ go-textbook/
 
 ### 3.1. Сборка портала (`builder/build_all.py`)
 ```bash
-# Полная сборка всех статей и главной страницы index.html (~13-15 сек):
+# Полная сборка всех статей и главной страницы index.html (~12-15 сек):
 python3 builder/build_all.py --all
 
 # Быстрая пилотная сборка (первые 15 статей Модуля 1 для проверки пайплайна, ~1 сек):
 python3 builder/build_all.py --pilot
 
-# Сборка конкретного модуля (например, Модуля 9, ~1-2 сек):
+# Сборка конкретного модуля (например, Модуля 9, ~1 сек):
 python3 builder/build_all.py --module 9
 
 # Сборка с ограничением количества статей:
 python3 builder/build_all.py --limit 50
+
+# Сборка в другой каталог (например, для сравнения с текущим dist/):
+python3 builder/build_all.py --all --dist /tmp/dist-check
 ```
+
+Особенности поведения сборщика:
+* **Без флагов запускается пилот** (как `--pilot`), а не полная сборка.
+* `--module N` можно совмещать с `--limit`. При частичной сборке (`--pilot`, `--module`, `--limit`) ассеты, `assets/search-data.js` и `index.html` всё равно генерируются по **всем** статьям, а сайдбар каждой страницы строится по полному дереву модулей.
+* **Сборщик не очищает `dist/`:** он только перезаписывает файлы. После переименования или удаления статьи старый HTML остаётся в `dist/` как сирота. `dist/` полностью воспроизводим (полная сборка в чистый каталог побайтно совпадает с закоммиченным), поэтому сирот убирают чистой пересборкой: `rm -rf dist && python3 builder/build_all.py --all`.
+* Порядок шагов: чтение версии из `AGENTS.md` → сканирование `sources/` → копирование ассетов и сборка `style.css` из тем → `search-data.js` и иконки → конвертация статей → `index.html`.
+* Выходные пути статей: `dist/docs/{NN-slug-модуля}/[{подраздел}/[{под-подраздел}/]]{slug-статьи}.html` (транслитерация через `slugify` из `scanner.py`).
 
 ### 3.2. Сквозной QA-аудит качества (`builder/audit_all.py`)
 ```bash
@@ -118,9 +149,14 @@ python3 builder/audit_all.py
 
 # Без рантайм-разбора Mermaid (если в окружении нет Firefox):
 python3 builder/audit_all.py --no-mermaid-runtime
+
+# Аудит другого каталога сборки / другого корня для проверки имён файлов:
+python3 builder/audit_all.py --dist /tmp/dist-check --repo-root .
 ```
+Код возврата: `0` — аудит пройден (`🎉 АУДИТ ПРОЙДЕН УСПЕШНО!`), `1` — найдены ошибки. Полный прогон вместе с рантайм-разбором Mermaid занимает ~11 сек.
+
 Скрипт проверяет:
-1. Кроссплатформенную совместимость имен файлов и папок (Windows NTFS, macOS APFS, Linux).
+1. Кроссплатформенную совместимость имен файлов и папок (Windows NTFS, macOS APFS, Linux) — **во всём репозитории** (`--repo-root`, ~3000 файлов), а не только в `dist/`.
 2. Отсутствие битых ссылок (Broken Links) между сгенерированными HTML-страницами.
 3. Валидность анкоров заголовков (`#anchor`).
 4. Синтаксическую целостность блоков Mermaid в HTML (проверка заголовка, отсутствие остаточного SVG, отсутствие текста `Syntax error in text`, проверка синтаксиса директив `class`; предупреждение о `:::класс` внутри квотированной метки узла).
@@ -129,18 +165,24 @@ python3 builder/audit_all.py --no-mermaid-runtime
 ### 3.3. Валидатор авторской вычитки (`builder/verify_editorial.py`)
 ```bash
 python3 builder/verify_editorial.py "sources/path/to/article.md" --git-ref HEAD~1
+
+# Сравнение с произвольным файлом вместо ревизии Git:
+python3 builder/verify_editorial.py "sources/path/to/article.md" --original-file /path/to/old.md
 ```
 Контролирует сохранение 95–100% технических терминов, ключевых тем, вопросов собеседований и диаграмм при глубоком переписывании статей.
 
 ### 3.4. Текущие базовые метрики (Snapshot Baseline):
-На момент текущего базового среза репозитория:
+На момент текущего базового среза репозитория (сверено 2026-10-06, `HEAD b237c2e6`):
 * **Тематических модулей:** `22`
 * **Статей Markdown (`sources/`):** `1413`
-* **Сгенерированных HTML-страниц (`dist/`):** `1414` (1413 статей + `dist/index.html`)
+* **Сгенерированных HTML-страниц (`dist/`):** `1414` (1413 статей + `dist/index.html`); всего файлов в `dist/`: `1497` (плюс ассеты, вендор и 60 шрифтов KaTeX)
 * **Диаграмм Mermaid:** `2486`
 * **Битых ссылок (Broken Links):** `0`
+* **Ненайденных якорей (Missing Anchors):** `0`
 * **Ошибок диаграмм Mermaid в аудите:** `0` (рантайм-разбор: не разобрано `0` из `2486`; предупреждений по `:::класс` в метках: `0`)
-* **Ошибок совместимости файловой системы:** `0`
+* **Ошибок совместимости файловой системы:** `0` (проверено 292 каталога и 3048 файлов репозитория)
+* **Синхронность `dist/` с `sources/`:** полная сборка в чистый каталог не отличается от закоммиченного `dist/`
+* **Фактчек v2 (§ 11.4):** завершён для модулей `1–4`; модули `5–22` — на стадии скаут-отчётов
 
 > [!NOTE]
 > Указанные числа являются текущим стабильным baseline репозитория. При санкционированном добавлении новых статей, тем или схем показатели могут закономерно изменяться.
@@ -160,7 +202,7 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --git-ref HEAD~
 ### Архитектурные принципы тем:
 1. **Никакой темы `system`:** Выбор темы строго детерминирован (`dark`, `paper`, `light`). **Дефолтная тема — `dark`** (применяется для новых посетителей; если пользователь уже явно выбрал `paper` или `light`, его выбор сохраняется).
 2. **Единый плавающий переключатель (Floating Theme Switcher):**  
-   Элемент переключения темы вынесен из сайдбара в единую плавающую кнопку в правом нижнем углу экрана (`bottom: 24px, right: 24px`, класс `.floating-theme-switcher`). Это круглая icon-only кнопка с SVG-иконками (Paper — документ, Light — солнце, Dark — луна), доступным атрибутом `aria-label` и тултипом с названием текущей темы. Нажатие циклически переключает тему на клиенте на лету без перезагрузки: `<html data-theme="dark|paper|light">`.
+   Элемент переключения темы вынесен из сайдбара в единую плавающую кнопку в правом нижнем углу экрана (`bottom: 24px, right: 24px`, класс `.floating-theme-switcher`). Это круглая icon-only кнопка с SVG-иконками (Paper — документ, Light — солнце, Dark — луна), доступным атрибутом `aria-label` и тултипом с названием текущей темы. Нажатие циклически переключает тему на клиенте на лету без перезагрузки: `<html data-theme="dark|paper|light">`. Порядок цикла задаётся полем `order` в `manifest.json`: `paper → light → dark → paper`.
 3. **Персистентность в `localStorage`:** Выбранная тема сохраняется под ключом `go_encyclopedia_theme`.
 4. **Защита от мигания (Anti-flicker):** В `<head>` каждой страницы первым выполняется комбинированный синхронный инлайн-скрипт «Theme & Retro anti-flicker», генерируемый динамически функцией `make_anti_flicker_script()` из `builder/template.py`. Скрипт читает список допустимых тем из `builder/assets/themes/manifest.json` и до начала отрисовки DOM:
    - Восстанавливает активную тему из `localStorage` (ключ `go_encyclopedia_theme`).
@@ -174,7 +216,10 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --git-ref HEAD~
    }catch(e){}})();</script>
    ```
    > [!NOTE]
-   > Список тем в скрипте (`['paper','light','dark']`) генерируется автоматически из `manifest.json`. Добавление новой темы в манифест обновляет этот список при следующей сборке.
+   > Список тем в скрипте (`['paper','light','dark']`) и тема по умолчанию генерируются автоматически из `manifest.json` (поля `themes[].key` и `default`). Добавление новой темы в манифест обновляет этот список при следующей сборке.
+
+   > [!WARNING]
+   > **Известное расхождение (не исправлено).** Ретро-часть anti-flicker скрипта читает устаревший общий ключ `go_encyclopedia_retro_effects`, а `main.js` с коммита `27337fe5` хранит состояние per-theme под ключами `go_encyclopedia_retro_effects_{theme}` и общий ключ больше не пишет. Поэтому до рендера ретро-эффекты фактически не восстанавливаются (кроме браузеров, где остался старый ключ); их применяет `initRetroEffects()` на `DOMContentLoaded`. Тема восстанавливается до рендера корректно.
 5. **Семантические токены CSS Custom Properties:**  
    Токены тем определены в отдельных файлах `builder/assets/themes/{theme-key}.css` и при сборке конкатенируются в `dist/assets/style.css` через функцию `build_themed_css()`:
    - Фоновые слои: `--bg`, `--bg-surface`, `--bg-card`, `--bg-card-hover`, `--bg-elevated`.
@@ -201,7 +246,7 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --git-ref HEAD~
    | `--link` (ссылки) | `#e06b2d` (терракота) | `#8c3b12` (ржавчина) | `#18528c` (глубокий синий) |
    | `--code-bg` (фон блоков кода) | `#0d0c0a` | `#181512` | `#16181d` |
    | `--code-text` (текст кода) | `#ded8cc` | `#edd8b4` | `#e6edf3` |
-6. **Дисциплина использования цветов:** Прямые hex/rgba значения не должны использоваться там, где применим семантический токен темы. Отдельные изолированные прямые значения (например, гарантированно контрастный белый текст `#fff` поверх заливки primary-акцента в логотипе или кнопке «Наверх» при ховере) являются допустимыми проектными исключениями и не подменяют общую токенизированную архитектуру тем.
+6. **Дисциплина использования цветов:** Прямые hex/rgba значения не должны использоваться там, где применим семантический токен темы. Отдельные изолированные прямые значения (например, гарантированно контрастный белый текст `#fff` поверх заливки primary-акцента в логотипе или кнопке «Наверх» при ховере) являются допустимыми проектными исключениями и не подменяют общую токенизированную архитектуру тем. Ещё одно известное исключение — запасные hex-значения в `initMermaid()` (`main.js`), которые используются, только если CSS-токен не прочитался; при смене палитры темы их нужно обновлять вместе с файлом темы.
 7. **Расширяемая архитектура тем («один файл — одна тема»):**  
    Реестр тем хранится в `builder/assets/themes/manifest.json`. Каждая тема — отдельный CSS-файл в `builder/assets/themes/`. Сборщик (`build_themed_css()` в `build_all.py`) автоматически обнаруживает темы по манифесту, конкатенирует их в `dist/assets/style.css` и инжектирует список в HTML-атрибуты и anti-flicker скрипт.  
    Каждый `<html>` содержит атрибуты `data-available-themes="paper,light,dark"` и `data-theme-labels="paper:Paper,light:Light,dark:Dark"`, из которых `main.js` читает список тем для переключателя.  
@@ -213,7 +258,11 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --git-ref HEAD~
 
 ## 🧱 5. Семантическая HTML-архитектура
 
-Разметка генерируется `builder/template.py` и `builder/converter.py` с соблюдением стандартов HTML5 и спецификаций доступности (WAI-ARIA):
+Разметка генерируется `builder/template.py` и `builder/converter.py` с соблюдением стандартов HTML5 и спецификаций доступности (WAI-ARIA).
+
+Типы страниц и подключаемые скрипты:
+* **Страница статьи** (`render_article_page`): `style.css`, `katex.min.css`, затем в конце `<body>` — `prism-bundle.min.js`, `mermaid.min.js`, `katex.min.js`, `auto-render.min.js`, `main.js`. Содержит сайдбар с фильтром (`#sidebar-filter`), TOC, пагинацию и модальное окно диаграмм (`#mermaid-modal`).
+* **Главная страница** (`render_index_page`): только `style.css`, `search-data.js` и `main.js` (без Prism, Mermaid и KaTeX). Содержит hero-секцию, глобальный поиск (`#global-search-input`) и каталог модулей.
 
 * **Лэндмарки документа:**
   - `<aside class="app-sidebar" id="app-sidebar" aria-label="Навигация по курсу">` — боковая навигационная панель. Футер сайдбара (`<footer class="sidebar-footer">`) содержит счётчик лекций (`.catalog-stat`) и чип версии проекта (`.sidebar-version`). Визуальный бейдж `Offline First` полностью удалён из интерфейса (архитектурное свойство offline-first сохраняется на системном уровне).
@@ -241,9 +290,11 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --git-ref HEAD~
 * **Инженерные выноски (Callouts):**
   - `<aside class="callout callout-{type}" role="note" aria-label="...">` с заголовком `<header class="callout-header">`.
 * **Таблицы данных:**
-  - Оборачиваются в доступный скролл-контейнер: `<div class="table-wrapper" role="region" tabindex="0" aria-label="Таблица данных"><table>...</table></div>`.
+  - Оборачиваются в доступный скролл-контейнер (`_wrap_tables` в `converter.py`): `<div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>...</table></div>`.
+* **Блоки кода:**
+  - `_enhance_code_blocks` добавляет к каждому `<pre><code>` шапку с языком и кнопкой `data-action="copy-code"`; блоки без языка тоже получают шапку.
 * **Отказ от инлайновых `onclick`:**  
-  Все обработчики событий переведены на централизованное делегирование через атрибуты `data-action` (`data-action="copy-code"`, `data-action="toggle-theme"`, `data-action="mermaid-fullscreen"`, `data-action="close-mermaid-modal"`, `data-action="zoom-mermaid-in"` и др.).
+  Все обработчики событий переведены на централизованное делегирование через атрибуты `data-action`. Полный список: `copy-code`, `mermaid-fullscreen`, `close-mermaid-modal` (кнопка и подложка модалки), `zoom-mermaid-in`, `zoom-mermaid-out`, `zoom-mermaid-reset`, `toggle-theme`. Кнопка и поповер ретро-эффектов обслуживаются собственными обработчиками `initRetroEffects()`.
 
 ---
 
@@ -254,10 +305,11 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --git-ref HEAD~
 * **Централизованное делегирование событий:** Функция `initActionDelegation()` перехватывает клики по элементам с атрибутом `data-action` на уровне `document`.
 * **Глобально экспонированные функции (для обратной совместимости и доступности):**
   - `window.copyCodeBlock(button)`
-  - `window.openMermaidModal(svgElement)`
-  - `window.closeMermaidModal()`
-  - `window.zoomMermaid(delta)`
+  - `window.toggleMermaidModal(button)` — клонирует отрисованный `<svg>` из ближайшего `.mermaid-wrapper` в модалку
+  - `window.closeMermaidModal()` (также по `Escape`)
+  - `window.zoomMermaid(delta)` — масштаб в пределах `0.3–3.5`; кнопки меняют его на `±0.2`, колесо мыши в модалке — на `±0.15`
   - `window.resetMermaidZoom()`
+  - `window.toggleTheme()`
 * **Основные архитектурные модули в `main.js`:**
   - `saveMermaidSources()` / `initMermaid()` / `rerenderMermaid()` — управление жизненным циклом диаграмм.
   - `initThemeSwitcher()` — переключение тем и синхронизация с `localStorage`; читает список тем из `data-available-themes` / `data-theme-labels` атрибутов `<html>`.
@@ -267,11 +319,10 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --git-ref HEAD~
   - `initSidebarCentering()` — центрирование активной лекции в дереве сайдбара.
   - `initScrollProgress()` — индикатор прогресса чтения статьи и кнопка «Наверх».
   - `initMobileMenu()` — мобильное меню-сайдбар (drawer).
-  - `initGlobalSearch()` — клиентский поиск на базе предварительно сгенерированного `search-data.js`.
-  - `initKaTeX()` — локальный рендеринг математических формул LaTeX.
-
-
-
+  - `initGlobalSearch()` — клиентский поиск на главной странице по `window.SEARCH_DATA` из `search-data.js` (поля `title`, `url`, `module`, `sub`, `num`). Это поиск по **названиям**, а не по тексту статей: запрос делится на слова, каждое слово обязано найтись в названии статьи (+10 к рейтингу) или модуля (+3).
+  - `initKaTeX()` — локальный рендеринг математических формул LaTeX (разделители `$$…$$`, `$…$`, `\(…\)`, `\[…\]`; код, `pre` и Mermaid игнорируются).
+* **Порядок инициализации на `DOMContentLoaded`:** `saveMermaidSources → initMermaid → initKaTeX → initActionDelegation → initSidebarResize → initSidebarFilter → initSidebarCentering → initScrollProgress → initMobileMenu → initGlobalSearch → initThemeSwitcher → initRetroEffects`. Функции проверяют наличие своих элементов в DOM и выходят, если их нет, поэтому один `main.js` обслуживает и статьи, и главную.
+* **Ключи `localStorage`:** `go_encyclopedia_theme` (тема), `go_encyclopedia_sidebar_width` (ширина сайдбара), `go_encyclopedia_retro_effects_{theme}` (ретро-эффекты, § 6а; ширина допускается в диапазоне 220–550 px). Обращения к теме и ретро-эффектам обёрнуты в `try/catch`, чтение и запись ширины сайдбара — нет.
 
 ---
 
@@ -292,14 +343,30 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --git-ref HEAD~
 - **HTML:** Оверлейный `<div id="retro-site-effects">` с тремя слоями (VHS, CRT, Noise) и `<div id="retro-phosphor-trail">` вставляются в каждую страницу шаблоном.
 - **CSS:** Базовые значения эффектов (по умолчанию `0`) определены в `:root`. Каждая тема переопределяет сопутствующие токены (`--retro-noise-blend`, `--retro-vhs-line-alpha`, `--retro-crt-glow-color`, `--retro-trail-gradient`) под свою палитру.
 - **JS (`main.js`):** Функция `initRetroEffects()` управляет поповером, слайдерами и тогглами. `applyRetroEffects()` записывает значения в CSS Custom Properties. `syncRetroUI()` обновляет UI при смене темы.
-- **Персистентность:** Состояние хранится **per-theme** в `localStorage` под ключом `go_encyclopedia_retro_effects_{theme}` (отдельно для `dark`, `light`, `paper`). При переключении темы автоматически загружается соответствующий профиль настроек.
-- **Anti-flicker:** Ретро-состояние восстанавливается **до рендера** в inline-скрипте в `<head>` вместе с темой.
+- **Настройки по умолчанию (`DEFAULT_RETRO_STATE`):** все эффекты выключены; сила VHS/CRT/Noise для страницы — 30/30/20 %, для кода — 30/40/20 %. У VHS, CRT и Noise есть слайдер `0–100 %`; у Phosphor Trail слайдера нет — только переключатель, сила зафиксирована на 20 %.
+- **Защита слайдеров на мобильных (коммит `c96157b7`):** колесо мыши и жест прокрутки не меняют значение слайдера; после `change`/`pointerup`/`touchend` фокус снимается, а прокрутка страницы закрывает поповер.
+- **Персистентность:** Состояние хранится **per-theme** в `localStorage` под ключом `go_encyclopedia_retro_effects_{theme}` (отдельно для `dark`, `light`, `paper`). При переключении темы `toggleTheme()` сохраняет профиль текущей темы и загружает профиль новой.
+- **Anti-flicker:** Задуман как восстановление ретро-состояния **до рендера** в inline-скрипте в `<head>` вместе с темой, но сейчас скрипт читает устаревший общий ключ — см. предупреждение в § 4, п. 4. Фактически эффекты включаются на `DOMContentLoaded`.
 
 ---
 
 ## 📊 7. Архитектура и пайплайн Mermaid
 
+### Полный конвейер конвертации статьи (`MarkdownConverter.convert_article`)
+1. `_clean_cliches` — вырезает из текста шаблонные вводные фразы («Как известно, », «Не секрет, что », «Важно понимать, что », «Давайте рассмотрим …:», «В современном мире …, »).
+2. `_extract_mermaid` — вынимает блоки ```` ```mermaid ```` в плейсхолдеры, санитизирует и оборачивает их (см. ниже).
+3. `_transform_callouts` — Obsidian-выноски `> [!type] Заголовок` → `<aside class="callout callout-{type}">`. Типы: `tip`, `interview`, `info`, `warning`, `note`, `important`, `caution`, `danger`.
+4. `_transform_wikilinks` — `[[…]]` → относительные ссылки через `scanner.resolve_wikilink`.
+5. `_process_headings` — `id` заголовков через `slugify(…, 80)` и сбор TOC.
+6. Python-Markdown (`fenced_code`, `tables`, `sane_lists`, `nl2br`).
+7. Возврат Mermaid-блоков на место плейсхолдеров.
+8. `_wrap_tables` — обёртка `.table-container`.
+9. `_enhance_code_blocks` — шапка блока кода и кнопка копирования.
 
+> [!WARNING]
+> Шаг 1 меняет текст **только в HTML**: фразы из списка `_clean_cliches` остаются в `sources/`, но читатель их не увидит. Если такая фраза нужна по смыслу, её придётся переформулировать.
+
+### Конвейер диаграмм
 Диаграммы Mermaid проходят строгий конвейер обработки:
 
 ```text
@@ -332,7 +399,9 @@ Markdown Source (sources/**/*.md)
 2. Для каждого `pre.mermaid` восстанавливается исходный код из `data-mermaid-source`.
 3. Снимается маркер обработки `data-processed`.
 4. `initMermaid()` переинициализирует `themeVariables` библиотеки под активную тему.
-5. Запускается `mermaid.run({ querySelector: 'pre.mermaid' })`.
+5. Запускается `mermaid.run({ querySelector: 'pre.mermaid' })`; при исключении — запасной `mermaid.init()`.
+
+`toggleTheme()` вызывает `rerenderMermaid()` с задержкой 80 мс, чтобы CSS-токены новой темы успели примениться. Параметры `mermaid.initialize`: `startOnLoad: true`, `theme: 'dark'` для темы Dark и `'base'` для остальных, `securityLevel: 'loose'`, `themeVariables` берутся из CSS-токенов `--mermaid-bg`, `--bg-card`, `--accent`, `--text`, `--text-secondary`, `--border-strong`, `--bg-surface` (с запасными hex-значениями на случай пустого токена).
 
 
 ### Семантические classDef в Mermaid sources:
@@ -374,7 +443,7 @@ Markdown Source (sources/**/*.md)
 5. *Предупреждение (не ошибка):* `:::класс` внутри квотированной метки узла (`A["Текст:::entry"]`) не ломает разбор, но выводится текстом; правильно `A["Текст"]:::entry`.
 
 **Рантайм-разбор (ловит то, что статический анализ не видит):**
-Каждый блок прогоняется через `mermaid.parse()` вендорного `builder/assets/vendor/mermaid.min.js` в headless Firefox. Результаты возвращаются в Python через `Image`-маячки на временный HTTP-сервер на `127.0.0.1` (поднимается только на время аудита; это инструмент разработчика, а не runtime-зависимость сайта). Таймаут прогона — 300 с. Если Firefox не найден (`PATH` или переменная `MERMAID_BROWSER`), проверка пропускается с предупреждением; отключить её явно можно флагом `--no-mermaid-runtime`. Полный прогон 2486 блоков занимает около минуты.
+Каждый блок прогоняется через `mermaid.parse()` вендорного `builder/assets/vendor/mermaid.min.js` в headless Firefox. Результаты возвращаются в Python через `Image`-маячки на временный HTTP-сервер на `127.0.0.1` (поднимается только на время аудита; это инструмент разработчика, а не runtime-зависимость сайта). Таймаут прогона — 300 с. Firefox ищется сначала в переменной `MERMAID_BROWSER`, затем в `PATH`; если он не найден, проверка пропускается с предупреждением. Отключить её явно можно флагом `--no-mermaid-runtime`. Разбор 2486 блоков занимает несколько секунд, весь аудит — около 11 с.
 
 ### Соотношение синтаксиса Mermaid и проверки в `audit_all.py`:
 * **В Markdown-исходниках (`sources/`)** используются стандартные типы Mermaid: `flowchart`, `sequenceDiagram`, `stateDiagram-v2`, `classDiagram`, `gantt`, `pie`, `gitGraph`, `erDiagram`, `mindmap`, `timeline`, `xychart-beta`, `block-beta`.
@@ -417,7 +486,7 @@ Markdown Source (sources/**/*.md)
    - Формулы: локально поставляемые веб-шрифты KaTeX (в каталоге `builder/assets/vendor/katex/fonts/`).
    - Обращения к `fonts.googleapis.com` или иным внешним сервисам полностью отсутствуют.
 3. **Двухуровневая ширина контента (Layout Refinement):**  
-   - Внешний контейнер статьи (`.article-body`) и широкие технические элементы (`.table-wrapper`, `.code-block`, `.mermaid-wrapper`, `.callout`, `.katex-display`) масштабируются до ширины `--max-content-width: 1040px` (коммит `9ec687c3`), что исключает сжатие сложных архитектурных схем и широких таблиц.
+   - Внешний контейнер статьи (`.article-body`) и широкие технические элементы (`.table-container`, `.code-block`, `.mermaid-wrapper`, `.callout`, `.katex-display`) масштабируются до ширины `--max-content-width: 1040px` (коммит `9ec687c3`), что исключает сжатие сложных архитектурных схем и широких таблиц.
    - Колонка обычной прозы (параграфы `<p>`, списки `<ul>/<ol>`, цитаты `<blockquote>`, заголовки `<h1>`–`<h6>`) ограничена шириной `--prose-max-width: 880px` для поддержания эргономичной длины строки при комфортном многочасовом чтении (межстрочный интервал `line-height: 1.75`).
 4. **Адаптивность:** Точки перелома (breakpoints) `1024px`, `768px`, `480px`. Регулируемый сайдбар сохраняет ширину в `localStorage` и адаптивно переключается в мобильный drawer на узких экранах.
 
@@ -444,6 +513,30 @@ Markdown Source (sources/**/*.md)
   > — Имя Фамилия
   ```
 * **Каноническая типографика:** Строго используются канонические термины со слэшами и точками: `CI/CD`, `TCP/IP`, `I/O`, `net/http`, `sync/atomic`, `database/sql`. Использование суррогатов с подчёркиваниями (`CI_CD`, `TCP_IP`) запрещено.
+
+### 11.4. Фактчек по первоисточникам (Fact-Check Pipeline v2)
+С октября 2026 года фактическая точность модулей проверяется многоролевым конвейером из нескольких моделей. Каждая роль пишет Markdown-отчёт `{N}-{модель}-{роль}.md`, где `N` — номер модуля:
+
+| Роль | Файл | Что делает |
+|---|---|---|
+| Scout | `{N}-gemini-scout.md` | Первый широкий проход: кандидаты на ошибки с приоритетами High / Medium / Low |
+| Alt | `{N}-sonnet-alt.md` | Независимый второй проход, не видя отчёта скаута |
+| Judge | `{N}-opus-judge.md` | Master Fact-Check Brief: сводит и приоритизирует находки скаута и alt |
+| Blind spot | `{N}-opus-blind-spot.md` | Ищет важные проблемы, которых нет в брифе |
+| Fact check | `{N}-sonnet-fact-check.md` | Проверка по первоисточникам (исходники Go, RFC, ядро Linux, эксперименты); статусы `VERIFIED`, `INCORRECT`, `PARTIALLY CORRECT`, `OUTDATED`, `CONTEXT-DEPENDENT`, `OPINION`, `NOT CHECKED` |
+| Editor | `{N}-sonnet-editor.md` | Вносит в `sources/` только проверенные находки (не `NOT CHECKED` и не `OPINION`) и отчитывается о правках |
+
+Набор ролей может отличаться от модуля к модулю: у модуля 1 нет blind spot, у модуля 4 — alt, judge и blind spot. Промпты ролей в репозитории не хранятся.
+
+**Порядок фиксации модуля:**
+1. `fix(module-NN): apply fact-check corrections …` — правки в `sources/`.
+2. `chore(dist): rebuild site` — полная пересборка и чистый аудит.
+3. `docs(fact-check): move module N fact checking results to separate folder` — отчёты переезжают в `fact-checks/mod{N}/`.
+
+**Статус на 2026-10-06:** модули 1–4 завершены (`fact-checks/mod1/` … `mod4/`). Для модулей 5–22 готовы только скаут-отчёты (для 5 и 6 — ещё и alt); они временно лежат в корне (см. § 2). До v2 все модули 1–10 прошли однопроходный фактчек v1 (`docs(factcheck): correct module N technical claims`, 2026-09-23…25).
+
+> [!IMPORTANT]
+> Отчёты фактчека — рабочие материалы, а не источник правды. Правило § 11.2 действует и здесь: исправление ошибки не должно сокращать фактуру, выноски `[!interview]` и wikilinks.
 
 ---
 
@@ -494,10 +587,21 @@ Markdown Source (sources/**/*.md)
   Исследование и безопасное удаление разовой утилиты миграции `builder/colorize_mermaid.py`. Темизация схем переведена полностью на CSS-селекторы с `!important` и `main.js`.
 * **Version Metadata & Governance Centralization (коммиты `b6684f16`, `189fcb02`):**  
   Объявление `AGENTS.md § 1.4` единственным каноническим источником правды для версии проекта (`v1.1.0`), автоматический вывод версии в hero главной страницы и футер сайдбара статей, внедрение детерминированного парсера `get_project_version()` со строгой проверкой отсутствия дублирующих деклараций.
-* **Theme Architecture Refactoring (октябрь 2026):** `refactor(themes): one-file-per-theme architecture`  
+* **Per-theme Retro Effects (коммит `27337fe5`):** `feat: per-theme retro effects persistence`  
+  Состояние ретро-эффектов (§ 6а) хранится отдельно для каждой темы под ключами `go_encyclopedia_retro_effects_{theme}`.
+* **Theme Architecture Refactoring (коммиты `2b91dcfe`, `5e0df56e`):** `refactor(themes): one-file-per-theme architecture and dynamic discovery`  
   Вынос CSS-токенов тем из монолитного `style.css` в отдельные файлы `builder/assets/themes/{dark,light,paper}.css`. Введён `manifest.json` как реестр тем (порядок, label, icon, default). Сборщик `build_themed_css()` автоматически конкатенирует темы при сборке. Функция `make_anti_flicker_script()` и `make_html_tag()` в `template.py` генерируют список тем динамически из манифеста. `main.js` читает список тем из `data-available-themes` атрибута. **Результат:** добавление новой темы = 1 файл + 1 строчка в манифест.
 * **Mermaid Runtime Audit & Sanitizer Hardening (коммиты `8aef090d`, `1598e5d8`, `8a4bfb2e`, `a8d34615`):** `fix(builder): harden mermaid sanitizer and add runtime mermaid audit`, `fix(module-02): repair 13 mermaid diagrams…`, `fix(mermaid): repair the remaining 18 diagrams…`, `fix(mermaid): move :::class out of quoted node labels`  
   Первичный фактчек модуля 2 показал, что 61 из 2485 диаграмм не разбираются Mermaid 10.9.1, а статический аудит этого не видит. В `audit_all.py` добавлен рантайм-разбор в headless Firefox; в `converter.py` санитайзер защищён от срабатывания внутри квотированных меток (ломал 4 схемы модуля 21), добавлены автоисправления рёбер/узлов `flowchart`, а `_extract_mermaid` перестал срезать отступы (ломались `mindmap`). Неработающие диаграммы исправлены в `sources/` (модуль 2 — 13 шт., остальные модули — 18 шт.). Класс `:::имя`, ошибочно записанный внутри квотированной метки узла (`A["Текст:::entry"]`, выводился текстом), вынесен наружу (`A["Текст"]:::entry`) в 216 узлах 167 статей. **Результат:** 0 диаграмм не разобрано из 2486, 0 предупреждений по `:::класс`, аудит чистый.
+* **GitHub Pages Deployment (коммит `b0217267`):** `chore(publish): add GitHub Pages deployment`  
+  Workflow `.github/workflows/pages.yml` публикует закоммиченный `dist/` при каждом push в `main`. CI сайт не собирает и аудит не запускает, поэтому `dist/` перед push должен быть пересобран и проверен локально.
+* **Mobile UI Fixes (коммиты `fc8b9a86`, `c96157b7`):** `fix(ui): elevate mobile sidebar z-index…`, `fix(retro): prevent slider value creep on mobile touch scroll`  
+  Мобильный drawer сайдбара перекрывает блоки кода и плавающие кнопки; слайдеры ретро-эффектов не меняют значение при прокрутке жестом.
+* **Fact-Check v1 (коммиты `fc70251b`, `d0f8ed89` … `64adbf8d`, 2026-09-23…25):** `docs(factcheck): correct … technical claims`  
+  Однопроходная проверка устаревших утверждений о Go и модулей 1–10.
+* **Fact-Check Pipeline v2, модули 1–4 (коммиты `b152f708`, `e81f97fa`, `86edaade`, `c4b93c7c` и переносы отчётов `13fc1a1e`, `b328c11f`, `4af5fa3b`, `ff6c15bc`):**  
+  Многоролевой фактчек по первоисточникам (§ 11.4), правки в `sources/`, архив отчётов в `fact-checks/`. Коммит `2b7c9945` временно положил в корень скаут-отчёты модулей 5–22.
+* **Documentation Sync (2026-10-06):** `AGENTS.md` и `README.md` сверены с кодом: зависимости сборки, поведение `build_all.py`/`audit_all.py`, фактический API `main.js`, конвейер конвертера, фактчек, известные расхождения (ретро-часть anti-flicker, временные файлы в корне).
 
 ---
 
@@ -514,3 +618,6 @@ Markdown Source (sources/**/*.md)
 7. **Обязательный аудит после любых правок:** Любое изменение шаблонизатора, конвертера или контента обязано завершаться чистым прогоном `python3 builder/audit_all.py` (0 broken links, 0 filesystem errors, 0 Mermaid errors, включая рантайм-разбор диаграмм; флаг `--no-mermaid-runtime` допустим только если в окружении нет Firefox).
 8. **Визуальная верификация UI:** При изменении стилей или клиентской логики проверяй страницы в headless-браузере (`firefox --headless --screenshot`) в автономном режиме `file:///`.
 9. **Атомарные коммиты:** Каждый этап или багфикс оформляется отдельным коммитом с конвенциональным сообщением (`feat:`, `fix:`, `refactor:`, `style:`, `docs:`, `chore:`). Не смешивай несвязанные изменения.
+10. **Пересобранный `dist/` — отдельным коммитом:** После правок в `sources/` или `builder/` пересобери сайт и закоммить `dist/` отдельно (`chore(dist): rebuild site`). Сайт публикуется из закоммиченного `dist/`, а CI его не пересобирает (§ 13).
+11. **Отчёты фактчека — в `fact-checks/mod{N}/`:** Не оставляй новые рабочие отчёты в корне репозитория (§ 2, § 11.4).
+12. **Не запускай `builder/batch_runner.py`:** Он устарел, переписывает `AGENTS.md` и сам делает коммиты (§ 2).
