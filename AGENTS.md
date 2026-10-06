@@ -206,7 +206,7 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --original-file
 3. **Персистентность в `localStorage`:** Выбранная тема сохраняется под ключом `go_encyclopedia_theme`.
 4. **Защита от мигания (Anti-flicker):** В `<head>` каждой страницы первым выполняется комбинированный синхронный инлайн-скрипт «Theme & Retro anti-flicker», генерируемый динамически функцией `make_anti_flicker_script()` из `builder/template.py`. Скрипт читает список допустимых тем из `builder/assets/themes/manifest.json` и до начала отрисовки DOM:
    - Восстанавливает активную тему из `localStorage` (ключ `go_encyclopedia_theme`).
-   - Восстанавливает активное состояние ретро-эффектов (trail, site, code) из `localStorage` и устанавливает соответствующие CSS Custom Properties на `<html>`.
+   - Восстанавливает ретро-эффекты (trail, site, code) из профиля **уже выбранной темы** (`go_encyclopedia_retro_effects_{theme}`) и выставляет на `<html>` те же `data-`атрибуты и CSS Custom Properties, что и `applyRetroEffects()` в `main.js`. Сила следа фиксирована (`0.20`), как в `main.js`; устаревший общий ключ `go_encyclopedia_retro_effects` не читается, потому что `main.js` его тоже игнорирует.
    ```html
    <script>/* Theme & Retro anti-flicker */(function(){try{
      var d=document.documentElement;
@@ -218,8 +218,8 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --original-file
    > [!NOTE]
    > Список тем в скрипте (`['paper','light','dark']`) и тема по умолчанию генерируются автоматически из `manifest.json` (поля `themes[].key` и `default`). Добавление новой темы в манифест обновляет этот список при следующей сборке.
 
-   > [!WARNING]
-   > **Известное расхождение (не исправлено).** Ретро-часть anti-flicker скрипта читает устаревший общий ключ `go_encyclopedia_retro_effects`, а `main.js` с коммита `27337fe5` хранит состояние per-theme под ключами `go_encyclopedia_retro_effects_{theme}` и общий ключ больше не пишет. Поэтому до рендера ретро-эффекты фактически не восстанавливаются (кроме браузеров, где остался старый ключ); их применяет `initRetroEffects()` на `DOMContentLoaded`. Тема восстанавливается до рендера корректно.
+   > [!IMPORTANT]
+   > **Anti-flicker обязан совпадать с `main.js`.** До исправления скрипт читал устаревший общий ключ, а `main.js` с коммита `27337fe5` хранит профили по темам. Из-за этого сохранённые эффекты включались только после загрузки страницы, а данные из старого ключа на мгновение включали эффекты, которые `main.js` тут же выключал. Если меняется формат `DEFAULT_RETRO_STATE`, `retroStorageKey()` или `applyRetroEffects()`, нужно в том же коммите обновить `make_anti_flicker_script()` и проверить в браузере, что состояние `<html>` сразу после inline-скрипта совпадает с состоянием после `DOMContentLoaded`.
 5. **Семантические токены CSS Custom Properties:**  
    Токены тем определены в отдельных файлах `builder/assets/themes/{theme-key}.css` и при сборке конкатенируются в `dist/assets/style.css` через функцию `build_themed_css()`:
    - Фоновые слои: `--bg`, `--bg-surface`, `--bg-card`, `--bg-card-hover`, `--bg-elevated`.
@@ -322,7 +322,7 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --original-file
   - `initGlobalSearch()` — клиентский поиск на главной странице по `window.SEARCH_DATA` из `search-data.js` (поля `title`, `url`, `module`, `sub`, `num`). Это поиск по **названиям**, а не по тексту статей: запрос делится на слова, каждое слово обязано найтись в названии статьи (+10 к рейтингу) или модуля (+3).
   - `initKaTeX()` — локальный рендеринг математических формул LaTeX (разделители `$$…$$`, `$…$`, `\(…\)`, `\[…\]`; код, `pre` и Mermaid игнорируются).
 * **Порядок инициализации на `DOMContentLoaded`:** `saveMermaidSources → initMermaid → initKaTeX → initActionDelegation → initSidebarResize → initSidebarFilter → initSidebarCentering → initScrollProgress → initMobileMenu → initGlobalSearch → initThemeSwitcher → initRetroEffects`. Функции проверяют наличие своих элементов в DOM и выходят, если их нет, поэтому один `main.js` обслуживает и статьи, и главную.
-* **Ключи `localStorage`:** `go_encyclopedia_theme` (тема), `go_encyclopedia_sidebar_width` (ширина сайдбара), `go_encyclopedia_retro_effects_{theme}` (ретро-эффекты, § 6а; ширина допускается в диапазоне 220–550 px). Обращения к теме и ретро-эффектам обёрнуты в `try/catch`, чтение и запись ширины сайдбара — нет.
+* **Ключи `localStorage`:** `go_encyclopedia_theme` (тема), `go_encyclopedia_sidebar_width` (ширина сайдбара), `go_encyclopedia_retro_effects_{theme}` (ретро-эффекты, § 6а; ширина допускается в диапазоне 220–550 px). Все обращения обёрнуты в `try/catch`: если хранилище недоступно (например, отключено в браузере), исключение внутри одной `init*`-функции прервало бы весь обработчик `DOMContentLoaded`, и следующие модули не инициализировались бы.
 
 ---
 
@@ -346,7 +346,7 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --original-file
 - **Настройки по умолчанию (`DEFAULT_RETRO_STATE`):** все эффекты выключены; сила VHS/CRT/Noise для страницы — 30/30/20 %, для кода — 30/40/20 %. У VHS, CRT и Noise есть слайдер `0–100 %`; у Phosphor Trail слайдера нет — только переключатель, сила зафиксирована на 20 %.
 - **Защита слайдеров на мобильных (коммит `c96157b7`):** колесо мыши и жест прокрутки не меняют значение слайдера; после `change`/`pointerup`/`touchend` фокус снимается, а прокрутка страницы закрывает поповер.
 - **Персистентность:** Состояние хранится **per-theme** в `localStorage` под ключом `go_encyclopedia_retro_effects_{theme}` (отдельно для `dark`, `light`, `paper`). При переключении темы `toggleTheme()` сохраняет профиль текущей темы и загружает профиль новой.
-- **Anti-flicker:** Задуман как восстановление ретро-состояния **до рендера** в inline-скрипте в `<head>` вместе с темой, но сейчас скрипт читает устаревший общий ключ — см. предупреждение в § 4, п. 4. Фактически эффекты включаются на `DOMContentLoaded`.
+- **Anti-flicker:** Ретро-состояние профиля активной темы восстанавливается **до рендера** в inline-скрипте в `<head>` вместе с темой (§ 4, п. 4).
 
 ---
 
@@ -601,7 +601,9 @@ Markdown Source (sources/**/*.md)
   Однопроходная проверка устаревших утверждений о Go и модулей 1–10.
 * **Fact-Check Pipeline v2, модули 1–4 (коммиты `b152f708`, `e81f97fa`, `86edaade`, `c4b93c7c` и переносы отчётов `13fc1a1e`, `b328c11f`, `4af5fa3b`, `ff6c15bc`):**  
   Многоролевой фактчек по первоисточникам (§ 11.4), правки в `sources/`, архив отчётов в `fact-checks/`. Коммит `2b7c9945` временно положил в корень скаут-отчёты модулей 5–22.
-* **Documentation Sync (2026-10-06):** `AGENTS.md` и `README.md` сверены с кодом: зависимости сборки, поведение `build_all.py`/`audit_all.py`, фактический API `main.js`, конвейер конвертера, фактчек, известные расхождения (ретро-часть anti-flicker, временные файлы в корне).
+* **Documentation Sync (2026-10-06):** `AGENTS.md` и `README.md` сверены с кодом: зависимости сборки, поведение `build_all.py`/`audit_all.py`, фактический API `main.js`, конвейер конвертера, фактчек, временные файлы в корне.
+* **Retro Anti-flicker & Storage Guards (2026-10-06):** `fix(ui): restore retro anti-flicker and guard sidebar storage`  
+  Anti-flicker читает профиль ретро-эффектов активной темы и воспроизводит логику `applyRetroEffects()`: до рендера и после загрузки состояние `<html>` совпадает (проверено в headless Firefox на 6 сценариях, включая старый ключ, нулевую силу, неизвестную тему и битый JSON). Обращения к ширине сайдбара в `localStorage` обёрнуты в `try/catch`: раньше при отключённом хранилище исключение в `initSidebarResize()` обрывало инициализацию всех последующих модулей `main.js`, включая переключатель темы и ретро-эффекты.
 
 ---
 

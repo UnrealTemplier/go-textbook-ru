@@ -159,7 +159,10 @@
     if (!sidebar || !resizer) return;
 
     const STORAGE_KEY = 'go_encyclopedia_sidebar_width';
-    const savedWidth = localStorage.getItem(STORAGE_KEY);
+    let savedWidth = null;
+    try {
+      savedWidth = localStorage.getItem(STORAGE_KEY);
+    } catch (e) {}
     if (savedWidth) {
       const widthNum = parseInt(savedWidth, 10);
       if (widthNum >= 220 && widthNum <= 550) {
@@ -190,7 +193,9 @@
         resizer.classList.remove('resizing');
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
-        localStorage.setItem(STORAGE_KEY, parseInt(sidebar.style.width, 10));
+        try {
+          localStorage.setItem(STORAGE_KEY, parseInt(sidebar.style.width, 10));
+        } catch (e) {}
         centerActiveLecture(false);
       }
     });
