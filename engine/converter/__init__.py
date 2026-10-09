@@ -14,6 +14,7 @@ from ..scanner import slugify, Article, KnowledgeBaseScanner, find_first_h1
 from .indented_fence import IndentedFenceExtension
 from .math_protect import MathProtectExtension
 from .obsidian_lists import ObsidianListsExtension
+from .code_mask import UnifiedCodeLineMask
 from ..hooks import load_hooks
 
 CALLOUT_CONFIG = {
@@ -94,8 +95,8 @@ class MarkdownConverter:
                 del lines[h1[0]]
                 raw_text = "\n".join(lines)
 
-        # 1. Очистка от нейросетевых клише и шаблонных фраз в начале
-        cleaned_text = self._clean_cliches(raw_text)
+        # 1. Очистка от шаблонных фраз (вне кода: маска текста статьи)
+        cleaned_text = self._clean_cliches(raw_text, self._mask(raw_text))
 
         # 2. Выделение и экранирование блоков Mermaid (чтобы markdown парсер не исказил их)
         mermaid_placeholders: Dict[str, str] = {}
@@ -104,9 +105,10 @@ class MarkdownConverter:
         # 3. Обработка Obsidian Callouts
         processed_text = self._transform_callouts(processed_text)
 
-        # 4. Преобразование Wikilinks [[...]] (content.wikilinks = false — шаг выключен)
+        # 4. Преобразование Wikilinks [[...]] вне кода (content.wikilinks = false — шаг выключен).
+        #    Маска строится по тексту этого шага: Mermaid и выноски к этому моменту уже заменены.
         if self.config.content.wikilinks:
-            processed_text = self._transform_wikilinks(processed_text, article)
+            processed_text = self._transform_wikilinks(processed_text, article, mask=self._mask(processed_text))
 
         # 5. Парсинг заголовков и простановка id-анкоров
         processed_text, toc = self._process_headings(processed_text)
@@ -131,10 +133,25 @@ class MarkdownConverter:
         where = self.current_article.source_path if self.current_article is not None else "?"
         self.warnings.append(f"{where}: {message}")
 
-    def _clean_cliches(self, text: str) -> str:
-        """Удаление шаблонных фраз (content.clean_cliches в book.toml) из HTML; sources/ не меняется."""
+    def _mask(self, text: str) -> UnifiedCodeLineMask:
+        """Маска кода единицы текста; ограды с отступом — только если их выводит препроцессор."""
+        return UnifiedCodeLineMask(text, self.md, include_indented=self.config.markdown.indented_fences)
+
+    def _clean_cliches(self, text: str, mask: Optional[UnifiedCodeLineMask] = None) -> str:
+        """Удаление шаблонных фраз (content.clean_cliches в book.toml) из HTML; sources/ не меняется.
+
+        mask — маска этого же текста: совпадение, которое начинается в строке кода, не трогается.
+        """
         for pat in self.config.content.clean_cliches:
-            text = re.sub(pat, "", text, flags=re.IGNORECASE)
+            if mask is None:
+                text = re.sub(pat, "", text, flags=re.IGNORECASE)
+                continue
+            current = text
+
+            def repl(m, current=current):
+                line = current.count("\n", 0, m.start())
+                return m.group(0) if mask.is_line_in_code(line) else ""
+            text = re.sub(pat, repl, current, flags=re.IGNORECASE)
         return text
 
     def _extract_mermaid(self, text: str, placeholders: Dict[str, str]) -> str:

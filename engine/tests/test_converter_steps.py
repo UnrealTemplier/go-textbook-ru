@@ -172,3 +172,18 @@ class KatexConfigTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CodeMaskInPipelineTest(unittest.TestCase):
+    """А3а: wikilinks и клише не трогают строки кода (маска единицы), вне кода — как раньше."""
+
+    def test_wikilinks_and_cliches_skip_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            make_tree(tmp, {"1. М/1. Статья.md": "Как известно, [[Статья]] работает.\n\n```bash\nif [[ -f x ]]; then echo \"Как известно, да\"; fi\n```\n"})
+            from engine.config import ContentConfig
+            cfg = BookConfig(content=ContentConfig(clean_cliches=[r"Как известно,\s+"]))
+            sc = KnowledgeBaseScanner(tmp, cfg)
+            art = sc.scan()[0]
+            html_out, _ = MarkdownConverter(sc, cfg).convert_article(art)
+        self.assertIn('<p><a href="1-statya.html" class="wikilink">1. Статья</a> работает.</p>', html_out)
+        self.assertIn("if [[ -f x ]]; then echo &quot;Как известно, да&quot;; fi", html_out)
