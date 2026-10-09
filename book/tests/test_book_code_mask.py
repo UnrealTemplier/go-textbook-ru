@@ -2,6 +2,7 @@
 import os
 import unittest
 
+from engine.config import load_config
 from engine.converter import MarkdownConverter
 from engine.scanner import KnowledgeBaseScanner
 from engine.tools.verify_diff import code_blocks_multiset
@@ -23,7 +24,7 @@ class CorpusPropertyTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.scanner = KnowledgeBaseScanner(SOURCES)
+        cls.scanner = KnowledgeBaseScanner(SOURCES, load_config(os.path.join(ROOT, "book.toml")))
         cls.articles = cls.scanner.scan()
 
     def test_articles_and_callout_bodies(self):

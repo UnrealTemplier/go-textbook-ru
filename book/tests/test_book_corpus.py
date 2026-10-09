@@ -11,7 +11,8 @@ import unittest
 
 from engine.scanner import KnowledgeBaseScanner
 from engine.converter import MarkdownConverter
-from engine.template import render_article_page, render_index_page, get_project_version
+from engine.config import load_config
+from engine.template import render_article_page, render_index_page, get_book_version
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SOURCES = os.path.join(ROOT, "sources")
@@ -25,17 +26,19 @@ MERMAID_SNAPSHOT = {"count": 2486, "sha256": "f884a34bb2aa1ac8e730aa9b2146b3b9df
 class BookCorpusTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.scanner = KnowledgeBaseScanner(SOURCES)
+        cls.config = load_config(os.path.join(ROOT, "book.toml"))
+        cls.scanner = KnowledgeBaseScanner(SOURCES, cls.config)
         cls.articles = cls.scanner.scan()
-        cls.conv = MarkdownConverter(cls.scanner)
-        cls.version = get_project_version()
+        cls.conv = MarkdownConverter(cls.scanner, cls.config)
+        cls.version = get_book_version(cls.config)
 
     def test_article_pages_match_dist(self):
         mismatched = []
         for art in self.articles:
             body, toc = self.conv.convert_article(art)
             page = render_article_page(art, body, toc, self.scanner.modules_tree,
-                                       total_articles=len(self.articles), version=self.version)
+                                       total_articles=len(self.articles), version=self.version,
+                                       config=self.config)
             with open(os.path.join(DIST, art.rel_output_path), encoding="utf-8") as fp:
                 if fp.read() != page:
                     mismatched.append(art.rel_output_path)
@@ -43,7 +46,8 @@ class BookCorpusTest(unittest.TestCase):
 
     def test_index_matches_dist(self):
         page = render_index_page(self.scanner.modules_tree, len(self.articles),
-                                 sum(a.mermaid_count for a in self.articles), version=self.version)
+                                 sum(a.mermaid_count for a in self.articles), version=self.version,
+                                 config=self.config)
         with open(os.path.join(DIST, "index.html"), encoding="utf-8") as fp:
             self.assertEqual(fp.read(), page)
 

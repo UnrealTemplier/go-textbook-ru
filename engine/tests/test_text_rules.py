@@ -1,11 +1,12 @@
-"""Характеризационные тесты текстовых правил генератора: slug, канонические названия, клише.
+"""Характеризационные тесты текстовых правил движка: slug, канонические названия, клише.
 
 Ожидаемые значения сняты с текущего поведения. Тест падает, если поведение изменилось:
 для go-textbook это изменило бы URL, якоря или видимый текст.
 """
 import unittest
 
-from engine.scanner import slugify, canonicalize_title, normalize_key
+from engine.config import canonicalize_title
+from engine.scanner import slugify, normalize_key
 from engine.converter import MarkdownConverter
 
 
@@ -44,38 +45,21 @@ class SlugifyTest(unittest.TestCase):
 
 
 class CanonicalTitleTest(unittest.TestCase):
-    def test_rules(self):
-        self.assertEqual(canonicalize_title("net_http_httptest"), "net/http/httptest")
-        self.assertEqual(canonicalize_title("net_http"), "net/http")
-        self.assertEqual(canonicalize_title("CI_CD и TCP_IP"), "CI/CD и TCP/IP")
-        self.assertEqual(canonicalize_title("sync_pool и sync_map"), "sync.Pool и sync.Map")
-        self.assertEqual(canonicalize_title("golang_org_x_sys"), "golang.org/x/sys")
-        self.assertEqual(canonicalize_title("Обычное название"), "Обычное название")
+    def test_ordered_whole_word_replacements(self):
+        rules = [("net_http_httptest", "net/http/httptest"), ("net_http", "net/http"), ("a_b", "x\\y")]
+        self.assertEqual(canonicalize_title("net_http_httptest и net_http", rules), "net/http/httptest и net/http")
+        self.assertEqual(canonicalize_title("net_https", rules), "net_https")      # только целое слово
+        self.assertEqual(canonicalize_title("a_b", rules), "x\\y")              # замена — буквальный текст
+        self.assertEqual(canonicalize_title("net_http", []), "net_http")
 
     def test_normalize_key(self):
         self.assertEqual(normalize_key("24. Long polling.md"), "24 long polling")
 
 
-class ClichesTest(unittest.TestCase):
-    def setUp(self):
-        self.conv = MarkdownConverter(None)
-
-    def test_each_pattern(self):
-        c = self.conv._clean_cliches
-        self.assertEqual(c("В современном мире облаков, сервисы растут."), "сервисы растут.")
-        self.assertEqual(c("В современном быстро меняющемся мире, код живёт."), "код живёт.")
-        self.assertEqual(c("Важно понимать, что GC паузит."), "GC паузит.")
-        self.assertEqual(c("Важно помнить, что x."), "x.")
-        self.assertEqual(c("Как известно, CPU быстрый."), "CPU быстрый.")
-        self.assertEqual(c("Не секрет, что сеть ненадёжна."), "сеть ненадёжна.")
-        self.assertEqual(c("Давайте рассмотрим пример:\nкод"), "код")
-
-    def test_case_insensitive(self):
-        self.assertEqual(self.conv._clean_cliches("как известно, x"), "x")
-
-    def test_untouched(self):
-        text = "Известно, что так. Важно: ничего не трогать."
-        self.assertEqual(self.conv._clean_cliches(text), text)
+class ClichesDefaultTest(unittest.TestCase):
+    def test_engine_default_is_empty(self):
+        text = "Как известно, CPU быстрый."
+        self.assertEqual(MarkdownConverter(None)._clean_cliches(text), text)
 
 
 if __name__ == "__main__":

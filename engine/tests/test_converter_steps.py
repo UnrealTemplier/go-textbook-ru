@@ -4,6 +4,7 @@ import re
 import tempfile
 import unittest
 
+from engine.config import BookConfig, CalloutsConfig
 from engine.scanner import KnowledgeBaseScanner
 from engine.converter import MarkdownConverter
 
@@ -18,7 +19,7 @@ def make_tree(root, files):
 
 class CalloutsTest(unittest.TestCase):
     def setUp(self):
-        self.conv = MarkdownConverter(None)
+        self.conv = MarkdownConverter(None, BookConfig(callouts=CalloutsConfig(interview_heuristic=True)))
 
     def render(self, text):
         return self.conv._transform_callouts(text)
@@ -46,6 +47,10 @@ class CalloutsTest(unittest.TestCase):
         out = self.render("> [!tip] Собеседование\n> вопрос")
         self.assertIn('class="callout callout-interview"', out)
         self.assertIn('aria-label="Собеседование"', out)
+
+    def test_heuristic_off_by_default(self):
+        out = MarkdownConverter(None)._transform_callouts("> [!tip] Собеседование\n> x")
+        self.assertIn('class="callout callout-tip" aria-label="Собеседование"', out)
 
     def test_blank_line_inside_and_end(self):
         out = self.render("> [!note] A\n> one\n\n> two\n\nafter")

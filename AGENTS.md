@@ -58,7 +58,7 @@
 
 ### 1.4. Версионирование проекта (Canonical Version)
 * **Current project version:** `1.1.0`
-* **Правило версионирования:** Текущая версия проекта объявляется исключительно в `AGENTS.md` (ровно в одной канонической строке выше) и считывается сборщиком `engine/build.py` через функцию `get_project_version()` (`engine/template.py`) на этапе компиляции сайта.
+* **Правило версионирования:** Текущая версия проекта объявляется исключительно в `AGENTS.md` (ровно в одной канонической строке выше) и считывается сборщиком на этапе компиляции: `book.toml` задаёт `[project] version_file = "AGENTS.md"` и `version_pattern` (регулярное выражение этой строки), функция `get_book_version()` (`engine/template.py`) применяет их.
 * **Защита от рассинхронизации:** Шаблоны (`engine/template.py`), клиентские скрипты (`main.js`), стили (`style.css`) и сгенерированный каталог `dist/` не содержат независимых хардкодных констант версии. Парсер строго валидирует формат SemVer (`MAJOR.MINOR.PATCH`) и прерывает сборку с ошибкой (`[VERSION ERROR]`), если декларация версии отсутствует или найдено более одного совпадения.
 * **Отображение в пользовательском интерфейсе:**
   - На главной странице (`dist/index.html`): сдержанный моноширинный чип в метаданных шапки (`.hero-version` -> `v1.1.0`).
@@ -74,7 +74,8 @@ go-textbook/
 ├── sources/               # Source of Truth контента: 22 тематических модуля (.md файлы)
 ├── engine/                # Source of Truth генератора и инструментов QA (будущее ядро html-textbook-engine)
 │   ├── __init__.py        # Пакет: запуск только как модуль (python -m engine.build), импорты относительные
-│   ├── build.py           # Главный сборочный конвейер: python -m engine.build (--all, --pilot, --module N, --limit N, --sources, --dist)
+│   ├── build.py           # Главный сборочный конвейер: python -m engine.build (--all, --pilot, --module N, --limit N, --book, --sources, --dist)
+│   ├── config.py          # Загрузка и проверка book.toml (tomllib + dataclasses; неизвестный ключ — ошибка)
 │   ├── scanner.py         # Сканирование sources/, парсинг метаданных, slugify, граф wikilinks
 │   ├── converter.py       # Парсер Markdown в семантический HTML, callouts, автосанитизация Mermaid
 │   ├── template.py        # Каркас HTML5, шаблоны страниц, навигация, сайдбар, TOC, версия, anti-flicker
@@ -96,6 +97,7 @@ go-textbook/
 │           ├── prism*.min.js/.css     # Исходные модули Prism (копируются, но страницами не подключаются)
 │           ├── mermaid.min.js         # Mermaid 10.9.1
 │           └── katex/                 # katex.min.js/.css, contrib/auto-render.min.js, fonts/
+├── book.toml              # Конфигурация книги для движка: версия, storage_prefix, длины slug, канонические названия, клише, выноски, время чтения
 ├── book/                  # Слой книги go-textbook (не ядро)
 │   ├── tests/             # Книжные тесты: генератор воспроизводит dist/, маска кода на корпусе, см. § 3.3а
 │   └── tools/
@@ -112,7 +114,7 @@ go-textbook/
 ```
 
 ### Гигиена репозитория:
-Корень репозитория поддерживается в абсолютной чистоте. В корне разрешены только служебные системные файлы проекта (`sources/`, `engine/`, `book/`, `dist/`, `fact-checks/`, `engine-extraction/`, `.github/`, `AGENTS.md`, `README.md`, `requirements.txt`, `favicon.ico`, `favicon.svg`, `.gitignore`). Категорически запрещено коммитить в корень отладочные скрипты, временные дампы, черновики планов или скриншоты.
+Корень репозитория поддерживается в абсолютной чистоте. В корне разрешены только служебные системные файлы проекта (`sources/`, `engine/`, `book/`, `book.toml`, `dist/`, `fact-checks/`, `engine-extraction/`, `.github/`, `AGENTS.md`, `README.md`, `requirements.txt`, `favicon.ico`, `favicon.svg`, `.gitignore`). Категорически запрещено коммитить в корень отладочные скрипты, временные дампы, черновики планов или скриншоты.
 
 > [!NOTE]
 > **Известное временное исключение.** Коммит `2b7c9945` положил в корень 20 промежуточных отчётов фактчека для модулей 5–22 (`{N}-gemini-scout.md`, а также `5-sonnet-alt.md` и `6-sonnet-alt.md`). Они переносятся в `fact-checks/mod{N}/` по мере завершения фактчека модуля (§ 11.4); новые такие файлы в корень не добавлять.
@@ -353,7 +355,7 @@ python3 engine/tools/runtime_projection.py --compare old.json new.json
 ## 📊 7. Архитектура и пайплайн Mermaid
 
 ### Полный конвейер конвертации статьи (`MarkdownConverter.convert_article`)
-1. `_clean_cliches` — вырезает из текста шаблонные вводные фразы («Как известно, », «Не секрет, что », «Важно понимать, что », «Давайте рассмотрим …:», «В современном мире …, »).
+1. `_clean_cliches` — вырезает из текста шаблонные вводные фразы из `[content] clean_cliches` в `book.toml` («Как известно, », «Не секрет, что », «Важно понимать, что », «Давайте рассмотрим …:», «В современном мире …, »). Для `go-textbook` список постоянный: отключение изменит видимый текст.
 2. `_extract_mermaid` — вынимает блоки ```` ```mermaid ```` в плейсхолдеры, санитизирует и оборачивает их (см. ниже).
 3. `_transform_callouts` — Obsidian-выноски `> [!type] Заголовок` → `<aside class="callout callout-{type}">`. Типы: `tip`, `interview`, `info`, `warning`, `note`, `important`, `caution`, `danger`.
 4. `_transform_wikilinks` — `[[…]]` → относительные ссылки через `scanner.resolve_wikilink`.
@@ -364,7 +366,7 @@ python3 engine/tools/runtime_projection.py --compare old.json new.json
 9. `_enhance_code_blocks` — шапка блока кода и кнопка копирования.
 
 > [!WARNING]
-> Шаг 1 меняет текст **только в HTML**: фразы из списка `_clean_cliches` остаются в `sources/`, но читатель их не увидит. Если такая фраза нужна по смыслу, её придётся переформулировать.
+> Шаг 1 меняет текст **только в HTML**: фразы из списка `clean_cliches` остаются в `sources/`, но читатель их не увидит. Если такая фраза нужна по смыслу, её придётся переформулировать.
 
 ### Конвейер диаграмм
 Диаграммы Mermaid проходят строгий конвейер обработки:

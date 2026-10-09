@@ -9,51 +9,60 @@ import re
 import html
 import json
 from typing import Dict, Any, List, Optional
+from .config import BookConfig
 from .scanner import Article
 
-def get_project_version(agents_path: Optional[str] = None) -> str:
-    """
-    Считывание и строгая валидация версии проекта из AGENTS.md.
-    AGENTS.md является единственным источником правды для версии проекта (SemVer MAJOR.MINOR.PATCH).
-    """
-    if not agents_path:
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        agents_path = os.path.join(repo_root, "AGENTS.md")
+SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
 
-    if not os.path.isfile(agents_path):
-        raise FileNotFoundError(f"[VERSION ERROR] Canonical version file not found: {agents_path}")
 
-    with open(agents_path, "r", encoding="utf-8") as fp:
+def get_project_version(version_file: str, pattern: str) -> str:
+    """
+    Версия из файла (для go-textbook — AGENTS.md § 1.4): ровно одно совпадение шаблона, SemVer.
+    Шаблон — регулярное выражение с одной группой (MULTILINE), задаётся в book.toml.
+    """
+    if not os.path.isfile(version_file):
+        raise FileNotFoundError(f"[VERSION ERROR] Canonical version file not found: {version_file}")
+
+    with open(version_file, "r", encoding="utf-8") as fp:
         content = fp.read()
 
-    pattern = re.compile(
-        r"^\s*[-*]?\s*\*\*Current project version:\*\*\s*`?([0-9A-Za-z.-]+)`?",
-        re.MULTILINE
-    )
-    matches = list(pattern.finditer(content))
+    matches = list(re.compile(pattern, re.MULTILINE).finditer(content))
 
     if len(matches) == 0:
         raise ValueError(
-            f"[VERSION ERROR] Project version definition not found in {agents_path}. "
+            f"[VERSION ERROR] Project version definition not found in {version_file}. "
             "Expected entry such as: '* **Current project version:** `1.1.0`'"
         )
 
     if len(matches) > 1:
         raise ValueError(
-            f"[VERSION ERROR] Multiple canonical version declarations found in {agents_path} ({len(matches)} occurrences). "
+            f"[VERSION ERROR] Multiple canonical version declarations found in {version_file} ({len(matches)} occurrences). "
             "Exactly one canonical version declaration is allowed to prevent desynchronization."
         )
 
     version_raw = matches[0].group(1).strip()
+    _check_semver(version_raw, version_file)
+    return version_raw
 
-    semver_pattern = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
-    if not semver_pattern.match(version_raw):
+
+def _check_semver(version: str, where: str) -> None:
+    if not SEMVER_RE.match(version):
         raise ValueError(
-            f"[VERSION ERROR] Invalid project version format '{version_raw}' found in {agents_path}. "
+            f"[VERSION ERROR] Invalid project version format '{version}' found in {where}. "
             "Version must strictly comply with semantic versioning (MAJOR.MINOR.PATCH, e.g. 1.1.0)."
         )
 
-    return version_raw
+
+def get_book_version(config: BookConfig) -> str:
+    """Версия книги: project.version или project.version_file + project.version_pattern."""
+    p = config.project
+    if p.version:
+        _check_semver(p.version, "book.toml")
+        return p.version
+    if p.version_file:
+        return get_project_version(config.path(p.version_file), p.version_pattern)
+    raise ValueError("[VERSION ERROR] book.toml: не задана project.version или project.version_file")
+
 
 def _load_themes_manifest():
     """Загружает manifest.json из engine/assets/themes/ для динамической генерации тем."""
@@ -81,7 +90,7 @@ GO_LOGO_SVG = (
 )
 
 
-def make_anti_flicker_script() -> str:
+def make_anti_flicker_script(config: BookConfig) -> str:
     """Генерирует anti-flicker инлайн-скрипт с динамическим списком тем из manifest.json."""
     default_theme, themes = _load_themes_manifest()
     theme_keys = [t["key"] for t in themes]
@@ -90,7 +99,7 @@ def make_anti_flicker_script() -> str:
         '<script>/* Theme anti-flicker */(function(){'
         'try{'
         "var d=document.documentElement;"
-        "var t=localStorage.getItem('go_encyclopedia_theme');"
+        f"var t=localStorage.getItem('{config.storage_key('theme')}');"
         f"if(t&&{theme_keys_js}.includes(t)){{d.dataset.theme=t;}}else{{d.dataset.theme='{default_theme}';}}"
         "}catch(e){}"
         '})();</script>'
@@ -227,12 +236,11 @@ def render_article_page(
     article_html: str,
     toc: List[Dict[str, Any]],
     modules_tree: List[Dict[str, Any]],
-    total_articles: int = 1413,
-    version: Optional[str] = None
+    total_articles: int,
+    version: str,
+    config: BookConfig
 ) -> str:
     """Генерация полной HTML-страницы статьи."""
-    if not version:
-        version = get_project_version()
     rel_root = get_rel_root(article.rel_output_path)
     sidebar_html = render_sidebar(modules_tree, article, rel_root)
     breadcrumbs_html = render_breadcrumbs(article, rel_root)
@@ -283,7 +291,8 @@ def render_article_page(
     else:
         toc_html = ""
 
-    reading_time = max(2, int(article.size_bytes / 800))
+    rt = config.navigation.reading_time
+    reading_time = max(rt.min, int(article.size_bytes / rt.divisor))
 
     return f"""<!DOCTYPE html>
 {make_html_tag()}
@@ -294,7 +303,7 @@ def render_article_page(
   <meta name="description" content="Полное руководство: {html.escape(article.title)}. Go, архитектура систем, computer science.">
   <link rel="icon" href="{rel_root}favicon.ico" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="{rel_root}favicon.svg" sizes="any">
-  {make_anti_flicker_script()}
+  {make_anti_flicker_script(config)}
   <link rel="stylesheet" href="{rel_root}assets/style.css">
   <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">
 </head>
@@ -421,11 +430,10 @@ def render_index_page(
     modules_tree: List[Dict[str, Any]],
     total_articles: int,
     total_mermaid: int,
-    version: Optional[str] = None
+    version: str,
+    config: BookConfig
 ) -> str:
     """Генерация главной страницы index.html (Интерактивный дашборд и каталог)."""
-    if not version:
-        version = get_project_version()
     rel_root = "./"
 
     cards_html = []
@@ -469,7 +477,7 @@ def render_index_page(
   <meta name="description" content="Фундаментальная энциклопедия бэкенда, распределенных систем и языка Go от Брайана Кернигана. 1 400+ статей, 1 400+ схем Mermaid.">
   <link rel="icon" href="{rel_root}favicon.ico" sizes="32x32">
   <link rel="icon" type="image/svg+xml" href="{rel_root}favicon.svg" sizes="any">
-  {make_anti_flicker_script()}
+  {make_anti_flicker_script(config)}
   <link rel="stylesheet" href="{rel_root}assets/style.css">
 </head>
 <body class="index-page">

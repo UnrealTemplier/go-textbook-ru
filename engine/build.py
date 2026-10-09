@@ -13,7 +13,8 @@ from typing import List, Optional
 
 from .scanner import KnowledgeBaseScanner, Article
 from .converter import MarkdownConverter
-from .template import render_article_page, render_index_page, get_project_version
+from .config import BookConfig, load_config
+from .template import render_article_page, render_index_page, get_book_version
 
 def copy_assets(engine_assets_dir: str, dist_assets_dir: str):
     """Копирование статических ассетов (CSS, JS, Vendor) в dist/assets/."""
@@ -107,24 +108,26 @@ def generate_search_data_js(articles: List[Article], dist_dir: str):
         fp.write(js_content)
 
 def build(
-    sources_dir: str = "./sources",
+    config: BookConfig,
+    sources_dir: Optional[str] = None,
     dist_dir: str = "./dist",
     limit: Optional[int] = None,
     target_module: Optional[int] = None,
     is_pilot: bool = False
 ):
-    # 0. Чтение и валидация версии проекта из канонического источника (AGENTS.md)
-    project_version = get_project_version()
+    # 0. Чтение и валидация версии книги (book.toml: version или version_file + version_pattern)
+    project_version = get_book_version(config)
+    sources_dir = sources_dir or config.path(config.content.root)
 
     start_time = time.time()
     print("=====================================================================")
     print("🚀 Старт сборки Инженерной веб-энциклопедии бэкенда (Go Workout Style)")
-    print(f"📌 Версия проекта (AGENTS.md): v{project_version}")
+    print(f"📌 Версия книги: v{project_version}")
     print("=====================================================================")
 
     # 1. Сканирование базы знаний
     print(f"\n[1/4] 🔍 Сканирование директории {sources_dir}...")
-    scanner = KnowledgeBaseScanner(sources_dir)
+    scanner = KnowledgeBaseScanner(sources_dir, config)
     all_articles = scanner.scan()
     print(f"      Всего обнаружено статей: {len(all_articles)}")
     print(f"      Всего модулей: {len(scanner.modules_tree)}")
@@ -163,7 +166,7 @@ def build(
 
     # 3. Конвертация Markdown и генерация HTML страниц
     print(f"\n[3/4] ⚙️ Конвертация {len(articles_to_build)} статей в HTML...")
-    converter = MarkdownConverter(scanner)
+    converter = MarkdownConverter(scanner, config)
     built_count = 0
     total_mermaid_rendered = 0
 
@@ -181,7 +184,8 @@ def build(
             toc=toc,
             modules_tree=scanner.modules_tree,
             total_articles=len(all_articles),
-            version=project_version
+            version=project_version,
+            config=config
         )
 
         with open(full_out_path, "w", encoding="utf-8") as fp:
@@ -199,7 +203,8 @@ def build(
         modules_tree=scanner.modules_tree,
         total_articles=len(all_articles),
         total_mermaid=sum(a.mermaid_count for a in all_articles),
-        version=project_version
+        version=project_version,
+        config=config
     )
     index_path = os.path.join(dist_dir, "index.html")
     with open(index_path, "w", encoding="utf-8") as fp:
@@ -221,7 +226,8 @@ def main():
     parser.add_argument("--pilot", action="store_true", help="Собрать пилотную версию (первые 15 статей Модуля 1)")
     parser.add_argument("--module", type=int, help="Собрать конкретный номер модуля (1..22)")
     parser.add_argument("--limit", type=int, help="Ограничить количество собираемых статей")
-    parser.add_argument("--sources", default="./sources", help="Путь к исходникам (по умолчанию ./sources)")
+    parser.add_argument("--book", default=None, help="Путь к book.toml (по умолчанию ./book.toml)")
+    parser.add_argument("--sources", default=None, help="Путь к исходникам (по умолчанию content.root из book.toml)")
     parser.add_argument("--dist", default="./dist", help="Выходная папка (по умолчанию ./dist)")
 
     args = parser.parse_args()
@@ -230,6 +236,7 @@ def main():
     is_pilot = args.pilot or (not args.all and args.module is None and args.limit is None)
 
     build(
+        config=load_config(args.book),
         sources_dir=args.sources,
         dist_dir=args.dist,
         limit=args.limit,

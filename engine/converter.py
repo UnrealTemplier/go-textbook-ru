@@ -9,6 +9,7 @@ import html
 import textwrap
 from typing import Tuple, Dict, Any, List, Optional
 import markdown
+from .config import BookConfig
 from .scanner import slugify, Article, KnowledgeBaseScanner
 
 CALLOUT_CONFIG = {
@@ -63,8 +64,9 @@ CALLOUT_CONFIG = {
 }
 
 class MarkdownConverter:
-    def __init__(self, scanner: KnowledgeBaseScanner):
+    def __init__(self, scanner: Optional[KnowledgeBaseScanner], config: Optional[BookConfig] = None):
         self.scanner = scanner
+        self.config = config or (scanner.config if scanner is not None else BookConfig())
         self.md = markdown.Markdown(
             extensions=[
                 "fenced_code",
@@ -115,16 +117,9 @@ class MarkdownConverter:
         return html_content, toc
 
     def _clean_cliches(self, text: str) -> str:
-        """Устранение канцеляризмов и шаблонов в стиле Кернигана."""
-        patterns = [
-            (r"В современном (?:мире|быстро меняющемся мире)[^,.]*,\s*", ""),
-            (r"Важно (?:понимать|помнить|отметить), что\s+", ""),
-            (r"Как известно,\s+", ""),
-            (r"Не секрет, что\s+", ""),
-            (r"Давайте (?:рассмотрим|разберем|погрузимся в)[^.\n]*:\s*", "")
-        ]
-        for pat, repl in patterns:
-            text = re.sub(pat, repl, text, flags=re.IGNORECASE)
+        """Удаление шаблонных фраз (content.clean_cliches в book.toml) из HTML; sources/ не меняется."""
+        for pat in self.config.content.clean_cliches:
+            text = re.sub(pat, "", text, flags=re.IGNORECASE)
         return text
 
     def _extract_mermaid(self, text: str, placeholders: Dict[str, str]) -> str:
@@ -326,7 +321,8 @@ class MarkdownConverter:
         title = custom_title if custom_title else cfg["title"]
 
         # Если в заголовке или теле есть слова собеседование/интервью, стилизуем под interview
-        if "собеседован" in title.lower() or "интервью" in title.lower() or "interview" in title.lower():
+        if self.config.callouts.interview_heuristic and (
+                "собеседован" in title.lower() or "интервью" in title.lower() or "interview" in title.lower()):
             cfg = CALLOUT_CONFIG["interview"]
             if not custom_title:
                 title = cfg["title"]
@@ -399,7 +395,7 @@ class MarkdownConverter:
                 raw_title = m.group(2).strip()
                 clean_title = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", raw_title)
                 clean_title = re.sub(r"[`*_]", "", clean_title)
-                h_slug = slugify(clean_title, 80)
+                h_slug = slugify(clean_title, self.config.slug.anchor)
 
                 toc.append({
                     "level": level,

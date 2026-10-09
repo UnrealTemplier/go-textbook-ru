@@ -8,6 +8,8 @@ import os
 import re
 from typing import Dict, List, Optional, Tuple, Any
 
+from .config import BookConfig, canonicalize_title
+
 CYRILLIC_TO_LATIN = {
     'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
     'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
@@ -45,7 +47,7 @@ def normalize_key(text: str) -> str:
     text = re.sub(r"[^\w\sа-яёa-z0-9]", " ", text)
     return re.sub(r"\s+", " ", text).strip()
 
-def extract_headings(content: str) -> List[Tuple[int, str, str]]:
+def extract_headings(content: str, anchor_length: int = 80) -> List[Tuple[int, str, str]]:
     """Извлечение всех заголовков H2, H3, H4 и их slug-анкоров.
 
     Игнорирует строки, находящиеся внутри fenced code-блоков (``` или ~~~),
@@ -76,47 +78,9 @@ def extract_headings(content: str) -> List[Tuple[int, str, str]]:
             raw_title = m.group(2).strip()
             clean_title = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", raw_title)
             clean_title = re.sub(r"[`*_]", "", clean_title)
-            anchor = slugify(clean_title, max_length=80)
+            anchor = slugify(clean_title, max_length=anchor_length)
             headings.append((level, raw_title, anchor))
     return headings
-
-def canonicalize_title(title: str) -> str:
-    """Преобразует устаревшие суррогаты имен файлов (из Obsidian/файловой системы) в каноническую типографику."""
-    # CI/CD
-    title = re.sub(r'\bCI_CD\b', 'CI/CD', title)
-    # TCP/IP
-    title = re.sub(r'\bTCP_IP\b', 'TCP/IP', title)
-    # I/O
-    title = re.sub(r'\bI_O\b', 'I/O', title)
-    # Go стандартная библиотека и пакеты
-    title = re.sub(r'\bnet_http_httptest\b', 'net/http/httptest', title)
-    title = re.sub(r'\bnet_http_pprof\b', 'net/http/pprof', title)
-    title = re.sub(r'\bnet_http\b', 'net/http', title)
-    title = re.sub(r'\bio_ioutil\b', 'io/ioutil', title)
-    title = re.sub(r'\bunicode_utf8\b', 'unicode/utf8', title)
-    title = re.sub(r'\bpath_filepath\b', 'path/filepath', title)
-    title = re.sub(r'\bio_fs\b', 'io/fs', title)
-    title = re.sub(r'\blog_slog\b', 'log/slog', title)
-    title = re.sub(r'\bsync_atomic\b', 'sync/atomic', title)
-    title = re.sub(r'\bsync_pool\b', 'sync.Pool', title)
-    title = re.sub(r'\bsync_map\b', 'sync.Map', title)
-    title = re.sub(r'\bcontainer_list\b', 'container/list', title)
-    title = re.sub(r'\bcontainer_heap\b', 'container/heap', title)
-    title = re.sub(r'\bcontainer_ring\b', 'container/ring', title)
-    title = re.sub(r'\bencoding_json\b', 'encoding/json', title)
-    title = re.sub(r'\bencoding_xml\b', 'encoding/xml', title)
-    title = re.sub(r'\bencoding_csv\b', 'encoding/csv', title)
-    title = re.sub(r'\bencoding_gob\b', 'encoding/gob', title)
-    title = re.sub(r'\bnet_url\b', 'net/url', title)
-    title = re.sub(r'\bcrypto_rand\b', 'crypto/rand', title)
-    title = re.sub(r'\bmath_rand\b', 'math/rand', title)
-    title = re.sub(r'\bdatabase_sql\b', 'database/sql', title)
-    title = re.sub(r'\barchive_zip\b', 'archive/zip', title)
-    title = re.sub(r'\bcompress_gzip\b', 'compress/gzip', title)
-    title = re.sub(r'\bos_exec\b', 'os/exec', title)
-    title = re.sub(r'\bgolang_org_x_sys\b', 'golang.org/x/sys', title)
-    title = re.sub(r'\btesting_quick\b', 'testing/quick', title)
-    return title
 
 class Article:
     def __init__(
@@ -159,8 +123,11 @@ class Article:
         }
 
 class KnowledgeBaseScanner:
-    def __init__(self, sources_dir: str):
+    def __init__(self, sources_dir: str, config: Optional[BookConfig] = None):
         self.sources_dir = os.path.abspath(sources_dir)
+        self.config = config or BookConfig()
+        self.slug = self.config.slug
+        self._canon = lambda t: canonicalize_title(t, self.config.content.canonical_replacements)
         self.articles: List[Article] = []
         self.articles_by_path: Dict[str, Article] = {}
         self.wikilink_index: Dict[str, Article] = {}
@@ -185,8 +152,8 @@ class KnowledgeBaseScanner:
                 module_num = 99
                 module_clean_title = top_dir
 
-            mod_slug = f"{module_num:02d}-{slugify(module_clean_title, 35)}"
-            module_canonical_title = canonicalize_title(module_clean_title)
+            mod_slug = f"{module_num:02d}-{slugify(module_clean_title, self.slug.module)}"
+            module_canonical_title = self._canon(module_clean_title)
             full_mod_path = os.path.join(self.sources_dir, top_dir)
             
             module_node = {
@@ -208,8 +175,8 @@ class KnowledgeBaseScanner:
                     global_order += 1
                     file_src = os.path.join(full_mod_path, rf)
                     raw_title = rf[:-3] if rf.endswith(".md") else rf
-                    canonical_title = canonicalize_title(raw_title)
-                    file_slug = slugify(raw_title, 55)
+                    canonical_title = self._canon(raw_title)
+                    file_slug = slugify(raw_title, self.slug.page)
                     rel_out = f"docs/{mod_slug}/{file_slug}.html"
 
                     art = Article(
@@ -239,7 +206,7 @@ class KnowledgeBaseScanner:
                         ssd_path = os.path.join(sd_path, ssd)
                         ssd_files = [e for e in sorted(os.listdir(ssd_path), key=natural_sort_key) if e.endswith(".md")]
                         sub_sec_name = f"{sd} / {ssd}"
-                        sub_slug = f"{slugify(sd, 20)}/{slugify(ssd, 25)}"
+                        sub_slug = f"{slugify(sd, self.slug.subsection[0])}/{slugify(ssd, self.slug.subsection[1])}"
                         
                         sub_node = {
                             "name": sub_sec_name,
@@ -251,8 +218,8 @@ class KnowledgeBaseScanner:
                             global_order += 1
                             file_src = os.path.join(ssd_path, sf)
                             raw_title = sf[:-3] if sf.endswith(".md") else sf
-                            canonical_title = canonicalize_title(raw_title)
-                            file_slug = slugify(raw_title, 55)
+                            canonical_title = self._canon(raw_title)
+                            file_slug = slugify(raw_title, self.slug.page)
                             rel_out = f"docs/{mod_slug}/{sub_slug}/{file_slug}.html"
 
                             art = Article(
@@ -272,7 +239,7 @@ class KnowledgeBaseScanner:
 
                         module_node["subsections"].append(sub_node)
                 else:
-                    sub_slug = slugify(sd, 35)
+                    sub_slug = slugify(sd, self.slug.section)
                     sub_node = {
                         "name": sd,
                         "slug": sub_slug,
@@ -282,8 +249,8 @@ class KnowledgeBaseScanner:
                         global_order += 1
                         file_src = os.path.join(sd_path, sf)
                         raw_title = sf[:-3] if sf.endswith(".md") else sf
-                        canonical_title = canonicalize_title(raw_title)
-                        file_slug = slugify(raw_title, 55)
+                        canonical_title = self._canon(raw_title)
+                        file_slug = slugify(raw_title, self.slug.page)
                         rel_out = f"docs/{mod_slug}/{sub_slug}/{file_slug}.html"
 
                         art = Article(
@@ -320,7 +287,7 @@ class KnowledgeBaseScanner:
             art.size_bytes = os.path.getsize(art.source_path)
             with open(art.source_path, "r", encoding="utf-8", errors="ignore") as fp:
                 content = fp.read()
-            art.headings = extract_headings(content)
+            art.headings = extract_headings(content, self.slug.anchor)
             art.mermaid_count = len(re.findall(r"```mermaid", content, re.IGNORECASE))
         except Exception:
             pass
@@ -392,7 +359,7 @@ class KnowledgeBaseScanner:
                 if anchor_name:
                     clean_anchor = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", anchor_name)
                     clean_anchor = re.sub(r"[`*_]", "", clean_anchor)
-                    anchor_slug = "#" + slugify(clean_anchor, 80)
+                    anchor_slug = "#" + slugify(clean_anchor, self.slug.anchor)
                 else:
                     anchor_slug = ""
 

@@ -129,7 +129,8 @@
 go-textbook/
 ├── sources/             # Единый источник правды содержания (SSOT): 1413 Markdown-статей
 ├── engine/              # Генератор и инструменты QA (будущее ядро html-textbook-engine)
-│   ├── build.py         # Главный оркестратор: python -m engine.build (флаги --all, --module, --pilot)
+│   ├── build.py         # Главный оркестратор: python -m engine.build (флаги --all, --module, --pilot, --book)
+│   ├── config.py        # Загрузка и проверка book.toml
 │   ├── scanner.py       # Сканирование источников, wikilinks-резолвер, канонизация якорей
 │   ├── converter.py     # AST-конвертер Markdown -> HTML5, Callouts, автосанитизация Mermaid
 │   ├── template.py      # HTML5 каркас, семантическая разметка, KaTeX, сайдбар, TOC
@@ -144,6 +145,7 @@ go-textbook/
 │       ├── style.css    # Дизайн-система: :root-токены и компонентные правила
 │       ├── main.js      # Клиентская логика (темы, поиск, Mermaid, KaTeX)
 │       └── vendor/      # Локальные вендоры: Prism, Mermaid 10.9.1, KaTeX шрифты
+├── book.toml            # Конфигурация книги для движка (версия, slug, канонические названия, клише, выноски)
 ├── book/                # Слой книги: книжные тесты корпуса, tools/verify_editorial.py (контроль авторской редактуры)
 ├── fact-checks/         # Отчёты фактчека по модулям (mod1/ … mod4/)
 ├── engine-extraction/   # Выделение движка html-textbook-engine: итоговый анализ, технический план, дорожная карта
