@@ -94,7 +94,7 @@ go-textbook/
 │   ├── template.py        # Каркас HTML5, шаблоны страниц, навигация, сайдбар, TOC, версия, anti-flicker
 │   ├── audit.py           # Сквозной QA-аудит: python -m engine.audit (ОС-совместимость, управляющие символы, ссылки, анкоры, Mermaid + рантайм-разбор)
 │   ├── tests/             # Тесты ядра (unittest), см. § 3.3а
-│   ├── tools/             # Инструменты проверки рефакторинга движка: verify_diff.py, runtime_projection.py, см. § 3.3б; title_duplicates.py, см. § 11.4
+│   ├── tools/             # Инструменты проверки рефакторинга движка: verify_diff.py, runtime_projection.py, lists_oracle.py, см. § 3.3б; title_duplicates.py, см. § 11.4
 │   └── assets/            # Исходные статические ассеты (стили, скрипты, вендор)
 │       ├── themes/        # Реестр и CSS-токены тем (один файл — одна тема)
 │       │   ├── manifest.json  # Реестр тем: порядок, label, icon, default
@@ -217,6 +217,11 @@ python3 engine/tools/verify_diff.py dist /tmp/dist-new --mode article \
 python3 engine/tools/runtime_projection.py dist --out /tmp/runtime.json        # ~110 с, 12 процессов Firefox
 python3 engine/tools/runtime_projection.py --compare old.json new.json
 ```
+**Оракул списков** (`engine/tools/lists_oracle.py`, этап А3л) конвертирует все статьи в памяти с текущим `book.toml` и с `obsidian_lists = true` (`--with-fences` — ещё и `indented_fences = true`). Тексты `<pre><code>` обязаны совпасть, каждое изменение видимого текста относится к одному из классов анализа § 6.4; необъяснённое (класс 5) — провал, код возврата `1`:
+```bash
+python3 -m engine.tools.lists_oracle --book book.toml --report /tmp/lists.json
+```
+
 Сам `dist/` не трогается: пробные страницы пишутся в зеркало из символьных ссылок во временном каталоге. Эталон для этапов А0–А2 — `engine-extraction/baseline/runtime-bbb4b1f7.json`.
 
 ### 3.4. Текущие базовые метрики (Snapshot Baseline):
