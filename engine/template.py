@@ -17,6 +17,14 @@ TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templa
 _PARTIALS: Dict[Any, Template] = {}
 
 
+# Иконки, которые повторяются на странице: геометрия один раз в скрытом спрайте, в разметке —
+# <use href="#…"> (ссылка внутри документа работает и по file://, в отличие от внешнего спрайта)
+ICON_SPRITE = (
+    '<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">'
+    '<symbol id="icon-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>'
+    '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></symbol></svg>'
+)
+
 _CODE_LIKE_RE = re.compile(r"<(pre|code|script|style|textarea|option)\b.*?</\1>", re.S)
 
 
@@ -430,6 +438,7 @@ def render_article_page(
     if article.is_index:
         article_html += render_index_children(article, rel_root)
     needs = page_needs(article_html, config)
+    icon_sprite = f"\n  {ICON_SPRITE}" if needs["prism"] else ""
     head_lines = []
     if needs["katex"]:
         head_lines.append(f'  <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">')
@@ -474,7 +483,7 @@ def render_article_page(
   <link rel="stylesheet" href="{rel_root}assets/style.css">
 {head_extra}
 </head>
-<body>
+<body>{icon_sprite}
   <div class="reading-progress-bar" id="reading-progress" role="progressbar" aria-label="{config.t("page.reading_progress_aria")}" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
 
   <div class="app-layout">

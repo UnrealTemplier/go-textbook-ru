@@ -25,3 +25,13 @@ class PageNeedsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IconSpriteTest(unittest.TestCase):
+    def test_copy_icon_uses_sprite(self):
+        from engine.converter import MarkdownConverter
+        from engine.template import ICON_SPRITE
+        html = MarkdownConverter(None)._enhance_code_blocks('<pre><code class="language-go">x</code></pre>')
+        self.assertIn('<use href="#icon-copy"></use>', html)
+        self.assertNotIn("<rect", html)
+        self.assertIn('<symbol id="icon-copy"', ICON_SPRITE)

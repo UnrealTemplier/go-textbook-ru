@@ -336,7 +336,7 @@ python3 engine/tools/runtime_projection.py --compare old.json new.json
 * **Таблицы данных:**
   - Оборачиваются в доступный скролл-контейнер (`_wrap_tables` в `converter.py`): `<div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>...</table></div>`.
 * **Блоки кода:**
-  - `_enhance_code_blocks` добавляет к каждому `<pre><code>` шапку с языком и кнопкой `data-action="copy-code"`; блоки без языка тоже получают шапку.
+  - `_enhance_code_blocks` добавляет к каждому `<pre><code>` шапку с языком и кнопкой `data-action="copy-code"`; блоки без языка тоже получают шапку. Иконка кнопки — `<svg><use href="#icon-copy"></use></svg>`: геометрия один раз на странице в скрытом спрайте `ICON_SPRITE` в начале `<body>` (только на страницах с кодом). Внешний спрайт и `mask-image: url(...)` по `file://` в Chromium не работают — не использовать.
 * **Отказ от инлайновых `onclick`:**  
   Все обработчики событий переведены на централизованное делегирование через атрибуты `data-action`. Полный список: `copy-code`, `mermaid-fullscreen`, `close-mermaid-modal` (кнопка и подложка модалки), `zoom-mermaid-in`, `zoom-mermaid-out`, `zoom-mermaid-reset`, `toggle-theme`.
 
