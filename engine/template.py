@@ -300,6 +300,7 @@ def render_article_page(
 
     ap = config.article_page
     br = config.branding
+    footer_html = "\n        ".join(f"<p>{line}</p>" for line in ap.footer_html)
     rt = config.navigation.reading_time
     reading_time = max(rt.min, int(article.size_bytes / rt.divisor))
 
@@ -393,8 +394,7 @@ def render_article_page(
       </main>
 
       <footer class="app-footer">
-        {"""
-        """.join(f"<p>{line}</p>" for line in ap.footer_html)}
+        {footer_html}
       </footer>
     </div>
   </div>
@@ -447,6 +447,7 @@ def render_index_page(
     counts = {"modules": len(modules_tree), "articles": total_articles,
               "articles_grouped": f"{total_articles:,}".replace(",", " "), "mermaid": total_mermaid}
     fc = lambda text: fill_counts(text, counts)
+    index_footer_html = "\n      ".join(f"<p>{line}</p>" for line in ip.footer_html)
     stats_html = "\n".join(
         f"""        <div class="stat-box">
           <span class="stat-number">{fc(st['value'])}</span>
@@ -557,8 +558,7 @@ def render_index_page(
     </section>
 
     <footer class="index-footer">
-      {"""
-      """.join(f"<p>{line}</p>" for line in ip.footer_html)}
+      {index_footer_html}
     </footer>
   </main>
 
