@@ -410,7 +410,14 @@ class MarkdownConverter:
                 # Вставляем явный HTML заголовок с id
                 out_lines.append(f'<h{level} id="{h_slug}">{raw_title}</h{level}>')
             else:
-                out_lines.append(line)
+                # Остальные заголовки (H1, H5, H6) разбирает Python-Markdown: '#' в конце он
+                # считает закрывающей последовательностью даже без пробела ('C#' -> 'C').
+                # Хвост, приклеенный к слову, экранируем; '# Текст #' не трогаем.
+                out_lines.append(re.sub(
+                    r"^(#{1,6}\s+.*[^\s#\\])(#+)\s*$",
+                    lambda hm: hm.group(1) + "\\#" * len(hm.group(2)),
+                    line,
+                ))
 
         return "\n".join(out_lines), toc
 

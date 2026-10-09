@@ -357,7 +357,7 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --original-file
 2. `_extract_mermaid` — вынимает блоки ```` ```mermaid ```` в плейсхолдеры, санитизирует и оборачивает их (см. ниже).
 3. `_transform_callouts` — Obsidian-выноски `> [!type] Заголовок` → `<aside class="callout callout-{type}">`. Типы: `tip`, `interview`, `info`, `warning`, `note`, `important`, `caution`, `danger`.
 4. `_transform_wikilinks` — `[[…]]` → относительные ссылки через `scanner.resolve_wikilink`.
-5. `_process_headings` — `id` заголовков через `slugify(…, 80)` и сбор TOC.
+5. `_process_headings` — `id` заголовков H2–H4 через `slugify(…, 80)` и сбор TOC; H2–H4 выводятся сырым HTML (Markdown-разметка в них не обрабатывается). В остальных заголовках (H1, H5, H6), которые разбирает Python-Markdown, экранируется `#`, приклеенный к концу (`C#` → `C\#`): иначе библиотека срезает его как закрывающую последовательность.
 6. Python-Markdown (`fenced_code`, `tables`, `sane_lists`, `nl2br`).
 7. Возврат Mermaid-блоков на место плейсхолдеров.
 8. `_wrap_tables` — обёртка `.table-container`.
