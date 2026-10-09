@@ -10,6 +10,34 @@ from typing import Dict, List, Optional, Tuple, Any
 
 from .config import BookConfig, canonicalize_title
 
+
+class ScanError(ValueError):
+    """Ошибка структуры sources/: файл не попал бы на сайт или пути совпали."""
+
+
+H1_RE = re.compile(r"^#[ \t]+(.+?)[ \t]*$")
+
+
+def find_first_h1(content: str) -> Optional[Tuple[int, str]]:
+    """Первый заголовок «# …» вне оград: (номер строки, текст) или None."""
+    fence = ""
+    for i, line in enumerate(content.split("\n")):
+        stripped = line.strip()
+        m = re.match(r"^(`{3,}|~{3,})", stripped)
+        if m:
+            marker = m.group(1)
+            if not fence:
+                fence = marker[0] * len(marker)
+            elif stripped.startswith(fence):
+                fence = ""
+            continue
+        if fence:
+            continue
+        h = H1_RE.match(line)
+        if h:
+            return i, h.group(1)
+    return None
+
 CYRILLIC_TO_LATIN = {
     'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
     'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
@@ -108,6 +136,11 @@ class Article:
         self.next_article: Optional['Article'] = None
         self.size_bytes: int = 0
         self.mermaid_count: int = 0
+        self.is_index: bool = False      # заглавная страница своего каталога (content.index_file)
+        self.position: int = 0           # номер среди страниц, кроме заглавных
+        self.index_of: Optional[Dict[str, Any]] = None   # узел каталога, если это его заглавная страница
+        self.module_index: Optional['Article'] = None    # заглавная страница модуля
+        self.section_index: Optional['Article'] = None   # заглавная страница подраздела
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -134,143 +167,52 @@ class KnowledgeBaseScanner:
         self.modules_tree: List[Dict[str, Any]] = []
 
     def scan(self) -> List[Article]:
-        """Полное сканирование базы знаний и построение графа связей."""
-        top_dirs = sorted(
-            [d for d in os.listdir(self.sources_dir) if os.path.isdir(os.path.join(self.sources_dir, d))],
-            key=natural_sort_key
-        )
+        """Обход дерева sources/ произвольной глубины и построение графа связей.
 
-        global_order = 0
+        Модуль — каталог верхнего уровня с номером («N. Название»). Внутри модуля каталоги любой
+        глубины; для шаблонов дерево отдаётся в виде «модуль → подразделы», где путь глубоких
+        каталогов склеивается через « / ». Порядок страниц: файлы каталога, затем подкаталоги.
+        Ситуации, в которых раньше файлы терялись молча, — ошибки сборки (ScanError).
+        """
+        entries = sorted(os.listdir(self.sources_dir), key=natural_sort_key)
+        stray = [e for e in entries if os.path.isfile(os.path.join(self.sources_dir, e)) and e.endswith(".md")]
+        if stray:
+            raise ScanError(f"{self.sources_dir}: .md в корне не входят ни в один модуль: {stray}")
+        top_dirs = [d for d in entries if os.path.isdir(os.path.join(self.sources_dir, d))]
+
+        self._order = 0
         modules_tree = []
+        seen_nums: Dict[int, str] = {}
 
         for top_dir in top_dirs:
             m_match = re.match(r"^(\d+)\.\s*(.*)$", top_dir)
-            if m_match:
-                module_num = int(m_match.group(1))
-                module_clean_title = m_match.group(2).strip()
-            else:
-                module_num = 99
-                module_clean_title = top_dir
+            if not m_match:
+                raise ScanError(f"каталог модуля без номера «N. Название»: {top_dir}")
+            module_num = int(m_match.group(1))
+            if module_num in seen_nums:
+                raise ScanError(f"два модуля с номером {module_num}: {seen_nums[module_num]}, {top_dir}")
+            seen_nums[module_num] = top_dir
+            module_clean_title = m_match.group(2).strip()
 
             mod_slug = f"{module_num:02d}-{slugify(module_clean_title, self.slug.module)}"
             module_canonical_title = self._canon(module_clean_title)
-            full_mod_path = os.path.join(self.sources_dir, top_dir)
-            
             module_node = {
                 "num": module_num,
                 "raw_name": top_dir,
                 "title": module_canonical_title,
                 "slug": mod_slug,
                 "subsections": [],
-                "articles": []
+                "articles": [],
+                "index": None,
             }
-
-            entries = sorted(os.listdir(full_mod_path), key=natural_sort_key)
-            subdirs = [e for e in entries if os.path.isdir(os.path.join(full_mod_path, e))]
-            root_files = [e for e in entries if os.path.isfile(os.path.join(full_mod_path, e)) and e.endswith(".md")]
-
-            # Если в корне модуля есть статьи
-            if root_files:
-                for rf in root_files:
-                    global_order += 1
-                    file_src = os.path.join(full_mod_path, rf)
-                    raw_title = rf[:-3] if rf.endswith(".md") else rf
-                    canonical_title = self._canon(raw_title)
-                    file_slug = slugify(raw_title, self.slug.page)
-                    rel_out = f"docs/{mod_slug}/{file_slug}.html"
-
-                    art = Article(
-                        title=canonical_title,
-                        source_path=file_src,
-                        rel_output_path=rel_out,
-                        module_num=module_num,
-                        module_name=module_canonical_title,
-                        raw_filename=raw_title,
-                        subsection_name="",
-                        global_order=global_order
-                    )
-                    self._populate_article_stats(art)
-                    self.articles.append(art)
-                    self.articles_by_path[rel_out] = art
-                    module_node["articles"].append(art)
-
-            # Если есть вложенные поддиректории
-            for sd in subdirs:
-                sd_path = os.path.join(full_mod_path, sd)
-                sd_entries = sorted(os.listdir(sd_path), key=natural_sort_key)
-                sub_subdirs = [e for e in sd_entries if os.path.isdir(os.path.join(sd_path, e))]
-                sd_files = [e for e in sd_entries if os.path.isfile(os.path.join(sd_path, e)) and e.endswith(".md")]
-
-                if sub_subdirs:
-                    for ssd in sub_subdirs:
-                        ssd_path = os.path.join(sd_path, ssd)
-                        ssd_files = [e for e in sorted(os.listdir(ssd_path), key=natural_sort_key) if e.endswith(".md")]
-                        sub_sec_name = f"{sd} / {ssd}"
-                        sub_slug = f"{slugify(sd, self.slug.subsection[0])}/{slugify(ssd, self.slug.subsection[1])}"
-                        
-                        sub_node = {
-                            "name": sub_sec_name,
-                            "slug": sub_slug,
-                            "articles": []
-                        }
-
-                        for sf in ssd_files:
-                            global_order += 1
-                            file_src = os.path.join(ssd_path, sf)
-                            raw_title = sf[:-3] if sf.endswith(".md") else sf
-                            canonical_title = self._canon(raw_title)
-                            file_slug = slugify(raw_title, self.slug.page)
-                            rel_out = f"docs/{mod_slug}/{sub_slug}/{file_slug}.html"
-
-                            art = Article(
-                                title=canonical_title,
-                                source_path=file_src,
-                                rel_output_path=rel_out,
-                                module_num=module_num,
-                                module_name=module_canonical_title,
-                                raw_filename=raw_title,
-                                subsection_name=sub_sec_name,
-                                global_order=global_order
-                            )
-                            self._populate_article_stats(art)
-                            self.articles.append(art)
-                            self.articles_by_path[rel_out] = art
-                            sub_node["articles"].append(art)
-
-                        module_node["subsections"].append(sub_node)
-                else:
-                    sub_slug = slugify(sd, self.slug.section)
-                    sub_node = {
-                        "name": sd,
-                        "slug": sub_slug,
-                        "articles": []
-                    }
-                    for sf in sd_files:
-                        global_order += 1
-                        file_src = os.path.join(sd_path, sf)
-                        raw_title = sf[:-3] if sf.endswith(".md") else sf
-                        canonical_title = self._canon(raw_title)
-                        file_slug = slugify(raw_title, self.slug.page)
-                        rel_out = f"docs/{mod_slug}/{sub_slug}/{file_slug}.html"
-
-                        art = Article(
-                            title=canonical_title,
-                            source_path=file_src,
-                            rel_output_path=rel_out,
-                            module_num=module_num,
-                            module_name=module_canonical_title,
-                            raw_filename=raw_title,
-                            subsection_name=sd,
-                            global_order=global_order
-                        )
-                        self._populate_article_stats(art)
-                        self.articles.append(art)
-                        self.articles_by_path[rel_out] = art
-                        sub_node["articles"].append(art)
-
-                    module_node["subsections"].append(sub_node)
-
+            self._walk(os.path.join(self.sources_dir, top_dir), module_node, [], [])
             modules_tree.append(module_node)
+            for art in module_node["articles"] + ([module_node["index"]] if module_node["index"] else []):
+                art.module_index = module_node["index"]
+            for sub in module_node["subsections"]:
+                for art in sub["articles"] + ([sub["index"]] if sub["index"] else []):
+                    art.module_index = module_node["index"]
+                    art.section_index = sub["index"]
 
         for i in range(len(self.articles)):
             if i > 0:
@@ -278,9 +220,84 @@ class KnowledgeBaseScanner:
             if i < len(self.articles) - 1:
                 self.articles[i].next_article = self.articles[i + 1]
 
+        content = [a for a in self.articles if not a.is_index]
+        for pos, art in enumerate(content, 1):
+            art.position = pos
+        self.content_count = len(content)
+        self.has_index_pages = len(content) != len(self.articles)
+
         self.modules_tree = modules_tree
         self._build_wikilink_index()
         return self.articles
+
+    def _walk(self, dir_path: str, module_node: Dict[str, Any], names: List[str], slugs: List[str]) -> None:
+        """Каталог модуля (names пуст) или вложенный каталог любой глубины."""
+        entries = sorted(os.listdir(dir_path), key=natural_sort_key)
+        subdirs = [e for e in entries if os.path.isdir(os.path.join(dir_path, e))]
+        files = [e for e in entries if os.path.isfile(os.path.join(dir_path, e)) and e.endswith(".md")]
+        index_re = self.config.content.index_file
+
+        if names and subdirs:
+            pages = [f for f in files if not (index_re and re.match(index_re, f))]
+            if pages:
+                raise ScanError(f"{dir_path}: статьи рядом с подкаталогами были бы потеряны: {pages} "
+                                f"(рядом с подкаталогами допустим только индексный файл)")
+
+        if names:
+            node = {"name": " / ".join(names), "slug": "/".join(slugs), "articles": [], "index": None}
+            if files:
+                module_node["subsections"].append(node)
+        else:
+            node = module_node
+        sub_name = node["name"] if names else ""
+        out_dir = "/".join(["docs", module_node["slug"]] + slugs)
+
+        for f in files:
+            self._order += 1
+            raw_title = f[:-3]
+            file_src = os.path.join(dir_path, f)
+            is_index = bool(index_re) and bool(re.match(index_re, f))
+            title = self._title_from_h1(file_src) if self.config.content.title_source == "h1" else self._canon(raw_title)
+            rel_out = f"{out_dir}/{slugify(raw_title, self.slug.page)}.html"
+            if rel_out in self.articles_by_path:
+                raise ScanError(f"совпадение выходных путей после обрезки slug: {rel_out} "
+                                f"({self.articles_by_path[rel_out].source_path} и {file_src})")
+            art = Article(
+                title=title,
+                source_path=file_src,
+                rel_output_path=rel_out,
+                module_num=module_node["num"],
+                module_name=module_node["title"],
+                raw_filename=raw_title,
+                subsection_name=sub_name,
+                global_order=self._order,
+            )
+            art.is_index = is_index
+            self._populate_article_stats(art)
+            self.articles.append(art)
+            self.articles_by_path[rel_out] = art
+            if is_index:
+                node["index"] = art
+                art.index_of = node
+            else:
+                node["articles"].append(art)
+
+        for sd in subdirs:
+            sd_path = os.path.join(dir_path, sd)
+            if not names:
+                has_children = any(os.path.isdir(os.path.join(sd_path, e)) for e in os.listdir(sd_path))
+                seg = slugify(sd, self.slug.subsection[0] if has_children else self.slug.section)
+            else:
+                seg = slugify(sd, self.slug.subsection[1])
+            self._walk(sd_path, module_node, names + [sd], slugs + [seg])
+
+    @staticmethod
+    def _title_from_h1(path: str) -> str:
+        with open(path, encoding="utf-8", errors="ignore") as fp:
+            h1 = find_first_h1(fp.read())
+        if h1 is None:
+            raise ScanError(f"{path}: title_source = \"h1\", но в файле нет заголовка «# …»")
+        return h1[1]
 
     def _populate_article_stats(self, art: Article) -> None:
         try:

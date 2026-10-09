@@ -10,7 +10,7 @@ import textwrap
 from typing import Tuple, Dict, Any, List, Optional
 import markdown
 from .config import BookConfig
-from .scanner import slugify, Article, KnowledgeBaseScanner
+from .scanner import slugify, Article, KnowledgeBaseScanner, find_first_h1
 
 CALLOUT_CONFIG = {
     "tip": {
@@ -75,6 +75,14 @@ class MarkdownConverter:
         """
         with open(article.source_path, "r", encoding="utf-8", errors="ignore") as fp:
             raw_text = fp.read()
+
+        # 0. title_source = "h1": первый «# …» стал заголовком страницы — убираем его из тела
+        if self.config.content.title_source == "h1":
+            h1 = find_first_h1(raw_text)
+            if h1 is not None:
+                lines = raw_text.split("\n")
+                del lines[h1[0]]
+                raw_text = "\n".join(lines)
 
         # 1. Очистка от нейросетевых клише и шаблонных фраз в начале
         cleaned_text = self._clean_cliches(raw_text)

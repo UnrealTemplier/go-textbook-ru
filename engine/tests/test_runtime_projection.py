@@ -25,12 +25,14 @@ class MirrorTest(unittest.TestCase):
             dist = os.path.join(tmp, "dist")
             os.makedirs(os.path.join(dist, "docs", "m"))
             for rel in ("index.html", "docs/m/a.html", "docs/m/x.css"):
-                open(os.path.join(dist, rel), "w").write(rel)
+                with open(os.path.join(dist, rel), "w") as fp:
+                    fp.write(rel)
             self.assertEqual(rp.list_pages(dist), ["docs/m/a.html", "index.html"])
             site = os.path.join(tmp, "site")
             rp.mirror(dist, site)
             self.assertTrue(os.path.islink(os.path.join(site, "docs/m/x.css")))
-            self.assertEqual(open(os.path.join(site, "docs/m/a.html")).read(), "docs/m/a.html")
+            with open(os.path.join(site, "docs/m/a.html")) as fp:
+                self.assertEqual(fp.read(), "docs/m/a.html")
             self.assertEqual(rp.probe_name("docs/m/a.html"), "docs/m/a.__rp.html")
 
 

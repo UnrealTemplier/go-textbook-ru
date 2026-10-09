@@ -182,9 +182,10 @@ def build(
             article_html=html_content,
             toc=toc,
             modules_tree=scanner.modules_tree,
-            total_articles=len(all_articles),
+            total_articles=scanner.content_count,
             version=project_version,
-            config=config
+            config=config,
+            show_position=scanner.has_index_pages
         )
 
         with open(full_out_path, "w", encoding="utf-8") as fp:
@@ -200,7 +201,7 @@ def build(
     print("\n[4/4] 🏠 Генерация главной страницы (index.html)...")
     index_html = render_index_page(
         modules_tree=scanner.modules_tree,
-        total_articles=len(all_articles),
+        total_articles=scanner.content_count,
         total_mermaid=sum(a.mermaid_count for a in all_articles),
         version=project_version,
         config=config

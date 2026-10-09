@@ -182,7 +182,10 @@ def render_sidebar(
         active_class = "active-module" if is_mod_active else ""
 
         html_parts.append(f'<details class="nav-module {active_class}" {open_attr}>')
-        html_parts.append(f'<summary class="nav-module-title"><span class="mod-badge">{mod_num}</span> <span class="mod-text">{html.escape(mod_title)}</span></summary>')
+        mod_text = html.escape(mod_title)
+        if mod.get("index"):
+            mod_text = _index_link(mod["index"], mod_text, rel_root, current_article)
+        html_parts.append(f'<summary class="nav-module-title"><span class="mod-badge">{mod_num}</span> <span class="mod-text">{mod_text}</span></summary>')
         html_parts.append('<div class="nav-module-content">')
 
         # Статьи в корне модуля
@@ -206,7 +209,7 @@ def render_sidebar(
             sub_open = "open" if is_sub_active else ""
             active_sub_class = " active-submodule" if is_sub_active else ""
             html_parts.append(f'<details class="nav-submodule{active_sub_class}" {sub_open}>')
-            html_parts.append(f'<summary class="nav-submodule-title"><span class="sub-chevron" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg></span><span class="sub-text">{html.escape(sub_name)}</span></summary>')
+            html_parts.append(f'<summary class="nav-submodule-title"><span class="sub-chevron" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg></span><span class="sub-text">{_index_link(sub["index"], html.escape(sub_name), rel_root, current_article) if sub.get("index") else html.escape(sub_name)}</span></summary>')
             html_parts.append('<ul class="nav-articles-list sub-list">')
             for art in sub["articles"]:
                 href = rel_root + art.rel_output_path
@@ -223,17 +226,46 @@ def render_sidebar(
     html_parts.append('</div>') # sidebar-nav
     return "\n".join(html_parts)
 
+def _index_link(index: Article, text: str, rel_root: str, current: Optional[Article]) -> str:
+    """Ссылка на заглавную страницу каталога (сайдбар, хлебные крошки)."""
+    if current is index:
+        return f'<a href="{rel_root}{index.rel_output_path}" class="index-link active" aria-current="page">{text}</a>'
+    return f'<a href="{rel_root}{index.rel_output_path}" class="index-link">{text}</a>'
+
+
+def render_index_children(article: Article, rel_root: str) -> str:
+    """Список дочерних страниц под текстом заглавной страницы каталога (U22)."""
+    node = article.index_of or {}
+    items = []
+    for art in node.get("articles", []):
+        items.append(f'<li><a href="{rel_root}{art.rel_output_path}">{html.escape(art.title)}</a></li>')
+    for sub in node.get("subsections", []):
+        target = sub["index"] or (sub["articles"][0] if sub["articles"] else None)
+        if target is not None:
+            title = sub["index"].title if sub["index"] else sub["name"]
+            items.append(f'<li><a href="{rel_root}{target.rel_output_path}">{html.escape(title)}</a></li>')
+    if not items:
+        return ""
+    return '\n<ul class="index-children">\n' + "\n".join(items) + '\n</ul>\n'
+
+
 def render_breadcrumbs(article: Article, rel_root: str, config: BookConfig) -> str:
     """Хлебные крошки над статьей."""
     crumbs = [
         f'<li class="crumb-item"><a href="{rel_root}index.html" class="crumb-link">{config.t("breadcrumbs.home")}</a></li>'
     ]
     crumbs.append('<li class="crumb-sep" aria-hidden="true">/</li>')
-    crumbs.append(f'<li class="crumb-item crumb-module">{html.escape(article.module_name)}</li>')
+    mod_text = html.escape(article.module_name)
+    if article.module_index is not None and article.module_index is not article:
+        mod_text = _index_link(article.module_index, mod_text, rel_root, article)
+    crumbs.append(f'<li class="crumb-item crumb-module">{mod_text}</li>')
     
     if article.subsection_name:
+        sub_text = html.escape(article.subsection_name)
+        if article.section_index is not None and article.section_index is not article:
+            sub_text = _index_link(article.section_index, sub_text, rel_root, article)
         crumbs.append('<li class="crumb-sep" aria-hidden="true">/</li>')
-        crumbs.append(f'<li class="crumb-item crumb-sub">{html.escape(article.subsection_name)}</li>')
+        crumbs.append(f'<li class="crumb-item crumb-sub">{sub_text}</li>')
 
     crumbs.append('<li class="crumb-sep" aria-hidden="true">/</li>')
     crumbs.append(f'<li class="crumb-item crumb-current" aria-current="page">{html.escape(article.title)}</li>')
@@ -247,9 +279,10 @@ def render_article_page(
     modules_tree: List[Dict[str, Any]],
     total_articles: int,
     version: str,
-    config: BookConfig
+    config: BookConfig,
+    show_position: bool = False
 ) -> str:
-    """Генерация полной HTML-страницы статьи."""
+    """Генерация полной HTML-страницы статьи. show_position — счётчик «N из M» (книги с индексными файлами)."""
     rel_root = get_rel_root(article.rel_output_path)
     sidebar_html = render_sidebar(modules_tree, article, rel_root)
     breadcrumbs_html = render_breadcrumbs(article, rel_root, config)
@@ -303,6 +336,11 @@ def render_article_page(
     ap = config.article_page
     br = config.branding
     footer_html = "\n        ".join(f"<p>{line}</p>" for line in ap.footer_html)
+    position_html = ""
+    if show_position and not article.is_index:
+        position_html = f'\n              <span class="meta-tag position-tag">{config.t("article.position", n=article.position, m=total_articles)}</span>'
+    if article.is_index:
+        article_html += render_index_children(article, rel_root)
     rt = config.navigation.reading_time
     reading_time = max(rt.min, int(article.size_bytes / rt.divisor))
 
@@ -375,7 +413,7 @@ def render_article_page(
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">{config.t("article.module_tag", n=article.module_num)}</span>
               <span class="meta-tag read-time">{config.t("article.reading_time", n=reading_time)}</span>
-              {f'<span class="meta-tag mermaid-tag">{config.t("article.mermaid_count", n=article.mermaid_count)}</span>' if article.mermaid_count > 0 else ''}
+              {f'<span class="meta-tag mermaid-tag">{config.t("article.mermaid_count", n=article.mermaid_count)}</span>' if article.mermaid_count > 0 else ''}{position_html}
             </div>
             <h1 class="article-title">{html.escape(article.title)}</h1>
           </header>

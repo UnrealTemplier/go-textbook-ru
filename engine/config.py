@@ -34,6 +34,10 @@ class ContentConfig:
     canonical_replacements: List[Tuple[str, str]] = field(default_factory=list)
     # Регулярные выражения (IGNORECASE); совпадения удаляются из текста статьи при сборке
     clean_cliches: List[str] = field(default_factory=list)
+    # "filename" — название страницы из имени файла; "h1" — из первого «# …», который убирается из тела
+    title_source: str = "filename"
+    # Регулярное выражение имени индексного файла каталога (U22), например "^0+\\. "; пусто — выключено
+    index_file: str = ""
 
 
 @dataclass
@@ -197,6 +201,13 @@ def _validate(cfg: BookConfig) -> None:
         if not (isinstance(pair, (list, tuple)) and len(pair) == 2 and all(isinstance(x, str) for x in pair)):
             raise ConfigError(f"content.canonical_replacements: ожидается пара строк, получено {pair!r}")
     cfg.content.canonical_replacements = [tuple(p) for p in cfg.content.canonical_replacements]
+    if cfg.content.title_source not in ("filename", "h1"):
+        raise ConfigError("content.title_source: допустимо 'filename' или 'h1'")
+    if cfg.content.index_file:
+        try:
+            re.compile(cfg.content.index_file)
+        except re.error as e:
+            raise ConfigError(f"content.index_file: неверное выражение: {e}")
     for pat in cfg.content.clean_cliches:
         try:
             re.compile(pat)

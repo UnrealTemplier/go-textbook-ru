@@ -160,7 +160,8 @@ class KatexConfigTest(unittest.TestCase):
 
     def test_main_js_values(self):
         path = os.path.join(os.path.dirname(__file__), "..", "assets", "main.js")
-        js = open(path, encoding="utf-8").read()
+        with open(path, encoding="utf-8") as fp:
+            js = fp.read()
         block = re.search(r"renderMathInElement\(content, \{(.*?)\}\);", js, re.S).group(1)
         delims = re.findall(r"\{ left: '(.*?)', right: '(.*?)', display: (true|false) \}", block)
         self.assertEqual(delims, [("$$", "$$", "true"), ("$", "$", "false"),
