@@ -104,6 +104,12 @@ class MathConfig:
 
 
 @dataclass
+class FeaturesConfig:
+    # Подключать Mermaid, KaTeX и Prism только на страницах, где они нужны (анализ § 4.8.3)
+    conditional_scripts: bool = True
+
+
+@dataclass
 class LayoutConfig:
     # Пути — относительно каталога book.toml; отсутствующие файлы и каталоги просто не используются
     overrides_dir: str = "book/overrides"     # templates/<имя>.html и assets/<путь> заменяют файлы движка
@@ -160,6 +166,7 @@ class BookConfig:
     markdown: MarkdownConfig = field(default_factory=MarkdownConfig)
     math: MathConfig = field(default_factory=MathConfig)
     layout: LayoutConfig = field(default_factory=LayoutConfig)
+    features: FeaturesConfig = field(default_factory=FeaturesConfig)
     branding: BrandingConfig = field(default_factory=BrandingConfig)
     article_page: ArticlePageConfig = field(default_factory=ArticlePageConfig)
     index_page: IndexPageConfig = field(default_factory=IndexPageConfig)

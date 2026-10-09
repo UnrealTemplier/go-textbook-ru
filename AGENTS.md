@@ -306,7 +306,7 @@ python3 engine/tools/runtime_projection.py --compare old.json new.json
 Разметка генерируется `engine/template.py` и `engine/converter.py` с соблюдением стандартов HTML5 и спецификаций доступности (WAI-ARIA).
 
 Типы страниц и подключаемые скрипты:
-* **Страница статьи** (`render_article_page`): `style.css`, `katex.min.css`, затем в конце `<body>` — `prism-bundle.min.js`, `mermaid.min.js`, `katex.min.js`, `auto-render.min.js`, `main.js`. Содержит сайдбар с фильтром (`#sidebar-filter`), TOC, пагинацию и модальное окно диаграмм (`#mermaid-modal`).
+* **Страница статьи** (`render_article_page`): `style.css`, `katex.min.css` (если нужен KaTeX), `nav-data.js` (`defer`), затем в конце `<body>` — `prism-bundle.min.js`, `mermaid.min.js`, `katex.min.js`, `auto-render.min.js`, `main.js`. **Условная загрузка** (`[features] conditional_scripts`, с А3в): Mermaid — только на страницах с `pre.mermaid`, Prism — с блоками кода, KaTeX — если в тексте вне кода есть левый разделитель формулы (консервативно; совпадение числа формул проверено рантайм-проекцией). В `go-textbook` Mermaid не грузится на 8 страницах, KaTeX — на 630, Prism — на 86. Содержит сайдбар с фильтром (`#sidebar-filter`), TOC, пагинацию и модальное окно диаграмм (`#mermaid-modal`).
 * **Главная страница** (`render_index_page`): только `style.css`, `search-data.js` и `main.js` (без Prism, Mermaid и KaTeX). Содержит hero-секцию, глобальный поиск (`#global-search-input`) и каталог модулей.
 
 * **Лэндмарки документа:**

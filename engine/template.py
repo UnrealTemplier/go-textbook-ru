@@ -17,6 +17,26 @@ TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templa
 _PARTIALS: Dict[Any, Template] = {}
 
 
+_CODE_LIKE_RE = re.compile(r"<(pre|code|script|style|textarea|option)\b.*?</\1>", re.S)
+
+
+def page_needs(article_html: str, config: BookConfig) -> Dict[str, bool]:
+    """Какие библиотеки нужны странице: Mermaid (pre.mermaid), Prism (блоки кода), KaTeX (формулы).
+
+    KaTeX — консервативно: любой левый разделитель из [math].delimiters в тексте вне кода.
+    Лишнее подключение безопасно, пропуск стоил бы формул (сверяется рантайм-проекцией).
+    Без features.conditional_scripts нужно всё.
+    """
+    if not config.features.conditional_scripts:
+        return {"mermaid": True, "prism": True, "katex": True}
+    text = _CODE_LIKE_RE.sub("", article_html)
+    return {
+        "mermaid": '<pre class="mermaid">' in article_html,
+        "prism": 'class="code-block"' in article_html,
+        "katex": any(d["left"] in text for d in config.math.delimiters),
+    }
+
+
 def extra_asset_tags(config: BookConfig, rel_root: str, kind: str) -> str:
     """<link>/<script> для extra.css / extra.js книги, если они есть (иначе пустая строка)."""
     name = "extra.css" if kind == "css" else "extra.js"
@@ -409,6 +429,21 @@ def render_article_page(
         position_html = f'\n              <span class="meta-tag position-tag">{config.t("article.position", n=article.position, m=total_articles)}</span>'
     if article.is_index:
         article_html += render_index_children(article, rel_root)
+    needs = page_needs(article_html, config)
+    head_lines = []
+    if needs["katex"]:
+        head_lines.append(f'  <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">')
+    extra_css = extra_asset_tags(config, rel_root, "css")
+    if extra_css:
+        head_lines.append(extra_css.lstrip("\n"))
+    if hybrid:
+        head_lines.append(f'  <script src="{rel_root}assets/nav-data.js" defer></script>')
+    head_extra = "\n".join(head_lines)
+    vendor_scripts = "".join(
+        f'  <script src="{rel_root}assets/vendor/{src}"></script>\n' for src, need in (
+            ("prism-bundle.min.js", needs["prism"]), ("mermaid.min.js", needs["mermaid"]),
+            ("katex/katex.min.js", needs["katex"]), ("katex/contrib/auto-render.min.js", needs["katex"]))
+        if need)
     mermaid_tag = (f'<span class="meta-tag mermaid-tag">{config.t("article.mermaid_count", n=article.mermaid_count)}</span>'
                    if article.mermaid_count > 0 else '')
     ctx = {
@@ -437,7 +472,7 @@ def render_article_page(
   {render_favicon_links(config, rel_root)}
   {make_anti_flicker_script(config)}
   <link rel="stylesheet" href="{rel_root}assets/style.css">
-  <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">{extra_asset_tags(config, rel_root, "css")}{f'{chr(10)}  <script src="{rel_root}assets/nav-data.js" defer></script>' if hybrid else ''}
+{head_extra}
 </head>
 <body>
   <div class="reading-progress-bar" id="reading-progress" role="progressbar" aria-label="{config.t("page.reading_progress_aria")}" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
@@ -529,11 +564,7 @@ def render_article_page(
   {theme_switcher_html(config)}
 
   <!-- Скрипты -->
-  <script src="{rel_root}assets/vendor/prism-bundle.min.js"></script>
-  <script src="{rel_root}assets/vendor/mermaid.min.js"></script>
-  <script src="{rel_root}assets/vendor/katex/katex.min.js"></script>
-  <script src="{rel_root}assets/vendor/katex/contrib/auto-render.min.js"></script>
-  <script src="{rel_root}assets/main.js"></script>{extra_asset_tags(config, rel_root, "js")}
+{vendor_scripts}  <script src="{rel_root}assets/main.js"></script>{extra_asset_tags(config, rel_root, "js")}
 </body>
 </html>
 """
