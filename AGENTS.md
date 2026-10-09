@@ -319,7 +319,7 @@ python3 engine/tools/runtime_projection.py --compare old.json new.json
   - `<footer class="app-footer">` — подвал документа.
 * **Навигационные элементы (`<nav>`):**
   - Хлебные крошки: `<nav class="breadcrumbs" aria-label="Хлебные крошки"><ol class="breadcrumbs-list">...`.
-  - Каталог в сайдбаре: `<nav class="sidebar-content" id="sidebar-content" aria-label="Содержание учебника">`.
+  - Каталог в сайдбаре: `<nav class="sidebar-content" id="sidebar-content" aria-label="Содержание учебника" data-rel-root=… data-current=…>`. **Гибридный сайдбар** (`[navigation] mode = "hybrid"`, с А3б): в HTML полный список только текущего модуля, остальные модули — заглушки `<details data-nav-module="N">` со ссылкой на первую статью (работают без JS); полное дерево — `assets/nav-data.js` (`window.NAV_DATA`, подключается `<script defer>` в `<head>`), `main.js` достраивает модуль при раскрытии и все модули перед фильтром. Счётчик «Статей» берётся из `nav-data.js`. Страница статьи ≈ 53 КБ вместо 325 КБ, `dist/` ≈ 122 МБ вместо 494 МБ.
   - Пагинация между статьями: `<nav class="article-bottom-nav" aria-label="Навигация по статьям">`.
 * **Элементы управления:**
   - Единый плавающий переключатель темы: `<button type="button" id="theme-switcher-btn" class="floating-theme-switcher" data-action="toggle-theme" ...>` в правом нижнем углу экрана (icon-only, SVG-иконки для 3 тем).
@@ -358,13 +358,14 @@ python3 engine/tools/runtime_projection.py --compare old.json new.json
   - `saveMermaidSources()` / `initMermaid()` / `rerenderMermaid()` — управление жизненным циклом диаграмм.
   - `initThemeSwitcher()` — переключение тем и синхронизация с `localStorage`; читает список тем из `data-available-themes` / `data-theme-labels` атрибутов `<html>`.
   - `initSidebarResize()` — изменение ширины сайдбара мышью с сохранением значения.
-  - `initSidebarFilter()` — мгновенный фильтр по дереву лекций.
+  - `initHybridSidebar()` — гибридный сайдбар: счётчик статей и достраивание модулей из `window.NAV_DATA` (создаёт модули, которых нет в HTML, если `static_module_list = false`).
+  - `initSidebarFilter()` — мгновенный фильтр по дереву лекций (перед поиском достраивает все модули).
   - `initSidebarCentering()` — центрирование активной лекции в дереве сайдбара.
   - `initScrollProgress()` — индикатор прогресса чтения статьи и кнопка «Наверх».
   - `initMobileMenu()` — мобильное меню-сайдбар (drawer).
   - `initGlobalSearch()` — клиентский поиск на главной странице по `window.SEARCH_DATA` из `search-data.js` (поля `title`, `url`, `module`, `sub`, `num`). Это поиск по **названиям**, а не по тексту статей: запрос делится на слова, каждое слово обязано найтись в названии статьи (+10 к рейтингу) или модуля (+3).
   - `initKaTeX()` — локальный рендеринг математических формул LaTeX (разделители `$$…$$`, `$…$`, `\(…\)`, `\[…\]`; код, `pre` и Mermaid игнорируются).
-* **Порядок инициализации на `DOMContentLoaded`:** `saveMermaidSources → initMermaid → initKaTeX → initActionDelegation → initSidebarResize → initSidebarFilter → initSidebarCentering → initScrollProgress → initMobileMenu → initGlobalSearch → initThemeSwitcher`. Функции проверяют наличие своих элементов в DOM и выходят, если их нет, поэтому один `main.js` обслуживает и статьи, и главную.
+* **Порядок инициализации на `DOMContentLoaded`:** `saveMermaidSources → initMermaid → initKaTeX → initActionDelegation → initSidebarResize → initHybridSidebar → initSidebarFilter → initSidebarCentering → initScrollProgress → initMobileMenu → initGlobalSearch → initThemeSwitcher`. Функции проверяют наличие своих элементов в DOM и выходят, если их нет, поэтому один `main.js` обслуживает и статьи, и главную.
 * **Ключи `localStorage`:** `go_encyclopedia_theme` (тема), `go_encyclopedia_sidebar_width` (ширина сайдбара, допускается 220–550 px). Ключи `go_encyclopedia_retro_effects*` от удалённой подсистемы ретро-эффектов (§ 13) больше не читаются и не пишутся; у старых посетителей они остаются в хранилище и ни на что не влияют. Все обращения обёрнуты в `try/catch`: если хранилище недоступно (например, отключено в браузере), исключение внутри одной `init*`-функции прервало бы весь обработчик `DOMContentLoaded`, и следующие модули не инициализировались бы.
 
 ---

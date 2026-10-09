@@ -69,6 +69,11 @@ class ReadingTimeConfig:
 @dataclass
 class NavigationConfig:
     reading_time: ReadingTimeConfig = field(default_factory=ReadingTimeConfig)
+    # "static" — полный сайдбар в каждой странице; "hybrid" — в HTML только текущий модуль,
+    # остальное — из assets/nav-data.js (анализ § 4.8.1)
+    mode: str = "hybrid"
+    # hybrid: заглушки остальных модулей в HTML (true) или только из nav-data.js (false)
+    static_module_list: bool = True
 
 
 @dataclass
@@ -288,6 +293,8 @@ def _validate(cfg: BookConfig) -> None:
     missing = [p for p in cfg.math.protect if p not in lefts]
     if missing:
         raise ConfigError(f"math.protect: {missing} нет среди левых разделителей math.delimiters")
+    if cfg.navigation.mode not in ("static", "hybrid"):
+        raise ConfigError("navigation.mode: допустимо 'static' или 'hybrid'")
     if cfg.navigation.reading_time.method != "bytes":
         raise ConfigError("navigation.reading_time.method: поддерживается только 'bytes'")
 

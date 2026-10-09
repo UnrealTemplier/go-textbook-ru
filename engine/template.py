@@ -186,12 +186,29 @@ def get_rel_root(rel_path: str) -> str:
         return "./"
     return "../" * depth
 
+def _first_page(mod: Dict[str, Any]) -> Optional[Article]:
+    if mod.get("index"):
+        return mod["index"]
+    if mod["articles"]:
+        return mod["articles"][0]
+    for sub in mod["subsections"]:
+        if sub.get("index") or sub["articles"]:
+            return sub.get("index") or sub["articles"][0]
+    return None
+
+
 def render_sidebar(
     modules_tree: List[Dict[str, Any]],
     current_article: Optional[Article],
-    rel_root: str
+    rel_root: str,
+    hybrid: bool = False,
+    static_module_list: bool = True
 ) -> str:
-    """Генерация интерактивного сайдбара с древовидным аккордеоном."""
+    """Генерация интерактивного сайдбара с древовидным аккордеоном.
+
+    hybrid: текущий модуль выводится полностью, остальные — заглушкой со ссылкой на первую
+    страницу (static_module_list) или не выводятся вовсе; main.js достраивает их из nav-data.js.
+    """
     html_parts = []
     html_parts.append('<div class="sidebar-nav">')
 
@@ -199,6 +216,23 @@ def render_sidebar(
 
     for mod in modules_tree:
         mod_num = mod["num"]
+        if hybrid and not (current_article and current_article.module_num == mod_num):
+            if not static_module_list:
+                continue
+            first = _first_page(mod)
+            mod_text = html.escape(mod["title"])
+            if mod.get("index"):
+                mod_text = _index_link(mod["index"], mod_text, rel_root, current_article)
+            html_parts.append(f'<details class="nav-module" data-nav-module="{mod_num}">')
+            html_parts.append(f'<summary class="nav-module-title"><span class="mod-badge">{mod_num}</span> <span class="mod-text">{mod_text}</span></summary>')
+            html_parts.append(f'<div class="nav-module-content" data-nav-stub="1">')
+            if first is not None:
+                html_parts.append('<ul class="nav-articles-list">')
+                html_parts.append(f'<li class="nav-item"><a href="{rel_root}{first.rel_output_path}">{html.escape(first.title)}</a></li>')
+                html_parts.append('</ul>')
+            html_parts.append('</div>')
+            html_parts.append('</details>')
+            continue
         mod_title = mod["title"]
         mod_raw = mod["raw_name"]
         
@@ -210,7 +244,8 @@ def render_sidebar(
         open_attr = "open" if is_mod_active else ""
         active_class = "active-module" if is_mod_active else ""
 
-        html_parts.append(f'<details class="nav-module {active_class}" {open_attr}>')
+        nav_attr = f' data-nav-module="{mod_num}"' if hybrid else ''
+        html_parts.append(f'<details class="nav-module {active_class}" {open_attr}{nav_attr}>')
         mod_text = html.escape(mod_title)
         if mod.get("index"):
             mod_text = _index_link(mod["index"], mod_text, rel_root, current_article)
@@ -314,7 +349,8 @@ def render_article_page(
 ) -> str:
     """Генерация полной HTML-страницы статьи. show_position — счётчик «N из M» (книги с индексными файлами)."""
     rel_root = get_rel_root(article.rel_output_path)
-    sidebar_html = render_sidebar(modules_tree, article, rel_root)
+    hybrid = config.navigation.mode == "hybrid"
+    sidebar_html = render_sidebar(modules_tree, article, rel_root, hybrid, config.navigation.static_module_list)
     breadcrumbs_html = render_breadcrumbs(article, rel_root, config)
 
     # Предыдущая и следующая статья
@@ -401,7 +437,7 @@ def render_article_page(
   {render_favicon_links(config, rel_root)}
   {make_anti_flicker_script(config)}
   <link rel="stylesheet" href="{rel_root}assets/style.css">
-  <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">{extra_asset_tags(config, rel_root, "css")}
+  <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">{extra_asset_tags(config, rel_root, "css")}{f'{chr(10)}  <script src="{rel_root}assets/nav-data.js" defer></script>' if hybrid else ''}
 </head>
 <body>
   <div class="reading-progress-bar" id="reading-progress" role="progressbar" aria-label="{config.t("page.reading_progress_aria")}" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
@@ -422,12 +458,12 @@ def render_article_page(
       </div>
 
       <!-- Оглавление сайдбара -->
-      <nav class="sidebar-content" id="sidebar-content" aria-label="{config.t("sidebar.content_aria")}">
+      <nav class="sidebar-content" id="sidebar-content" aria-label="{config.t("sidebar.content_aria")}"{f' data-rel-root="{rel_root}" data-current="{article.rel_output_path}"' if hybrid else ''}>
         {sidebar_html}
       </nav>
 
       <footer class="sidebar-footer">
-        <span class="catalog-stat">{config.t("sidebar.articles_count")} <strong>{total_articles}</strong></span>
+        <span class="catalog-stat">{config.t("sidebar.articles_count")} {'<strong data-nav-count></strong>' if hybrid else f'<strong>{total_articles}</strong>'}</span>
         <span class="sidebar-version">v{version}</span>
       </footer>
     </aside>

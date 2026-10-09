@@ -102,6 +102,24 @@ def apply_book_assets(config: BookConfig, dist_assets_dir: str) -> None:
             shutil.copy2(src, os.path.join(dist_assets_dir, name))
 
 
+def generate_nav_data_js(modules_tree, content_count: int, dist_dir: str) -> None:
+    """Дерево навигации для гибридного сайдбара: assets/nav-data.js (подключается через <script defer>).
+
+    Компактно: страница — [название, путь от корня сайта]; index — заглавная страница узла.
+    """
+    page = lambda a: [a.title, a.rel_output_path] if a else None
+    data = {"count": content_count, "modules": [{
+        "num": m["num"], "title": m["title"], "index": page(m.get("index")),
+        "items": [page(a) for a in m["articles"]],
+        "subs": [{"name": s["name"], "index": page(s.get("index")), "items": [page(a) for a in s["articles"]]}
+                 for s in m["subsections"]],
+    } for m in modules_tree]}
+    path = os.path.join(dist_dir, "assets", "nav-data.js")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fp:
+        fp.write("window.NAV_DATA = " + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + ";\n")
+
+
 def generate_search_data_js(articles: List[Article], dist_dir: str):
     """
     Генерация поискового индекса в виде search-data.js.
@@ -183,6 +201,8 @@ def build(
     themes_list = build_themed_css(engine_assets, dist_assets)
     apply_book_assets(config, dist_assets)
     generate_search_data_js(all_articles, dist_dir)
+    if config.navigation.mode == "hybrid":
+        generate_nav_data_js(scanner.modules_tree, scanner.content_count, dist_dir)
     
     # Копирование фавиконок книги в корень dist/ и в dist/assets/
     for fav in [config.branding.favicon_svg, config.branding.favicon_ico]:
