@@ -207,22 +207,19 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --original-file
 2. **Единый плавающий переключатель (Floating Theme Switcher):**  
    Элемент переключения темы вынесен из сайдбара в единую плавающую кнопку в правом нижнем углу экрана (`bottom: 24px, right: 24px`, класс `.floating-theme-switcher`). Это круглая icon-only кнопка с SVG-иконками (Paper — документ, Light — солнце, Dark — луна), доступным атрибутом `aria-label` и тултипом с названием текущей темы. Нажатие циклически переключает тему на клиенте на лету без перезагрузки: `<html data-theme="dark|paper|light">`. Порядок цикла задаётся полем `order` в `manifest.json`: `paper → light → dark → paper`.
 3. **Персистентность в `localStorage`:** Выбранная тема сохраняется под ключом `go_encyclopedia_theme`.
-4. **Защита от мигания (Anti-flicker):** В `<head>` каждой страницы первым выполняется комбинированный синхронный инлайн-скрипт «Theme & Retro anti-flicker», генерируемый динамически функцией `make_anti_flicker_script()` из `builder/template.py`. Скрипт читает список допустимых тем из `builder/assets/themes/manifest.json` и до начала отрисовки DOM:
-   - Восстанавливает активную тему из `localStorage` (ключ `go_encyclopedia_theme`).
-   - Восстанавливает ретро-эффекты (trail, site, code) из профиля **уже выбранной темы** (`go_encyclopedia_retro_effects_{theme}`) и выставляет на `<html>` те же `data-`атрибуты и CSS Custom Properties, что и `applyRetroEffects()` в `main.js`. Сила следа фиксирована (`0.20`), как в `main.js`; устаревший общий ключ `go_encyclopedia_retro_effects` не читается, потому что `main.js` его тоже игнорирует.
+4. **Защита от мигания (Anti-flicker):** В `<head>` каждой страницы первым выполняется синхронный инлайн-скрипт «Theme anti-flicker», генерируемый функцией `make_anti_flicker_script()` из `builder/template.py`. До начала отрисовки он восстанавливает тему из `localStorage` (ключ `go_encyclopedia_theme`); неизвестное или отсутствующее значение даёт тему по умолчанию.
    ```html
-   <script>/* Theme & Retro anti-flicker */(function(){try{
+   <script>/* Theme anti-flicker */(function(){try{
      var d=document.documentElement;
      var t=localStorage.getItem('go_encyclopedia_theme');
      if(t&&['paper','light','dark'].includes(t)){d.dataset.theme=t;}else{d.dataset.theme='dark';}
-     /* ... восстановление ретро-эффектов ... */
    }catch(e){}})();</script>
    ```
    > [!NOTE]
    > Список тем в скрипте (`['paper','light','dark']`) и тема по умолчанию генерируются автоматически из `manifest.json` (поля `themes[].key` и `default`). Добавление новой темы в манифест обновляет этот список при следующей сборке.
 
    > [!IMPORTANT]
-   > **Anti-flicker обязан совпадать с `main.js`.** До исправления скрипт читал устаревший общий ключ, а `main.js` с коммита `27337fe5` хранит профили по темам. Из-за этого сохранённые эффекты включались только после загрузки страницы, а данные из старого ключа на мгновение включали эффекты, которые `main.js` тут же выключал. Если меняется формат `DEFAULT_RETRO_STATE`, `retroStorageKey()` или `applyRetroEffects()`, нужно в том же коммите обновить `make_anti_flicker_script()` и проверить в браузере, что состояние `<html>` сразу после inline-скрипта совпадает с состоянием после `DOMContentLoaded`.
+   > **Anti-flicker обязан совпадать с `main.js`.** Ключ хранилища, список тем и тема по умолчанию в inline-скрипте и в `initThemeSwitcher()`/`toggleTheme()` должны быть одинаковыми. Если меняется любое из них, в том же коммите обновляется `make_anti_flicker_script()` и в браузере проверяется, что `data-theme` сразу после inline-скрипта совпадает с состоянием после `DOMContentLoaded`.
 5. **Семантические токены CSS Custom Properties:**  
    Токены тем определены в отдельных файлах `builder/assets/themes/{theme-key}.css` и при сборке конкатенируются в `dist/assets/style.css` через функцию `build_themed_css()`:
    - Фоновые слои: `--bg`, `--bg-surface`, `--bg-card`, `--bg-card-hover`, `--bg-elevated`.
@@ -231,7 +228,6 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --original-file
    - Акценты и статусы: `--accent`, `--accent-glow`, `--link`, `--link-glow`, `--success`, `--warning`, `--danger`.
    - Подсветка Prism: `--code-text`, `--code-keyword`, `--code-string`, `--code-comment`, `--code-function`, `--code-number`, `--code-class`, `--code-operator`, `--code-punctuation`.
    - Палитра Mermaid: `--mm-process-*`, `--mm-success-*`, `--mm-error-*`, `--mm-warning-*`, `--mm-entry-*`, `--mm-aux-*`, `--mm-system-*`, `--mm-data-*`, `--mm-network-*`, `--mm-accent-*`.
-   - Токены ретро-эффектов (специфичны для каждой темы): `--retro-noise-blend`, `--retro-vhs-line-alpha`, `--retro-crt-line-alpha`, `--retro-crt-glow-color`, `--retro-trail-blend`, `--retro-trail-filter`, `--retro-trail-gradient`.
 
    *Канонические базовые значения ключевых токенов палитр:*
 
@@ -281,8 +277,7 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --original-file
   - Пагинация между статьями: `<nav class="article-bottom-nav" aria-label="Навигация по статьям">`.
 * **Элементы управления:**
   - Единый плавающий переключатель темы: `<button type="button" id="theme-switcher-btn" class="floating-theme-switcher" data-action="toggle-theme" ...>` в правом нижнем углу экрана (icon-only, SVG-иконки для 3 тем).
-  - Кнопка ретро-эффектов: `<button type="button" id="retro-btn" class="floating-retro-btn" ...>` рядом с переключателем тем; открывает попап-панель (`#retro-popover`) настройки визуальных эффектов.
-  - Оверлейные слои ретро-эффектов: `<div id="retro-site-effects">` (VHS, CRT, Noise для всей страницы) и `<div id="retro-phosphor-trail">` (фосфорный след под курсором).
+  - Кнопка «Наверх» (`#btn-scroll-top`) появляется при прокрутке и стоит над переключателем темы.
 
 * **Оглавление статьи (TOC):**
   - `<aside class="article-toc" id="article-toc" aria-label="Оглавление страницы">` со списком `<ul class="toc-list">`.
@@ -297,7 +292,7 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --original-file
 * **Блоки кода:**
   - `_enhance_code_blocks` добавляет к каждому `<pre><code>` шапку с языком и кнопкой `data-action="copy-code"`; блоки без языка тоже получают шапку.
 * **Отказ от инлайновых `onclick`:**  
-  Все обработчики событий переведены на централизованное делегирование через атрибуты `data-action`. Полный список: `copy-code`, `mermaid-fullscreen`, `close-mermaid-modal` (кнопка и подложка модалки), `zoom-mermaid-in`, `zoom-mermaid-out`, `zoom-mermaid-reset`, `toggle-theme`. Кнопка и поповер ретро-эффектов обслуживаются собственными обработчиками `initRetroEffects()`.
+  Все обработчики событий переведены на централизованное делегирование через атрибуты `data-action`. Полный список: `copy-code`, `mermaid-fullscreen`, `close-mermaid-modal` (кнопка и подложка модалки), `zoom-mermaid-in`, `zoom-mermaid-out`, `zoom-mermaid-reset`, `toggle-theme`.
 
 ---
 
@@ -316,7 +311,6 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --original-file
 * **Основные архитектурные модули в `main.js`:**
   - `saveMermaidSources()` / `initMermaid()` / `rerenderMermaid()` — управление жизненным циклом диаграмм.
   - `initThemeSwitcher()` — переключение тем и синхронизация с `localStorage`; читает список тем из `data-available-themes` / `data-theme-labels` атрибутов `<html>`.
-  - `initRetroEffects()` — управление ретро-эффектами (VHS, CRT, Noise, Phosphor Trail); состояние хранится per-theme в `localStorage` под ключом `go_encyclopedia_retro_effects_{theme}`.
   - `initSidebarResize()` — изменение ширины сайдбара мышью с сохранением значения.
   - `initSidebarFilter()` — мгновенный фильтр по дереву лекций.
   - `initSidebarCentering()` — центрирование активной лекции в дереве сайдбара.
@@ -324,32 +318,8 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --original-file
   - `initMobileMenu()` — мобильное меню-сайдбар (drawer).
   - `initGlobalSearch()` — клиентский поиск на главной странице по `window.SEARCH_DATA` из `search-data.js` (поля `title`, `url`, `module`, `sub`, `num`). Это поиск по **названиям**, а не по тексту статей: запрос делится на слова, каждое слово обязано найтись в названии статьи (+10 к рейтингу) или модуля (+3).
   - `initKaTeX()` — локальный рендеринг математических формул LaTeX (разделители `$$…$$`, `$…$`, `\(…\)`, `\[…\]`; код, `pre` и Mermaid игнорируются).
-* **Порядок инициализации на `DOMContentLoaded`:** `saveMermaidSources → initMermaid → initKaTeX → initActionDelegation → initSidebarResize → initSidebarFilter → initSidebarCentering → initScrollProgress → initMobileMenu → initGlobalSearch → initThemeSwitcher → initRetroEffects`. Функции проверяют наличие своих элементов в DOM и выходят, если их нет, поэтому один `main.js` обслуживает и статьи, и главную.
-* **Ключи `localStorage`:** `go_encyclopedia_theme` (тема), `go_encyclopedia_sidebar_width` (ширина сайдбара), `go_encyclopedia_retro_effects_{theme}` (ретро-эффекты, § 6а; ширина допускается в диапазоне 220–550 px). Все обращения обёрнуты в `try/catch`: если хранилище недоступно (например, отключено в браузере), исключение внутри одной `init*`-функции прервало бы весь обработчик `DOMContentLoaded`, и следующие модули не инициализировались бы.
-
----
-
-## 🎞️ 6а. Подсистема ретро-эффектов (Retro Visual Effects)
-
-Портал содержит опциональную подсистему визуальных эффектов в стиле ретро-терминала, управляемую через плавающую кнопку `.floating-retro-btn` рядом с переключателем тем.
-
-### Эффекты и их CSS-переменные:
-
-| Эффект | Область | CSS-переменная | `data-` атрибут |
-|---|---|---|---|
-| **VHS-строки** (горизонтальные полосы) | Страница / код | `--retro-site-vhs` / `--retro-code-vhs` | `data-site-vhs` / `data-code-vhs` |
-| **CRT-свечение** (пиксельный эффект монитора) | Страница / код | `--retro-site-crt` / `--retro-code-crt` | `data-site-crt` / `data-code-crt` |
-| **Noise-зернистость** (аналоговый шум) | Страница / код | `--retro-site-noise` / `--retro-code-noise` | `data-site-noise` / `data-code-noise` |
-| **Phosphor Trail** (фосфорный след под курсором) | Курсор | `--retro-trail` | `data-retro-trail` |
-
-### Архитектура:
-- **HTML:** Оверлейный `<div id="retro-site-effects">` с тремя слоями (VHS, CRT, Noise) и `<div id="retro-phosphor-trail">` вставляются в каждую страницу шаблоном.
-- **CSS:** Базовые значения эффектов (по умолчанию `0`) определены в `:root`. Каждая тема переопределяет сопутствующие токены (`--retro-noise-blend`, `--retro-vhs-line-alpha`, `--retro-crt-glow-color`, `--retro-trail-gradient`) под свою палитру.
-- **JS (`main.js`):** Функция `initRetroEffects()` управляет поповером, слайдерами и тогглами. `applyRetroEffects()` записывает значения в CSS Custom Properties. `syncRetroUI()` обновляет UI при смене темы.
-- **Настройки по умолчанию (`DEFAULT_RETRO_STATE`):** все эффекты выключены; сила VHS/CRT/Noise для страницы — 30/30/20 %, для кода — 30/40/20 %. У VHS, CRT и Noise есть слайдер `0–100 %`; у Phosphor Trail слайдера нет — только переключатель, сила зафиксирована на 20 %.
-- **Защита слайдеров на мобильных (коммит `c96157b7`):** колесо мыши и жест прокрутки не меняют значение слайдера; после `change`/`pointerup`/`touchend` фокус снимается, а прокрутка страницы закрывает поповер.
-- **Персистентность:** Состояние хранится **per-theme** в `localStorage` под ключом `go_encyclopedia_retro_effects_{theme}` (отдельно для `dark`, `light`, `paper`). При переключении темы `toggleTheme()` сохраняет профиль текущей темы и загружает профиль новой.
-- **Anti-flicker:** Ретро-состояние профиля активной темы восстанавливается **до рендера** в inline-скрипте в `<head>` вместе с темой (§ 4, п. 4).
+* **Порядок инициализации на `DOMContentLoaded`:** `saveMermaidSources → initMermaid → initKaTeX → initActionDelegation → initSidebarResize → initSidebarFilter → initSidebarCentering → initScrollProgress → initMobileMenu → initGlobalSearch → initThemeSwitcher`. Функции проверяют наличие своих элементов в DOM и выходят, если их нет, поэтому один `main.js` обслуживает и статьи, и главную.
+* **Ключи `localStorage`:** `go_encyclopedia_theme` (тема), `go_encyclopedia_sidebar_width` (ширина сайдбара, допускается 220–550 px). Ключи `go_encyclopedia_retro_effects*` от удалённой подсистемы ретро-эффектов (§ 13) больше не читаются и не пишутся; у старых посетителей они остаются в хранилище и ни на что не влияют. Все обращения обёрнуты в `try/catch`: если хранилище недоступно (например, отключено в браузере), исключение внутри одной `init*`-функции прервало бы весь обработчик `DOMContentLoaded`, и следующие модули не инициализировались бы.
 
 ---
 
@@ -591,7 +561,7 @@ Markdown Source (sources/**/*.md)
 * **Version Metadata & Governance Centralization (коммиты `b6684f16`, `189fcb02`):**  
   Объявление `AGENTS.md § 1.4` единственным каноническим источником правды для версии проекта (`v1.1.0`), автоматический вывод версии в hero главной страницы и футер сайдбара статей, внедрение детерминированного парсера `get_project_version()` со строгой проверкой отсутствия дублирующих деклараций.
 * **Per-theme Retro Effects (коммит `27337fe5`):** `feat: per-theme retro effects persistence`  
-  Состояние ретро-эффектов (§ 6а) хранится отдельно для каждой темы под ключами `go_encyclopedia_retro_effects_{theme}`.
+  Состояние ретро-эффектов хранилось отдельно для каждой темы под ключами `go_encyclopedia_retro_effects_{theme}` (подсистема удалена 2026-10-09, см. ниже).
 * **Theme Architecture Refactoring (коммиты `2b91dcfe`, `5e0df56e`):** `refactor(themes): one-file-per-theme architecture and dynamic discovery`  
   Вынос CSS-токенов тем из монолитного `style.css` в отдельные файлы `builder/assets/themes/{dark,light,paper}.css`. Введён `manifest.json` как реестр тем (порядок, label, icon, default). Сборщик `build_themed_css()` автоматически конкатенирует темы при сборке. Функция `make_anti_flicker_script()` и `make_html_tag()` в `template.py` генерируют список тем динамически из манифеста. `main.js` читает список тем из `data-available-themes` атрибута. **Результат:** добавление новой темы = 1 файл + 1 строчка в манифест.
 * **Mermaid Runtime Audit & Sanitizer Hardening (коммиты `8aef090d`, `1598e5d8`, `8a4bfb2e`, `a8d34615`):** `fix(builder): harden mermaid sanitizer and add runtime mermaid audit`, `fix(module-02): repair 13 mermaid diagrams…`, `fix(mermaid): repair the remaining 18 diagrams…`, `fix(mermaid): move :::class out of quoted node labels`  
@@ -607,6 +577,9 @@ Markdown Source (sources/**/*.md)
 * **Documentation Sync (2026-10-06):** `AGENTS.md` и `README.md` сверены с кодом: зависимости сборки, поведение `build_all.py`/`audit_all.py`, фактический API `main.js`, конвейер конвертера, фактчек, временные файлы в корне.
 * **Retro Anti-flicker & Storage Guards (2026-10-06):** `fix(ui): restore retro anti-flicker and guard sidebar storage`  
   Anti-flicker читает профиль ретро-эффектов активной темы и воспроизводит логику `applyRetroEffects()`: до рендера и после загрузки состояние `<html>` совпадает (проверено в headless Firefox на 6 сценариях, включая старый ключ, нулевую силу, неизвестную тему и битый JSON). Обращения к ширине сайдбара в `localStorage` обёрнуты в `try/catch`: раньше при отключённом хранилище исключение в `initSidebarResize()` обрывало инициализацию всех последующих модулей `main.js`, включая переключатель темы и ретро-эффекты.
+
+* **Retro Effects Removal (2026-10-09):** `refactor(ui): remove retro visual effects`  
+  По решению владельца подсистема ретро-эффектов (VHS, CRT, Noise, Phosphor Trail; кнопка и поповер настроек, оверлеи страницы, слои в блоках кода, токены `--retro-*` в темах, профили в `localStorage`) удалена полностью. Система тем не изменилась. Anti-flicker восстанавливает только тему. Кнопка «Наверх» опустилась на место ретро-кнопки. Тело статей не изменилось, кроме удалённых пустых слоёв эффектов в блоках кода; `dist/` уменьшился с 506 до 494 МБ. Проверено в headless Firefox: тема до и после загрузки, переключение и сохранение, Mermaid после смены темы, KaTeX, копирование кода, модальное окно, фильтр сайдбара, поиск, старые ключи ретро-эффектов не влияют, 0 ошибок JS.
 
 ---
 

@@ -87,23 +87,11 @@ def make_anti_flicker_script() -> str:
     theme_keys = [t["key"] for t in themes]
     theme_keys_js = str(theme_keys).replace("'", "'")
     return (
-        '<script>/* Theme & Retro anti-flicker */(function(){'
+        '<script>/* Theme anti-flicker */(function(){'
         'try{'
         "var d=document.documentElement;"
         "var t=localStorage.getItem('go_encyclopedia_theme');"
         f"if(t&&{theme_keys_js}.includes(t)){{d.dataset.theme=t;}}else{{d.dataset.theme='{default_theme}';}}"
-        # Ретро-эффекты хранятся отдельно для каждой темы (main.js: retroStorageKey).
-        # Сила фосфорного следа в main.js фиксирована (20 %), сохранённое значение не читается.
-        "var r=localStorage.getItem('go_encyclopedia_retro_effects_'+d.dataset.theme);"
-        "if(r){"
-        "var c=JSON.parse(r),s=d.style;"
-        "if(c.trail&&c.trail.enabled===true){d.dataset.retroTrail='on';s.setProperty('--retro-trail','0.20');}"
-        "['site','code'].forEach(function(g){var o=c[g];if(!o)return;"
-        "['vhs','crt','noise'].forEach(function(e){var x=o[e];if(!x||x.enabled!==true)return;"
-        "var v=Math.max(0,Math.min(100,Math.round(Number(x.strength))));"
-        "if(v>0){d.dataset[g+e.charAt(0).toUpperCase()+e.slice(1)]='on';s.setProperty('--retro-'+g+'-'+e,(v/100).toFixed(2));}"
-        "});});"
-        "}"
         "}catch(e){}"
         '})();</script>'
     )
@@ -135,128 +123,6 @@ FLOATING_THEME_SWITCHER_HTML = (
     '      </svg>\n'
     '    </span>\n'
     '  </button>'
-)
-
-RETRO_SITE_EFFECTS_HTML = (
-    '<div id="retro-site-effects" class="retro-site-effects" aria-hidden="true">\n'
-    '  <div class="retro-site-vhs-layer"></div>\n'
-    '  <div class="retro-site-crt-layer"></div>\n'
-    '  <div class="retro-site-noise-layer"></div>\n'
-    '</div>\n'
-    '<div id="retro-phosphor-trail" class="retro-phosphor-trail" aria-hidden="true">\n'
-    '  <div class="retro-phosphor-beam"></div>\n'
-    '</div>'
-)
-
-RETRO_CONTROLS_HTML = (
-    '<button type="button" id="retro-btn" class="floating-retro-btn" '
-    'aria-label="Ретро-эффекты" aria-haspopup="dialog" aria-expanded="false" aria-controls="retro-popover">\n'
-    '  <svg class="retro-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">\n'
-    '    <line x1="4" y1="21" x2="4" y2="14"></line>\n'
-    '    <line x1="4" y1="10" x2="4" y2="3"></line>\n'
-    '    <line x1="12" y1="21" x2="12" y2="12"></line>\n'
-    '    <line x1="12" y1="8" x2="12" y2="3"></line>\n'
-    '    <line x1="20" y1="21" x2="20" y2="16"></line>\n'
-    '    <line x1="20" y1="12" x2="20" y2="3"></line>\n'
-    '    <line x1="1" y1="14" x2="7" y2="14"></line>\n'
-    '    <line x1="9" y1="8" x2="15" y2="8"></line>\n'
-    '    <line x1="17" y1="16" x2="23" y2="16"></line>\n'
-    '  </svg>\n'
-    '</button>\n'
-    '<div id="retro-popover" class="retro-popover" role="dialog" aria-label="Ретро-эффекты" aria-hidden="true">\n'
-    '  <header class="retro-popover-header">\n'
-    '    <div class="retro-popover-title">\n'
-    '      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">\n'
-    '        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>\n'
-    '        <line x1="8" y1="21" x2="16" y2="21"></line>\n'
-    '        <line x1="12" y1="17" x2="12" y2="21"></line>\n'
-    '      </svg>\n'
-    '      <span>Ретро-эффекты</span>\n'
-    '    </div>\n'
-    '    <button type="button" class="btn-retro-close" id="retro-close-btn" aria-label="Закрыть настройки ретро-эффектов">&times;</button>\n'
-    '  </header>\n'
-    '  <div class="retro-popover-body">\n'
-    '    <div class="retro-trail-card" data-scope="trail">\n'
-    '      <label class="retro-switch" for="retro-trail-toggle">\n'
-    '        <input type="checkbox" id="retro-trail-toggle" data-scope="trail">\n'
-    '        <span class="retro-switch-slider"></span>\n'
-    '        <span class="retro-switch-label">Phosphor trail</span>\n'
-    '      </label>\n'
-    '    </div>\n'
-    '    <fieldset class="retro-group">\n'
-    '      <legend class="retro-group-legend">Весь сайт</legend>\n'
-    '      <div class="retro-control-row" data-scope="site" data-effect="vhs">\n'
-    '        <label class="retro-switch" for="retro-site-vhs-toggle">\n'
-    '          <input type="checkbox" id="retro-site-vhs-toggle" data-scope="site" data-effect="vhs">\n'
-    '          <span class="retro-switch-slider"></span>\n'
-    '          <span class="retro-switch-label">VHS / Scanlines</span>\n'
-    '        </label>\n'
-    '        <div class="retro-slider-wrap" id="retro-site-vhs-slider-wrap">\n'
-    '          <input type="range" class="retro-slider" id="retro-site-vhs-slider" data-scope="site" data-effect="vhs" min="0" max="100" step="1" value="30" aria-label="Сила VHS для всего сайта">\n'
-    '          <span class="retro-slider-val" id="retro-site-vhs-val">30%</span>\n'
-    '        </div>\n'
-    '      </div>\n'
-    '      <div class="retro-control-row" data-scope="site" data-effect="crt">\n'
-    '        <label class="retro-switch" for="retro-site-crt-toggle">\n'
-    '          <input type="checkbox" id="retro-site-crt-toggle" data-scope="site" data-effect="crt">\n'
-    '          <span class="retro-switch-slider"></span>\n'
-    '          <span class="retro-switch-label">CRT</span>\n'
-    '        </label>\n'
-    '        <div class="retro-slider-wrap" id="retro-site-crt-slider-wrap">\n'
-    '          <input type="range" class="retro-slider" id="retro-site-crt-slider" data-scope="site" data-effect="crt" min="0" max="100" step="1" value="30" aria-label="Сила CRT для всего сайта">\n'
-    '          <span class="retro-slider-val" id="retro-site-crt-val">30%</span>\n'
-    '        </div>\n'
-    '      </div>\n'
-    '      <div class="retro-control-row" data-scope="site" data-effect="noise">\n'
-    '        <label class="retro-switch" for="retro-site-noise-toggle">\n'
-    '          <input type="checkbox" id="retro-site-noise-toggle" data-scope="site" data-effect="noise">\n'
-    '          <span class="retro-switch-slider"></span>\n'
-    '          <span class="retro-switch-label">Noise</span>\n'
-    '        </label>\n'
-    '        <div class="retro-slider-wrap" id="retro-site-noise-slider-wrap">\n'
-    '          <input type="range" class="retro-slider" id="retro-site-noise-slider" data-scope="site" data-effect="noise" min="0" max="100" step="1" value="20" aria-label="Сила Noise для всего сайта">\n'
-    '          <span class="retro-slider-val" id="retro-site-noise-val">20%</span>\n'
-    '        </div>\n'
-    '      </div>\n'
-    '    </fieldset>\n'
-    '    <fieldset class="retro-group">\n'
-    '      <legend class="retro-group-legend">Блоки кода</legend>\n'
-    '      <div class="retro-control-row" data-scope="code" data-effect="vhs">\n'
-    '        <label class="retro-switch" for="retro-code-vhs-toggle">\n'
-    '          <input type="checkbox" id="retro-code-vhs-toggle" data-scope="code" data-effect="vhs">\n'
-    '          <span class="retro-switch-slider"></span>\n'
-    '          <span class="retro-switch-label">VHS / Scanlines</span>\n'
-    '        </label>\n'
-    '        <div class="retro-slider-wrap" id="retro-code-vhs-slider-wrap">\n'
-    '          <input type="range" class="retro-slider" id="retro-code-vhs-slider" data-scope="code" data-effect="vhs" min="0" max="100" step="1" value="30" aria-label="Сила VHS для блоков кода">\n'
-    '          <span class="retro-slider-val" id="retro-code-vhs-val">30%</span>\n'
-    '        </div>\n'
-    '      </div>\n'
-    '      <div class="retro-control-row" data-scope="code" data-effect="crt">\n'
-    '        <label class="retro-switch" for="retro-code-crt-toggle">\n'
-    '          <input type="checkbox" id="retro-code-crt-toggle" data-scope="code" data-effect="crt">\n'
-    '          <span class="retro-switch-slider"></span>\n'
-    '          <span class="retro-switch-label">CRT</span>\n'
-    '        </label>\n'
-    '        <div class="retro-slider-wrap" id="retro-code-crt-slider-wrap">\n'
-    '          <input type="range" class="retro-slider" id="retro-code-crt-slider" data-scope="code" data-effect="crt" min="0" max="100" step="1" value="40" aria-label="Сила CRT для блоков кода">\n'
-    '          <span class="retro-slider-val" id="retro-code-crt-val">40%</span>\n'
-    '        </div>\n'
-    '      </div>\n'
-    '      <div class="retro-control-row" data-scope="code" data-effect="noise">\n'
-    '        <label class="retro-switch" for="retro-code-noise-toggle">\n'
-    '          <input type="checkbox" id="retro-code-noise-toggle" data-scope="code" data-effect="noise">\n'
-    '          <span class="retro-switch-slider"></span>\n'
-    '          <span class="retro-switch-label">Noise</span>\n'
-    '        </label>\n'
-    '        <div class="retro-slider-wrap" id="retro-code-noise-slider-wrap">\n'
-    '          <input type="range" class="retro-slider" id="retro-code-noise-slider" data-scope="code" data-effect="noise" min="0" max="100" step="1" value="20" aria-label="Сила Noise для блоков кода">\n'
-    '          <span class="retro-slider-val" id="retro-code-noise-val">20%</span>\n'
-    '        </div>\n'
-    '      </div>\n'
-    '    </fieldset>\n'
-    '  </div>\n'
-    '</div>'
 )
 
 def make_html_tag() -> str:
@@ -541,10 +407,6 @@ def render_article_page(
   <!-- Единый плавающий переключатель темы -->
   {FLOATING_THEME_SWITCHER_HTML}
 
-  <!-- Плавающие элементы ретро-эффектов -->
-  {RETRO_SITE_EFFECTS_HTML}
-  {RETRO_CONTROLS_HTML}
-
   <!-- Скрипты -->
   <script src="{rel_root}assets/vendor/prism-bundle.min.js"></script>
   <script src="{rel_root}assets/vendor/mermaid.min.js"></script>
@@ -712,10 +574,6 @@ def render_index_page(
 
   <!-- Единый плавающий переключатель темы -->
   {FLOATING_THEME_SWITCHER_HTML}
-
-  <!-- Плавающие элементы ретро-эффектов -->
-  {RETRO_SITE_EFFECTS_HTML}
-  {RETRO_CONTROLS_HTML}
 
   <script src="{rel_root}assets/search-data.js"></script>
   <script src="{rel_root}assets/main.js"></script>
