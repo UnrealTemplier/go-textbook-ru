@@ -5,8 +5,8 @@
 """
 import unittest
 
-from builder.scanner import slugify, canonicalize_title, normalize_key
-from builder.converter import MarkdownConverter
+from engine.scanner import slugify, canonicalize_title, normalize_key
+from engine.converter import MarkdownConverter
 
 
 class SlugifyTest(unittest.TestCase):

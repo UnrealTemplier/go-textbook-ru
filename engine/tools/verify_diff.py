@@ -1,5 +1,5 @@
 """
-builder/tools/verify_diff.py
+engine/tools/verify_diff.py
 Сравнение двух сборок dist/ для проверки рефакторинга движка (анализ § 4.11, § 5).
 
 Режимы:

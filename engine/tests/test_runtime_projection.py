@@ -3,7 +3,7 @@ import os
 import tempfile
 import unittest
 
-from builder.tools import runtime_projection as rp
+from engine.tools import runtime_projection as rp
 
 
 class CompareTest(unittest.TestCase):

@@ -1,5 +1,5 @@
 """
-builder/tools/runtime_projection.py
+engine/tools/runtime_projection.py
 Рантайм-проекция сборки (анализ § 4.11): что браузер действительно отрисовал на каждой странице.
 
 Для каждой HTML-страницы dist/ в headless Firefox по file:// считаются: .katex, .katex-display,
@@ -10,8 +10,8 @@ builder/tools/runtime_projection.py
 трогается), рядом с каждой страницей — пробная копия со встроенными скриптами. N процессов
 Firefox обходят свои части страниц цепочкой и отправляют результат маячком на локальный сервер.
 
-  python3 builder/tools/runtime_projection.py dist --out runtime.json [--workers 12]
-  python3 builder/tools/runtime_projection.py --compare old.json new.json
+  python3 engine/tools/runtime_projection.py dist --out runtime.json [--workers 12]
+  python3 engine/tools/runtime_projection.py --compare old.json new.json
 """
 
 import argparse

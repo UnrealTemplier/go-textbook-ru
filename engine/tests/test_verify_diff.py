@@ -3,7 +3,7 @@ import os
 import tempfile
 import unittest
 
-from builder.tools import verify_diff as vd
+from engine.tools import verify_diff as vd
 
 
 PAGE = """<html><body><aside class="app-sidebar">nav {nav}</aside>

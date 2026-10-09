@@ -4,8 +4,8 @@ import re
 import tempfile
 import unittest
 
-from builder.scanner import KnowledgeBaseScanner
-from builder.converter import MarkdownConverter
+from engine.scanner import KnowledgeBaseScanner
+from engine.converter import MarkdownConverter
 
 
 def make_tree(root, files):

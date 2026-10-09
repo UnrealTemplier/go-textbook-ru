@@ -3,7 +3,7 @@ import os
 import tempfile
 import unittest
 
-from builder.template import get_project_version
+from engine.template import get_project_version
 
 
 class VersionTest(unittest.TestCase):

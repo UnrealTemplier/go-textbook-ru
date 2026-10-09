@@ -9,9 +9,9 @@ import os
 import re
 import unittest
 
-from builder.scanner import KnowledgeBaseScanner
-from builder.converter import MarkdownConverter
-from builder.template import render_article_page, render_index_page, get_project_version
+from engine.scanner import KnowledgeBaseScanner
+from engine.converter import MarkdownConverter
+from engine.template import render_article_page, render_index_page, get_project_version
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SOURCES = os.path.join(ROOT, "sources")

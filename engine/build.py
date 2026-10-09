@@ -1,12 +1,9 @@
 """
-builder/build_all.py
-Главный сборочный конвейер инженерной веб-энциклопедии бэкенда (Go & CS).
-Поддержка режимов --all, --pilot, --module N, --limit N.
+engine/build.py
+Главный сборочный конвейер: python -m engine.build [--all | --pilot | --module N | --limit N].
 """
 
 import os
-import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import shutil
 import time
 import json
@@ -14,21 +11,21 @@ import argparse
 from pathlib import Path
 from typing import List, Optional
 
-from builder.scanner import KnowledgeBaseScanner, Article
-from builder.converter import MarkdownConverter
-from builder.template import render_article_page, render_index_page, get_project_version
+from .scanner import KnowledgeBaseScanner, Article
+from .converter import MarkdownConverter
+from .template import render_article_page, render_index_page, get_project_version
 
-def copy_assets(builder_assets_dir: str, dist_assets_dir: str):
+def copy_assets(engine_assets_dir: str, dist_assets_dir: str):
     """Копирование статических ассетов (CSS, JS, Vendor) в dist/assets/."""
     os.makedirs(dist_assets_dir, exist_ok=True)
-    if not os.path.exists(builder_assets_dir):
-        print(f"[WARN] Builder assets directory not found: {builder_assets_dir}")
+    if not os.path.exists(engine_assets_dir):
+        print(f"[WARN] Engine assets directory not found: {engine_assets_dir}")
         return
 
-    for root, dirs, files in os.walk(builder_assets_dir):
+    for root, dirs, files in os.walk(engine_assets_dir):
         # Пропускаем папку themes/ — она обрабатывается build_themed_css
         dirs[:] = [d for d in dirs if d != "themes"]
-        rel = os.path.relpath(root, builder_assets_dir)
+        rel = os.path.relpath(root, engine_assets_dir)
         target_dir = os.path.join(dist_assets_dir, rel) if rel != "." else dist_assets_dir
         os.makedirs(target_dir, exist_ok=True)
         for f in files:
@@ -39,13 +36,13 @@ def copy_assets(builder_assets_dir: str, dist_assets_dir: str):
             dst_f = os.path.join(target_dir, f)
             shutil.copy2(src_f, dst_f)
 
-def build_themed_css(builder_assets_dir: str, dist_assets_dir: str) -> list:
+def build_themed_css(engine_assets_dir: str, dist_assets_dir: str) -> list:
     """
     Читает manifest.json из themes/, конкатенирует CSS файлы тем
     с основным style.css и записывает итоговый style.css в dist/assets/.
     Возвращает список словарей тем из манифеста.
     """
-    themes_dir = os.path.join(builder_assets_dir, "themes")
+    themes_dir = os.path.join(engine_assets_dir, "themes")
     manifest_path = os.path.join(themes_dir, "manifest.json")
 
     if not os.path.exists(manifest_path):
@@ -70,7 +67,7 @@ def build_themed_css(builder_assets_dir: str, dist_assets_dir: str) -> list:
             print(f"[WARN] Theme CSS not found: {css_file}")
 
     # Читаем базовый style.css (без тем)
-    base_css_path = os.path.join(builder_assets_dir, "style.css")
+    base_css_path = os.path.join(engine_assets_dir, "style.css")
     base_css = ""
     if os.path.exists(base_css_path):
         with open(base_css_path, encoding="utf-8") as f:
@@ -149,10 +146,10 @@ def build(
 
     # 2. Подготовка директорий и копирование ассетов
     print(f"\n[2/4] 📦 Подготовка директории {dist_dir} и копирование ассетов...")
-    builder_assets = os.path.join(os.path.dirname(__file__), "assets")
+    engine_assets = os.path.join(os.path.dirname(__file__), "assets")
     dist_assets = os.path.join(dist_dir, "assets")
-    copy_assets(builder_assets, dist_assets)
-    themes_list = build_themed_css(builder_assets, dist_assets)
+    copy_assets(engine_assets, dist_assets)
+    themes_list = build_themed_css(engine_assets, dist_assets)
     generate_search_data_js(all_articles, dist_dir)
     
     # Копирование favicon в корень dist/ и в dist/assets/

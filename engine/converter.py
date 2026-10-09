@@ -1,5 +1,5 @@
 """
-builder/converter.py
+engine/converter.py
 Преобразование Markdown-статей в чистый семантический HTML5.
 Обработка Callouts, Mermaid диаграмм, Prism.js подсветки, Wikilinks и TOC.
 """
@@ -9,7 +9,7 @@ import html
 import textwrap
 from typing import Tuple, Dict, Any, List, Optional
 import markdown
-from builder.scanner import slugify, Article, KnowledgeBaseScanner
+from .scanner import slugify, Article, KnowledgeBaseScanner
 
 CALLOUT_CONFIG = {
     "tip": {

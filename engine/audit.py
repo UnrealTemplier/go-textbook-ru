@@ -1,5 +1,5 @@
 """
-builder/audit_all.py
+engine/audit.py
 Сквозной аудит качества (QA):
 1. Проверка кроссплатформенной совместимости имен файлов (Windows, macOS, Linux).
 2. Проверка целостности ссылок (0 broken links).
@@ -423,7 +423,7 @@ class SiteAuditor:
         return shutil.which("firefox")
 
     def _mermaid_js_path(self) -> Optional[str]:
-        """Вендорный Mermaid: сначала копия из dist, затем из builder/assets."""
+        """Вендорный Mermaid: сначала копия из dist, затем из engine/assets."""
         candidates = [
             os.path.join(self.dist_dir, "assets", "vendor", "mermaid.min.js"),
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "vendor", "mermaid.min.js"),

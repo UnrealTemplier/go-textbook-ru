@@ -1,5 +1,5 @@
 """
-builder/template.py
+engine/template.py
 HTML5 шаблоны, CSS стили в стиле Go Workout (Dark Theme) и JS скрипты для
 автономной работы портала (file:/// и веб-хостинг).
 """
@@ -9,7 +9,7 @@ import re
 import html
 import json
 from typing import Dict, Any, List, Optional
-from builder.scanner import Article
+from .scanner import Article
 
 def get_project_version(agents_path: Optional[str] = None) -> str:
     """
@@ -56,7 +56,7 @@ def get_project_version(agents_path: Optional[str] = None) -> str:
     return version_raw
 
 def _load_themes_manifest():
-    """Загружает manifest.json из builder/assets/themes/ для динамической генерации тем."""
+    """Загружает manifest.json из engine/assets/themes/ для динамической генерации тем."""
     here = os.path.dirname(os.path.abspath(__file__))
     manifest_path = os.path.join(here, "assets", "themes", "manifest.json")
     try:
