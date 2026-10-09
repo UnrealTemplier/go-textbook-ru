@@ -255,11 +255,12 @@ def render_sidebar(
     html_parts.append('</div>') # sidebar-nav
     return "\n".join(html_parts)
 
-def _index_link(index: Article, text: str, rel_root: str, current: Optional[Article]) -> str:
-    """Ссылка на заглавную страницу каталога (сайдбар, хлебные крошки)."""
+def _index_link(index: Article, text: str, rel_root: str, current: Optional[Article],
+                css_class: str = "index-link") -> str:
+    """Ссылка на заглавную страницу каталога (сайдбар — index-link, хлебные крошки — crumb-link)."""
     if current is index:
-        return f'<a href="{rel_root}{index.rel_output_path}" class="index-link active" aria-current="page">{text}</a>'
-    return f'<a href="{rel_root}{index.rel_output_path}" class="index-link">{text}</a>'
+        return f'<a href="{rel_root}{index.rel_output_path}" class="{css_class} active" aria-current="page">{text}</a>'
+    return f'<a href="{rel_root}{index.rel_output_path}" class="{css_class}">{text}</a>'
 
 
 def render_index_children(article: Article, rel_root: str) -> str:
@@ -286,13 +287,13 @@ def render_breadcrumbs(article: Article, rel_root: str, config: BookConfig) -> s
     crumbs.append('<li class="crumb-sep" aria-hidden="true">/</li>')
     mod_text = html.escape(article.module_name)
     if article.module_index is not None and article.module_index is not article:
-        mod_text = _index_link(article.module_index, mod_text, rel_root, article)
+        mod_text = _index_link(article.module_index, mod_text, rel_root, article, "crumb-link")
     crumbs.append(f'<li class="crumb-item crumb-module">{mod_text}</li>')
     
     if article.subsection_name:
         sub_text = html.escape(article.subsection_name)
         if article.section_index is not None and article.section_index is not article:
-            sub_text = _index_link(article.section_index, sub_text, rel_root, article)
+            sub_text = _index_link(article.section_index, sub_text, rel_root, article, "crumb-link")
         crumbs.append('<li class="crumb-sep" aria-hidden="true">/</li>')
         crumbs.append(f'<li class="crumb-item crumb-sub">{sub_text}</li>')
 

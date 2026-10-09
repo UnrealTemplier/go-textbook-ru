@@ -80,6 +80,7 @@ go-textbook/
 │   ├── hooks.py           # Хуки книги из book/hooks.py: transform_markdown, render_callout, page_context, extra_audit_checks
 │   ├── checksums.py       # Контрольные суммы ядра (engine/.checksums.json создаётся при выпуске версии)
 │   ├── VERSION / CHANGELOG.md  # Версия ядра (сейчас 1.2.0-dev) и журнал с пометкой «меняет вывод»
+│   ├── demo/              # Демо-книга движка (book.toml + sources/) с включёнными возможностями; golden/ — эталон HTML для test_demo.py
 │   ├── strings/ru.toml    # Строки интерфейса движка (подписи, aria-label, заголовки выносок); книга переопределяет их в book.toml [strings]
 │   ├── scanner.py         # Рекурсивный обход sources/ любой глубины (ошибки вместо тихих потерь файлов), индексные файлы каталогов, title_source, slugify, граф wikilinks
 │   ├── converter/         # Конвертер Markdown → семантический HTML (пакет)
