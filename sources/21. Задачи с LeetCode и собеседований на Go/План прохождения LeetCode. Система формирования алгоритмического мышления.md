@@ -62,7 +62,7 @@ flowchart TD
 #### Фаза 3. Хеш-таблицы и префиксные суммы (Переиспользование вычислений)
 - **Цель:** Научиться обменивать память на время ($O(1)$ lookup), хранить кумулятивное состояние и работать с коллизиями.
 - **Теория:** [[1. Теория. Префиксные суммы]], [[1. Теория. Хеш таблицы]].
-- **Ключевые задачи:** [[4. Subarray Sum Equals K]], [[3. Range Sum Query Immutable]], [[5. Continuous Subarray Sum]], [[4. Top K Frequent Elements]], [[8. Longest Consecutive Sequence]], [[3. Group Anagrams]].
+- **Ключевые задачи:** [[4. Subarray Sum Equals K]], [[3. Range Sum Query Immutable]], [[5. Continuous Subarray Sum]], [[05. Хеш таблицы/4. Top K Frequent Elements]], [[8. Longest Consecutive Sequence]], [[3. Group Anagrams]].
 
 #### Фаза 4. Стеки и очереди (Монотонность и потоки данных)
 - **Цель:** Освоить структуры LIFO и FIFO, научиться строить монотонные последовательности для поиска ближайших больших/меньших элементов за $O(N)$.
