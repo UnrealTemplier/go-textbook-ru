@@ -94,7 +94,7 @@ go-textbook/
 │   ├── template.py        # Каркас HTML5, шаблоны страниц, навигация, сайдбар, TOC, версия, anti-flicker
 │   ├── audit.py           # Сквозной QA-аудит: python -m engine.audit (ОС-совместимость, управляющие символы, ссылки, анкоры, Mermaid + рантайм-разбор)
 │   ├── tests/             # Тесты ядра (unittest), см. § 3.3а
-│   ├── tools/             # Инструменты проверки рефакторинга движка: verify_diff.py, runtime_projection.py, lists_oracle.py, см. § 3.3б; title_duplicates.py, см. § 11.4
+│   ├── tools/             # Инструменты проверки рефакторинга движка: verify_diff.py, runtime_projection.py, lists_oracle.py, fences_oracle.py, см. § 3.3б; title_duplicates.py, см. § 11.4
 │   └── assets/            # Исходные статические ассеты (стили, скрипты, вендор)
 │       ├── themes/        # Реестр и CSS-токены тем (один файл — одна тема)
 │       │   ├── manifest.json  # Реестр тем: порядок, label, icon, default
@@ -221,6 +221,7 @@ python3 engine/tools/runtime_projection.py --compare old.json new.json
 ```bash
 python3 -m engine.tools.lists_oracle --book book.toml --report /tmp/lists.json
 ```
+**Оракул оград** (`engine/tools/fences_oracle.py`, этап А3з) так же сравнивает текущий `book.toml` с `indented_fences = true`: внутри `<p>` нет блочных элементов, каждый новый `<pre>` лежит в пункте списка, исчезнувший `<pre>` целиком вошёл в новый, а видимый текст (код включительно) не меняется, кроме страниц, где ограда раньше разбиралась inline-кодом и ломала текст вокруг. Оба оракула запускают **до** включения флага в `book.toml`.
 
 Сам `dist/` не трогается: пробные страницы пишутся в зеркало из символьных ссылок во временном каталоге. Эталон для этапов А0–А2 — `engine-extraction/baseline/runtime-bbb4b1f7.json`.
 
