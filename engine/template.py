@@ -95,10 +95,12 @@ def make_anti_flicker_script(config: BookConfig) -> str:
         '})();</script>'
     )
 
-FLOATING_THEME_SWITCHER_HTML = (
+def theme_switcher_html(config: BookConfig) -> str:
+    aria = config.t("page.theme_switcher_aria")
+    return (
     '<button type="button" id="theme-switcher-btn" class="floating-theme-switcher" '
     'data-action="toggle-theme" '
-    'aria-label="Текущая тема: Dark (нажмите для смены)">\n'
+    f'aria-label="{aria}">\n'
     '    <span class="theme-icon-slot" aria-hidden="true">\n'
     '      <svg class="theme-icon theme-icon-paper" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">\n'
     '        <path d="M16 2H8a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"></path>\n'
@@ -122,7 +124,7 @@ FLOATING_THEME_SWITCHER_HTML = (
     '      </svg>\n'
     '    </span>\n'
     '  </button>'
-)
+    )
 
 def make_html_tag() -> str:
     """Генерирует открывающий тег <html> с атрибутами тем из manifest.json."""
@@ -221,10 +223,10 @@ def render_sidebar(
     html_parts.append('</div>') # sidebar-nav
     return "\n".join(html_parts)
 
-def render_breadcrumbs(article: Article, rel_root: str) -> str:
+def render_breadcrumbs(article: Article, rel_root: str, config: BookConfig) -> str:
     """Хлебные крошки над статьей."""
     crumbs = [
-        f'<li class="crumb-item"><a href="{rel_root}index.html" class="crumb-link">Главная</a></li>'
+        f'<li class="crumb-item"><a href="{rel_root}index.html" class="crumb-link">{config.t("breadcrumbs.home")}</a></li>'
     ]
     crumbs.append('<li class="crumb-sep" aria-hidden="true">/</li>')
     crumbs.append(f'<li class="crumb-item crumb-module">{html.escape(article.module_name)}</li>')
@@ -236,7 +238,7 @@ def render_breadcrumbs(article: Article, rel_root: str) -> str:
     crumbs.append('<li class="crumb-sep" aria-hidden="true">/</li>')
     crumbs.append(f'<li class="crumb-item crumb-current" aria-current="page">{html.escape(article.title)}</li>')
 
-    return f'<nav class="breadcrumbs" aria-label="Хлебные крошки"><ol class="breadcrumbs-list">{" ".join(crumbs)}</ol></nav>'
+    return f'<nav class="breadcrumbs" aria-label="{config.t("breadcrumbs.aria")}"><ol class="breadcrumbs-list">{" ".join(crumbs)}</ol></nav>'
 
 def render_article_page(
     article: Article,
@@ -250,7 +252,7 @@ def render_article_page(
     """Генерация полной HTML-страницы статьи."""
     rel_root = get_rel_root(article.rel_output_path)
     sidebar_html = render_sidebar(modules_tree, article, rel_root)
-    breadcrumbs_html = render_breadcrumbs(article, rel_root)
+    breadcrumbs_html = render_breadcrumbs(article, rel_root, config)
 
     # Предыдущая и следующая статья
     prev_link_html = ""
@@ -258,7 +260,7 @@ def render_article_page(
         p_href = rel_root + article.prev_article.rel_output_path
         prev_link_html = f"""
 <a href="{p_href}" class="article-nav-card prev-card" rel="prev">
-  <span class="nav-dir">← Предыдущая статья</span>
+  <span class="nav-dir">{config.t("article.prev")}</span>
   <span class="nav-title">{html.escape(article.prev_article.title)}</span>
 </a>
 """
@@ -270,7 +272,7 @@ def render_article_page(
         n_href = rel_root + article.next_article.rel_output_path
         next_link_html = f"""
 <a href="{n_href}" class="article-nav-card next-card" rel="next">
-  <span class="nav-dir">Следующая статья →</span>
+  <span class="nav-dir">{config.t("article.next")}</span>
   <span class="nav-title">{html.escape(article.next_article.title)}</span>
 </a>
 """
@@ -285,10 +287,10 @@ def render_article_page(
             cls = f"toc-item toc-h{level}"
             toc_items.append(f'<li class="{cls}"><a href="#{t["anchor"]}">{html.escape(t["title"])}</a></li>')
         toc_html = f"""
-<aside class="article-toc" id="article-toc" aria-label="Оглавление страницы">
+<aside class="article-toc" id="article-toc" aria-label="{config.t("article.toc_aria")}">
   <header class="toc-header">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-    <span>На этой странице</span>
+    <span>{config.t("article.toc_title")}</span>
   </header>
   <ul class="toc-list">
     {"".join(toc_items)}
@@ -317,11 +319,11 @@ def render_article_page(
   <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">
 </head>
 <body>
-  <div class="reading-progress-bar" id="reading-progress" role="progressbar" aria-label="Прогресс чтения статьи" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+  <div class="reading-progress-bar" id="reading-progress" role="progressbar" aria-label="{config.t("page.reading_progress_aria")}" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
 
   <div class="app-layout">
     <!-- Левый сайдбар -->
-    <aside class="app-sidebar" id="app-sidebar" aria-label="Навигация по курсу">
+    <aside class="app-sidebar" id="app-sidebar" aria-label="{config.t("sidebar.aria")}">
       <header class="sidebar-header">
         <a href="{rel_root}index.html" class="brand-logo" aria-label="{br.logo_aria_label}">
           <div class="logo-icon" aria-hidden="true">
@@ -337,31 +339,31 @@ def render_article_page(
       <!-- Поиск по сайдбару -->
       <div class="sidebar-search" role="search">
         <div class="search-input-wrapper">
-          <label for="sidebar-filter" class="visually-hidden">Фильтр по лекциям</label>
+          <label for="sidebar-filter" class="visually-hidden">{config.t("sidebar.filter_label")}</label>
           <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input type="search" id="sidebar-filter" placeholder="Фильтр по лекциям..." autocomplete="off" aria-label="Фильтр по лекциям">
-          <button type="button" class="clear-search-btn" id="clear-filter" title="Очистить" aria-label="Очистить фильтр">&times;</button>
+          <input type="search" id="sidebar-filter" placeholder="{config.t("sidebar.filter_placeholder")}" autocomplete="off" aria-label="{config.t("sidebar.filter_aria")}">
+          <button type="button" class="clear-search-btn" id="clear-filter" title="{config.t("sidebar.filter_clear_title")}" aria-label="{config.t("sidebar.filter_clear_aria")}">&times;</button>
         </div>
       </div>
 
       <!-- Оглавление сайдбара -->
-      <nav class="sidebar-content" id="sidebar-content" aria-label="Содержание учебника">
+      <nav class="sidebar-content" id="sidebar-content" aria-label="{config.t("sidebar.content_aria")}">
         {sidebar_html}
       </nav>
 
       <footer class="sidebar-footer">
-        <span class="catalog-stat">Статей: <strong>{total_articles}</strong></span>
+        <span class="catalog-stat">{config.t("sidebar.articles_count")} <strong>{total_articles}</strong></span>
         <span class="sidebar-version">v{version}</span>
       </footer>
     </aside>
 
     <!-- Ползунок изменения ширины сайдбара (drag-to-resize) -->
-    <div class="resizer" id="drag-resizer" role="separator" aria-orientation="vertical" aria-label="Регулятор ширины боковой панели" tabindex="0"></div>
+    <div class="resizer" id="drag-resizer" role="separator" aria-orientation="vertical" aria-label="{config.t("sidebar.resizer_aria")}" tabindex="0"></div>
 
     <!-- Основная контентная область -->
     <div class="app-main" id="app-main">
       <header class="content-header">
-        <button type="button" class="btn-toggle-sidebar" id="toggle-sidebar" title="Открыть меню" aria-label="Открыть или закрыть боковое меню" aria-expanded="false" aria-controls="app-sidebar">
+        <button type="button" class="btn-toggle-sidebar" id="toggle-sidebar" title="{config.t("sidebar.menu_toggle_title")}" aria-label="{config.t("sidebar.menu_toggle_aria")}" aria-expanded="false" aria-controls="app-sidebar">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
         </button>
         {breadcrumbs_html}
@@ -371,9 +373,9 @@ def render_article_page(
         <article class="article-body">
           <header class="article-header">
             <div class="article-meta-tags">
-              <span class="meta-tag module-tag">Модуль {article.module_num}</span>
-              <span class="meta-tag read-time">⏱ ~{reading_time} мин чтения</span>
-              {f'<span class="meta-tag mermaid-tag">📐 {article.mermaid_count} Mermaid диаграмм</span>' if article.mermaid_count > 0 else ''}
+              <span class="meta-tag module-tag">{config.t("article.module_tag", n=article.module_num)}</span>
+              <span class="meta-tag read-time">{config.t("article.reading_time", n=reading_time)}</span>
+              {f'<span class="meta-tag mermaid-tag">{config.t("article.mermaid_count", n=article.mermaid_count)}</span>' if article.mermaid_count > 0 else ''}
             </div>
             <h1 class="article-title">{html.escape(article.title)}</h1>
           </header>
@@ -383,7 +385,7 @@ def render_article_page(
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
-          <nav class="article-bottom-nav" aria-label="Навигация по статьям">
+          <nav class="article-bottom-nav" aria-label="{config.t("article.nav_aria")}">
             {prev_link_html}
             {next_link_html}
           </nav>
@@ -404,25 +406,25 @@ def render_article_page(
     <div class="modal-backdrop" data-action="close-mermaid-modal" aria-hidden="true"></div>
     <div class="modal-dialog" role="document">
       <header class="modal-header">
-        <h2 class="modal-title" id="mermaid-modal-title">Архитектурная схема (Mermaid)</h2>
+        <h2 class="modal-title" id="mermaid-modal-title">{config.t("mermaid.modal_title")}</h2>
         <div class="modal-actions">
-          <button type="button" class="btn-modal-action" data-action="zoom-mermaid-in" title="Приблизить" aria-label="Приблизить">+</button>
-          <button type="button" class="btn-modal-action" data-action="zoom-mermaid-out" title="Отдалить" aria-label="Отдалить">-</button>
-          <button type="button" class="btn-modal-action" data-action="zoom-mermaid-reset" title="Масштаб 100%" aria-label="Сбросить масштаб 100%">1:1</button>
-          <button type="button" class="btn-modal-action btn-modal-close" data-action="close-mermaid-modal" title="Закрыть (Esc)" aria-label="Закрыть модальное окно">&times;</button>
+          <button type="button" class="btn-modal-action" data-action="zoom-mermaid-in" title="{config.t("mermaid.zoom_in")}" aria-label="{config.t("mermaid.zoom_in")}">+</button>
+          <button type="button" class="btn-modal-action" data-action="zoom-mermaid-out" title="{config.t("mermaid.zoom_out")}" aria-label="{config.t("mermaid.zoom_out")}">-</button>
+          <button type="button" class="btn-modal-action" data-action="zoom-mermaid-reset" title="{config.t("mermaid.zoom_reset_title")}" aria-label="{config.t("mermaid.zoom_reset_aria")}">1:1</button>
+          <button type="button" class="btn-modal-action btn-modal-close" data-action="close-mermaid-modal" title="{config.t("mermaid.close_title")}" aria-label="{config.t("mermaid.close_aria")}">&times;</button>
         </div>
       </header>
-      <div class="modal-body" id="mermaid-modal-content" role="region" aria-label="Область просмотра диаграммы" tabindex="0"></div>
+      <div class="modal-body" id="mermaid-modal-content" role="region" aria-label="{config.t("mermaid.viewport_aria")}" tabindex="0"></div>
     </div>
   </div>
 
   <!-- Кнопка Наверх -->
-  <button type="button" class="btn-scroll-top" id="btn-scroll-top" title="Наверх" aria-label="Наверх страницы">
+  <button type="button" class="btn-scroll-top" id="btn-scroll-top" title="{config.t("page.scroll_top_title")}" aria-label="{config.t("page.scroll_top_aria")}">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="18 15 12 9 6 15"></polyline></svg>
   </button>
 
   <!-- Единый плавающий переключатель темы -->
-  {FLOATING_THEME_SWITCHER_HTML}
+  {theme_switcher_html(config)}
 
   <!-- Скрипты -->
   <script src="{rel_root}assets/vendor/prism-bundle.min.js"></script>
@@ -481,15 +483,15 @@ def render_index_page(
 <li class="module-card">
   <div class="module-card-header">
     <span class="card-num-badge">{num:02d}</span>
-    <span class="card-count-badge">{art_count} статей</span>
+    <span class="card-count-badge">{config.t("index.card_articles", n=art_count)}</span>
   </div>
   <h3 class="module-card-title">{html.escape(title)}</h3>
   <div class="module-card-meta">
-    <span>📐 {mermaid_count} схем</span>
-    {f'<span>📁 {sub_count} тем</span>' if sub_count > 0 else '<span>📖 Базовый курс</span>'}
+    <span>{config.t("index.card_mermaid", n=mermaid_count)}</span>
+    {f'<span>{config.t("index.card_sections", n=sub_count)}</span>' if sub_count > 0 else f'<span>{config.t("index.card_basic")}</span>'}
   </div>
   <div class="module-card-actions">
-    <a href="{first_art_href}" class="btn-card-start">Начать изучение →</a>
+    <a href="{first_art_href}" class="btn-card-start">{config.t("index.card_start")}</a>
   </div>
 </li>
 """)
@@ -522,15 +524,15 @@ def render_index_page(
       <!-- Полнотекстовый живой поиск -->
       <div class="hero-search-box" role="search">
         <div class="search-bar-inner">
-          <label for="global-search-input" class="visually-hidden">Поиск по лекциям</label>
+          <label for="global-search-input" class="visually-hidden">{config.t("index.search_label")}</label>
           <svg class="hero-search-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input type="search" id="global-search-input" placeholder="{html.escape(fc(ip.search_placeholder))}" autocomplete="off" aria-label="Поиск по лекциям">
+          <input type="search" id="global-search-input" placeholder="{html.escape(fc(ip.search_placeholder))}" autocomplete="off" aria-label="{config.t("index.search_aria")}">
         </div>
-        <div class="search-results-dropdown" id="global-search-results" role="listbox" aria-label="Результаты поиска"></div>
+        <div class="search-results-dropdown" id="global-search-results" role="listbox" aria-label="{config.t("index.search_results_aria")}"></div>
       </div>
 
       <!-- Виджеты статистики -->
-      <div class="stats-ribbon" role="region" aria-label="Статистика курса">
+      <div class="stats-ribbon" role="region" aria-label="{config.t("index.stats_aria")}">
 {stats_html}
       </div>
     </header>
@@ -563,7 +565,7 @@ def render_index_page(
   </main>
 
   <!-- Единый плавающий переключатель темы -->
-  {FLOATING_THEME_SWITCHER_HTML}
+  {theme_switcher_html(config)}
 
   <script src="{rel_root}assets/search-data.js"></script>
   <script src="{rel_root}assets/main.js"></script>

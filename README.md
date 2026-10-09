@@ -131,6 +131,7 @@ go-textbook/
 ├── engine/              # Генератор и инструменты QA (будущее ядро html-textbook-engine)
 │   ├── build.py         # Главный оркестратор: python -m engine.build (флаги --all, --module, --pilot, --book)
 │   ├── config.py        # Загрузка и проверка book.toml
+│   ├── strings/ru.toml  # Строки интерфейса движка (переопределяются в book.toml [strings])
 │   ├── scanner.py       # Сканирование источников, wikilinks-резолвер, канонизация якорей
 │   ├── converter.py     # AST-конвертер Markdown -> HTML5, Callouts, автосанитизация Mermaid
 │   ├── template.py      # HTML5 каркас, семантическая разметка, KaTeX, сайдбар, TOC

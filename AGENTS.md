@@ -76,6 +76,7 @@ go-textbook/
 │   ├── __init__.py        # Пакет: запуск только как модуль (python -m engine.build), импорты относительные
 │   ├── build.py           # Главный сборочный конвейер: python -m engine.build (--all, --pilot, --module N, --limit N, --book, --sources, --dist)
 │   ├── config.py          # Загрузка и проверка book.toml (tomllib + dataclasses; неизвестный ключ — ошибка)
+│   ├── strings/ru.toml    # Строки интерфейса движка (подписи, aria-label, заголовки выносок); книга переопределяет их в book.toml [strings]
 │   ├── scanner.py         # Сканирование sources/, парсинг метаданных, slugify, граф wikilinks
 │   ├── converter.py       # Парсер Markdown в семантический HTML, callouts, автосанитизация Mermaid
 │   ├── template.py        # Каркас HTML5, шаблоны страниц, навигация, сайдбар, TOC, версия, anti-flicker

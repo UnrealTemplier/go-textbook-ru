@@ -14,49 +14,41 @@ from .scanner import slugify, Article, KnowledgeBaseScanner
 
 CALLOUT_CONFIG = {
     "tip": {
-        "title": "Совет / Собеседование",
         "icon": "💡",
         "class": "callout-tip",
         "color": "var(--accent-emerald)"
     },
     "interview": {
-        "title": "Вопрос с собеседования",
         "icon": "🎯",
         "class": "callout-interview",
         "color": "var(--accent-cyan)"
     },
     "info": {
-        "title": "Под капотом (Mechanical Sympathy)",
         "icon": "⚙️",
         "class": "callout-info",
         "color": "var(--accent-indigo)"
     },
     "warning": {
-        "title": "Подводные камни / Gotcha",
         "icon": "⚠️",
         "class": "callout-warning",
         "color": "var(--accent-amber)"
     },
     "note": {
-        "title": "Заметка",
         "icon": "📝",
         "class": "callout-note",
         "color": "var(--accent-cyan)"
     },
     "important": {
-        "title": "Важно",
         "icon": "⚡",
         "class": "callout-important",
         "color": "var(--accent-indigo)"
     },
     "caution": {
-        "title": "Предостережение",
         "icon": "🛑",
         "class": "callout-caution",
         "color": "var(--accent-rose)"
     },
     "danger": {
-        "title": "Опасно",
         "icon": "🚨",
         "class": "callout-danger",
         "color": "var(--accent-rose)"
@@ -148,15 +140,15 @@ class MarkdownConverter:
             idx += 1
 
             wrapped_html = f"""
-<figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
+<figure class="mermaid-wrapper" role="figure" aria-label="{self.config.t("mermaid.title")}">
   <figcaption class="mermaid-header">
     <div class="mermaid-title">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-      <span>Архитектурная схема</span>
+      <span>{self.config.t("mermaid.title")}</span>
     </div>
-    <button type="button" class="btn-mermaid-fullscreen" data-action="mermaid-fullscreen" title="Развернуть на весь экран" aria-label="Развернуть схему на весь экран">
+    <button type="button" class="btn-mermaid-fullscreen" data-action="mermaid-fullscreen" title="{self.config.t("mermaid.fullscreen_title")}" aria-label="{self.config.t("mermaid.fullscreen_aria")}">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-      <span>На весь экран</span>
+      <span>{self.config.t("mermaid.fullscreen_text")}</span>
     </button>
   </figcaption>
   <pre class="mermaid">
@@ -317,15 +309,16 @@ class MarkdownConverter:
 
     def _render_callout_block(self, callout_type: str, custom_title: str, body_lines: List[str]) -> str:
         """Генерация HTML для отдельного блока Callout."""
-        cfg = CALLOUT_CONFIG.get(callout_type, CALLOUT_CONFIG["note"])
-        title = custom_title if custom_title else cfg["title"]
+        known = callout_type if callout_type in CALLOUT_CONFIG else "note"
+        cfg = CALLOUT_CONFIG[known]
+        title = custom_title if custom_title else self.config.t(f"callouts.{known}")
 
         # Если в заголовке или теле есть слова собеседование/интервью, стилизуем под interview
         if self.config.callouts.interview_heuristic and (
                 "собеседован" in title.lower() or "интервью" in title.lower() or "interview" in title.lower()):
             cfg = CALLOUT_CONFIG["interview"]
             if not custom_title:
-                title = cfg["title"]
+                title = self.config.t("callouts.interview")
 
         # Парсим внутренний markdown
         inner_md = "\n".join(body_lines)
@@ -354,7 +347,7 @@ class MarkdownConverter:
             if href:
                 return f'<a href="{href}" class="wikilink">{html.escape(display_text)}</a>'
             else:
-                return f'<span class="wikilink-unresolved" title="Заметка в разработке">{html.escape(display_text)}</span>'
+                return f'<span class="wikilink-unresolved" title="{self.config.t("content.wikilink_unresolved_title")}">{html.escape(display_text)}</span>'
 
         return pattern.sub(repl, text)
 
@@ -419,7 +412,8 @@ class MarkdownConverter:
 
     def _wrap_tables(self, html_text: str) -> str:
         """Оборачивание <table> в адаптивный контейнер с горизонтальным скроллом."""
-        return re.sub(r"(<table>.*?</table>)", r'<div class="table-container" role="region" aria-label="Таблица данных" tabindex="0">\1</div>', html_text, flags=re.DOTALL)
+        aria = self.config.t("content.table_aria")
+        return re.sub(r"(<table>.*?</table>)", lambda m: f'<div class="table-container" role="region" aria-label="{aria}" tabindex="0">{m.group(1)}</div>', html_text, flags=re.DOTALL)
 
     def _enhance_code_blocks(self, html_text: str) -> str:
         """
@@ -464,9 +458,9 @@ class MarkdownConverter:
 <div class="code-block" data-lang="{lang}">
   <header class="code-header">
     <span class="code-lang-tag">{display_lang}</span>
-    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="{self.config.t("code.copy_title")}" aria-label="{self.config.t("code.copy_aria")}">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-      <span>Копировать</span>
+      <span>{self.config.t("code.copy_text")}</span>
     </button>
   </header>
   <pre class="language-{lang}"><code class="language-{lang}">{code_body}</code></pre>

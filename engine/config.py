@@ -112,6 +112,8 @@ class BookConfig:
     branding: BrandingConfig = field(default_factory=BrandingConfig)
     article_page: ArticlePageConfig = field(default_factory=ArticlePageConfig)
     index_page: IndexPageConfig = field(default_factory=IndexPageConfig)
+    # Переопределения строк интерфейса движка (engine/strings/ru.toml), та же структура
+    strings: Dict[str, Any] = field(default_factory=dict)
     # Каталог, относительно которого заданы пути конфига (каталог book.toml)
     root_dir: str = "."
 
@@ -120,6 +122,48 @@ class BookConfig:
 
     def storage_key(self, name: str) -> str:
         return self.project.storage_prefix + name
+
+    def t(self, key: str, **kw) -> str:
+        """Строка интерфейса: 'раздел.ключ', подстановки {n} и т. п."""
+        if not hasattr(self, "_ui"):
+            self._ui = merge_strings(self.strings)
+        text = self._ui[key]
+        for name, value in kw.items():
+            text = text.replace("{" + name + "}", str(value))
+        return text
+
+
+STRINGS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "strings")
+
+
+def _flatten(data: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
+    out = {}
+    for key, value in data.items():
+        full = f"{prefix}{key}"
+        if isinstance(value, dict):
+            out.update(_flatten(value, full + "."))
+        else:
+            out[full] = value
+    return out
+
+
+def default_strings(lang: str = "ru") -> Dict[str, str]:
+    with open(os.path.join(STRINGS_DIR, f"{lang}.toml"), "rb") as fp:
+        return _flatten(tomllib.load(fp))
+
+
+def merge_strings(overrides: Dict[str, Any]) -> Dict[str, str]:
+    """Строки движка + переопределения книги. Ключ, которого нет в движке, — ошибка (опечатка)."""
+    ui = default_strings()
+    flat = _flatten(overrides)
+    unknown = sorted(set(flat) - set(ui))
+    if unknown:
+        raise ConfigError(f"strings: неизвестные ключи {unknown}")
+    for key, value in flat.items():
+        if not isinstance(value, str):
+            raise ConfigError(f"strings.{key}: ожидается строка")
+    ui.update(flat)
+    return ui
 
 
 def _build(cls, data: Dict[str, Any], where: str):
@@ -168,6 +212,7 @@ def _validate(cfg: BookConfig) -> None:
     for i, st in enumerate(cfg.index_page.roadmap_steps):
         if not isinstance(st, dict) or set(st) != {"badge", "title_html", "text_html"}:
             raise ConfigError(f"index_page.roadmap_steps[{i}]: ожидаются ключи badge, title_html, text_html")
+    merge_strings(cfg.strings)
     if cfg.navigation.reading_time.method != "bytes":
         raise ConfigError("navigation.reading_time.method: поддерживается только 'bytes'")
 
