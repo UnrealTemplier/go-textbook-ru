@@ -61,6 +61,18 @@ CALLOUT_CONFIG = {
     }
 }
 
+def unique_slug(slug: str, used: set) -> str:
+    """Первое вхождение сохраняет slug, повторы получают -2, -3, … (без совпадения с занятыми)."""
+    if slug not in used:
+        used.add(slug)
+        return slug
+    n = 2
+    while f"{slug}-{n}" in used:
+        n += 1
+    used.add(f"{slug}-{n}")
+    return f"{slug}-{n}"
+
+
 class MarkdownConverter:
     def __init__(self, scanner: Optional[KnowledgeBaseScanner], config: Optional[BookConfig] = None):
         self.scanner = scanner
@@ -461,6 +473,7 @@ class MarkdownConverter:
         out_lines = []
         in_code_block = False
         fence_marker = ""
+        used_slugs = set()      # дедупликация id: повтор получает -2, -3, … (А3д)
 
         for line in lines:
             stripped = line.strip()
@@ -487,7 +500,7 @@ class MarkdownConverter:
                 raw_title = m.group(2).strip()
                 clean_title = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", raw_title)
                 clean_title = re.sub(r"[`*_]", "", clean_title)
-                h_slug = slugify(clean_title, self.config.slug.anchor)
+                h_slug = unique_slug(slugify(clean_title, self.config.slug.anchor), used_slugs)
 
                 toc.append({
                     "level": level,

@@ -204,3 +204,16 @@ class CodeMaskInPipelineTest(unittest.TestCase):
             html_out, _ = MarkdownConverter(sc, cfg).convert_article(art)
         self.assertIn('<p><a href="1-statya.html" class="wikilink">1. Статья</a> работает.</p>', html_out)
         self.assertIn("if [[ -f x ]]; then echo &quot;Как известно, да&quot;; fi", html_out)
+
+
+class DedupIdsTest(unittest.TestCase):
+    """А3д: повторяющиеся заголовки получают уникальные id, TOC ведёт на них."""
+
+    def test_unique_slug_and_toc(self):
+        from engine.converter import unique_slug
+        used = {"shag-2"}
+        self.assertEqual(unique_slug("shag", used), "shag")
+        self.assertEqual(unique_slug("shag", used), "shag-3")       # shag-2 уже занят
+        out, toc = MarkdownConverter(None)._process_headings("## Ответ\n## Ответ\n### Ответ")
+        self.assertEqual([t["anchor"] for t in toc], ["otvet", "otvet-2", "otvet-3"])
+        self.assertIn('<h2 id="otvet-2">Ответ</h2>', out)
