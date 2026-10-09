@@ -175,6 +175,8 @@ def make_anti_flicker_script(config: BookConfig) -> str:
 
 # Версии ассетов для кэш-бастинга ?v=: первые 10 символов sha256 файла, уже записанного в dist/
 ASSET_VERSIONS: Dict[str, str] = {}
+VERSIONED_ASSETS = ["assets/style.css", "assets/main.js", "assets/search-data.js",
+                    "assets/nav-data.js", "assets/extra.css", "assets/extra.js"]
 
 
 def set_asset_versions(dist_dir: str, rel_paths: List[str]) -> None:

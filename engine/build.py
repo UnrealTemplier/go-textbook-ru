@@ -15,7 +15,8 @@ from .scanner import KnowledgeBaseScanner, Article
 from .converter import MarkdownConverter
 from .checksums import verify as verify_checksums
 from .config import BookConfig, load_config
-from .template import render_article_page, render_index_page, get_book_version, set_asset_versions
+from .template import (render_article_page, render_index_page, get_book_version, set_asset_versions,
+                       VERSIONED_ASSETS)
 
 def copy_assets(engine_assets_dir: str, dist_assets_dir: str):
     """Копирование статических ассетов (CSS, JS, Vendor) в dist/assets/."""
@@ -210,8 +211,7 @@ def build(
             src_fav = config.path(fav)
             shutil.copy2(src_fav, os.path.join(dist_dir, os.path.basename(fav)))
             shutil.copy2(src_fav, os.path.join(dist_assets, os.path.basename(fav)))
-    set_asset_versions(dist_dir, ["assets/style.css", "assets/main.js", "assets/search-data.js",
-                                  "assets/nav-data.js", "assets/extra.css", "assets/extra.js"])
+    set_asset_versions(dist_dir, VERSIONED_ASSETS)
     print("      Ассеты, иконки favicon и файл search-data.js успешно развернуты.")
 
     # 3. Конвертация Markdown и генерация HTML страниц

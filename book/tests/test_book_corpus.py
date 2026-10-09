@@ -12,7 +12,8 @@ import unittest
 from engine.scanner import KnowledgeBaseScanner
 from engine.converter import MarkdownConverter
 from engine.config import load_config
-from engine.template import render_article_page, render_index_page, get_book_version
+from engine.template import (render_article_page, render_index_page, get_book_version, set_asset_versions,
+                             VERSIONED_ASSETS)
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SOURCES = os.path.join(ROOT, "sources")
@@ -31,6 +32,7 @@ class BookCorpusTest(unittest.TestCase):
         cls.articles = cls.scanner.scan()
         cls.conv = MarkdownConverter(cls.scanner, cls.config)
         cls.version = get_book_version(cls.config)
+        set_asset_versions(DIST, VERSIONED_ASSETS)            # ?v= — хэши ассетов закоммиченного dist/
 
     def test_article_pages_match_dist(self):
         mismatched = []
