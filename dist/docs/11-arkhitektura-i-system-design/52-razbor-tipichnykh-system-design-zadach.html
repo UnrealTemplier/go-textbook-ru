@@ -489,17 +489,30 @@ flowchart LR
 <p><strong>Хранилище сообщений:</strong></p>
 <ul>
 <li>Реляционные СУБД неприменимы из-за гигантской скорости вставок (10 000 INSERT/сек).</li>
-<li>Выбираем <strong>ScyllaDB / Cassandra</strong>:<br />
-<code>sql
-  CREATE TABLE messages (
-      chat_id UUID,
-      message_id TIMEUUID,
-      sender_id UUID,
-      content TEXT,
-      media_urls LIST&lt;TEXT&gt;,
-      PRIMARY KEY (chat_id, message_id)
-  ) WITH CLUSTERING ORDER BY (message_id DESC);</code><br />
-    Это обеспечивает мгновенное чтение последних 50 сообщений чата за один дисковый seek на LSM-дереве.</li>
+<li>
+<p>Выбираем <strong>ScyllaDB / Cassandra</strong>:</p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">CREATE TABLE messages (
+    chat_id UUID,
+    message_id TIMEUUID,
+    sender_id UUID,
+    content TEXT,
+    media_urls LIST&lt;TEXT&gt;,
+    PRIMARY KEY (chat_id, message_id)
+) WITH CLUSTERING ORDER BY (message_id DESC);
+</code></pre>
+</div>
+
+<p>Это обеспечивает мгновенное чтение последних 50 сообщений чата за один дисковый seek на LSM-дереве.</p>
+</li>
 </ul>
 <p><strong>Обработка медиа:</strong></p>
 <ul>
@@ -577,14 +590,29 @@ flowchart LR
 <h4 id="klyuchevye-resheniya-3">Ключевые решения</h4>
 <p><strong>Модель Fan-out (Раздувание лент):</strong></p>
 <ol>
-<li><strong>Fan-out on Write (Push-модель):</strong><br />
-    Когда обычный пользователь (до 10 000 подписчиков) публикует пост, фоновый воркер берет список его фолловеров и добавляет идентификатор поста в персональный список каждого подписчика в Redis:<br />
-<code>redis
-   ZADD timeline:userID timestamp postID</code><br />
-    Чтение ленты невероятно быстрое: <code>ZREVRANGEBYSCORE timeline:userID +inf -inf LIMIT 0 20</code>.</li>
-<li><strong>Проблема знаменитостей (Celebrity Problem):</strong><br />
+<li>
+<p><strong>Fan-out on Write (Push-модель):</strong><br />
+    Когда обычный пользователь (до 10 000 подписчиков) публикует пост, фоновый воркер берет список его фолловеров и добавляет идентификатор поста в персональный список каждого подписчика в Redis:</p>
+
+<div class="code-block" data-lang="redis">
+  <header class="code-header">
+    <span class="code-lang-tag">REDIS</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-redis"><code class="language-redis">ZADD timeline:userID timestamp postID
+</code></pre>
+</div>
+
+<p>Чтение ленты невероятно быстрое: <code>ZREVRANGEBYSCORE timeline:userID +inf -inf LIMIT 0 20</code>.</p>
+</li>
+<li>
+<p><strong>Проблема знаменитостей (Celebrity Problem):</strong><br />
     Если у Илона Маска 150 млн подписчиков, Push-модель парализует систему: один твит потребует 150 млн записей в Redis.<br />
-<em>Гибридное решение:</em> Знаменитости помечаются флагом <code>is_celebrity</code>. Их посты <strong>не проталкиваются</strong> в ленты подписчиков при записи. Когда подписчик запрашивает свою ленту, сервис <code>FeedSvc</code> на лету запрашивает последние посты знаменитостей, на которых он подписан, и мерджит их со своей кэшированной лентой за 5 мс.</li>
+<em>Гибридное решение:</em> Знаменитости помечаются флагом <code>is_celebrity</code>. Их посты <strong>не проталкиваются</strong> в ленты подписчиков при записи. Когда подписчик запрашивает свою ленту, сервис <code>FeedSvc</code> на лету запрашивает последние посты знаменитостей, на которых он подписан, и мерджит их со своей кэшированной лентой за 5 мс.</p>
+</li>
 </ol>
 <p><strong>Ограничение длины ленты:</strong></p>
 <ul>
@@ -650,29 +678,57 @@ flowchart LR
 
 <p><strong>Модель данных и алгоритм выборки:</strong></p>
 <ul>
-<li>В PostgreSQL создается таблица:<br />
-<code>sql
-  CREATE TABLE jobs (
-      id UUID PRIMARY KEY,
-      payload JSONB,
-      scheduled_at TIMESTAMPTZ NOT NULL,
-      status VARCHAR(20) NOT NULL,
-      retry_count INT DEFAULT 0,
-      idempotency_key VARCHAR(64) UNIQUE
-  );
-  CREATE INDEX idx_jobs_pending ON jobs (status, scheduled_at);</code></li>
-<li>Для предотвращения гонок между несколькими инстансами планировщика используется неблокирующий опрос с синтаксисом <strong><code>SKIP LOCKED</code></strong>:<br />
-<code>sql
-  UPDATE jobs 
-  SET status = 'processing' 
-  WHERE id IN (
-      SELECT id FROM jobs 
-      WHERE status = 'pending' AND scheduled_at &lt;= NOW() 
-      ORDER BY scheduled_at 
-      FOR UPDATE SKIP LOCKED 
-      LIMIT 500
-  ) RETURNING *;</code></li>
-<li>Задачи с близким дедлайном (ближайшие минуты) дублируются в Redis Sorted Set, откуда вычитываются атомарной командой <strong><code>ZPOPMIN</code></strong>.</li>
+<li>
+<p>В PostgreSQL создается таблица:</p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">CREATE TABLE jobs (
+    id UUID PRIMARY KEY,
+    payload JSONB,
+    scheduled_at TIMESTAMPTZ NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    retry_count INT DEFAULT 0,
+    idempotency_key VARCHAR(64) UNIQUE
+);
+CREATE INDEX idx_jobs_pending ON jobs (status, scheduled_at);
+</code></pre>
+</div>
+
+</li>
+<li>
+<p>Для предотвращения гонок между несколькими инстансами планировщика используется неблокирующий опрос с синтаксисом <strong><code>SKIP LOCKED</code></strong>:</p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">UPDATE jobs 
+SET status = 'processing' 
+WHERE id IN (
+    SELECT id FROM jobs 
+    WHERE status = 'pending' AND scheduled_at &lt;= NOW() 
+    ORDER BY scheduled_at 
+    FOR UPDATE SKIP LOCKED 
+    LIMIT 500
+) RETURNING *;
+</code></pre>
+</div>
+
+</li>
+<li>
+<p>Задачи с близким дедлайном (ближайшие минуты) дублируются в Redis Sorted Set, откуда вычитываются атомарной командой <strong><code>ZPOPMIN</code></strong>.</p>
+</li>
 </ul>
 <p><strong>Отказоустойчивость и идемпотентность:</strong></p>
 <ul>
@@ -839,19 +895,32 @@ flowchart LR
 
 <p><strong>Гео-поиск:</strong></p>
 <ul>
-<li>Реляционные базы не выдерживают сложных полигональных поисков при 10 000 RPS. Поисковый индекс выносится в Elasticsearch:<br />
-<code>json
-  {
-    "query": {
-      "bool": {
-        "filter": [
-          { "term": { "category_id": 42 } },
-          { "range": { "price": { "gte": 1000, "lte": 5000 } } },
-          { "geo_distance": { "distance": "15km", "location": { "lat": 55.75, "lon": 37.61 } } }
-        ]
-      }
+<li>
+<p>Реляционные базы не выдерживают сложных полигональных поисков при 10 000 RPS. Поисковый индекс выносится в Elasticsearch:</p>
+
+<div class="code-block" data-lang="json">
+  <header class="code-header">
+    <span class="code-lang-tag">JSON</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-json"><code class="language-json">{
+  &quot;query&quot;: {
+    &quot;bool&quot;: {
+      &quot;filter&quot;: [
+        { &quot;term&quot;: { &quot;category_id&quot;: 42 } },
+        { &quot;range&quot;: { &quot;price&quot;: { &quot;gte&quot;: 1000, &quot;lte&quot;: 5000 } } },
+        { &quot;geo_distance&quot;: { &quot;distance&quot;: &quot;15km&quot;, &quot;location&quot;: { &quot;lat&quot;: 55.75, &quot;lon&quot;: 37.61 } } }
+      ]
     }
-  }</code></li>
+  }
+}
+</code></pre>
+</div>
+
+</li>
 </ul>
 <hr />
 <h3 id="8-analog-ozona-marketpleys">8. Аналог Озона (Маркетплейс)</h3>
@@ -950,11 +1019,24 @@ flowchart LR
 <p><strong>Календарь дат и исключающие блокировки:</strong></p>
 <ul>
 <li>Для каждого объекта в Redis заводится битовая карта (Bitmap) на 365 дней вперед. Установка флага занятости выполняется атомарной операцией <code>SETBIT</code>.</li>
-<li>На уровне PostgreSQL надежность гарантируется оператором диапазонов дат:<br />
-<code>sql
-  ALTER TABLE bookings ADD CONSTRAINT no_overlap 
-  EXCLUDE USING gist (room_id WITH =, booking_dates WITH &amp;&amp;);</code><br />
-    Это математически исключает наложение бронирований даже при сбое Redis.</li>
+<li>
+<p>На уровне PostgreSQL надежность гарантируется оператором диапазонов дат:</p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">ALTER TABLE bookings ADD CONSTRAINT no_overlap 
+EXCLUDE USING gist (room_id WITH =, booking_dates WITH &amp;&amp;);
+</code></pre>
+</div>
+
+<p>Это математически исключает наложение бронирований даже при сбое Redis.</p>
+</li>
 </ul>
 <hr />
 <h3 id="10-internet-magazin-high-load-e-commerce">10. Интернет-магазин (High-Load E-commerce)</h3>

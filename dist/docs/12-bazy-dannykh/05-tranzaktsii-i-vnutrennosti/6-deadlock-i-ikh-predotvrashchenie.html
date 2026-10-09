@@ -537,13 +537,24 @@ flowchart LR
 <ol>
 <li>
 <p><strong>Канонический порядок блокировок</strong><br />
-    Всегда запрашивайте ресурсы в одинаковой последовательности. Если транзакции <code>A</code> и <code>B</code> всегда лочат строки в порядке возрастания <code>ID</code>, цикл невозможен:<br />
-<code>go
-   // Всегда сортируем входные данные перед блокировкой
-   sort.Slice(ids, func(i, j int) bool { return ids[i] &lt; ids[j] })
-   for _, id := range ids {
-       // FOR UPDATE в отсортированном порядке
-   }</code></p>
+    Всегда запрашивайте ресурсы в одинаковой последовательности. Если транзакции <code>A</code> и <code>B</code> всегда лочат строки в порядке возрастания <code>ID</code>, цикл невозможен:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">// Всегда сортируем входные данные перед блокировкой
+sort.Slice(ids, func(i, j int) bool { return ids[i] &lt; ids[j] })
+for _, id := range ids {
+    // FOR UPDATE в отсортированном порядке
+}
+</code></pre>
+</div>
+
 </li>
 <li>
 <p><strong>Минимизация времени удержания</strong><br />
@@ -551,52 +562,63 @@ flowchart LR
 </li>
 <li>
 <p><strong>Явные таймауты и NOWAIT</strong><br />
-    Не позволяйте транзакциям ждать бесконечно. Используйте <code>lock_timeout</code> на стороне СУБД или контекстные таймауты в Go:<br />
-<code>go
-   // Установка таймаута ожидания лока на уровне сессии
-   _, err := tx.ExecContext(ctx, "SET LOCAL lock_timeout = '200ms'")</code></p>
-</li>
-<li>
-<p><strong>Паттерн ретрая с экспоненциальной задержкой</strong><br />
-   ```go<br />
-   func ExecuteWithDeadlockRetry(ctx context.Context, db <em>sql.DB, maxRetries int, <br />
-       fn func(context.Context, </em>sql.Tx) error) error {</p>
-<p>for attempt := 0; attempt &lt;= maxRetries; attempt++ {<br />
-       tx, err := db.BeginTx(ctx, nil)<br />
-       if err != nil {<br />
-           return fmt.Errorf("begin tx: %w", err)<br />
-       }</p>
+    Не позволяйте транзакциям ждать бесконечно. Используйте <code>lock_timeout</code> на стороне СУБД или контекстные таймауты в Go:</p>
 
-<div class="code-block" data-lang="text">
+<div class="code-block" data-lang="go">
   <header class="code-header">
-    <span class="code-lang-tag">TEXT</span>
+    <span class="code-lang-tag">Go</span>
     <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-text"><code class="language-text">   if err := fn(ctx, tx); err != nil {
-       _ = tx.Rollback()
-       // Проверяем код дедлока PostgreSQL
-       if pgErr, ok := err.(*pq.Error); ok &amp;&amp; pgErr.Code == "40P01" {
-           delay := time.Duration(1&lt;&lt;uint(attempt)) * 50 * time.Millisecond
-           select {
-           case &lt;-time.After(delay):
-               continue
-           case &lt;-ctx.Done():
-               return ctx.Err()
-           }
-       }
-       return err
-   }
-   return tx.Commit()
+  <pre class="language-go"><code class="language-go">// Установка таймаута ожидания лока на уровне сессии
+_, err := tx.ExecContext(ctx, &quot;SET LOCAL lock_timeout = '200ms'&quot;)
 </code></pre>
 </div>
 
-<p>}<br />
-   return fmt.Errorf("max retries exceeded after deadlocks")<br />
-   }<br />
-   ```</p>
+</li>
+<li>
+<p><strong>Паттерн ретрая с экспоненциальной задержкой</strong></p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">func ExecuteWithDeadlockRetry(ctx context.Context, db *sql.DB, maxRetries int, 
+    fn func(context.Context, *sql.Tx) error) error {
+
+    for attempt := 0; attempt &lt;= maxRetries; attempt++ {
+        tx, err := db.BeginTx(ctx, nil)
+        if err != nil {
+            return fmt.Errorf(&quot;begin tx: %w&quot;, err)
+        }
+
+        if err := fn(ctx, tx); err != nil {
+            _ = tx.Rollback()
+            // Проверяем код дедлока PostgreSQL
+            if pgErr, ok := err.(*pq.Error); ok &amp;&amp; pgErr.Code == &quot;40P01&quot; {
+                delay := time.Duration(1&lt;&lt;uint(attempt)) * 50 * time.Millisecond
+                select {
+                case &lt;-time.After(delay):
+                    continue
+                case &lt;-ctx.Done():
+                    return ctx.Err()
+                }
+            }
+            return err
+        }
+        return tx.Commit()
+    }
+    return fmt.Errorf(&quot;max retries exceeded after deadlocks&quot;)
+}
+</code></pre>
+</div>
+
 </li>
 </ol>
 

@@ -483,19 +483,46 @@ flowchart TD
 <h3 id="sposoby-vklyucheniya">Способы включения</h3>
 <ol>
 <li>
-<p><strong>В коде при старте приложения:</strong><br />
-   ```go<br />
-   func main() {<br />
-       // Включаем запись 100% событий contention<br />
-       runtime.SetMutexProfileFraction(1)</p>
-<p>// Запуск бизнес-логики и фоновых горутин<br />
-   }<br />
-<code>2. **Через HTTP-сервер `pprof`:**  
-Сам сетевой эндпоинт `/debug/pprof/mutex` доступен всегда при импорте `_ "net/http/pprof"`, однако он будет возвращать пустой профиль до тех пор, пока в программе не будет вызван `SetMutexProfileFraction(rate)` с `rate &gt; 0`.
-3. **В тестах и бенчмарках:**</code>bash<br />
-   go test -mutexprofile=mutex.out -bench=.<br />
-<code>``
-При запуске тестов с флагом</code>-mutexprofile<code>тестовый раннер Go автоматически устанавливает</code>runtime.SetMutexProfileFraction(1)` на весь период выполнения бенчмарков.</p>
+<p><strong>В коде при старте приложения:</strong></p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">func main() {
+    // Включаем запись 100% событий contention
+    runtime.SetMutexProfileFraction(1)
+
+    // Запуск бизнес-логики и фоновых горутин
+}
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Через HTTP-сервер <code>pprof</code>:</strong><br />
+    Сам сетевой эндпоинт <code>/debug/pprof/mutex</code> доступен всегда при импорте <code>_ "net/http/pprof"</code>, однако он будет возвращать пустой профиль до тех пор, пока в программе не будет вызван <code>SetMutexProfileFraction(rate)</code> с <code>rate &gt; 0</code>.</p>
+</li>
+<li>
+<p><strong>В тестах и бенчмарках:</strong></p>
+
+<div class="code-block" data-lang="bash">
+  <header class="code-header">
+    <span class="code-lang-tag">Bash</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-bash"><code class="language-bash">go test -mutexprofile=mutex.out -bench=.
+</code></pre>
+</div>
+
+<p>При запуске тестов с флагом <code>-mutexprofile</code> тестовый раннер Go автоматически устанавливает <code>runtime.SetMutexProfileFraction(1)</code> на весь период выполнения бенчмарков.</p>
 </li>
 </ol>
 
@@ -703,10 +730,25 @@ flowchart TD
 <ol>
 <li><strong>Скрининг:</strong> Включаем block profile (<a href="5-block-profile.html" class="wikilink">5. block profile</a>) и видим доминирование функции <code>sync.(*Mutex).Lock</code>.</li>
 <li><strong>Активация Mutex профиля:</strong> Задаем <code>runtime.SetMutexProfileFraction(1)</code>.</li>
-<li><strong>Снятие замера:</strong> Выгружаем профиль под нагрузкой:<br />
-<code>bash
-   curl -o mutex.prof http://localhost:6060/debug/pprof/mutex</code></li>
-<li><strong>Инспекция:</strong> Открываем <code>go tool pprof -http=:8080 mutex.prof</code>.</li>
+<li>
+<p><strong>Снятие замера:</strong> Выгружаем профиль под нагрузкой:</p>
+
+<div class="code-block" data-lang="bash">
+  <header class="code-header">
+    <span class="code-lang-tag">Bash</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-bash"><code class="language-bash">curl -o mutex.prof http://localhost:6060/debug/pprof/mutex
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Инспекция:</strong> Открываем <code>go tool pprof -http=:8080 mutex.prof</code>.</p>
+</li>
 <li><strong>Анализ Waiters:</strong> В режиме <code>waiters</code> видим, что 90% всех задержек генерирует вызов <code>(*Metrics).Record</code> при попытке захватить внутренний <code>mu.Lock</code>.</li>
 <li><strong>Анализ Holders:</strong> Переключаем представление на <code>holders</code> и немедленно обнаруживаем виновника: мьютекс удерживается методом <code>(*Metrics).Export</code>, который раз в секунду формирует сводный отчет и синхронно сбрасывает его в дисковый файл, удерживая блокировку метрик на 80 миллисекунд!</li>
 <li><strong>Инженерное решение:</strong>  <ul>

@@ -632,15 +632,30 @@ SET enable_mergejoin = off;
     Каждое поле внешнего ключа (например, <code>orders.user_id</code>) <strong>обязано иметь B-Tree индекс</strong>! В отличие от первичных ключей, PostgreSQL не создает индекс на <code>FOREIGN KEY</code> автоматически. Без этого индекса любой <code>JOIN</code> или каскадное удаление <code>ON DELETE CASCADE</code> превратится в катастрофический <code>Seq Scan</code>.</li>
 <li><strong>Фильтрация до соединения:</strong><br />
     Старайтесь отсекать строки в секции <code>WHERE</code> до того, как они попадут в соединение. Чем меньше строк подается на вход <code>JOIN</code>, тем меньше работы достанется процессору.</li>
-<li><strong>Покрывающие индексы (<a href="6-covering-indeks.html" class="wikilink">6. Covering индекс</a>):</strong><br />
-    Если в дочерней таблице вам нужно всего пару полей (например, <code>status</code> и <code>amount</code>), добавьте их в секцию <code>INCLUDE</code> индекса внешнего ключа:<br />
-<code>sql
-   CREATE INDEX idx_orders_user_covering 
-       ON orders (user_id) 
-       INCLUDE (amount, status);</code><br />
-    Это превратит обращение к внутренней таблице в мгновенный <code>Index Only Scan</code> без обращения к куче (Heap Fetch).</li>
-<li><strong>Согласованность типов данных (Type Alignment):</strong><br />
-    Следите, чтобы связываемые колонки имели идентичный тип данных! Если <code>users.id</code> имеет тип <code>bigint</code>, а <code>orders.user_id</code> случайно объявлен как <code>int</code> (int4), ядро PostgreSQL откажется использовать индекс из-за несовместимости типов в операторах сравнения, и соединение скатится в последовательный перебор.</li>
+<li>
+<p><strong>Покрывающие индексы (<a href="6-covering-indeks.html" class="wikilink">6. Covering индекс</a>):</strong><br />
+    Если в дочерней таблице вам нужно всего пару полей (например, <code>status</code> и <code>amount</code>), добавьте их в секцию <code>INCLUDE</code> индекса внешнего ключа:</p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">CREATE INDEX idx_orders_user_covering 
+    ON orders (user_id) 
+    INCLUDE (amount, status);
+</code></pre>
+</div>
+
+<p>Это превратит обращение к внутренней таблице в мгновенный <code>Index Only Scan</code> без обращения к куче (Heap Fetch).</p>
+</li>
+<li>
+<p><strong>Согласованность типов данных (Type Alignment):</strong><br />
+    Следите, чтобы связываемые колонки имели идентичный тип данных! Если <code>users.id</code> имеет тип <code>bigint</code>, а <code>orders.user_id</code> случайно объявлен как <code>int</code> (int4), ядро PostgreSQL откажется использовать индекс из-за несовместимости типов в операторах сравнения, и соединение скатится в последовательный перебор.</p>
+</li>
 <li><strong>Динамическая настройка <code>work_mem</code> в Go:</strong><br />
     Если вы запускаете тяжелый аналитический отчет с <code>Hash Join</code>, увеличьте <code>work_mem</code> локально внутри сессии перед выполнением запроса:</li>
 </ol>

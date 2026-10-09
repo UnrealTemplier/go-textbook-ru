@@ -736,19 +736,32 @@ flowchart TD
     Когда вы передаете <code>string</code> в функцию как аргумент (<code>func process(s string)</code>), копируются всего 16 байт заголовка. Сами байты строки <strong>не копируются</strong>! Это операция $O(1)$ по времени и $0$ байт дополнительной памяти.</li>
 <li><strong>Срез строки (Slicing) без аллокаций:</strong><br />
     Выражение <code>sub := s[2:7]</code> создает <strong>новый 16-байтовый заголовок</strong>, у которого указатель <code>str</code> смещен на 2 байта вперед (<code>s.str + 2</code>), а поле <code>len</code> равно 5 (<code>7 - 2</code>). Физического выделения памяти в куче не происходит.</li>
-<li><strong>Ловушка удержания памяти (Memory Retention Hazard):</strong><br />
-    Поскольку срез ссылается на исходный массив байтов, сборщик мусора (GC) не сможет освободить гигантский массив (например, файл на 1 ГБ), пока в памяти живет хотя бы один маленький срез длиной в 10 байт:<br />
-   ```go<br />
-   // ОПАСНО: удержание гигантского буфера в памяти<br />
-   func getID(hugeData string) string {<br />
-       return hugeData[:8] // GC не сможет собрать hugeData!<br />
-   }</li>
+<li>
+<p><strong>Ловушка удержания памяти (Memory Retention Hazard):</strong><br />
+    Поскольку срез ссылается на исходный массив байтов, сборщик мусора (GC) не сможет освободить гигантский массив (например, файл на 1 ГБ), пока в памяти живет хотя бы один маленький срез длиной в 10 байт:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">// ОПАСНО: удержание гигантского буфера в памяти
+func getID(hugeData string) string {
+    return hugeData[:8] // GC не сможет собрать hugeData!
+}
+
+// БЕЗОПАСНО: разрыв связи через клонирование (Go 1.20+ strings.Clone)
+func getIDSafe(hugeData string) string {
+    return strings.Clone(hugeData[:8]) // Выделяет ровно 8 байт
+}
+</code></pre>
+</div>
+
+</li>
 </ol>
-<p>// БЕЗОПАСНО: разрыв связи через клонирование (Go 1.20+ strings.Clone)<br />
-   func getIDSafe(hugeData string) string {<br />
-       return strings.Clone(hugeData[:8]) // Выделяет ровно 8 байт<br />
-   }<br />
-   ```</p>
 <hr />
 <h2 id="2-bayty-runy-i-kodirovka-utf-8-gde-oshibayutsya-90-kandidatov">2. Байты, руны и кодировка UTF-8: Где ошибаются 90% кандидатов</h2>
 <p>В Go необходимо строго различать три базовых понятия:</p>
@@ -817,20 +830,34 @@ flowchart LR
     Для строки <code>"Привет"</code> <code>len(s)</code> равен <strong>12</strong>, потому что каждая кириллическая буква в UTF-8 занимает 2 байта. Чтобы узнать реальное количество символов (рун), вызывайте <code>utf8.RuneCountInString(s)</code> (возвращает 6, но требует $O(N)$ декодирования).</li>
 <li><strong>Индексация <code>s[i]</code> дает <code>byte</code>, а не <code>rune</code>!</strong><br />
     Если в строке <code>"Привет"</code> обратиться к <code>s[0]</code>, вернется байт <code>208</code> (<code>0xD0</code>), являющийся лишь первой половинкой двухбайтовой последовательности буквы <code>'П'</code>. Попытка напечатать <code>string(s[0])</code> выведет испорченный символ `` (replacement character).</li>
-<li><strong>Два типа итерации по строке:</strong><br />
-   ```go<br />
-   s := "Go языки"</li>
+<li>
+<p><strong>Два типа итерации по строке:</strong></p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">s := &quot;Go языки&quot;
+
+// Вариант 1: Итерация по байтам (O(N), быстро, 0 декодирования)
+for i := 0; i &lt; len(s); i++ {
+    b := s[i] // b имеет тип byte
+}
+
+// Вариант 2: Итерация по рунам (декодирование UTF-8 на лету)
+for byteOffset, r := range s {
+    // byteOffset — смещение в БАЙТАХ, где началась руна (0, 1, 2, 3, 5, 7...)
+    // r — раскодированная кодовая точка типа rune (int32)
+}
+</code></pre>
+</div>
+
+</li>
 </ol>
-<p>// Вариант 1: Итерация по байтам (O(N), быстро, 0 декодирования)<br />
-   for i := 0; i &lt; len(s); i++ {<br />
-       b := s[i] // b имеет тип byte<br />
-   }</p>
-<p>// Вариант 2: Итерация по рунам (декодирование UTF-8 на лету)<br />
-   for byteOffset, r := range s {<br />
-       // byteOffset — смещение в БАЙТАХ, где началась руна (0, 1, 2, 3, 5, 7...)<br />
-       // r — раскодированная кодовая точка типа rune (int32)<br />
-   }<br />
-   ```</p>
 
 <aside class="callout callout-warning" aria-label="Подводные камни / Gotcha">
   <header class="callout-header">

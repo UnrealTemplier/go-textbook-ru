@@ -639,17 +639,32 @@ func (b *WebBFF) GetDashboard(ctx context.Context, userID string) (*DashboardRes
     Когда Gateway принимает входящий публичный JSON и конвертирует его в Protobuf для отправки во внутренний gRPC-сервис, процессор выполняет тяжелейшую работу.<br />
     Стандартный пакет <code>encoding/json</code> использует рефлексию (<code>reflect</code>), выделяя сотни мелких объектов в Heap на каждый запрос.<br />
 <strong>Оптимизация:</strong> Переход на быстрые генераторы сериализаторов без рефлексии (<code>goccy/go-json</code> или <code>easyjson</code>) снижает нагрузку на CPU в 3–5 раз и удерживает паузы сборщика мусора в пределах микросекунд.</li>
-<li><strong>Пулы TCP-соединений (<code>http.Transport</code>)</strong>:<br />
-    При перекладывании байтов тела запроса и ответа через <code>io.Copy</code> аллоцируются временные буферы. При проксировании трафика критически важно правильно сконфигурировать исходящий транспорт, чтобы предотвратить непрерывный <code>TCP Handshake</code> на каждый входящий запрос:<br />
-<code>go
-   transport := &amp;http.Transport{
-       MaxIdleConns:        1000,
-       MaxIdleConnsPerHost: 100,
-       IdleConnTimeout:     90 * time.Second,
-       DisableCompression:  false,
-   }</code></li>
-<li><strong>Netpoller и дескрипторы сокетов</strong>:<br />
-    Шлюз держит соединения с двумя мирами: входящие медленные клиенты (WAN сокеты) и быстрые внутренние сервисы (LAN сокеты). Сетевой поллер Go (<code>netpoller</code>) мультиплексирует десятки тысяч сокетов в неблокирующем режиме <code>epoll</code>. Однако лимит открытых файлов в Linux (<code>ulimit -n</code>) должен быть заблаговременно увеличен минимум до 65 536.</li>
+<li>
+<p><strong>Пулы TCP-соединений (<code>http.Transport</code>)</strong>:<br />
+    При перекладывании байтов тела запроса и ответа через <code>io.Copy</code> аллоцируются временные буферы. При проксировании трафика критически важно правильно сконфигурировать исходящий транспорт, чтобы предотвратить непрерывный <code>TCP Handshake</code> на каждый входящий запрос:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">transport := &amp;http.Transport{
+    MaxIdleConns:        1000,
+    MaxIdleConnsPerHost: 100,
+    IdleConnTimeout:     90 * time.Second,
+    DisableCompression:  false,
+}
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Netpoller и дескрипторы сокетов</strong>:<br />
+    Шлюз держит соединения с двумя мирами: входящие медленные клиенты (WAN сокеты) и быстрые внутренние сервисы (LAN сокеты). Сетевой поллер Go (<code>netpoller</code>) мультиплексирует десятки тысяч сокетов в неблокирующем режиме <code>epoll</code>. Однако лимит открытых файлов в Linux (<code>ulimit -n</code>) должен быть заблаговременно увеличен минимум до 65 536.</p>
+</li>
 <li><strong>Контроль параллелизма агрегации</strong>:<br />
     Если один запрос к BFF порождает веер из 15 параллельных gRPC-запросов, то 1 000 RPS создадут 15 000 одновременно работающих горутин. Ограничивайте максимальный параллелизм агрегации через семафоры (<code>golang.org/x/sync/semaphore</code>), чтобы не вызывать скачков потребления памяти.</li>
 </ol>

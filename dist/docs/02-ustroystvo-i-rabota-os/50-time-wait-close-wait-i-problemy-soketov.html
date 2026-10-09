@@ -618,23 +618,53 @@ ss -tan state close-wait
 <ol>
 <li><strong>Connection Pooling (Пулинг постоянных соединений):</strong> Всегда используйте переиспользуемые HTTP-клиенты с пулом Keep-Alive. Настраивайте параметры <code>http.Transport</code>: <code>MaxIdleConns</code>, <code>MaxIdleConnsPerHost</code> и <code>IdleConnTimeout</code>. Один постоянный TCP-канал, прокачивающий тысячи запросов, исключает постоянные циклы открытия/закрытия сокетов.</li>
 <li><strong>Включение <code>SO_REUSEADDR</code>:</strong> Гарантирует, что перезапуск вашего Go-демона пройдет без ошибок биндинга портов.</li>
-<li><strong>Расширение диапазона эфемерных портов:</strong> Увеличьте пул доступных портов ядра:<br />
-<code>bash
-   sysctl -w net.ipv4.ip_local_port_range="1024 65535"</code></li>
-<li><strong>Переход на HTTP/2 и gRPC:</strong> Мультиплексирование сотен параллельных запросов внутри единого TCP-соединения радикально разгружает подсистему сокетов ядра.</li>
+<li>
+<p><strong>Расширение диапазона эфемерных портов:</strong> Увеличьте пул доступных портов ядра:</p>
+
+<div class="code-block" data-lang="bash">
+  <header class="code-header">
+    <span class="code-lang-tag">Bash</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-bash"><code class="language-bash">sysctl -w net.ipv4.ip_local_port_range=&quot;1024 65535&quot;
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Переход на HTTP/2 и gRPC:</strong> Мультиплексирование сотен параллельных запросов внутри единого TCP-соединения радикально разгружает подсистему сокетов ядра.</p>
+</li>
 </ol>
 <hr />
 <h3 id="strategii-borby-s-closewait">Стратегии борьбы с CLOSE_WAIT</h3>
 <ol>
-<li><strong>Жесткий аудит закрытия дескрипторов:</strong> Всегда закрывайте сетевые ресурсы через идиоматический <code>defer</code>:<br />
-<code>go
-   resp, err := client.Do(req)
-   if err != nil {
-       return err
-   }
-   defer resp.Body.Close() // Обязательно!
-   _, _ = io.Copy(io.Discard, resp.Body) // Вычитываем тело для возврата conn в пул</code></li>
-<li><strong>Трассировка системных вызовов:</strong> Утилита <code>strace -p &lt;pid&gt; -e trace=close</code> позволяет отследить, вызывается ли сисколл закрытия дескриптора при получении <code>EOF</code>.</li>
+<li>
+<p><strong>Жесткий аудит закрытия дескрипторов:</strong> Всегда закрывайте сетевые ресурсы через идиоматический <code>defer</code>:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">resp, err := client.Do(req)
+if err != nil {
+    return err
+}
+defer resp.Body.Close() // Обязательно!
+_, _ = io.Copy(io.Discard, resp.Body) // Вычитываем тело для возврата conn в пул
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Трассировка системных вызовов:</strong> Утилита <code>strace -p &lt;pid&gt; -e trace=close</code> позволяет отследить, вызывается ли сисколл закрытия дескриптора при получении <code>EOF</code>.</p>
+</li>
 <li><strong>Настройка системного таймаута:</strong> Параметр <code>net.ipv4.tcp_fin_timeout</code> (по умолчанию 60с) определяет, как долго ядро держит <em>осиротевшие</em> (орфанные) соединения в состоянии <code>FIN_WAIT_2</code>; к <code>TIME_WAIT</code> он отношения не имеет. Для <code>TIME_WAIT</code> настраивать почти нечего (длительность зашита в ядро; есть лишь <code>net.ipv4.tcp_tw_reuse</code>, который разрешает повторно использовать такие сокеты для <em>исходящих</em> соединений).</li>
 </ol>
 <hr />

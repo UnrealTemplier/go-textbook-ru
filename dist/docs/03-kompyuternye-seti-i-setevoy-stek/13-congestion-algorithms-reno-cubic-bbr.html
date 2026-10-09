@@ -802,13 +802,28 @@ func main() {
 <h2 id="lovushki-i-sobesedovaniya">Ловушки и собеседования</h2>
 <ul>
 <li><strong>Bufferbloat и хвостовые задержки (Tail Latency):</strong> Если мониторинг сетевого сервиса показывает резкий скачок P99/P999 задержки при практически 100% утилизации канала, но потери пакетов отсутствуют — это хрестоматийный симптом Bufferbloat. Помогает миграция сетевого интерфейса на современный дисциплинарный фильтр очередей <strong><code>fq_codel</code></strong> (<em>Controlled Delay</em>) или включение BBR на уровне транспортного протокола.</li>
-<li><strong>Тюнинг буферов ядра против буферов Go:</strong> Начиная с Go 1.13 в структуре <strong><code>net/http.Transport</code></strong> есть параметры <strong><code>ReadBufferSize</code></strong> и <strong><code>WriteBufferSize</code></strong>. Однако они управляют лишь буферами прикладного уровня в пользовательском пространстве (<code>bufio.Reader</code> / <code>bufio.Writer</code>), экономя память кучи Go. Если узкое место лежит в BDP сети, первостепенное значение имеют параметры ядра:<br />
-<code>bash
-    # sysctl net.ipv4.tcp_rmem = min default max (буферы приема)
-    sysctl net.ipv4.tcp_rmem="4096 87380 16777216"
-    # sysctl net.ipv4.tcp_wmem = min default max (буферы отправки)
-    sysctl net.ipv4.tcp_wmem="4096 65536 16777216"</code></li>
-<li><strong>Собеседование: «Что происходит в Go-сервере, если между клиентом и сервером внезапно возрос процент потерь?»</strong>  <ol>
+<li>
+<p><strong>Тюнинг буферов ядра против буферов Go:</strong> Начиная с Go 1.13 в структуре <strong><code>net/http.Transport</code></strong> есть параметры <strong><code>ReadBufferSize</code></strong> и <strong><code>WriteBufferSize</code></strong>. Однако они управляют лишь буферами прикладного уровня в пользовательском пространстве (<code>bufio.Reader</code> / <code>bufio.Writer</code>), экономя память кучи Go. Если узкое место лежит в BDP сети, первостепенное значение имеют параметры ядра:</p>
+
+<div class="code-block" data-lang="bash">
+  <header class="code-header">
+    <span class="code-lang-tag">Bash</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-bash"><code class="language-bash"># sysctl net.ipv4.tcp_rmem = min default max (буферы приема)
+sysctl net.ipv4.tcp_rmem=&quot;4096 87380 16777216&quot;
+# sysctl net.ipv4.tcp_wmem = min default max (буферы отправки)
+sysctl net.ipv4.tcp_wmem=&quot;4096 65536 16777216&quot;
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Собеседование: «Что происходит в Go-сервере, если между клиентом и сервером внезапно возрос процент потерь?»</strong>  </p>
+<ol>
 <li>При использовании Reno или Cubic потеря пакета трактуется как перегрузка. Ядро сокращает <code>cwnd</code> (на 50% у Reno или примерно на 30% у Cubic), уменьшая пропускную способность.</li>
 <li>Скорость опустошения буфера сокета <code>sndbuf</code> резко падает.</li>
 <li>Системные вызовы <code>write(2)</code> начинают возвращать <code>EAGAIN</code>.</li>

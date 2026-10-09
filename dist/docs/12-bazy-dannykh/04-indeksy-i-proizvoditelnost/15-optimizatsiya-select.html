@@ -9,7 +9,6 @@
   <link rel="icon" type="image/svg+xml" href="../../../favicon.svg" sizes="any">
   <script>/* Book runtime + theme anti-flicker */window.__BOOK__=(function(c){function storageKey(n){return c.storagePrefix+n;}function getTheme(){try{var t=localStorage.getItem(storageKey('theme'));if(t&&c.availableThemes.indexOf(t)!==-1)return t;}catch(e){}return c.defaultTheme;}function applyTheme(t){var th=(t&&c.availableThemes.indexOf(t)!==-1)?t:c.defaultTheme;document.documentElement.dataset.theme=th;return th;}function saveTheme(t){try{localStorage.setItem(storageKey('theme'),t);}catch(e){}}function init(){try{applyTheme(getTheme());}catch(e){}}c.storageKey=storageKey;c.getTheme=getTheme;c.applyTheme=applyTheme;c.saveTheme=saveTheme;c.init=init;return c;})({"storagePrefix":"go_encyclopedia_","defaultTheme":"dark","availableThemes":["paper","light","dark"],"themeNames":{"paper":"Paper","light":"Light","dark":"Dark"},"strings":{"copied":"Скопировано!","themeLabel":"Текущая тема: {name} (нажмите для смены)"},"math":{"delimiters":[{"left":"$$","right":"$$","display":true},{"left":"$","right":"$","display":false},{"left":"\\(","right":"\\)","display":false},{"left":"\\[","right":"\\]","display":true}],"ignoredTags":["script","noscript","style","textarea","pre","code","option"],"ignoredClasses":["code-block","mermaid","mermaid-wrapper"]}});window.__BOOK__.init();</script>
   <link rel="stylesheet" href="../../../assets/style.css?v=aa550d7a28">
-  <link rel="stylesheet" href="../../../assets/vendor/katex/katex.min.css">
   <script src="../../../assets/nav-data.js?v=1db448fa19" defer></script>
 </head>
 <body>
@@ -485,29 +484,80 @@
 <p>К саргабельным операторам относятся: <code>=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>BETWEEN</code>, <code>LIKE 'prefix%'</code>, <code>IN</code> с константами, а также <code>IS NULL</code> (при определенных индексах).</p>
 <p><strong>Не-саргабельные конструкции (Non-Sargable)</strong> ломают математику индекса, вынуждая базу вычислять функцию для каждой строки таблицы через полный перебор (<code>Seq Scan</code>):</p>
 <ol>
-<li><strong>Оборачивание индексированной колонки в функцию:</strong><br />
-<code>sql
-   -- ПЛОХО: B-Tree индекс по email отключен!
-   WHERE LOWER(email) = 'alice@example.com'</code><br />
-    Дерево индекса отсортировано по значениям <code>email</code>, а не по результату функции <code>LOWER()</code>. База не может найти ключ поиском.<br />
-<em>Решение:</em> создать <strong>функциональный B-Tree индекс</strong>:<br />
-<code>sql
-   CREATE INDEX ON users (LOWER(email));</code></li>
-<li><strong>Арифметика над колонкой:</strong><br />
-   ```sql<br />
-   -- ПЛОХО: колонка salary умножается на лету<br />
-   WHERE salary * 1.2 &gt; 100000;</li>
+<li>
+<p><strong>Оборачивание индексированной колонки в функцию:</strong></p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">-- ПЛОХО: B-Tree индекс по email отключен!
+WHERE LOWER(email) = 'alice@example.com'
+</code></pre>
+</div>
+
+<p>Дерево индекса отсортировано по значениям <code>email</code>, а не по результату функции <code>LOWER()</code>. База не может найти ключ поиском.<br />
+<em>Решение:</em> создать <strong>функциональный B-Tree индекс</strong>:</p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">CREATE INDEX ON users (LOWER(email));
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Арифметика над колонкой:</strong></p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">-- ПЛОХО: колонка salary умножается на лету
+WHERE salary * 1.2 &gt; 100000;
+
+-- ПРАВИЛЬНО: перенесите вычисления в константную часть!
+WHERE salary &gt; 100000 / 1.2;
+</code></pre>
+</div>
+
+<p>В выражении <code>WHERE salary &gt; 100000 / 1.2</code> правая часть вычисляется планировщиком один раз как константа, а левая часть остается чистой колонкой, позволяя B-Tree мгновенно спозиционироваться на границе диапазона.</p>
+</li>
+<li>
+<p><strong>Неявное приведение типов (Type Coercion):</strong><br />
+    Если колонка <code>created_at</code> имеет тип <code>timestamp with time zone</code>, а в SQL-запрос передана текстовая строка без часового пояса или тип <code>date</code>, ядро СУБД применит скрытое приведение типа к каждой строке, полностью отключив индекс.<br />
+    В Go-коде всегда передавайте точный тип <code>time.Time</code>:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">// Надежно и саргабельно: драйвер передает бинарный timestamp с таймзоной
+rows, err := db.QueryContext(ctx, 
+    &quot;SELECT id FROM events WHERE created_at &gt;= $1&quot;, startTime)
+</code></pre>
+</div>
+
+</li>
 </ol>
-<p>-- ПРАВИЛЬНО: перенесите вычисления в константную часть!<br />
-   WHERE salary &gt; 100000 / 1.2;<br />
-<code>В выражении `WHERE salary &gt; 100000 / 1.2` правая часть вычисляется планировщиком один раз как константа, а левая часть остается чистой колонкой, позволяя B-Tree мгновенно спозиционироваться на границе диапазона.
-3. **Неявное приведение типов (Type Coercion):**  
-    Если колонка `created_at` имеет тип `timestamp with time zone`, а в SQL-запрос передана текстовая строка без часового пояса или тип `date`, ядро СУБД применит скрытое приведение типа к каждой строке, полностью отключив индекс.  
-    В Go-коде всегда передавайте точный тип `time.Time`:</code>go<br />
-   // Надежно и саргабельно: драйвер передает бинарный timestamp с таймзоной<br />
-   rows, err := db.QueryContext(ctx, <br />
-       "SELECT id FROM events WHERE created_at &gt;= $1", startTime)<br />
-   ```</p>
 <hr />
 <h3 id="indeksy-dlya-sortirovki-i-predelov">Индексы для сортировки и пределов</h3>
 <p>Запросы с <code>ORDER BY</code> и <code>LIMIT</code> — основа любых лент новостей, каталогов и очередей.</p>
@@ -881,8 +931,6 @@ JOIN LATERAL (
   <!-- Скрипты -->
   <script src="../../../assets/vendor/prism-bundle.min.js"></script>
   <script src="../../../assets/vendor/mermaid.min.js"></script>
-  <script src="../../../assets/vendor/katex/katex.min.js"></script>
-  <script src="../../../assets/vendor/katex/contrib/auto-render.min.js"></script>
   <script src="../../../assets/main.js?v=bf18a1326d"></script>
 </body>
 </html>

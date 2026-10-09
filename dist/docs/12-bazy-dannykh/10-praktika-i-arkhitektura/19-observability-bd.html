@@ -654,11 +654,26 @@ func LogDatabaseOperation(ctx context.Context, query string, duration time.Durat
 <p>Никакая телеметрия не дается бесплатно. Каждый созданный спан, каждый вызов форматирования строки лога и сбор гистограмм потребляют такты процессора, аллоцируют память и создают сетевой трафик.</p>
 <p>Взглянем на цену полной наблюдаемости через призму архитектуры машины (Mechanical Sympathy):</p>
 <ol>
-<li><strong>Аллокации спанов в памяти:</strong> Создание спана в Go требует динамического выделения структур: слайс атрибутов <code>[]attribute.KeyValue</code>, буфер имени спана, временные метки. При 100 000 RPS к СУБД непрерывная генерация спанов создаст гигантское давление на Garbage Collector. Решение — <strong>вероятностное семплирование (Sampling)</strong>:<br />
-<code>go
-   // Трассировать только 1% штатных запросов
-   sampler := trace.ParentBased(trace.TraceIDRatioBased(0.01))</code></li>
-<li><strong>Пакетная передача (Batching):</strong> Использование <code>BatchSpanProcessor</code> вместо синхронного <code>SimpleSpanProcessor</code>. Он аккумулирует спаны во внутреннем кольцевом буфере памяти и сбрасывает их в OTLP-коллектор пачками по расписанию (<code>BatchTimeout</code>, <code>MaxQueueSize</code>), минимизируя системные вызовы сокетов <code>write()</code> и переключения контекста ядра ОС.</li>
+<li>
+<p><strong>Аллокации спанов в памяти:</strong> Создание спана в Go требует динамического выделения структур: слайс атрибутов <code>[]attribute.KeyValue</code>, буфер имени спана, временные метки. При 100 000 RPS к СУБД непрерывная генерация спанов создаст гигантское давление на Garbage Collector. Решение — <strong>вероятностное семплирование (Sampling)</strong>:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">// Трассировать только 1% штатных запросов
+sampler := trace.ParentBased(trace.TraceIDRatioBased(0.01))
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Пакетная передача (Batching):</strong> Использование <code>BatchSpanProcessor</code> вместо синхронного <code>SimpleSpanProcessor</code>. Он аккумулирует спаны во внутреннем кольцевом буфере памяти и сбрасывает их в OTLP-коллектор пачками по расписанию (<code>BatchTimeout</code>, <code>MaxQueueSize</code>), минимизируя системные вызовы сокетов <code>write()</code> и переключения контекста ядра ОС.</p>
+</li>
 <li><strong>Асинхронность логов:</strong> Синхронная запись логов в файл или сокет — фатальная ошибка. Если диск или демон сбора логов зависнет, блокирующий системный вызов <code>write()</code> остановит горутину и заблокирует рабочий поток рантайма. Логирование обязано быть неблокирующим (через ring buffer или буферизованные логгеры вроде <code>zerolog</code>).</li>
 <li><strong>Серверные лимиты СУБД:</strong> В PostgreSQL модуль <code>pg_stat_statements</code> агрегирует статистику в разделяемой хэш-таблице без дискового ввода-вывода. Однако расширения вроде <code>pg_query_state</code> потребляют разделяемую память. А включение <code>log_statement=all</code> на проде опасно и способно физически парализовать дисковую подсистему постоянной записью текстовых журналов и вызвать OOM. Поэтому серверная наблюдаемость обязана быть агрегированной.</li>
 </ol>

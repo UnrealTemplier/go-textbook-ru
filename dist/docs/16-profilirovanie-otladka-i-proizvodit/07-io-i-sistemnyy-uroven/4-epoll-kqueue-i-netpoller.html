@@ -592,13 +592,28 @@ flowchart TD
     Любой сокет в Go, созданный через <code>net.Dial</code> или <code>net.Listen</code>, сразу переводится рантаймом в неблокирующий режим с флагом <code>O_NONBLOCK</code> через вызов <code>syscall.SetNonblock(fd, true)</code>. Метод <code>conn.Read(b)</code> сразу делает системный вызов <code>read(fd)</code>. Если данные уже лежат в буфере сокета, вызов возвращает байты немедленно. Никаких переключений горутин не происходит.</li>
 <li><strong>Обработка <code>EAGAIN</code>:</strong><br />
     Если в сокете пусто, системный вызов возвращает ошибку <code>EAGAIN</code>. Рантайм через <code>runtime.pollDesc</code> получает указатель на <code>pollDesc</code>, связанный с этим fd.</li>
-<li><strong>Регистрация в epoll:</strong><br />
-    При первом обращении к сокету вызывается <code>netpollopen(fd, pd)</code>:<br />
-<code>c
-   epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &amp;ev)</code><br />
-    где <code>ev.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET</code>.</li>
-<li><strong>Парковка горутины (<code>gopark</code>):</strong><br />
-    В поле <code>pollDesc.rg</code> атомарно записывается указатель на текущую горутину G. Затем вызывается внутренняя функция <code>gopark(netpollblockcommit, ...)</code>. Горутина переходит из состояния <code>_Grunning</code> в состояние <code>_Gwaiting</code> с причиной ожидания <code>waitReasonIOWait</code>.</li>
+<li>
+<p><strong>Регистрация в epoll:</strong><br />
+    При первом обращении к сокету вызывается <code>netpollopen(fd, pd)</code>:</p>
+
+<div class="code-block" data-lang="c">
+  <header class="code-header">
+    <span class="code-lang-tag">C</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-c"><code class="language-c">epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &amp;ev)
+</code></pre>
+</div>
+
+<p>где <code>ev.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET</code>.</p>
+</li>
+<li>
+<p><strong>Парковка горутины (<code>gopark</code>):</strong><br />
+    В поле <code>pollDesc.rg</code> атомарно записывается указатель на текущую горутину G. Затем вызывается внутренняя функция <code>gopark(netpollblockcommit, ...)</code>. Горутина переходит из состояния <code>_Grunning</code> в состояние <code>_Gwaiting</code> с причиной ожидания <code>waitReasonIOWait</code>.</p>
+</li>
 <li><strong>Освобождение потока M:</strong><br />
     Поток ОС (M) <strong>не уходит в сон</strong>! Он отпускает заснувшую горутину и немедленно берет следующую готовую задачу из очереди локального процессора P.</li>
 </ol>

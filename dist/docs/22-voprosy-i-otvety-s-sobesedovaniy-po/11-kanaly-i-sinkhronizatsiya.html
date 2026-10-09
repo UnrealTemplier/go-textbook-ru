@@ -630,21 +630,47 @@ fmt.Println(val)
 <p>Небуферизированный канал (емкость 0) синхронизирует отправку и получение: отправитель блокируется до тех пор, пока получатель не заберёт значение. Буферизированный канал (емкость &gt; 0) позволяет отправителю положить значение в буфер и продолжить выполнение, не дожидаясь получателя, пока буфер не заполнен. Выбор влияет на гарантии доставки и производительность.</p>
 <h3 id="razvyornutyy-otvet-3">Развёрнутый ответ</h3>
 <ul>
-<li><strong>Небуферизированный канал (<code>make(chan T)</code>)</strong><br />
-    Обеспечивает строгую синхронизацию "рандеву". <code>send</code> не завершится, пока <code>recv</code> не произойдёт (и наоборот). Это делает канал похожим на синхронную точку встречи.<br />
-<code>go
-  ch := make(chan int)
-  go func() {
-      ch &lt;- 42 // заблокируется, пока не прочитают
-  }()
-  v := &lt;-ch // разблокирует отправителя</code></li>
-<li><strong>Буферизированный канал (<code>make(chan T, N</code>)</strong><br />
-    Содержит кольцевой буфер на N элементов. Отправка блокируется только при заполненном буфере; получение — при пустом. Это развязывает отправителя и получателя во времени, но не гарантирует мгновенную обработку.<br />
-<code>go
-  ch := make(chan int, 2)
-  ch &lt;- 1 // не блокируется
-  ch &lt;- 2 // не блокируется
-  // ch &lt;- 3 // заблокируется, пока кто-то не прочитает</code></li>
+<li>
+<p><strong>Небуферизированный канал (<code>make(chan T)</code>)</strong><br />
+    Обеспечивает строгую синхронизацию "рандеву". <code>send</code> не завершится, пока <code>recv</code> не произойдёт (и наоборот). Это делает канал похожим на синхронную точку встречи.</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">ch := make(chan int)
+go func() {
+    ch &lt;- 42 // заблокируется, пока не прочитают
+}()
+v := &lt;-ch // разблокирует отправителя
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Буферизированный канал (<code>make(chan T, N</code>)</strong><br />
+    Содержит кольцевой буфер на N элементов. Отправка блокируется только при заполненном буфере; получение — при пустом. Это развязывает отправителя и получателя во времени, но не гарантирует мгновенную обработку.</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">ch := make(chan int, 2)
+ch &lt;- 1 // не блокируется
+ch &lt;- 2 // не блокируется
+// ch &lt;- 3 // заблокируется, пока кто-то не прочитает
+</code></pre>
+</div>
+
+</li>
 </ul>
 <p>Важно: буферизированный канал не делает отправку асинхронной в классическом смысле — при заполнении отправитель всё равно блокируется. Это отличает Go от моделей акторов с неограниченной почтой.</p>
 <h3 id="pod-kapotom-internals-3">Под капотом (internals)</h3>
@@ -965,17 +991,28 @@ default:
 <h3 id="tipichnye-oshibki-kandidatov-9">Типичные ошибки кандидатов</h3>
 <ol>
 <li>
-<p><strong>Бесконечный цикл с <code>default</code> без паузы</strong><br />
-<code>go
-   for {
-       select {
-       case v := &lt;-ch:
-           handle(v)
-       default:
-           // CPU 100%
-       }
-   }</code><br />
-    Это превращается в активный опрос. Следует убрать <code>default</code>, если нужно блокироваться, либо добавить усыпление (<code>time.Sleep</code> или таймер) в default.</p>
+<p><strong>Бесконечный цикл с <code>default</code> без паузы</strong>  </p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">for {
+    select {
+    case v := &lt;-ch:
+        handle(v)
+    default:
+        // CPU 100%
+    }
+}
+</code></pre>
+</div>
+
+<p>Это превращается в активный опрос. Следует убрать <code>default</code>, если нужно блокироваться, либо добавить усыпление (<code>time.Sleep</code> или таймер) в default.</p>
 </li>
 <li>
 <p><strong>Использование <code>default</code> для «гарантированной» отправки</strong><br />
@@ -1358,40 +1395,62 @@ fmt.Println(cap(ch)) // 10
 <ol>
 <li>
 <p><strong>Координирующая горутина-агрегатор</strong><br />
-    Несколько продюсеров шлют результаты в канал, а одна специальная горутина собирает их, и когда счётчик завершён (через <code>sync.WaitGroup</code>), закрывает канал. Это канонический <code>fan-in</code> с закрытием.<br />
-<code>go
-   func fanIn(inputs ...&lt;-chan int) &lt;-chan int {
-       out := make(chan int)
-       var wg sync.WaitGroup
-       wg.Add(len(inputs))
-       for _, in := range inputs {
-           go func(ch &lt;-chan int) {
-               for v := range ch {
-                   out &lt;- v
-               }
-               wg.Done()
-           }(in)
-       }
-       go func() {
-           wg.Wait()
-           close(out)
-       }()
-       return out
-   }</code></p>
+    Несколько продюсеров шлют результаты в канал, а одна специальная горутина собирает их, и когда счётчик завершён (через <code>sync.WaitGroup</code>), закрывает канал. Это канонический <code>fan-in</code> с закрытием.</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">func fanIn(inputs ...&lt;-chan int) &lt;-chan int {
+    out := make(chan int)
+    var wg sync.WaitGroup
+    wg.Add(len(inputs))
+    for _, in := range inputs {
+        go func(ch &lt;-chan int) {
+            for v := range ch {
+                out &lt;- v
+            }
+            wg.Done()
+        }(in)
+    }
+    go func() {
+        wg.Wait()
+        close(out)
+    }()
+    return out
+}
+</code></pre>
+</div>
+
 </li>
 <li>
 <p><strong>Канал-стоп (<code>done</code>), прослушиваемый отправителями</strong><br />
-    Имеется отдельный канал <code>done</code>, который закрывается один раз (например, по <code>context</code> или таймауту). Отправители в своём <code>select</code> слушают <code>done</code>; после его закрытия прекращают отправку. После того как все отправители вышли, <code>close(dataCh)</code> выполняет координатор.<br />
-<code>go
-   func producer(done &lt;-chan struct{}, data chan&lt;- int) {
-       for {
-           select {
-           case &lt;-done:
-               return
-           case data &lt;- produce():
-           }
-       }
-   }</code></p>
+    Имеется отдельный канал <code>done</code>, который закрывается один раз (например, по <code>context</code> или таймауту). Отправители в своём <code>select</code> слушают <code>done</code>; после его закрытия прекращают отправку. После того как все отправители вышли, <code>close(dataCh)</code> выполняет координатор.</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">func producer(done &lt;-chan struct{}, data chan&lt;- int) {
+    for {
+        select {
+        case &lt;-done:
+            return
+        case data &lt;- produce():
+        }
+    }
+}
+</code></pre>
+</div>
+
 </li>
 <li>
 <p><strong><code>sync.Once</code> для <code>close</code></strong><br />
@@ -1778,12 +1837,27 @@ timer.Reset(d)
 <h3 id="razvyornutyy-otvet-21">Развёрнутый ответ</h3>
 <p>Виды сигнальных каналов:</p>
 <ul>
-<li><strong>Одноразовый сигнал</strong>: закрытие канала. Все заблокированные на нём читатели немедленно получат zero value. Закрытие идиоматично для широковещательного оповещения «завершение».<br />
-<code>go
-  done := make(chan struct{})
-  // ...
-  close(done) // сигнал всем слушателям</code></li>
-<li><strong>Многоразовый сигнал</strong>: отправка значения в небуферизированный канал действует как ручное пробуждение одного ожидающего; для буферизированного — как семафор.</li>
+<li>
+<p><strong>Одноразовый сигнал</strong>: закрытие канала. Все заблокированные на нём читатели немедленно получат zero value. Закрытие идиоматично для широковещательного оповещения «завершение».</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">done := make(chan struct{})
+// ...
+close(done) // сигнал всем слушателям
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Многоразовый сигнал</strong>: отправка значения в небуферизированный канал действует как ручное пробуждение одного ожидающего; для буферизированного — как семафор.</p>
+</li>
 <li><strong>Периодический сигнал</strong>: <code>time.Ticker.C</code> — канал, получающий значения регулярно.</li>
 </ul>
 <p>Выбор <code>struct{}</code> обусловлен нулевым размером и тем, что передача не несёт полезной нагрузки. Закрытие канала является идиоматическим способом broadcast-сигнала, потому что на него могут реагировать многие получатели без необходимости рассылать отдельные сообщения.</p>
@@ -1936,14 +2010,25 @@ case &lt;-timeoutCh:
 </li>
 <li>
 <p><strong>Не обнуляют канал после закрытия в <code>select</code> для предотвращения бесконечного срабатывания</strong><br />
-    Распространённая ошибка: в <code>case v, ok := &lt;-ch:</code> при <code>!ok</code> забывают сделать <code>ch = nil</code>, и следующая итерация select снова и снова попадает в эту ветку. Правильный паттерн:<br />
-<code>go
-   case v, ok := &lt;-ch:
-       if !ok {
-           ch = nil
-           break
-       }
-       process(v)</code></p>
+    Распространённая ошибка: в <code>case v, ok := &lt;-ch:</code> при <code>!ok</code> забывают сделать <code>ch = nil</code>, и следующая итерация select снова и снова попадает в эту ветку. Правильный паттерн:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">case v, ok := &lt;-ch:
+    if !ok {
+        ch = nil
+        break
+    }
+    process(v)
+</code></pre>
+</div>
+
 </li>
 <li>
 <p><strong>Попытка закрыть nil-канал</strong><br />

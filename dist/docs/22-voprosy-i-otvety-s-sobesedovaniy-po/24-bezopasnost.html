@@ -1032,18 +1032,46 @@ ORM генерирует запросы, но при использовании 
 <h3 id="razvyornutyy-otvet-13">Развёрнутый ответ</h3>
 <p>Надёжная защита требует подхода на нескольких уровнях:</p>
 <ol>
-<li><strong>Параметризация — закон</strong>:<br />
-<code>go
-   stmt, _ := db.Prepare("INSERT INTO logs (msg, severity) VALUES ($1, $2)")
-   stmt.Exec(userMsg, severity)</code></li>
-<li><strong>Белый список для идентификаторов</strong>:<br />
-<code>go
-   allowedColumns := map[string]bool{"id": true, "username": true, "email": true}
-   if !allowedColumns[orderBy] {
-       return errors.New("invalid column")
-   }
-   query := fmt.Sprintf("SELECT * FROM users ORDER BY %s", orderBy)</code></li>
-<li><strong>Принцип наименьших привилегий для пользователя БД</strong>: приложение подключается под юзером, который не имеет прав на DDL, доступ только к необходимым таблицам.</li>
+<li>
+<p><strong>Параметризация — закон</strong>:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">stmt, _ := db.Prepare(&quot;INSERT INTO logs (msg, severity) VALUES ($1, $2)&quot;)
+stmt.Exec(userMsg, severity)
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Белый список для идентификаторов</strong>:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">allowedColumns := map[string]bool{&quot;id&quot;: true, &quot;username&quot;: true, &quot;email&quot;: true}
+if !allowedColumns[orderBy] {
+    return errors.New(&quot;invalid column&quot;)
+}
+query := fmt.Sprintf(&quot;SELECT * FROM users ORDER BY %s&quot;, orderBy)
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Принцип наименьших привилегий для пользователя БД</strong>: приложение подключается под юзером, который не имеет прав на DDL, доступ только к необходимым таблицам.</p>
+</li>
 <li><strong>Экранирование для специфических случаев</strong> (LIKE-паттерны) происходит вручную после параметризации, а не вместо неё.</li>
 <li><strong>WAF и мониторинг</strong> как дополнительный слой.</li>
 </ol>
@@ -1088,11 +1116,26 @@ out, _ := cmd.CombinedOutput()
 
 <p>Злоумышленник передаёт <code>8.8.8.8; rm -rf /</code>, и shell выполняет обе команды. Защита:</p>
 <ul>
-<li>Никогда не использовать shell в <code>exec.Command</code> с пользовательскими данными. Вместо этого передавать аргументы напрямую:<br />
-<code>go
-  cmd := exec.Command("ping", "-c", "1", ip)</code><br />
-    В таком варианте <code>ip="8.8.8.8; rm -rf /"</code> станет одним аргументом команды ping, и инъекция не сработает.</li>
-<li>Если shell действительно нужен, тщательно экранировать аргументы через <code>shellquote</code> или использовать <code>text/template</code> для генерации команд с проверкой.</li>
+<li>
+<p>Никогда не использовать shell в <code>exec.Command</code> с пользовательскими данными. Вместо этого передавать аргументы напрямую:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">cmd := exec.Command(&quot;ping&quot;, &quot;-c&quot;, &quot;1&quot;, ip)
+</code></pre>
+</div>
+
+<p>В таком варианте <code>ip="8.8.8.8; rm -rf /"</code> станет одним аргументом команды ping, и инъекция не сработает.</p>
+</li>
+<li>
+<p>Если shell действительно нужен, тщательно экранировать аргументы через <code>shellquote</code> или использовать <code>text/template</code> для генерации команд с проверкой.</p>
+</li>
 <li>Изоляция: выполнение в контейнере с минимальными правами, без лишних capability, read-only файловая система.</li>
 </ul>
 <h3 id="pod-kapotom-internals-14">Под капотом (internals)</h3>
@@ -1390,29 +1433,63 @@ ACL задаёт разрешения уровня пользователь-ре
 <p>Симметричное шифрование использует один и тот же ключ для шифрования и расшифрования (AES, ChaCha20). Быстрое, но требует безопасного обмена ключом. Асимметричное (RSA, ECDH, Ed25519) — пара ключей: открытый и закрытый. Открытый используется для шифрования или проверки подписи, закрытый — для расшифрования или подписи. Медленнее, но решает проблему распределения ключей.</p>
 <h3 id="razvyornutyy-otvet-19">Развёрнутый ответ</h3>
 <ul>
-<li><strong>Симметричное</strong>:<ul>
-<li>AES-GCM: шифрует и обеспечивает аутентификацию, используется в TLS. Пример в Go:<br />
-<code>go
-key := make([]byte, 32) // AES-256
+<li>
+<p><strong>Симметричное</strong>:</p>
+<ul>
+<li>
+<p>AES-GCM: шифрует и обеспечивает аутентификацию, используется в TLS. Пример в Go:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">key := make([]byte, 32) // AES-256
 aes, _ := aes.NewCipher(key)
 gcm, _ := cipher.NewGCM(aes)
 nonce := make([]byte, gcm.NonceSize())
-ciphertext := gcm.Seal(nil, nonce, plaintext, nil)</code></li>
-<li>Применение: шифрование данных в БД, сессионные cookie, TLS-трафик.</li>
+ciphertext := gcm.Seal(nil, nonce, plaintext, nil)
+</code></pre>
+</div>
+
+</li>
+<li>
+<p>Применение: шифрование данных в БД, сессионные cookie, TLS-трафик.</p>
+</li>
 </ul>
 </li>
-<li><strong>Асимметричное</strong>:<ul>
+<li>
+<p><strong>Асимметричное</strong>:</p>
+<ul>
 <li>RSA: шифруют короткие данные (сеансовый ключ) или подписывают. В Go <code>crypto/rsa</code>.</li>
 <li>ECDSA (P-256): подпись, верификация; Ed25519 — более современная и быстрая подпись.</li>
 <li>ECDH (через <code>crypto/ecdh</code> в Go 1.20+): обмен ключами.</li>
-<li>Пример подписи Ed25519:<br />
-<code>go
-pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+<li>
+<p>Пример подписи Ed25519:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 sig := ed25519.Sign(priv, message)
-ok := ed25519.Verify(pub, message, sig)</code></li>
+ok := ed25519.Verify(pub, message, sig)
+</code></pre>
+</div>
+
+</li>
 </ul>
 </li>
-<li>В реальных системах комбинируют: асимметричный обмен ключом устанавливает симметричный сессионный ключ (гибридное шифрование).</li>
+<li>
+<p>В реальных системах комбинируют: асимметричный обмен ключом устанавливает симметричный сессионный ключ (гибридное шифрование).</p>
+</li>
 </ul>
 <h3 id="pod-kapotom-internals-19">Под капотом (internals)</h3>
 <p>В Go <code>crypto/aes</code> для AMD64 использует аппаратные инструкции AES-NI через ассемблер, если доступны. GCM-режим реализован в <code>crypto/cipher</code> с помощью <code>gcmFieldElement</code> и умножения в GF(2^128) с использованием PCLMULQDQ. <code>crypto/ecdh</code> теперь нативный, не требует заимствований из <code>crypto/elliptic</code>. Ed25519 работает в constant-time, устойчив к side-channel. <code>crypto/rand</code> читает из <code>/dev/urandom</code> (или <code>getrandom</code>), обеспечивая криптостойкую случайность.</p>
@@ -1440,17 +1517,36 @@ Ed25519 быстрее, безопаснее в реализации (не по�
 <ol>
 <li><strong>Переменные окружения</strong>: <code>os.Getenv("DB_PASSWORD")</code>. Плюс: простота, поддержка 12-factor app. Минусы: легко утекают (дампы окружения, дочерние процессы наследуют), нет версионирования и ротации.</li>
 <li><strong>Файлы конфигурации (<code>.env</code>)</strong>: загружаются через <code>godotenv</code>. Должны быть исключены из VCS (<code>.gitignore</code>).</li>
-<li><strong>Менеджеры секретов</strong>:<ul>
-<li>Vault: <code>vault/api</code> — клиент на Go, аутентификация через AppRole, токен или Kubernetes auth.<br />
-<code>go
- client, _ := api.NewClient(api.DefaultConfig())
- client.SetToken("s.abc...")
- secret, _ := client.Logical().Read("secret/data/db")
- password := secret.Data["data"].(map[string]interface{})["password"].(string)</code></li>
-<li>AWS Secrets Manager / GCP Secret Manager: SDK клиенты.</li>
+<li>
+<p><strong>Менеджеры секретов</strong>:</p>
+<ul>
+<li>
+<p>Vault: <code>vault/api</code> — клиент на Go, аутентификация через AppRole, токен или Kubernetes auth.</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">client, _ := api.NewClient(api.DefaultConfig())
+client.SetToken(&quot;s.abc...&quot;)
+secret, _ := client.Logical().Read(&quot;secret/data/db&quot;)
+password := secret.Data[&quot;data&quot;].(map[string]interface{})[&quot;password&quot;].(string)
+</code></pre>
+</div>
+
+</li>
+<li>
+<p>AWS Secrets Manager / GCP Secret Manager: SDK клиенты.</p>
+</li>
 </ul>
 </li>
-<li><strong>Безопасное использование</strong>: минимизировать время жизни секрета в памяти; по возможности использовать <code>memguard</code> для защиты sensitive данных от свапирования на диск.</li>
+<li>
+<p><strong>Безопасное использование</strong>: минимизировать время жизни секрета в памяти; по возможности использовать <code>memguard</code> для защиты sensitive данных от свапирования на диск.</p>
+</li>
 <li><strong>В Go секреты не должны логироваться</strong>: избегать <code>fmt.Printf("%s", password)</code>, использовать <code>string(подавление)</code> или <code>redact</code>-функции.</li>
 </ol>
 <h3 id="pod-kapotom-internals-20">Под капотом (internals)</h3>
@@ -2405,18 +2501,46 @@ Zero Trust расширяет принцип наименьших привиле
 <h3 id="razvyornutyy-otvet-39">Развёрнутый ответ</h3>
 <p>Процесс в Go:</p>
 <ol>
-<li>При регистрации:<br />
-<code>go
-   password := []byte(userPassword)
-   hash, err := argon2id.CreateHash(password, argon2id.DefaultParams) // гипотетическая обёртка
-   // или bcrypt
-   hash, err := bcrypt.GenerateFromPassword(password, bcrypt.DefaultCost)</code></li>
-<li>Сохранить <code>hash</code> в БД (поле VARCHAR 255).</li>
-<li>При входе:<br />
-<code>go
-   err = bcrypt.CompareHashAndPassword(storedHash, password)</code><br />
-    Дополнительные меры:</li>
+<li>
+<p>При регистрации:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">password := []byte(userPassword)
+hash, err := argon2id.CreateHash(password, argon2id.DefaultParams) // гипотетическая обёртка
+// или bcrypt
+hash, err := bcrypt.GenerateFromPassword(password, bcrypt.DefaultCost)
+</code></pre>
+</div>
+
+</li>
+<li>
+<p>Сохранить <code>hash</code> в БД (поле VARCHAR 255).</p>
+</li>
+<li>
+<p>При входе:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">err = bcrypt.CompareHashAndPassword(storedHash, password)
+</code></pre>
+</div>
+
+</li>
 </ol>
+<p>Дополнительные меры:</p>
 <ul>
 <li>Применять pepper (секретный ключ приложения), добавляемый к паролю перед хешированием, хранящийся в Vault.</li>
 <li>Включить политику сложности паролей (минимальная длина).</li>
@@ -2541,10 +2665,25 @@ func computeHMAC(key, message []byte) []byte {
 <p>Подробная реализация:</p>
 <ol>
 <li>При создании сессии генерируется случайный токен (32 байта) и сохраняется в сессии.</li>
-<li>Токен вставляется в HTML-форму как скрытое поле:<br />
-<code>html
-   &lt;input type="hidden" name="csrf_token" value="{{.CSRF}}"&gt;</code></li>
-<li>Также может передаваться в JavaScript через <code>&lt;meta name="csrf"&gt;</code> и добавляться в заголовок <code>X-CSRF-Token</code> для AJAX.</li>
+<li>
+<p>Токен вставляется в HTML-форму как скрытое поле:</p>
+
+<div class="code-block" data-lang="html">
+  <header class="code-header">
+    <span class="code-lang-tag">HTML</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-html"><code class="language-html">&lt;input type=&quot;hidden&quot; name=&quot;csrf_token&quot; value=&quot;{{.CSRF}}&quot;&gt;
+</code></pre>
+</div>
+
+</li>
+<li>
+<p>Также может передаваться в JavaScript через <code>&lt;meta name="csrf"&gt;</code> и добавляться в заголовок <code>X-CSRF-Token</code> для AJAX.</p>
+</li>
 <li>Middleware проверяет не-GET запросы: извлекает токен из параметров или заголовка и сравнивает с сохранённым в сессии через constant-time.</li>
 </ol>
 <p>Пример middleware:</p>

@@ -582,15 +582,30 @@ flowchart TD
 <ol>
 <li><strong>Автоматический Reconnect:</strong><br />
     Если TCP-соединение обрывается со стороны сервера или сети, браузер <strong>автоматически, без единой строчки клиентского кода</strong>, берет паузу (по умолчанию 3 секунды или значение из заголовка <code>retry:</code>) и повторяет запрос <code>GET</code>.</li>
-<li><strong>Гарантия непрерывности доставки через <code>Last-Event-ID</code>:</strong><br />
-    Если каждое отправляемое Go-сервером событие содержало поле <code>id:</code> (например, смещение в логе Kafka или ID записи в БД: <code>id: 42</code>), браузер кэширует последнее успешно обработанное значение. При авто-переподключении браузер автоматически выставляет стандартный заголовок:<br />
-<code>http
-   GET /api/v1/stream HTTP/1.1
-   Host: example.com
-   Accept: text/event-stream
-   Last-Event-ID: 42</code></li>
-<li><strong>Восстановление состояния на бэкенде:</strong><br />
-    Go-обработчик считывает <code>r.Header.Get("Last-Event-ID")</code>, обращается к персистентной шине данных (Redis Streams, Apache Kafka или реляционная БД) и бесшовно досылает клиенту события с номерами <code>43, 44...</code>. Пользователь веб-приложения даже не замечает кратковременного сбоя сети.</li>
+<li>
+<p><strong>Гарантия непрерывности доставки через <code>Last-Event-ID</code>:</strong><br />
+    Если каждое отправляемое Go-сервером событие содержало поле <code>id:</code> (например, смещение в логе Kafka или ID записи в БД: <code>id: 42</code>), браузер кэширует последнее успешно обработанное значение. При авто-переподключении браузер автоматически выставляет стандартный заголовок:</p>
+
+<div class="code-block" data-lang="http">
+  <header class="code-header">
+    <span class="code-lang-tag">HTTP</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-http"><code class="language-http">GET /api/v1/stream HTTP/1.1
+Host: example.com
+Accept: text/event-stream
+Last-Event-ID: 42
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Восстановление состояния на бэкенде:</strong><br />
+    Go-обработчик считывает <code>r.Header.Get("Last-Event-ID")</code>, обращается к персистентной шине данных (Redis Streams, Apache Kafka или реляционная БД) и бесшовно досылает клиенту события с номерами <code>43, 44...</code>. Пользователь веб-приложения даже не замечает кратковременного сбоя сети.</p>
+</li>
 </ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -715,19 +730,45 @@ flowchart TD
     <p><strong>Причина:</strong> Nginx по умолчанию кэширует и буферизирует ответы проксируемых бэкендов (<code>proxy_buffering on;</code>). Он аккумулирует байты из ваших вызовов <code>flusher.Flush()</code>, удерживая их во внутреннем буфере (64 КБ – 1 МБ), пока не наберет достаточный объем, лишая SSE смысла реального времени.<br />
 <strong>Решение (два пути):</strong>  </p>
 <ol>
-<li>На стороне конфигурации Nginx явно отключить буферизацию для streaming-эндпоинта:<br />
-<code>nginx
-   location /api/v1/stream {
-       proxy_pass http://go_backend;
-       proxy_buffering off;
-       proxy_cache off;
-       proxy_set_header Connection '';
-       proxy_http_version 1.1;
-       chunked_transfer_encoding off;
-   }</code></li>
-<li>На стороне кода Go передать специальный заголовок управления Nginx, отключающий буферизацию для данного соединения:<br />
-<code>go
-   w.Header().Set("X-Accel-Buffering", "no")</code></li>
+<li>
+<p>На стороне конфигурации Nginx явно отключить буферизацию для streaming-эндпоинта:</p>
+
+<div class="code-block" data-lang="nginx">
+  <header class="code-header">
+    <span class="code-lang-tag">NGINX</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-nginx"><code class="language-nginx">location /api/v1/stream {
+    proxy_pass http://go_backend;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_set_header Connection '';
+    proxy_http_version 1.1;
+    chunked_transfer_encoding off;
+}
+</code></pre>
+</div>
+
+</li>
+<li>
+<p>На стороне кода Go передать специальный заголовок управления Nginx, отключающий буферизацию для данного соединения:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">w.Header().Set(&quot;X-Accel-Buffering&quot;, &quot;no&quot;)
+</code></pre>
+</div>
+
+</li>
 </ol>
   </div>
 </aside>

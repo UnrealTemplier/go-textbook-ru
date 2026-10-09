@@ -479,11 +479,22 @@
 <li>
 <p><strong>Разреженные атрибуты и мягкое удаление (Soft Delete):</strong><br />
     В таблице <code>users</code> столбец <code>deleted_at</code> равен <code>NULL</code> для 99% активных пользователей и содержит временную метку для архивных записей. Запросы бизнес-логики почти всегда отсекают удаленных: <code>WHERE deleted_at IS NULL</code>.<br />
-    Индекс:<br />
-<code>sql
-   CREATE INDEX idx_users_active ON users (email) 
-   WHERE deleted_at IS NULL;</code><br />
-    будет обслуживать только живых пользователей, оставаясь компактным и быстрым.</p>
+    Индекс:</p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">CREATE INDEX idx_users_active ON users (email) 
+WHERE deleted_at IS NULL;
+</code></pre>
+</div>
+
+<p>будет обслуживать только живых пользователей, оставаясь компактным и быстрым.</p>
 </li>
 <li>
 <p><strong>Очереди задач и воркеры (Task Queues):</strong><br />
@@ -517,18 +528,40 @@
 
 <ul>
 <li>
-<p><strong>Запрос 1:</strong><br />
-<code>sql
-  SELECT * FROM orders 
-  WHERE status = 'pending' AND created_at &gt; '2025-01-01';</code><br />
-    Здесь предикат запроса явно содержит <code>status = 'pending'</code>. Из истинности <code>status = 'pending' AND created_at &gt; ...</code> тривиально следует истинность <code>status = 'pending'</code>. Оптимизатор применяет частичный индекс: строит узел <code>Index Scan</code>, где в <code>Index Cond</code> передается проверка диапазона дат <code>created_at &gt; ...</code>.</p>
+<p><strong>Запрос 1:</strong></p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">SELECT * FROM orders 
+WHERE status = 'pending' AND created_at &gt; '2025-01-01';
+</code></pre>
+</div>
+
+<p>Здесь предикат запроса явно содержит <code>status = 'pending'</code>. Из истинности <code>status = 'pending' AND created_at &gt; ...</code> тривиально следует истинность <code>status = 'pending'</code>. Оптимизатор применяет частичный индекс: строит узел <code>Index Scan</code>, где в <code>Index Cond</code> передается проверка диапазона дат <code>created_at &gt; ...</code>.</p>
 </li>
 <li>
-<p><strong>Запрос 2:</strong><br />
-<code>sql
-  SELECT * FROM orders 
-  WHERE status = 'pending' OR priority = 1;</code><br />
-    Здесь используется дизъюнкция: условие <code>WHERE status = 'pending' OR priority = 1</code> допускает строки, где <code>status</code> равен <code>'cancelled'</code>, но <code>priority = 1</code>. Такие строки <strong>отсутствуют в частичном индексе</strong>! Следовательно, предикат индекса не покрывает запрос ($P_{\text{query}} \not\implies P_{\text{index}}$). Планировщик отвергнет этот частичный индекс и выберет последовательное чтение таблицы (<code>Seq Scan</code>).</p>
+<p><strong>Запрос 2:</strong></p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">SELECT * FROM orders 
+WHERE status = 'pending' OR priority = 1;
+</code></pre>
+</div>
+
+<p>Здесь используется дизъюнкция: условие <code>WHERE status = 'pending' OR priority = 1</code> допускает строки, где <code>status</code> равен <code>'cancelled'</code>, но <code>priority = 1</code>. Такие строки <strong>отсутствуют в частичном индексе</strong>! Следовательно, предикат индекса не покрывает запрос ($P_{\text{query}} \not\implies P_{\text{index}}$). Планировщик отвергнет этот частичный индекс и выберет последовательное чтение таблицы (<code>Seq Scan</code>).</p>
 </li>
 </ul>
 
@@ -705,13 +738,26 @@ WHERE email = 'alice@example.com' AND deleted_at IS NULL;
     Если вы используете <code>status = $1</code>, а индекс построен с <code>WHERE status = 'pending'</code>, PostgreSQL на этапе подготовки общего плана (Generic Plan) не знает, какое значение придет в <code>$1</code>. Следовательно, он <strong>не сможет</strong> применить частичный индекс! Частичный индекс работает только тогда, когда условие жестко прописано в тексте SQL (<code>WHERE status = 'pending' AND ...</code>) либо при использовании кастомных планов (Custom Plans).</li>
 <li><strong>Множественные взаимодополняющие индексы:</strong><br />
     Можно создать два частичных индекса под разные профили нагрузки: один для <code>status = 'active'</code>, другой для <code>status = 'inactive'</code>. Оптимизатор сам выберет нужный в зависимости от запроса.</li>
-<li><strong>Поддержка в разных СУБД:</strong><br />
-    Частичные индексы нативно поддерживаются PostgreSQL, SQLite и SQL Server. В MySQL/InnoDB классических частичных индексов нет. В MySQL разработчики вынуждены эмулировать их через виртуальные генерируемые столбцы (<code>GENERATED ALWAYS AS</code>) с выражениями вида:<br />
-<code>sql
-   ALTER TABLE orders ADD COLUMN pending_created_at DATETIME 
-       GENERATED ALWAYS AS (IF(status='active', column, NULL)) VIRTUAL;
-   CREATE INDEX idx_pending ON orders (pending_created_at);</code><br />
-    где индекс строится по виртуальной колонке, а в запросе добавляется <code>WHERE column IS NOT NULL</code>.</li>
+<li>
+<p><strong>Поддержка в разных СУБД:</strong><br />
+    Частичные индексы нативно поддерживаются PostgreSQL, SQLite и SQL Server. В MySQL/InnoDB классических частичных индексов нет. В MySQL разработчики вынуждены эмулировать их через виртуальные генерируемые столбцы (<code>GENERATED ALWAYS AS</code>) с выражениями вида:</p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">ALTER TABLE orders ADD COLUMN pending_created_at DATETIME 
+    GENERATED ALWAYS AS (IF(status='active', column, NULL)) VIRTUAL;
+CREATE INDEX idx_pending ON orders (pending_created_at);
+</code></pre>
+</div>
+
+<p>где индекс строится по виртуальной колонке, а в запросе добавляется <code>WHERE column IS NOT NULL</code>.</p>
+</li>
 </ol>
 <hr />
 <h3 id="diagramma-prinyatiya-resheniya-planirovshchikom">Диаграмма принятия решения планировщиком</h3>

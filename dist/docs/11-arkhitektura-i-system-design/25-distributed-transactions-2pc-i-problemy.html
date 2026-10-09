@@ -603,16 +603,29 @@ func (w *WALJournal) Append(txID, state string) error {
     На каждом сервисе-участнике открывается локальная транзакция. Пока координатор опрашивает остальных участников через сеть, соединение из пула базы данных удерживается горутиной. При дефолтном пуле в 50–100 соединений уже 100 одновременных распределённых транзакций с задержкой сети в 200 мс полностью парализуют сервис. Новые входящие HTTP/gRPC запросы зависают в очереди ожидания свободного коннекта к БД.</li>
 <li><strong>Накладные расходы памяти на горутины</strong>:<br />
     Каждая подвисшая в ожидании сеть/диск горутина потребляет минимум 2–4 КБ стека плюс системные структуры планировщика. Десятки тысяч заблокированных горутин увеличивают рабочий набор памяти (RSS) и заставляют Garbage Collector тратить драгоценные такты на сканирование их стеков при проверке барьеров записи.</li>
-<li><strong>Блокировки в ядре PostgreSQL (<code>PREPARE TRANSACTION</code>)</strong>:<br />
-    PostgreSQL имеет встроенную поддержку 2PC через команды SQL:<br />
-<code>sql
-   PREPARE TRANSACTION 'tx_42_payment';
-   -- Позже:
-   COMMIT PREPARED 'tx_42_payment';
-   -- Или:
-   ROLLBACK PREPARED 'tx_42_payment';</code><br />
-    Когда выполняется <code>PREPARE TRANSACTION</code>, транзакция отвязывается от клиентской сессии и персистентно сохраняется в системном каталоге и на диске в директории <code>pg_twophase/</code>.<br />
-<strong>Опасность:</strong> Подготовленная транзакция удерживает все блокировки строк (<code>ExclusiveLock</code>) и блокирует продвижение минимального идентификатора транзакции (<code>OldestXmin</code>). Это препятствует работе фонового процесса очистки <strong>VACUUM</strong>. Таблицы базы данных начинают стремительно раздуваться (Table Bloat), а чтение деградирует из-за миллионов неудалённых «мёртвых» строк (dead tuples).</li>
+<li>
+<p><strong>Блокировки в ядре PostgreSQL (<code>PREPARE TRANSACTION</code>)</strong>:<br />
+    PostgreSQL имеет встроенную поддержку 2PC через команды SQL:</p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">PREPARE TRANSACTION 'tx_42_payment';
+-- Позже:
+COMMIT PREPARED 'tx_42_payment';
+-- Или:
+ROLLBACK PREPARED 'tx_42_payment';
+</code></pre>
+</div>
+
+<p>Когда выполняется <code>PREPARE TRANSACTION</code>, транзакция отвязывается от клиентской сессии и персистентно сохраняется в системном каталоге и на диске в директории <code>pg_twophase/</code>.<br />
+<strong>Опасность:</strong> Подготовленная транзакция удерживает все блокировки строк (<code>ExclusiveLock</code>) и блокирует продвижение минимального идентификатора транзакции (<code>OldestXmin</code>). Это препятствует работе фонового процесса очистки <strong>VACUUM</strong>. Таблицы базы данных начинают стремительно раздуваться (Table Bloat), а чтение деградирует из-за миллионов неудалённых «мёртвых» строк (dead tuples).</p>
+</li>
 </ol>
 <hr />
 <h3 id="pochemu-2pc-redko-primenyaetsya-v-mikroservisakh">Почему 2PC редко применяется в микросервисах</h3>

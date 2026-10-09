@@ -709,24 +709,38 @@ flowchart TD
 <p>При разработке бэкенд-сервисов на Go вы будете регулярно встречать <code>Bitmap Heap Scan</code> при анализе узких мест через <code>EXPLAIN ANALYZE</code> (<a href="10-plan-vypolneniya-zaprosa-explain.html" class="wikilink">10. План выполнения запроса. EXPLAIN</a>). Понимание того, как PostgreSQL динамически формирует <code>TIDBitmap</code>, спасает от типичной паники: многие начинающие разработчики считают, что база делает «что-то странное и медленное». На самом деле <code>Bitmap Scan</code> спасает ваш диск от тысяч хаотичных прыжков (Random I/O), превращая их в упорядоченное линейное чтение страниц. Если вы видите, что план перешел в режим <code>lossy</code>, значит, вашему запросу не хватило памяти <code>work_mem</code>.</p>
 <p>Вторая грань механического сочувствия — перенос концепций битовых карт прямо в исходный код микросервисов на Go:</p>
 <ol>
-<li><strong>Битовые маски для флагов и разрешений:</strong><br />
-    Вместо структур с десятком булевых полей или срезов строк опытные инженеры используют целочисленные битовые маски (<code>uint64</code> или <code>[]uint64</code>). Проверка прав доступа превращается в одну инструкцию процессора:<br />
-   ```go<br />
-   type Permission uint64</li>
-</ol>
-<p>const (<br />
-       PermRead   Permission = 1 &lt;&lt; iota // 0001<br />
-       PermWrite                         // 0010<br />
-       PermDelete                        // 0100<br />
-       PermAdmin                         // 1000<br />
-   )</p>
-<p>func HasAccess(userPerms, required Permission) bool {<br />
-       return (userPerms &amp; required) == required<br />
-   }<br />
-   ```</p>
-<ol start="2">
-<li><strong>In-Memory фильтрация и инвертированные индексы:</strong><br />
-    Если сервис на Go держит в памяти кэш из сотен тысяч сущностей и должен мгновенно фильтровать их по десяткам критериев (подобно рекламным аукционам RTB или рекомендательным системам), подключение библиотеки <code>github.com/RoaringBitmap/roaring</code> даёт колоссальный прирост пропускной способности. Микросервис находит пересечение пяти критериев за микросекунды, используя лишь регистры CPU и кэш L1/L2.</li>
+<li>
+<p><strong>Битовые маски для флагов и разрешений:</strong><br />
+    Вместо структур с десятком булевых полей или срезов строк опытные инженеры используют целочисленные битовые маски (<code>uint64</code> или <code>[]uint64</code>). Проверка прав доступа превращается в одну инструкцию процессора:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">type Permission uint64
+
+const (
+    PermRead   Permission = 1 &lt;&lt; iota // 0001
+    PermWrite                         // 0010
+    PermDelete                        // 0100
+    PermAdmin                         // 1000
+)
+
+func HasAccess(userPerms, required Permission) bool {
+    return (userPerms &amp; required) == required
+}
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>In-Memory фильтрация и инвертированные индексы:</strong><br />
+    Если сервис на Go держит в памяти кэш из сотен тысяч сущностей и должен мгновенно фильтровать их по десяткам критериев (подобно рекламным аукционам RTB или рекомендательным системам), подключение библиотеки <code>github.com/RoaringBitmap/roaring</code> даёт колоссальный прирост пропускной способности. Микросервис находит пересечение пяти критериев за микросекунды, используя лишь регистры CPU и кэш L1/L2.</p>
+</li>
 </ol>
 <hr />
 <h3 id="itog">Итог</h3>

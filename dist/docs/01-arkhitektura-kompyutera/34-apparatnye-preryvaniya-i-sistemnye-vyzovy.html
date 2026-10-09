@@ -463,11 +463,26 @@ flowchart TD
 <p>Netpoller — это высокопроизводительный платформонезависимый слой абстракции над механизмами мультиплексирования ввода-вывода ядра ОС: <code>epoll</code> в Linux, <code>kqueue</code> в macOS/BSD и <code>IOCP</code> в Windows.</p>
 <p>Как устроен прием и чтение данных из TCP-сокета в Go:</p>
 <ol>
-<li>Вы пишете максимально простой, линейный и очевидный код:<br />
-<code>go
-   data := make([]byte, 1024)
-   n, err := conn.Read(data)</code></li>
-<li>Под капотом рантайм Go при создании любого сетевого соединения переводит файловый дескриптор сокета в неблокирующий режим с помощью флага <code>O_NONBLOCK</code>.</li>
+<li>
+<p>Вы пишете максимально простой, линейный и очевидный код:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">data := make([]byte, 1024)
+n, err := conn.Read(data)
+</code></pre>
+</div>
+
+</li>
+<li>
+<p>Под капотом рантайм Go при создании любого сетевого соединения переводит файловый дескриптор сокета в неблокирующий режим с помощью флага <code>O_NONBLOCK</code>.</p>
+</li>
 <li>Когда ваш код вызывает <code>conn.Read</code>, рантайм делает системный вызов <code>read</code>. Если данных в сетевом буфере ядра еще нет, вызов мгновенно возвращает управление в User Space со специфической ошибкой ядра <code>EAGAIN</code> или <code>EWOULDBLOCK</code> («данных пока нет, повторите позже»).</li>
 <li>Рантайм Go не паникует и <strong>не блокирует системный поток ОС (<code>M</code>)</strong>! Дескриптор сокета уже зарегистрирован в системном селекторе <code>epoll</code> ядра Linux — это делается один раз, при создании соединения (в режиме <code>EPOLLET</code>, с уведомлениями по фронту). Поэтому при <code>EAGAIN</code> рантайму остаётся лишь запомнить, что эта горутина ждёт данных, и припарковать её.</li>
 <li>Сама горутина переводится в состояние <code>waiting</code> (паркуется через <code>gopark</code>), освобождая поток <code>M</code> для других горутин. Процессор <code>P</code> и поток <code>M</code> остаются свободными и немедленно берут в работу следующую горутину из очереди. Никаких новых потоков не создается!</li>

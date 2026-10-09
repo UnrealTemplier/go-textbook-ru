@@ -504,25 +504,66 @@ flowchart TD
 </ul>
 <h3 id="sposoby-vklyucheniya">Способы включения</h3>
 <ol>
-<li><strong>Через HTTP pprof:</strong><br />
-    Импорт <code>_ "net/http/pprof"</code> и установка <code>runtime.SetBlockProfileRate(1)</code> в <code>init()</code> или <code>main</code>.<br />
-   ```go<br />
-   import (<br />
-       _ "net/http/pprof"<br />
-       "runtime"<br />
-   )</li>
+<li>
+<p><strong>Через HTTP pprof:</strong><br />
+    Импорт <code>_ "net/http/pprof"</code> и установка <code>runtime.SetBlockProfileRate(1)</code> в <code>init()</code> или <code>main</code>.</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">import (
+    _ &quot;net/http/pprof&quot;
+    &quot;runtime&quot;
+)
+
+func init() {
+    // Включаем запись всех блокировок для локального профилирования
+    runtime.SetBlockProfileRate(1)
+}
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>В тестах и бенчмарках:</strong><br />
+    Стандартный флаг команды <code>go test</code> автоматически включает сбор блокировок с <code>rate=1</code> на время прогона:</p>
+
+<div class="code-block" data-lang="bash">
+  <header class="code-header">
+    <span class="code-lang-tag">Bash</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-bash"><code class="language-bash">go test -blockprofile=block.out -bench=.
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Программно:</strong></p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">runtime.SetBlockProfileRate(1)
+defer runtime.SetBlockProfileRate(0) // Отключить сбор
+</code></pre>
+</div>
+
+</li>
 </ol>
-<p>func init() {<br />
-       // Включаем запись всех блокировок для локального профилирования<br />
-       runtime.SetBlockProfileRate(1)<br />
-   }<br />
-<code>2. **В тестах и бенчмарках:**  
-    Стандартный флаг команды `go test` автоматически включает сбор блокировок с `rate=1` на время прогона:</code>bash<br />
-   go test -blockprofile=block.out -bench=.<br />
-<code>3. **Программно:**</code>go<br />
-   runtime.SetBlockProfileRate(1)<br />
-   defer runtime.SetBlockProfileRate(0) // Отключить сбор<br />
-   ```</p>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
@@ -668,16 +709,57 @@ Showing nodes accounting for 5.50s, 85% of 6.47s total
 <p><strong>Шаги диагностики:</strong></p>
 <ol>
 <li><strong>Дамп горутин:</strong> Снятие дампа (<a href="4-goroutine-dump.html" class="wikilink">4. goroutine dump</a>) показывает 8 000 горутин в состоянии <code>[chan receive]</code> на функции <code>processBatch</code>.</li>
-<li><strong>Включение профилировщика:</strong> Активируем сбор:<br />
-<code>go
-   runtime.SetBlockProfileRate(1)</code></li>
-<li><strong>Сбор профиля:</strong> Через 30 секунд скачиваем дамп:<br />
-<code>bash
-   curl -o block.prof http://localhost:6060/debug/pprof/block</code></li>
-<li><strong>Анализ стека:</strong> Команда <code>top</code> выводит <code>runtime.chanrecv1</code> с огромным суммарным временем. Вызов <code>list processBatch</code> указывает строго на строку:<br />
-<code>go
-   result := &lt;-ch</code></li>
-<li><strong>Анализ кода:</strong> Канал <code>ch</code> создается динамически на каждый запрос. Воркер должен отправить туда результат. Но при срабатывании таймаута клиентского запроса вызывающая функция досрочно завершается, а фоновый воркер навсегда зависает на попытке записи в канал!</li>
+<li>
+<p><strong>Включение профилировщика:</strong> Активируем сбор:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">runtime.SetBlockProfileRate(1)
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Сбор профиля:</strong> Через 30 секунд скачиваем дамп:</p>
+
+<div class="code-block" data-lang="bash">
+  <header class="code-header">
+    <span class="code-lang-tag">Bash</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-bash"><code class="language-bash">curl -o block.prof http://localhost:6060/debug/pprof/block
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Анализ стека:</strong> Команда <code>top</code> выводит <code>runtime.chanrecv1</code> с огромным суммарным временем. Вызов <code>list processBatch</code> указывает строго на строку:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">result := &lt;-ch
+</code></pre>
+</div>
+
+</li>
+<li>
+<p><strong>Анализ кода:</strong> Канал <code>ch</code> создается динамически на каждый запрос. Воркер должен отправить туда результат. Но при срабатывании таймаута клиентского запроса вызывающая функция досрочно завершается, а фоновый воркер навсегда зависает на попытке записи в канал!</p>
+</li>
 <li><strong>Исправление:</strong> Замена на буферизованный канал <code>make(chan Result, 1)</code> или добавление проверки <code>select</code> с <code>ctx.Done()</code> в коде воркера полностью устраняет утечку.</li>
 </ol>
 <hr />

@@ -482,13 +482,41 @@ flowchart TD
 
 <p>Посмотрим, как отработает наивная реализация резолверов в Go:</p>
 <ol>
-<li>Вызывается корневой резолвер <code>QueryResolver.Users()</code>. Он выполняет ровно один SQL-запрос:<br />
-<code>sql
-   SELECT * FROM users LIMIT 50;</code></li>
-<li>Движок GraphQL получает 50 структур <code>User</code>.</li>
-<li>Для <strong>каждого</strong> из 50 пользователей движок вызывает дочерний резолвер <code>UserResolver.Posts(user)</code>:<br />
-<code>sql
-   SELECT * FROM posts WHERE user_id = X;</code></li>
+<li>
+<p>Вызывается корневой резолвер <code>QueryResolver.Users()</code>. Он выполняет ровно один SQL-запрос:</p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">SELECT * FROM users LIMIT 50;
+</code></pre>
+</div>
+
+</li>
+<li>
+<p>Движок GraphQL получает 50 структур <code>User</code>.</p>
+</li>
+<li>
+<p>Для <strong>каждого</strong> из 50 пользователей движок вызывает дочерний резолвер <code>UserResolver.Posts(user)</code>:</p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">SELECT * FROM posts WHERE user_id = X;
+</code></pre>
+</div>
+
+</li>
 </ol>
 <p><strong>Результат:</strong> Для обработки <strong>одного</strong> HTTP-запроса ваш Go-сервер выполнил <strong>51 запрос к базе данных</strong>! Если всего 20 клиентов одновременно откроют эту страницу, база данных получит залп из 1 000 параллельных запросов. Пул соединений PostgreSQL (<code>max_connections</code>) мгновенно исчерпается, и весь бэкенд рухнет с каскадным отказом.</p>
 <hr />
@@ -500,10 +528,25 @@ flowchart TD
 <li>Когда резолвер <code>UserResolver.Posts()</code> вызывается для первого пользователя, он <strong>не идет в базу данных</strong>. Он регистрирует идентификатор в памяти даталоадера: <em>«Мне нужны посты для <code>user_id = 1</code>. Я подожду ответа»</em> и получает асинхронный дескриптор ожидания (Thunk / Channel).</li>
 <li>Движок <code>gqlgen</code> продолжает обходить граф и регистрирует в очереди даталоадера все остальные ключи: <code>2, 3, 4 ... 50</code>.</li>
 <li>Даталоадер накапливает батч ключей.</li>
-<li>В момент завершения уровня графа даталоадер выполняет <strong>ровно ОДИН</strong> агрегирующий SQL-запрос:<br />
-<code>sql
-   SELECT id, title, user_id FROM posts WHERE user_id IN (1, 2, 3... 50);</code></li>
-<li>Полученные строки группируются в памяти по <code>user_id</code> и рассылаются в ожидающие каналы соответствующих резолверов.</li>
+<li>
+<p>В момент завершения уровня графа даталоадер выполняет <strong>ровно ОДИН</strong> агрегирующий SQL-запрос:</p>
+
+<div class="code-block" data-lang="sql">
+  <header class="code-header">
+    <span class="code-lang-tag">SQL</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-sql"><code class="language-sql">SELECT id, title, user_id FROM posts WHERE user_id IN (1, 2, 3... 50);
+</code></pre>
+</div>
+
+</li>
+<li>
+<p>Полученные строки группируются в памяти по <code>user_id</code> и рассылаются в ожидающие каналы соответствующих резолверов.</p>
+</li>
 </ol>
 <p>Мы сократили 51 отдельный запрос до <strong>2 пакетных запросов</strong>. Без глубокого понимания Dataloader выпускать GraphQL-сервис в продакшен категорически недопустимо.</p>
 

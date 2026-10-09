@@ -636,20 +636,35 @@ func ConnectWithClientBalancing(ctx context.Context) (*grpc.ClientConn, error) {
 <li><code>IdleConnTimeout</code>: время удержания неактивных сокетов в пуле.</li>
 </ul>
 </li>
-<li><strong>Аллокации и пулы буферов (<code>BufferPool</code>)</strong>:<br />
+<li>
+<p><strong>Аллокации и пулы буферов (<code>BufferPool</code>)</strong>:<br />
     По умолчанию <code>ReverseProxy</code> при перекладывании байтов тела ответа (<code>io.Copy</code>) выделяет временный буфер размером 32 КБ на каждый запрос.<br />
     При 20 000 RPS аллокатор Go тратит гигантские ресурсы на выделение и утилизацию $20\,000 \times 32\text{ КБ} \approx 640\text{ МБ}$ оперативной памяти в секунду! Сборщик мусора (GC) немедленно начинает душить процессор.<br />
-<strong>Оптимизация:</strong> Назначить кастомный <code>BufferPool</code> на базе <code>sync.Pool</code> для переиспользования байтовых срезов:<br />
-<code>go
-   type BytePool struct {
-       pool sync.Pool
-   }
-   func (b *BytePool) Get() []byte { return b.pool.Get().([]byte) }
-   func (b *BytePool) Put(bytes []byte) { b.pool.Put(bytes) }
-   // Привязка: rp.BufferPool = &amp;BytePool{pool: sync.Pool{New: func() any { return make([]byte, 32*1024) }}}</code><br />
-    Для задач L4-проксирования без разбора HTTP используется интерфейс <code>http.Hijacker</code>, отдающий сырой TCP-сокет напрямую для проброса трафика.</li>
-<li><strong>Netpoller и размер пула сокетов</strong>:<br />
-    При сотнях бэкендов параметр <code>MaxIdleConnsPerHost</code> по умолчанию равен всего 2! Это приводит к тому, что при всплеске нагрузки соединения не переиспользуются, а непрерывно закрываются и открываются заново, забивая таблицу сокетов Linux состоянием <code>TIME_WAIT</code>. Увеличивайте <code>MaxIdleConnsPerHost</code> минимум до 100–200.</li>
+<strong>Оптимизация:</strong> Назначить кастомный <code>BufferPool</code> на базе <code>sync.Pool</code> для переиспользования байтовых срезов:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">type BytePool struct {
+    pool sync.Pool
+}
+func (b *BytePool) Get() []byte { return b.pool.Get().([]byte) }
+func (b *BytePool) Put(bytes []byte) { b.pool.Put(bytes) }
+// Привязка: rp.BufferPool = &amp;BytePool{pool: sync.Pool{New: func() any { return make([]byte, 32*1024) }}}
+</code></pre>
+</div>
+
+<p>Для задач L4-проксирования без разбора HTTP используется интерфейс <code>http.Hijacker</code>, отдающий сырой TCP-сокет напрямую для проброса трафика.</p>
+</li>
+<li>
+<p><strong>Netpoller и размер пула сокетов</strong>:<br />
+    При сотнях бэкендов параметр <code>MaxIdleConnsPerHost</code> по умолчанию равен всего 2! Это приводит к тому, что при всплеске нагрузки соединения не переиспользуются, а непрерывно закрываются и открываются заново, забивая таблицу сокетов Linux состоянием <code>TIME_WAIT</code>. Увеличивайте <code>MaxIdleConnsPerHost</code> минимум до 100–200.</p>
+</li>
 </ol>
 <hr />
 <h3 id="health-checks-i-isklyuchenie-uzlov">Health Checks и исключение узлов</h3>
