@@ -462,9 +462,9 @@ flowchart LR
 <hr />
 <h2 id="ponimayu-li-ya-map-internals">Понимаю ли я map internals?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-2">Краткий ответ (30–60 секунд)</h3>
 <p>Map в Go реализована как хеш-таблица с цепочками переполнения. Голова — структура <code>hmap</code>, содержащая счётчик элементов, флаги, логарифм числа бакетов и указатель на массив бакетов. Каждый бакет хранит 8 пар ключ-значение и указатель на следующий бакет переполнения. Поиск ключа использует хеш: верхние биты выбирают бакет, а затем внутри бакета просматриваются сохранённые верхние байты хеша (tophash) для быстрого отсева. Рост таблицы происходит постепенно, путём эвакуации бакетов при превышении load factor (6.5 элементов/бакет) или слишком большом количестве overflow-бакетов.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-2">Развёрнутый ответ</h3>
 <p>Эффективность map базируется на:<br />
 - <strong>Хеш-функция</strong>: зависит от типа ключа, часто используемая — <code>runtime.memhash</code>. Для строк и чисел генерируется рантаймом.<br />
 - <strong>Бакеты</strong>: <code>bmap</code> — бакет, в котором последовательно размещаются 8 tophash-байт, затем 8 ключей, затем 8 значений (а не ключ-значение попарно), чтобы минимизировать паддинг и повысить locality.<br />
@@ -474,7 +474,7 @@ flowchart LR
 - <strong>Спецификации</strong>: ключи должны быть comparable. Несравнимые типы (слайсы, функции, map'ы) не могут быть ключами. Структуры с comparable полями работают, если не содержат несравнимых.<br />
 - <strong>Конкурентный доступ</strong>: map не безопасна для параллельного чтения-записи. При обнаружении race рантайм фатально падает с fatal error: concurrent map writes. Для конкурентности используйте <code>sync.Map</code> (для специфических случаев: много чтений, стабильные ключи) или map+mutex.</p>
 <p>Инициализированная через <code>make</code> map готова к использованию, nil-map можно читать (возвращает zero value), но запись в nil-map вызовет панику.</p>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-2">Под капотом (internals)</h3>
 <ul>
 <li><strong><code>runtime/map.go</code></strong>: определение <code>hmap</code>:<br />
 <code>go
@@ -494,7 +494,7 @@ flowchart LR
 <li><strong>Вставка</strong>: <code>mapassign</code> при превышении load factor (6.5) или слишком большом количестве overflow (при <code>noverflow &gt;= 2</code> и отсутствии роста) запускает <code>hashGrow</code>. Если используется эвакуация, помогает продвинуть её на два бакета.</li>
 <li><strong>Удаление</strong>: <code>mapdelete</code> устанавливает tophash в emptyRest/emptyOne, тем самым помечая слот как пустой, но не очищает ключ/значение для сборки мусора, если они содержат указатели, — рантайм затирает их для GC.</li>
 </ul>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-2">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -518,7 +518,7 @@ flowchart LR
 <em>Исправление</em>: собирать ключи для удаления в отдельный срез, а потом удалять после цикла. Либо использовать <code>sync.Map.Range</code> с атомарным Delete, что допустимо.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-2">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -537,9 +537,9 @@ flowchart LR
 <hr />
 <h2 id="ponimayu-li-ya-gc">Понимаю ли я GC?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-3">Краткий ответ (30–60 секунд)</h3>
 <p>Сборщик мусора Go — это конкурентный mark-sweep сборщик с tricolor-маркировкой, не требующий остановки мира на значительное время. Он запускается автоматически, когда доля выделенной памяти превышает заданный target (регулируемый <code>GOGC</code>). Процесс состоит из фаз: mark setup (STW), concurrent mark (с ассистентами горутин), mark termination (STW) и concurrent sweep. Планировщик сборщика (pacer) динамически подгоняет темп маркировки, чтобы уложиться в лимит кучи.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-3">Развёрнутый ответ</h3>
 <p>Основная цель GC в Go — разумный компромисс между задержками и пропускной способностью. Ключевые параметры:<br />
 - <code>GOGC</code> (по умолчанию 100): целевой процент новой кучи относительно живой после сборки. Если после GC живо 10 МБ, следующий цикл начнётся, когда куча достигнет ~20 МБ (при <code>GOGC=100</code>).<br />
 - <code>GOMEMLIMIT</code> (с версии 1.19 экспериментально, 1.21 стабильно): мягкий лимит памяти, при приближении к которому GC будет чаще запускаться.<br />
@@ -551,7 +551,7 @@ flowchart LR
   5. <strong>Concurrent sweep</strong>: фоновые горутины освобождают непомеченные объекты, при выделении памяти sweep происходит по требованию.</p>
 <p>Благодаря write barrier, все изменения в графе объектов во время concurrent mark отслеживаются, что гарантирует корректность tricolor-алгоритма.  </p>
 <p>В Go 1.19+ были значительно уменьшены длительности STW-фаз, они редко превышают сотни микросекунд. Pacer адаптирует частоту запуска, исходя из текущего темпа выделений и времени маркировки.</p>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-3">Под капотом (internals)</h3>
 <ul>
 <li><strong>Исходники</strong>: <code>runtime/mgc.go</code>, <code>runtime/mgcsweep.go</code>, <code>runtime/mgcmark.go</code>, <code>runtime/mgcscavenge.go</code>.</li>
 <li><strong>Структуры</strong>:</li>
@@ -562,7 +562,7 @@ flowchart LR
 <li><strong>Sweep</strong>: выполняется lazy — при выделении объекта спан проверяется на наличие непомеченных объектов, они освобождаются. Это снижает паузы.</li>
 <li><strong>Pacer</strong>: использует измерения прошедшего времени маркировки и объёма размеченного, чтобы вычислить будущий темп и скорректировать <code>triggerRatio</code>.</li>
 </ul>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-3">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -581,7 +581,7 @@ flowchart LR
 <em>Исправление</em>: полагаться на автоматический GC, а для отладки использовать pprof. Принудительный вызов оправдан только в тестах или контролируемых сценариях.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-3">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -600,9 +600,9 @@ flowchart LR
 <hr />
 <h2 id="ponimayu-li-ya-gmp">Понимаю ли я GMP?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-4">Краткий ответ (30–60 секунд)</h3>
 <p>GMP — модель планировщика горутин Go: G (goroutine), M (machine, поток ОС) и P (processor, локальный планировщик). P содержит локальную очередь готовых горутин и может выполнять их на потоке M. Количество P задаётся <code>GOMAXPROCS</code> и ограничивает параллелизм. Планировщик применяет work stealing: если у P заканчиваются горутины, он ворует их из очереди другого P. При блокирующих системных вызовах M отсоединяется от P, позволяя другому M занять P и продолжать работу. Сетевое epoll обрабатывается через netpoller, что не блокирует M.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-4">Развёрнутый ответ</h3>
 <p>Модель GMP пришла из Plan 9 и оптимизирована для десятков тысяч легковесных горутин.<br />
 - <strong>G (goroutine)</strong>: содержит стек (растущий), указатель на выполняемую функцию, состояние (waiting, runnable, running, dead).<br />
 - <strong>M (machine)</strong>: представляет поток ОС, умеет выполнять горутины. Может находиться в режиме: выполнение G или в ожидании (системный вызов, остановлен).<br />
@@ -610,7 +610,7 @@ flowchart LR
 <p>Планировщик в <code>runtime/proc.go</code> реализует цикл <code>schedule()</code>, который выбирает горутину из локальной очереди, глобальной очереди или ворует. При создании горутины она помещается в локальную очередь текущего P (или в глобальную, если локальная переполнена).</p>
 <p>Когда G выполняет системный вызов, который может заблокироваться (например, file I/O), M блокируется, но перед этим P освобождается и может быть занят другим M (из пула или вновь созданным). После завершения вызова M пытается получить P или ставит G в глобальную очередь. Для сетевых операций используется интеграция с epoll/kqueue: netpoller паркует G, и когда сокет готов, G возвращается в очередь P, не блокируя поток.</p>
 <p>Прерывание горутин: асинхронная преемптивность с Go 1.14 на основе сигналов: планировщик отправляет потоку сигнал <code>SIGURG</code>, который вызывает обработчик, проверяющий флаг прерывания и передающий управление планировщику.</p>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-4">Под капотом (internals)</h3>
 <ul>
 <li><strong>Структуры</strong> (версия 1.22): <code>runtime/runtime2.go</code>:<br />
 <code>g</code> — состояние, стек, <code>sched</code> (сохранённые регистры).<br />
@@ -621,7 +621,7 @@ flowchart LR
 <li><strong>Netpoller</strong>: <code>netpoll</code> (epoll_wait) запускается в специальной горутине <code>sysmon</code> и при поиске работы в <code>findRunnable</code>. Горутины, ожидающие сетевых событий, паркуются, и их дескрипторы регистрируются в epoll.</li>
 <li><strong>Количество M</strong>: динамическое, лимит задаётся <code>runtime/debug.SetMaxThreads</code>, по умолчанию 10000, но неограниченный рост нежелателен.</li>
 </ul>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-4">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -640,7 +640,7 @@ flowchart LR
 <em>Исправление</em>: использовать каналы, <code>sync.WaitGroup</code> или <code>sync.Cond</code>.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-4">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -659,9 +659,9 @@ flowchart LR
 <hr />
 <h2 id="ponimayu-li-ya-concurrency">Понимаю ли я concurrency?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-5">Краткий ответ (30–60 секунд)</h3>
 <p>Конкурентность в Go основана на горутинах, каналах и примитивах синхронизации (<code>sync.Mutex</code>, <code>sync.WaitGroup</code>, <code>atomic</code>). Модель с разделяемой памятью и message passing. Идиома «не делитесь памятью для общения; общайтесь через разделение памяти» воплощается в паттернах типа worker pool, pipeline, fan-in/fan-out. Утечки горутин, deadlock’и и race conditions — основные опасности. Контекст (<code>context.Context</code>) добавляет cancel propagation.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-5">Развёрнутый ответ</h3>
 <p>Основные инструменты:<br />
 - <strong>Горутины</strong>: легковесны (стек ~2 КБ), запускаются <code>go f()</code>. Утечка возникает, если горутина навсегда блокируется на канале или мьютексе без шанса завершения.<br />
 - <strong>Каналы</strong>:<br />
@@ -679,14 +679,14 @@ flowchart LR
 - <strong>Атомики</strong>: <code>sync/atomic</code> для операций счётчиков и флагов без мьютекса.<br />
 - <strong>Race detector</strong>: <code>go test -race</code> встраивает инструментирование для поиска гонок.</p>
 <p>Ключевое понимание: конкурентное программирование требует внимания к happens-before. Например, запись в переменную, защищённую мьютексом, и чтение под тем же мьютексом обеспечивает синхронизацию.</p>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-5">Под капотом (internals)</h3>
 <ul>
 <li><strong>Канал</strong>: <code>runtime/chan.go</code> <code>hchan</code> — содержит указатель на буфер, размер буфера, индексы чтения/записи, очереди ожидающих горутин (<code>sendq</code>, <code>recvq</code>). При операции send, если буфер заполнен, горутина паркуется, добавляется в <code>sendq</code>. При чтении — аналогично.</li>
 <li><strong>Планировщик и блокировка</strong>: когда горутина блокируется на канале/мьютексе, она переводится в waiting, и планировщик выбирает другую. Пробуждение происходит через <code>goready</code>.</li>
 <li><strong>Netpoller</strong>: также блокирует горутины на чтение из сети, паркуя их.</li>
 <li><strong>select</strong>: компилятор преобразует в последовательность вызовов <code>runtime.selectgo</code>, которая случайным образом перебирает готовые case’ы, и если нет готовых, паркует горутину на всех каналах.</li>
 </ul>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-5">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -710,7 +710,7 @@ flowchart LR
 <em>Исправление</em>: всегда передавать мьютекс по указателю или встраивать в структуру как значение, но никогда не копировать структуру, содержащую мьютекс.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-5">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -729,9 +729,9 @@ flowchart LR
 <hr />
 <h2 id="ponimayu-li-ya-system-design">Понимаю ли я system design?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-6">Краткий ответ (30–60 секунд)</h3>
 <p>System design на уровне Senior/Staff предполагает умение спроектировать высоконагруженную, отказоустойчивую, масштабируемую систему, декомпозировать на компоненты, оценить требования (QPS, объём данных, latency) и выбрать подходящий технологический стек. В контексте Go это включает проектирование конкурентных сервисов, балансировку, кэширование, протоколы взаимодействия, репликацию, шардирование, CQRS и observability.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-6">Развёрнутый ответ</h3>
 <p>При ответе на дизайн-секцию ожидается структурированный подход:<br />
 1. <strong>Уточнение требований</strong>: функциональные и нефункциональные (RPS, latency p99, объём данных, consistency, availability, durability).<br />
 2. <strong>Оценка ёмкостей</strong>: расчет storage (например, URL shortener — 100 млн ссылок), bandwidth, memory.<br />
@@ -747,13 +747,13 @@ flowchart LR
 6. <strong>Отказоустойчивость</strong>: graceful degradation, fallback, таймауты, retries с exponential backoff, health checks.<br />
 7. <strong>Observability</strong>: structured logging, метрики (Prometheus), трассировка (OpenTelemetry).</p>
 <p>Пример: design URL shortener. API: POST /shorten, GET /:id. Генерация ID (Snowflake, UUID, base62). Хранилище: SQL для пользователей, NoSQL для маппинга (или PostgreSQL с partitioning). Кэш Redis. Асинхронная очистка expired.</p>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-6">Под капотом (internals)</h3>
 <p>Хотя system design не runtime, важно понимать, как Go-примитивы обеспечивают дизайн:<br />
 - <code>net/http</code> с автоматическим многопоточным обслуживанием, но требует контроля лимитов соединений.<br />
 - <code>context.Context</code> пронизывает весь стек для deadline propagation.<br />
 - <code>sync.Pool</code> для переиспользования буферов.<br />
 - <code>pprof</code> профили для верификации узких мест после имплементации.</p>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-6">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -777,7 +777,7 @@ flowchart LR
 <em>Исправление</em>: тренироваться делать back-of-the-envelope calculations: 1 млн URL по 1KB = 1GB, с запасом 2GB, и держать в памяти.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-6">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -796,16 +796,16 @@ flowchart LR
 <hr />
 <h2 id="mogu-li-ya-obyasnit-raznitsu-mezhdu-buferizirovannym-i-nebuferizirovannym-kanalo">Могу ли я объяснить разницу между буферизированным и небуферизированным каналом?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-7">Краткий ответ (30–60 секунд)</h3>
 <p>Небуферизированный канал (<code>make(chan T)</code>) обеспечивает синхронное рандеву: отправитель блокируется, пока получатель не прочитает сообщение, и наоборот. Буферизированный канал (<code>make(chan T, n)</code>) имеет ёмкость n: отправитель блокируется только при заполнении буфера, а получатель — при его опустошении. Это фундаментально меняет гарантии доставки и порядок выполнения.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-7">Развёрнутый ответ</h3>
 <ul>
 <li>Небуферизированный канал даёт гарантию, что сообщение доставлено и обработано (или хотя бы принято) до того, как отправитель продолжит выполнение. Это полезно для синхронизации горутин и обеспечения happens-before.</li>
 <li>Буферизированный канал даёт асинхронность: можно послать несколько сообщений без блокировки, но получатель может ещё не обработать их. Подходит для сглаживания пиков, когда производители и потребители работают с разной скоростью.</li>
 <li>Важно: закрытие канала разблокирует всех ожидающих получателей, но отправителям в закрытый канал посылать нельзя. Буферизированный канал после закрытия может быть вычитан до опустошения буфера, возвращая zero-value после.</li>
 <li>Выбор размера буфера: часто 0 для строгой синхронизации; 1 для оптимизации (like semaphore); больше для производительности. В Go идиоматична ёмкость, соответствующая уровню concurrency.</li>
 </ul>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-7">Под капотом (internals)</h3>
 <p><code>hchan</code>:<br />
 - <code>buf</code>: указатель на массив, где лежат элементы.<br />
 - <code>dataqsiz</code>: размер буфера.<br />
@@ -813,7 +813,7 @@ flowchart LR
 - <code>sendx</code> и <code>recvx</code>: индексы.<br />
 - <code>sendq</code> и <code>recvq</code>: связные списки ожидающих горутин.</p>
 <p>Когда буфер пуст и приходит получатель, он паркуется в <code>recvq</code>. Когда отправитель добавляет в пустой канал с ожидающими получателями, он передаёт значение напрямую стеку получателя, минуя буфер (оптимизация). Для небуферизированного канала <code>buf</code> == nil, <code>dataqsiz</code> == 0; операции всегда обмениваются напрямую через парковку.</p>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-7">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -832,7 +832,7 @@ flowchart LR
 <em>Исправление</em>: использовать <code>sync.Once</code> или специальную горутину-распорядителя, которая закрывает канал после того, как все отправители закончат.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-7">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -851,21 +851,21 @@ flowchart LR
 <hr />
 <h2 id="uveren-li-ya-v-rabote-s-oshibkami-i-ponimanii-deferpanicrecover">Уверен ли я в работе с ошибками и понимании defer/panic/recover?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-8">Краткий ответ (30–60 секунд)</h3>
 <p>Go не имеет исключений; ошибки обрабатываются явно через возврат значения <code>error</code>. <code>defer</code> позволяет выполнить отложенный вызов при выходе из функции, что полезно для освобождения ресурсов. <code>panic</code> вызывает немедленное раскручивание стека, во время которого выполняются все <code>defer</code>. <code>recover</code> внутри <code>defer</code> останавливает панику и возвращает переданное значение, позволяя восстановить управление. Использование <code>panic/recover</code> для обычного контроля потока discouraged.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-8">Развёрнутый ответ</h3>
 <ul>
 <li><strong>Ошибки</strong>: идиоматично возвращать <code>(T, error)</code>. Ошибка — интерфейс с одним методом <code>Error() string</code>. Объединение ошибок: <code>fmt.Errorf("... %w", err)</code> оборачивает, позволяя позже <code>errors.Is</code> и <code>errors.As</code>. Собственные типы ошибок могут реализовывать интерфейс, добавляя логику.</li>
 <li><strong>defer</strong>: вызовы выполняются в порядке LIFO. Аргументы <code>defer</code> вычисляются в момент объявления, но вызов функции происходит при выходе. Это важно: <code>defer fmt.Println(i)</code> запоминает текущее <code>i</code>. Можно использовать замыкание для захвата переменной по ссылке: <code>defer func() { fmt.Println(i) }()</code>.</li>
 <li><strong>panic</strong>: рантайм или явный вызов. При панике в горутине, если она не восстановлена, программа аварийно завершается. <code>recover</code> должен быть вызван внутри <code>defer</code>, непосредственно выполняемом в той же горутине; иначе вернёт <code>nil</code>.</li>
 <li><strong>Паттерны</strong>: освобождение мьютекса (<code>defer mu.Unlock()</code>), закрытие тела ответа (<code>defer resp.Body.Close()</code>). Вложенные <code>defer</code> с recover для изоляции критических секций.</li>
 </ul>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-8">Под капотом (internals)</h3>
 <ul>
 <li><strong><code>runtime/defer</code></strong>: каждое горутина хранит цепочку <code>_defer</code> записей (связанный список). <code>deferproc</code> добавляет запись с параметрами (копируются). При выходе из функции <code>deferreturn</code> обходит цепочку и вызывает функции. Начиная с Go 1.13, для повышения производительности используется open-coded defers для простых случаев (до 8 defer в функции), встраивание прямо в код.</li>
 <li><strong><code>panic</code>/<code>recover</code></strong>: <code>gopanic</code> в runtime проходится по списку <code>_defer</code>, вызывает каждый, и если находится <code>recover</code>, очищает фрейм паники и возвращает управление. <code>recover</code> реализован через <code>gorecover</code>, который проверяет, находится ли горутина в состоянии паники.</li>
 </ul>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-8">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -889,7 +889,7 @@ flowchart LR
 <em>Исправление</em>: использовать именованные возвращаемые параметры и присваивать ошибку: <code>defer func() { if cerr := f.Close(); cerr != nil &amp;&amp; err == nil { err = cerr } }()</code>.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-8">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -908,9 +908,9 @@ flowchart LR
 <hr />
 <h2 id="gotov-li-ya-otvetit-na-prodvinutye-voprosy-po-context-context">Готов ли я ответить на продвинутые вопросы по context.Context?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-9">Краткий ответ (30–60 секунд)</h3>
 <p><code>context.Context</code> служит для передачи deadline, cancellation и request-scoped значений через дерево вызовов. Он неизменяем; создаётся из <code>Background()</code>/<code>TODO()</code> и расширяется через <code>WithCancel</code>, <code>WithDeadline</code>, <code>WithTimeout</code>, <code>WithValue</code>. Основной контракт: контекст должен передаваться явно, чаще всего первым аргументом, и не должен храниться в структурах надолго. <code>Done()</code> возвращает канал, который закрывается при отмене, <code>Err()</code> — причину.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-9">Развёрнутый ответ</h3>
 <ul>
 <li><strong>Cancellation propagation</strong>: при вызове <code>cancel()</code> родительского контекста все дочерние также отменяются. Это позволяет graceful shutdown воркеров, HTTP-запросов, gRPC-стримов.</li>
 <li><strong>Deadline/Timeout</strong>: <code>WithTimeout</code> устанавливает абсолютное время. По истечении закрывается Done, и <code>Err()</code> возвращает <code>DeadlineExceeded</code>.</li>
@@ -921,7 +921,7 @@ flowchart LR
 <li>Функции, принимающие контекст, должны проверять <code>ctx.Err()</code> при длительных операциях.</li>
 <li><strong>Стандартные использования</strong>: <code>http.Request.Context()</code> автоматически отменяется при закрытии соединения клиентом. <code>sql.DB</code> использует контекст для таймаутов запросов.</li>
 </ul>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-9">Под капотом (internals)</h3>
 <ul>
 <li><strong>Интерфейс</strong>: <code>type Context interface { Deadline() (deadline time.Time, ok bool); Done() &lt;-chan struct{}; Err() error; Value(key any) any }</code>.</li>
 <li><strong>Базовые реализации</strong>:</li>
@@ -932,7 +932,7 @@ flowchart LR
 <li><strong><code>propagateCancel</code></strong> при создании дочернего контекста проверяет, не отменён ли уже родитель, и связывает биекцию.</li>
 <li><strong>Исходники</strong>: <code>context/context.go</code>.</li>
 </ul>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-9">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -956,7 +956,7 @@ flowchart LR
 <em>Исправление</em>: использовать явные параметры функций или структуру параметров. Контекст только для сквозных данных: идентификаторы запросов, трейс-контекст, deadline.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-9">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -975,9 +975,9 @@ flowchart LR
 <hr />
 <h2 id="khorosho-li-ya-znayu-standartnuyu-biblioteku">Хорошо ли я знаю стандартную библиотеку?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-10">Краткий ответ (30–60 секунд)</h3>
 <p>Стандартная библиотека Go богата и стабильна. Для Senior-инженера важно знать ключевые пакеты: <code>net/http</code> (включая клиент и сервер), <code>encoding/json</code> (с кастомными marshal/unmarshal), <code>io</code> и <code>io/fs</code>, <code>bufio</code>, <code>strings</code>, <code>bytes</code>, <code>sync</code>, <code>context</code>, <code>testing</code> (с моками и sub-tests), <code>time</code>, <code>reflect</code> (с осторожностью), <code>unsafe</code>, <code>runtime/pprof</code>, <code>database/sql</code>. Понимание внутреннего устройства пакетов позволяет эффективно использовать их и избегать типичных ловушек.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-10">Развёрнутый ответ</h3>
 <ul>
 <li><strong><code>net/http</code></strong>: знание модели обработки запросов (горутина на соединение), кастомизация через интерфейсы <code>Handler</code>, <code>ResponseWriter</code>, <code>RoundTripper</code>, graceful shutdown с <code>Server.Shutdown</code>. Работа с таймаутами: <code>ReadTimeout</code>, <code>WriteTimeout</code>, <code>IdleTimeout</code>.</li>
 <li><strong><code>encoding/json</code></strong>: использование структурных тегов, <code>json.Marshaler</code>/<code>Unmarshaler</code>, работа с нулевыми значениями, потоковая обработка <code>json.Decoder</code>/<code>Encoder</code>. Подводные камни: <code>omitempty</code> для слайсов, чисел.</li>
@@ -989,13 +989,13 @@ flowchart LR
 <li><strong><code>reflect</code></strong>: нужно знать, когда без него не обойтись, но и понимать его накладные расходы и снижение типобезопасности.</li>
 <li><strong><code>unsafe</code></strong>: <code>unsafe.Pointer</code> преобразования, <code>unsafe.Sizeof</code>, для низкоуровневых оптимизаций, но только при крайней необходимости.</li>
 </ul>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-10">Под капотом (internals)</h3>
 <ul>
 <li><code>net/http</code>: сервер создаёт net.Listener, принимает соединения, создаёт горутину <code>serve</code>. Парсинг запроса — <code>readRequest</code>, ответ через <code>bufio.Writer</code>. HTTP/2 реализован через <code>golang.org/x/net/http2</code>.</li>
 <li><code>encoding/json</code>: рефлексивный обход структуры, кэширование информации о типе в <code>encodeState</code>/<code>decodeState</code>. <code>sync.Pool</code> для переиспользования буферов.</li>
 <li><code>time.Timer</code>: хранится в куче таймеров рантайма, управляется через <code>runtime.timer</code>. Невозвращённые таймеры могут вызвать утечку.</li>
 </ul>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-10">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1019,7 +1019,7 @@ flowchart LR
 <em>Исправление</em>: обрабатывать случай, когда <code>Get</code> возвращает <code>nil</code> (создавать новый), и не полагаться на существование объекта после нескольких циклов GC.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-10">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1038,9 +1038,9 @@ flowchart LR
 <hr />
 <h2 id="ponimayu-li-ya-model-pamyati-go">Понимаю ли я модель памяти Go?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-11">Краткий ответ (30–60 секунд)</h3>
 <p>Модель памяти Go определяет условия, при которых чтение переменной в одной горутине гарантированно увидит запись, сделанную в другой. Основное правило: если нет синхронизации (через каналы, мьютексы, атомики, <code>sync.Once</code>), то компилятор и процессор могут переупорядочивать операции, и наблюдение может быть некорректным. Happens-before — ключевое понятие. Race detector помогает найти нарушения.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-11">Развёрнутый ответ</h3>
 <p>Модель памяти основана на концепции happens-before:<br />
 - Правила синхронизации:<br />
   - Инициализация пакета: <code>init()</code> happens-before любой другой код.<br />
@@ -1076,12 +1076,12 @@ func main() {
 </div>
 
 <p>Исправляется каналом или атомиками.</p>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-11">Под капотом (internals)</h3>
 <p>Модель памяти описана в спецификации Go. Реализация в компиляторе гарантирует, что для указанных примитивов вставляются барьеры памяти.<br />
 - Канальная операция в runtime включает атомарные операции с memory ordering, <code>runtime/chan.go</code>.<br />
 - <code>sync.Mutex</code>: использует <code>runtime.lock</code> с sematomic.<br />
 - <code>sync/atomic</code>: напрямую процессорные инструкции с барьерами.</p>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-11">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1100,7 +1100,7 @@ func main() {
 <em>Исправление</em>: чтение также должно происходить внутри <code>Do</code>, или использовать мьютекс, или атомарный флаг.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-11">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1119,9 +1119,9 @@ func main() {
 <hr />
 <h2 id="mogu-li-ya-sproektirovat-vysokonagruzhennuyu-sistemu">Могу ли я спроектировать высоконагруженную систему?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-12">Краткий ответ (30–60 секунд)</h3>
 <p>Да. Проектирование высоконагруженной системы на Go включает масштабирование до сотен тысяч RPS, низкую latency, graceful degradation, observability. Ключевые аспекты: выбор архитектуры (микросервисы, CQRS), эффективная конкурентность (горутины, worker pool), грамотное использование сетевых протоколов, профилирование и настройка GC, применение кэширования (Redis, in-memory), горизонтальное масштабирование через балансировщики, проектирование с учётом CAP-теоремы.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-12">Развёрнутый ответ</h3>
 <p>Процесс аналогичен описанному в вопросе 6, но с акцентом на высокую нагрузку:<br />
 - <strong>Оценка нагрузки</strong>: 1M RPS, 99-й перцентиль latency &lt; 100ms. Требует грамотного коннекшен-пула, keep-alive, fast-path for бизнес-логики.<br />
 - <strong>Go-специфичные оптимизации</strong>:<br />
@@ -1135,9 +1135,9 @@ func main() {
   - <strong>Backpressure</strong> с использованием буферизированных каналов.<br />
   - <strong>Graceful degradation</strong>: fallback к кэшу, статическим ответам.<br />
 - <strong>Мониторинг</strong>: метрики прометеус (RPS, ошибки, latency per percentile, количество горутин, heap alloc). p99 latency профилирование через pprof/trace.</p>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-12">Под капотом (internals)</h3>
 <p>С точки зрения Go: смотреть на net/http сервер — он создаёт горутину на каждый запрос. При 1M RPS это много горутин, но благодаря эффективности планировщика это возможно. Главное — избегать блокировок этих горутин надолго и не создавать слишком много мусора.</p>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-12">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1156,7 +1156,7 @@ func main() {
 <em>Исправление</em>: проектировать систему с возможностью stateless горизонтального масштабирования, использовать внешние stateful сервисы.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-12">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1175,9 +1175,9 @@ func main() {
 <hr />
 <h2 id="prokhodil-li-ya-mock-intervyu">Проходил ли я mock-интервью?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-13">Краткий ответ (30–60 секунд)</h3>
 <p>Да, регулярные mock-интервью — обязательная часть подготовки. Они помогают привыкнуть к давлению, отработать структуру ответов, получить объективный фидбек и выявить слабые места. Провожу как с коллегами, так и на платформах вроде Pramp, Interviewing.io. Каждое интервью записываю и анализирую.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-13">Развёрнутый ответ</h3>
 <p>Ключевые принципы:<br />
 - <strong>Имитация реальности</strong>: точное время (45–60 минут), задачи, приближенные к целевой компании (coding, system design, behavioral).<br />
 - <strong>Разнообразие интервьюеров</strong>: разные стили и вопросы расширяют кругозор.<br />
@@ -1190,7 +1190,7 @@ func main() {
 <li>Запись экрана и таймлайн ответов помогают увидеть, сколько времени тратится на обдумывание.</li>
 <li>Анализ интонации и уверенности: заученные ответы без понимания слышны.</li>
 </ul>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-13">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1209,7 +1209,7 @@ func main() {
 <em>Исправление</em>: подготовить минимум 5–7 STAR-историй для различных компетенций и отработать их с коллегами.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-13">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1228,9 +1228,9 @@ func main() {
 <hr />
 <h2 id="umeyu-li-ya-polzovatsya-pprof-i-trace-dlya-otladki">Умею ли я пользоваться pprof и trace для отладки?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-14">Краткий ответ (30–60 секунд)</h3>
 <p>pprof — основной инструмент профилирования Go: CPU, heap, goroutine, block, mutex, allocs. Запускается через <code>net/http/pprof</code> или <code>runtime/pprof</code>. <code>go tool pprof</code> анализирует сэмплы, предоставляет графики, flame graph, top-функции. Execution tracer (<code>go tool trace</code>) даёт визуализацию горутин, GC, планировщика и латенси. Эти инструменты критичны для поиска узких мест, утечек горутин и причин высокого tail latency.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-14">Развёрнутый ответ</h3>
 <ul>
 <li><strong>pprof</strong>: </li>
 <li>Endpoint: <code>import _ "net/http/pprof"</code> и <code>http.ListenAndServe</code> на дебаг-порте. Профили: <code>/debug/pprof/profile?seconds=30</code> (CPU), <code>/debug/pprof/heap</code>, <code>/debug/pprof/goroutine?debug=1</code>.</li>
@@ -1243,13 +1243,13 @@ func main() {
 <li>Помогает понять, почему горутина долго ждёт выполнения, где происходят задержки (например, конкуренция за P).</li>
 <li><strong>Бенчмарки с pprof</strong>: <code>go test -bench=. -cpuprofile=cpu.out</code>.</li>
 </ul>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-13">Под капотом (internals)</h3>
 <ul>
 <li>pprof использует системный сигнал <code>SIGPROF</code> для сбора CPU-сэмплов с частотой 100 Гц. Обработчик записывает текущий стек.</li>
 <li>Heap профиль получается через <code>runtime.MemProfile</code>.</li>
 <li>Tracer работает на основе кольцевых буферов событий, записываемых в каждом потоке.</li>
 </ul>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-14">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1273,7 +1273,7 @@ func main() {
 <em>Исправление</em>: сравнивать количество горутин с ожидаемым числом активных, искать бесконечно множащиеся стеки.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-14">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1292,9 +1292,9 @@ func main() {
 <hr />
 <h2 id="mogu-li-ya-provesti-revyu-koda-i-nayti-potentsialnye-problemy-s-proizvoditelnost">Могу ли я провести ревью кода и найти потенциальные проблемы с производительностью?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-15">Краткий ответ (30–60 секунд)</h3>
 <p>Да. При код-ревью я обращаю внимание на утечки горутин, избыточные аллокации, неэффективное использование map/slice (перевыделения, забытые capacity), блокировки под мьютексом критического пути, синхронизацию (race conditions), обработку ошибок и контекст. Всегда подкрепляю замечания бенчмарками или ссылками на best practices. Владею инструментами pprof для подтверждения гипотез.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-15">Развёрнутый ответ</h3>
 <p>Чек-лист ревью на производительность:<br />
 - <strong>Горутины и каналы</strong>: каждый созданный <code>go</code> должен быть под контролем (завершается ли, нет ли утечки). Проверка каналов: кто закрывает, не будет ли deadlock.<br />
 - <strong>Выделения памяти</strong>: в hot path избегать <code>string</code> конкатенаций (использовать <code>strings.Builder</code>), создание срезов без preallocation (<code>make([]T, 0, estimated)</code>), излишний boxing.<br />
@@ -1302,9 +1302,9 @@ func main() {
 - <strong>Map vs slice</strong>: если нужен поиск по ключу, но почти всегда только итерация по фиксированному набору — лучше slice.<br />
 - <strong>Ошибки</strong>: забытые <code>defer cancel()</code>, неправильные таймауты, отсутствие ограничений на размер запроса.<br />
 - <strong>Шаблоны</strong>: использование <code>sync.Pool</code> для буферов (например, при шаблонизации), <code>singleflight</code> для предотвращения дублирующих тяжелых вызовов.</p>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-14">Под капотом (internals)</h3>
 <p>Знание того, как компилятор оптимизирует (inline, escape analysis). Например, аллокация слайса, который не escaping, остаётся на стеке. Ревьювер может заметить лишний escape и предложить переписать.</p>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-15">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1323,7 +1323,7 @@ func main() {
 <em>Исправление</em>: если есть сомнения, писать мини-бенчмарк и обсуждать результаты.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-15">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1342,9 +1342,9 @@ func main() {
 <hr />
 <h2 id="uveren-li-ya-v-svoikh-otvetakh-na-voprosy-po-linux-i-setyam">Уверен ли я в своих ответах на вопросы по Linux и сетям?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-16">Краткий ответ (30–60 секунд)</h3>
 <p>Да. Понимаю основы Linux, критичные для Go-разработки: процессы/треды, системные вызовы, виртуальная память, файловые дескрипторы, модель epoll, сокеты, TCP (установление соединения, TIME_WAIT), HTTP/2. Знаю, как Go использует netpoller, как работает keep-alive, таймауты, back-pressure на уровне TCP. Могу объяснить, почему важно настраивать <code>ulimit -n</code> для высоконагруженных сервисов.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-16">Развёрнутый ответ</h3>
 <ul>
 <li><strong>Системные вызовы и netpoller</strong>: Go абстрагирует epoll/kqueue. При чтении из net.Conn горутина регистрирует дескриптор в netpoller и паркуется. Когда данные доступны, netpoller будит горутину. Это позволяет миллиону соединений на небольшом количестве потоков.</li>
 <li><strong>TCP</strong>: понимание рукопожатия (SYN, SYN-ACK, ACK), состояния TIME_WAIT, Nagle-алгоритм, задержка ACK. Настройка <code>SetNoDelay</code>, <code>SetKeepAlive</code>. Пул TCP-соединений (keep-alive), влияние на исходящие запросы (http.Transport).</li>
@@ -1352,13 +1352,13 @@ func main() {
 <li><strong>DNS</strong>: резолвинг может блокировать горутину, если используется C-библиотека. Net resolver в Go по умолчанию pure Go, что предотвращает блокировку.</li>
 <li><strong>HTTP/2</strong>: мультиплексирование потоков в одном TCP-соединении, flow control. В Go реализован через <code>golang.org/x/net/http2</code>.</li>
 </ul>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-15">Под капотом (internals)</h3>
 <ul>
 <li><code>net</code> пакет использует <code>internal/poll.FD</code>, который при инициализации вызывает <code>epoll_create1</code> и добавляет fd в epoll.</li>
 <li><code>syscall</code> напрямую общается с ядром. Для сетевых операций включает неблокирующие вызовы и последующий <code>pollWait</code>.</li>
 <li><code>net/http</code> сервер создаёт net.Listener, принимает соединения и запускает горутину-обработчик; при keep-alive горутина ждёт следующий запрос, читая из conn.</li>
 </ul>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-16">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1377,7 +1377,7 @@ func main() {
 <em>Исправление</em>: использовать <code>net.ListenConfig</code> с <code>SO_REUSEADDR</code>, либо в тестах использовать <code>:0</code> для автоматического выбора порта.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-16">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1396,13 +1396,13 @@ func main() {
 <hr />
 <h2 id="prorabotal-li-ya-vse-temy-iz-etogo-spiska">Проработал ли я все темы из этого списка?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-17">Краткий ответ (30–60 секунд)</h3>
 <p>Да. Все 27 вопросов отражают ключевые компетенции Senior/Staff Go-инженера. Я последовательно изучил slice/map internals, GC, планировщик, конкурентность, системный дизайн, инструменты профилирования, модель памяти, стандартную библиотеку, Linux/сети, подготовку к behavioural и лидерским вопросам. Также уделил внимание mock-интервью и постоянному обучению.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-17">Развёрнутый ответ</h3>
 <p>Данная статья — квинтэссенция моего пула знаний по каждой теме. Я не только понимаю теорию, но и применял на практике, профилировал продакшен-сервисы, проводил ревью, проектировал системы, проводил mock-сессии. План дальнейшего усиления: углублённое изучение event-driven архитектур, serverless на Go, security best practices. Регулярно слежу за нововведениями Go. Таким образом, я готов к самому сложному интервью.</p>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-16">Под капотом (internals)</h3>
 <p>Мета-проверка: убедиться, что нет пробелов. При необходимости повторить темы через практические проекты, чтение исходников.</p>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-17">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1416,7 +1416,7 @@ func main() {
 <em>Исправление</em>: равномерно готовиться по всем направлениям.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-17">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1431,7 +1431,7 @@ func main() {
 <hr />
 <h2 id="znayu-li-ya-kak-otvetit-na-vopros-chto-novogo-v-go-1-23">Знаю ли я, как ответить на вопрос «Что нового в Go 1.23+»?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-18">Краткий ответ (30–60 секунд)</h3>
 <p>Да. Современный Go (1.22–1.27) получил фундаментальные архитектурные улучшения:<br />
 - <strong>1.22:</strong> Исправление семантики <code>loopvar</code> (новая переменная на каждую итерацию), <code>range</code> по int, паттерны маршрутизации в <code>net/http</code> (<code>GET /item/{id}</code>), пакет <code>math/rand/v2</code>.<br />
 - <strong>1.23:</strong> Стандартизация пользовательских итераторов <code>iter.Seq</code> / <code>iter.Seq2</code> (range over func), пакет <code>unique</code> для интернирования значений, оптимизация сборки неиспользуемых таймеров.<br />
@@ -1439,7 +1439,7 @@ func main() {
 - <strong>1.25:</strong> Стабилизация пакета <code>testing/synctest</code> для детерминированного тестирования конкурентного кода без реального ожидания <code>time.Sleep</code> (впервые появился как эксперимент в Go 1.24).<br />
 - <strong>1.26:</strong> Пакет <code>crypto/hpke</code> (RFC 9180) для гибридного шифрования (база для TLS ECH и MLS), оптимизации аллокаций.<br />
 - <strong>1.27:</strong> Generic-методы у конкретных типов и структур (без интерфейсов) и постквантовые подписи <code>crypto/mldsa</code> (FIPS 204 в X.509 и TLS).</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-18">Развёрнутый ответ</h3>
 <p>Хронология ключевых инноваций языка и рантайма:<br />
 1. <strong>Go 1.22 (февраль 2024):</strong><br />
    - <strong>Loopvar scoping:</strong> Переменные цикла <code>for i, v := range slice</code> теперь создаются заново на каждой итерации, устраняя многолетний источник багов в горутинах и замыканиях.<br />
@@ -1475,19 +1475,19 @@ func main() {
    - <strong><code>crypto/mldsa</code>:</strong> Реализация FIPS 204 для квантово-стойких цифровых подписей в X.509 и TLS 1.3.</p>
 </li>
 </ol>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-17">Под капотом (internals)</h3>
 <ul>
 <li><code>loopvar</code> в 1.22 потребовал изменения ABI компилятора: переменные итераций аллоцируются в стековых фреймах заново; escape-анализ отправляет в кучу только экземпляры переменных тех итераций, которые реально были захвачены замыканиями.</li>
 <li>Swiss Tables в Go 1.24 группируют слоты блоками по 8 элементов (<code>MapGroupSlots = 8</code>) с 8-байтовым контрольным словом (<code>ctrlGroup</code>), позволяя через 64-битные битовые операции SWAR (SIMD-Within-A-Register) и векторные инструкции параллельно проверять всю группу слотов за один шаг.</li>
 </ul>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-18">Типичные ошибки кандидатов</h3>
 <ol>
 <li><strong>Не знать актуальной версии Go:</strong><br />
    Называть генерики из Go 1.18 «новинкой». Senior-инженер обязан ориентироваться в современных релизах и понимать архитектурные преимущества свежих фич.</li>
 <li><strong>Не понимать разницы между семантикой циклов 1.21 и 1.22+:</strong><br />
    Не уметь объяснить, почему в старых версиях Go требовалось писать <code>v := v</code> перед вызовом горутины, и почему в Go 1.22+ это больше не требуется.</li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-18">Возможные дополнительные вопросы интервьюера</h3>
 <ul>
 <li><em>Как бы вы обновили крупный проект на новую версию Go?</em><br />
   Изучить release notes, обновить версию в <code>go.mod</code>, проверить линтеры, запустить полный тестовый сьют с <code>-race</code>, выкатить на canary-окружение под боевой трафик и мониторить метрики p99 latency, аллокаций памяти и пауз GC.</li>
@@ -1497,9 +1497,9 @@ func main() {
 <hr />
 <h2 id="mogu-li-ya-napisat-testy-dlya-konkurentnogo-koda-i-nayti-data-race">Могу ли я написать тесты для конкурентного кода и найти data race?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-19">Краткий ответ (30–60 секунд)</h3>
 <p>Да. Для конкурентного кода обязательно пишу тесты с <code>t.Parallel()</code>, использую <code>go test -race</code>. Проектирую тесты так, чтобы они повторяли race conditions: многократные запуски, уменьшенные таймауты, каналы для синхронизации. Для проверки корректности без race применяю детерминированные симуляции (например, эмуляцию планировщика), но основное — race detector. Знаю ограничения race detector (не находит все гонки), поэтому дополняю тестами с различными таймингами и стресс-тестами.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-19">Развёрнутый ответ</h3>
 <ul>
 <li><strong>Race detector</strong>: компилирует код с инструментированием, отслеживает доступы к памяти, сообщает о гонках. Но не детектирует гонки на атомиках неправильного порядка и не воспроизводит все возможные чередования. Тесты должны запускаться с <code>-count</code> &gt; 1, с разными <code>GOMAXPROCS</code>.</li>
 <li><strong>Стресс-тесты</strong>: запускать конкурентную функцию в цикле 1000 раз, используя <code>-race</code>.</li>
@@ -1520,12 +1520,12 @@ func main() {
   }</code><br />
   Запустить с <code>-race</code>.</li>
 </ul>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-18">Под капотом (internals)</h3>
 <ul>
 <li>Race detector основан на ThreadSanitizer (TSan). Каждое обращение к памяти оборачивается вызовами <code>runtime.raceread/racewrite</code>. Инструментирование добавляет оверхед ~10x по памяти и CPU.</li>
 <li>Он не проверяет атомарные операции на корректность happens-before по модели памяти, только непосредственные конфликты.</li>
 </ul>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-19">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1544,7 +1544,7 @@ func main() {
 <em>Исправление</em>: после выполнения всех горутин проверять финальное состояние (суммы, количество элементов) на соответствие ожидаемому.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-19">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1563,9 +1563,9 @@ func main() {
 <hr />
 <h2 id="mogu-li-ya-realizovat-osnovnye-struktury-dannykh-na-go-bez-podskazok">Могу ли я реализовать основные структуры данных на Go без подсказок?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-20">Краткий ответ (30–60 секунд)</h3>
 <p>Да. Без подсказок реализую двусвязный список, стек, очередь, бинарную кучу, кольцевой буфер, дерево (бинарное, поиска), хеш-таблицу с разрешением коллизий. Знаю стандартную библиотеку (<code>container/list</code>, <code>container/heap</code>, <code>container/ring</code>) и когда её достаточно. Понимаю trade-off по сравнению с использованием map/slice и где нужна потокобезопасность.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-20">Развёрнутый ответ</h3>
 <ul>
 <li><strong>Связный список</strong>: <code>type Node struct { Value int; Next, Prev *Node }</code>. Вставка/удаление O(1). Не кэш-эффективен, редко нужен, slice часто быстрее из-за кэша.</li>
 <li><strong>Стек</strong>: на основе slice (<code>[]T</code> и append/pop).</li>
@@ -1575,9 +1575,9 @@ func main() {
 <li><strong>Бинарное дерево поиска</strong>: левое/правое поддеревья, вставка, поиск, удаление. Балансировка — отдельно (AVL/Red-Black).</li>
 <li><strong>Хеш-таблица</strong>: массив бакетов, функция хеша, разрешение коллизий цепочками или открытая адресация.</li>
 </ul>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-19">Под капотом (internals)</h3>
 <p>В Go <code>container/heap</code> использует интерфейс с Less, Swap, Len, Push, Pop. Сама структура heap просто вызывает операции, не содержит данные.</p>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-20">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1596,7 +1596,7 @@ func main() {
 <em>Исправление</em>: для списка использовать отдельные аллокации узлов (указатели), не полагаться на адреса элементов слайса.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-20">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1611,9 +1611,9 @@ func main() {
 <hr />
 <h2 id="uveren-li-ya-v-svoey-sposobnosti-argumentirovat-vybor-mezhdu-sql-i-nosql">Уверен ли я в своей способности аргументировать выбор между SQL и NoSQL?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-21">Краткий ответ (30–60 секунд)</h3>
 <p>Да. Выбор зависит от структуры данных, схемы, паттернов доступа, требований к согласованности и масштабируемости. SQL (PostgreSQL) хорош для строгой схемы, сложных запросов, транзакций ACID, джойнов. NoSQL (MongoDB, Redis, Cassandra) — гибкая схема, горизонтальное масштабирование, высокая скорость простых операций, eventual consistency. В Go выбор влияет на драйверы, ORM/raw SQL, паттерны миграций.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-21">Развёрнутый ответ</h3>
 <p>Критерии:<br />
 - <strong>Структура данных</strong>: реляционная модель с нормализацией — SQL; документы, графы, key-value — NoSQL.<br />
 - <strong>Consistency</strong>: сильная (ACID) — SQL; eventual — NoSQL (но многие NoSQL дают tunable consistency).<br />
@@ -1622,9 +1622,9 @@ func main() {
 - <strong>Производительность</strong>: NoSQL часто быстрее на простых операциях из-за денормализации и отсутствия overhead транзакций, но при сложных запросах проигрывает.<br />
 - <strong>Экосистема Go</strong>: <code>database/sql</code> с pgx для PostgreSQL, ORM типа GORM или sqlc. MongoDB — <code>mongo-go-driver</code>. Redis — <code>go-redis</code>.</p>
 <p>Пример: система заказов — реляционная БД для транзакционных данных; кэш сессий — Redis; аналитика событий — Cassandra.</p>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-20">Под капотом (internals)</h3>
 <p>Go-драйверы для SQL реализуют интерфейс <code>database/sql</code>. Для NoSQL — свои.</p>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-21">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1643,7 +1643,7 @@ func main() {
 <em>Исправление</em>: проектировать документы осмысленно, иметь механизм версионирования схемы.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-21">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1662,9 +1662,9 @@ func main() {
 <hr />
 <h2 id="mogu-li-ya-narisovat-i-obyasnit-arkhitekturu-svoey-posledney-sistemy">Могу ли я нарисовать и объяснить архитектуру своей последней системы?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-22">Краткий ответ (30–60 секунд)</h3>
 <p>Да. Для этого я использую C4 model (контекст, контейнеры, компоненты). В последней системе: API Gateway (Go), микросервисы (аутентификация, заказы, уведомления), брокер сообщений (Kafka), PostgreSQL (write), Redis (кэш), Elasticsearch (поиск). Коммуникация gRPC для синхронных вызовов и Kafka для асинхронных событий. Обеспечивал отказоустойчивость через репликацию, health checks и graceful shutdown.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-22">Развёрнутый ответ</h3>
 <p>Структура объяснения:<br />
 1. <strong>Бизнес-контекст</strong>: что делает система, ключевые user stories.<br />
 2. <strong>Контейнерная диаграмма</strong>: внешние системы (мобильные клиенты, партнёры), наш API, сервисы, хранилища.<br />
@@ -1672,9 +1672,9 @@ func main() {
 4. <strong>Технологии и обоснование</strong>: Go (высокая производительность), gRPC (строгая типизация, HTTP/2), Kafka (надёжность доставки), PostgreSQL (ACID для заказов).<br />
 5. <strong>Нефункциональные аспекты</strong>: масштабирование (каждый сервис stateless, горизонтальное), observability (Prometheus + Grafana, Jaeger), CI/CD (ArgoCD).<br />
 6. <strong>Уроки</strong>: что улучшил бы — например, ввёл бы rate limiter раньше, использовал бы dead-letter очередь для ошибок.</p>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-21">Под капотом (internals)</h3>
 <p>Реализация паттернов на Go: server mux с middlware для трассировки, context propagation.</p>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-22">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1693,7 +1693,7 @@ func main() {
 <em>Исправление</em>: добавить Circuit Breaker, retry logic, fallback, и рассказывать о них.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-22">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1712,9 +1712,9 @@ func main() {
 <hr />
 <h2 id="mogu-li-ya-obyasnit-kak-rabotaet-tls-handshake-i-chto-takoe-vzaimnyy-autentifika">Могу ли я объяснить, как работает TLS handshake и что такое взаимный аутентификация?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-23">Краткий ответ (30–60 секунд)</h3>
 <p>TLS handshake: клиент отправляет ClientHello (версия, cipher suites, random), сервер отвечает ServerHello, сертификатом, может запросить клиентский сертификат. Происходит обмен ключами (ECDHE), вычисление сессионного ключа, затем все данные идут с симметричным шифрованием. Взаимная аутентификация (mTLS) добавляет шаг, где сервер требует и проверяет сертификат клиента, подписанный доверенным CA. Обе стороны подтверждают свою идентичность.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-23">Развёрнутый ответ</h3>
 <p>Детально:<br />
 1. ClientHello: случайное число, cipher suites.<br />
 2. ServerHello: выбранный cipher, случайное число сервера, сертификат с публичным ключом. При mTLS — CertificateRequest.<br />
@@ -1724,13 +1724,13 @@ func main() {
 6. Обе стороны вычисляют master secret и ключи сессии.<br />
 7. Finished сообщения, далее защищённая связь.</p>
 <p>В Go: <code>tls.Config{ClientAuth: tls.RequireAndVerifyClientCert}</code> для mTLS. Сервер должен предоставить <code>ClientCAs</code>. Клиент настраивает <code>Certificates</code>.</p>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-22">Под капотом (internals)</h3>
 <ul>
 <li><code>crypto/tls</code> в Go реализует полный handshake с поддержкой TLS 1.3, ECDHE, X25519. Использует <code>net.Conn</code>, выполняет handshake при первом <code>Read</code>/<code>Write</code>.</li>
 <li>mTLS: проверка производится в <code>serverHandshake</code> через вызов <code>processCertsFromClient</code>.</li>
 <li>Управление сертификатами: <code>tls.LoadX509KeyPair</code>.</li>
 </ul>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-23">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1749,7 +1749,7 @@ func main() {
 <em>Исправление</em>: использовать secret vault, environment variables, HSM.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-23">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1764,9 +1764,9 @@ func main() {
 <hr />
 <h2 id="znayu-li-ya-svoi-slabye-storony-i-est-li-u-menya-plan-po-ikh-usileniyu">Знаю ли я свои слабые стороны и есть ли у меня план по их усилению?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-24">Краткий ответ (30–60 секунд)</h3>
 <p>Да. Я осознаю области для развития: глубокое знание Kubernetes и операторской модели, опыт с event-driven архитектурами на основе Kafka Streams, публичные выступления. У меня есть план: прохожу сертификацию CKAD, разрабатываю pet-проект с Kafka Streams, записываю доклады для митапов. Такой подход демонстрирует growth mindset и способность к саморефлексии.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-24">Развёрнутый ответ</h3>
 <p>Конкретная слабость — не страшно, если показан конструктивный план. Хороший ответ включает:<br />
 - Определение слабости, актуальной для роли, но не критичной для выполнения работы (например, не «я не понимаю Go», а «мало работал с serverless технологиями»).<br />
 - Действия: книги, курсы, проекты, менторство, контрибуции в open-source.<br />
@@ -1774,7 +1774,7 @@ func main() {
 - Рефлексия: как эта слабость могла повлиять на прошлый проект и что изменилось.</p>
 <h3 id="pod-kapotom-intervyu">Под капотом (интервью)</h3>
 <p>Важно показать, что вы учитесь на ошибках. Поведение STAR: ситуация, задача, действие, результат.</p>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-24">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1793,7 +1793,7 @@ func main() {
 <em>Исправление</em>: чётко расписать шаги: курс на Udemy с проектом, чтение книги, участие в обсуждениях в сообществе.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-24">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1808,18 +1808,18 @@ func main() {
 <hr />
 <h2 id="gotov-li-ya-k-povedencheskim-voprosam-i-voprosam-pro-liderstvo">Готов ли я к поведенческим вопросам и вопросам про лидерство?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-25">Краткий ответ (30–60 секунд)</h3>
 <p>Да. Подготовил несколько историй по методу STAR (Situation, Task, Action, Result) для ключевых компетенций: конфликт в команде, провал проекта, наставничество, принятие сложного технического решения, лидерство без authority, работа с ambiguity. Акцент делаю на конкретных действиях, измеряемом результате и извлечённых уроках.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-25">Развёрнутый ответ</h3>
 <p>Основные категории:<br />
 - <strong>Конфликт</strong>: ситуация с разногласием по архитектуре, выслушал всех, предложил компромисс с экспериментом, в итоге выбрали решение на основе метрик.<br />
 - <strong>Провал</strong>: сервис упал в production из-за необработанного пула соединений. Моя задача — провести postmortem, внедрить circuit breaker и мониторинг. Результат: снижение incidents на 80%.<br />
 - <strong>Наставничество</strong>: разработал onboarding-план для джуниора, weekly 1:1, code review с пояснениями, через 3 месяца он стал самостоятельным.<br />
 - <strong>Лидерство</strong>: будучи не тимлидом, инициировал внедрение стандартов тестирования, убедил команду через демонстрацию улучшения качества.<br />
 - <strong>Ambiguity</strong>: на старте проекта требования нечётки; организовал серию встреч со стейкхолдерами, сформулировал MVP, зафиксировал scope, успешно доставили.</p>
-<h3 id="pod-kapotom-intervyu">Под капотом (интервью)</h3>
+<h3 id="pod-kapotom-intervyu-2">Под капотом (интервью)</h3>
 <p>Интервьюер оценивает культурное соответствие и leveling (Senior, Staff). Staff-инженер демонстрирует мультипликативный эффект: влияние на несколько команд, стратегическое видение.</p>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-25">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1838,7 +1838,7 @@ func main() {
 <em>Исправление</em>: честно описать неудачу и уроки, показывая зрелость.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-25">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1853,18 +1853,18 @@ func main() {
 <hr />
 <h2 id="mogu-li-ya-nazvat-5-poslednikh-statey-ili-knig-kotorye-ya-prochital-po-svoey-spe">Могу ли я назвать 5 последних статей или книг, которые я прочитал по своей специальности?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-26">Краткий ответ (30–60 секунд)</h3>
 <p>Да:<br />
 1. «Designing Data-Intensive Applications» (Kleppmann) — перечитывал главу про репликацию.<br />
 2. «Concurrency in Go» (Cox-Buday) — углублённые паттерны.<br />
 3. Статья «The Go Memory Model» на официальном сайте — доскональное изучение.<br />
 4. «BPF Performance Tools» (Gregg) — применение eBPF для мониторинга Go-приложений.<br />
 5. Статья в блоге «Go scheduler: Ms, Ps &amp; Gs» — разбор нового preemptive scheduling.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-26">Развёрнутый ответ</h3>
 <p>Всегда важно оставаться в курсе. Эти источники охватывают дизайн систем, конкурентность, язык, производительность и наблюдаемость. Я веду конспекты, практикуюсь.</p>
-<h3 id="pod-kapotom-internals">Под капотом (internals)</h3>
+<h3 id="pod-kapotom-internals-23">Под капотом (internals)</h3>
 <p>Чтение исходников рантайма, documentation, proposals.</p>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-26">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1883,7 +1883,7 @@ func main() {
 <em>Исправление</em>: подбирать материалы, соответствующие грейду.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-26">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1898,17 +1898,17 @@ func main() {
 <hr />
 <h2 id="mogu-li-ya-vnyatno-obyasnit-pochemu-ya-khochu-rabotat-imenno-v-etoy-kompanii">Могу ли я внятно объяснить, почему я хочу работать именно в этой компании?</h2>
 
-<h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
+<h3 id="kratkiy-otvet-3060-sekund-27">Краткий ответ (30–60 секунд)</h3>
 <p>Моя мотивация основана на трёх факторах: 1) миссия компании совпадает с моими ценностями (например, финтех — повышение финансовой доступности); 2) технологические вызовы — работа с высоконагруженными системами, распределёнными транзакциями, что соответствует моему опыту и интересам; 3) культура инженеринга — сильный акцент на качество, open-source, continuous learning. Я изучил их технический блог и хочу внести вклад в команду.</p>
-<h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
+<h3 id="razvyornutyy-otvet-27">Развёрнутый ответ</h3>
 <p>Конкретика обязательна:<br />
 - Упомянуть конкретные проекты или технологии, используемые в компании (например, они мигрируют на Go-микросервисы с монолита).<br />
 - Показать, что я говорил с сотрудниками, изучил статьи, GitHub репозитории.<br />
 - Объяснить, как мой опыт поможет решить их задачи.<br />
 - Выразить долгосрочный интерес к развитию внутри компании.</p>
-<h3 id="pod-kapotom-intervyu">Под капотом (интервью)</h3>
+<h3 id="pod-kapotom-intervyu-3">Под капотом (интервью)</h3>
 <p>Демонстрирует alignment и уменьшает риск оффера, который я не приму.</p>
-<h3 id="tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</h3>
+<h3 id="tipichnye-oshibki-kandidatov-27">Типичные ошибки кандидатов</h3>
 
 <ol>
 <li>
@@ -1927,7 +1927,7 @@ func main() {
 <em>Исправление</em>: заранее исследовать культуру.</p>
 </li>
 </ol>
-<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</h3>
+<h3 id="vozmozhnye-dopolnitelnye-voprosy-intervyuera-27">Возможные дополнительные вопросы интервьюера</h3>
 
 <ul>
 <li>
@@ -1961,7 +1961,7 @@ func main() {
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#ponimayu-li-ya-slice-internals">Понимаю ли я slice internals?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#ponimayu-li-ya-map-internals">Понимаю ли я map internals?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#ponimayu-li-ya-gc">Понимаю ли я GC?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#ponimayu-li-ya-gmp">Понимаю ли я GMP?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#ponimayu-li-ya-concurrency">Понимаю ли я concurrency?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#ponimayu-li-ya-system-design">Понимаю ли я system design?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-obyasnit-raznitsu-mezhdu-buferizirovannym-i-nebuferizirovannym-kanalo">Могу ли я объяснить разницу между буферизированным и небуферизированным каналом?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#uveren-li-ya-v-rabote-s-oshibkami-i-ponimanii-deferpanicrecover">Уверен ли я в работе с ошибками и понимании defer/panic/recover?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#gotov-li-ya-otvetit-na-prodvinutye-voprosy-po-context-context">Готов ли я ответить на продвинутые вопросы по context.Context?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#khorosho-li-ya-znayu-standartnuyu-biblioteku">Хорошо ли я знаю стандартную библиотеку?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#ponimayu-li-ya-model-pamyati-go">Понимаю ли я модель памяти Go?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-sproektirovat-vysokonagruzhennuyu-sistemu">Могу ли я спроектировать высоконагруженную систему?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#prokhodil-li-ya-mock-intervyu">Проходил ли я mock-интервью?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-luchshie-praktiki">Под капотом (internals) / Лучшие практики</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#umeyu-li-ya-polzovatsya-pprof-i-trace-dlya-otladki">Умею ли я пользоваться pprof и trace для отладки?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-provesti-revyu-koda-i-nayti-potentsialnye-problemy-s-proizvoditelnost">Могу ли я провести ревью кода и найти потенциальные проблемы с производительностью?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#uveren-li-ya-v-svoikh-otvetakh-na-voprosy-po-linux-i-setyam">Уверен ли я в своих ответах на вопросы по Linux и сетям?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#prorabotal-li-ya-vse-temy-iz-etogo-spiska">Проработал ли я все темы из этого списка?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#znayu-li-ya-kak-otvetit-na-vopros-chto-novogo-v-go-1-23">Знаю ли я, как ответить на вопрос «Что нового в Go 1.23+»?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-napisat-testy-dlya-konkurentnogo-koda-i-nayti-data-race">Могу ли я написать тесты для конкурентного кода и найти data race?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-realizovat-osnovnye-struktury-dannykh-na-go-bez-podskazok">Могу ли я реализовать основные структуры данных на Go без подсказок?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#uveren-li-ya-v-svoey-sposobnosti-argumentirovat-vybor-mezhdu-sql-i-nosql">Уверен ли я в своей способности аргументировать выбор между SQL и NoSQL?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-narisovat-i-obyasnit-arkhitekturu-svoey-posledney-sistemy">Могу ли я нарисовать и объяснить архитектуру своей последней системы?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-obyasnit-kak-rabotaet-tls-handshake-i-chto-takoe-vzaimnyy-autentifika">Могу ли я объяснить, как работает TLS handshake и что такое взаимный аутентификация?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#znayu-li-ya-svoi-slabye-storony-i-est-li-u-menya-plan-po-ikh-usileniyu">Знаю ли я свои слабые стороны и есть ли у меня план по их усилению?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-intervyu">Под капотом (интервью)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#gotov-li-ya-k-povedencheskim-voprosam-i-voprosam-pro-liderstvo">Готов ли я к поведенческим вопросам и вопросам про лидерство?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-intervyu">Под капотом (интервью)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-nazvat-5-poslednikh-statey-ili-knig-kotorye-ya-prochital-po-svoey-spe">Могу ли я назвать 5 последних статей или книг, которые я прочитал по своей специальности?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-vnyatno-obyasnit-pochemu-ya-khochu-rabotat-imenno-v-etoy-kompanii">Могу ли я внятно объяснить, почему я хочу работать именно в этой компании?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-intervyu">Под капотом (интервью)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li>
+    <li class="toc-item toc-h2"><a href="#ponimayu-li-ya-slice-internals">Понимаю ли я slice internals?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#ponimayu-li-ya-map-internals">Понимаю ли я map internals?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-2">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-2">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-2">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-2">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-2">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#ponimayu-li-ya-gc">Понимаю ли я GC?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-3">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-3">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-3">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-3">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-3">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#ponimayu-li-ya-gmp">Понимаю ли я GMP?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-4">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-4">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-4">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-4">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-4">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#ponimayu-li-ya-concurrency">Понимаю ли я concurrency?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-5">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-5">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-5">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-5">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-5">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#ponimayu-li-ya-system-design">Понимаю ли я system design?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-6">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-6">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-6">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-6">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-6">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-obyasnit-raznitsu-mezhdu-buferizirovannym-i-nebuferizirovannym-kanalo">Могу ли я объяснить разницу между буферизированным и небуферизированным каналом?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-7">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-7">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-7">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-7">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-7">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#uveren-li-ya-v-rabote-s-oshibkami-i-ponimanii-deferpanicrecover">Уверен ли я в работе с ошибками и понимании defer/panic/recover?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-8">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-8">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-8">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-8">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-8">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#gotov-li-ya-otvetit-na-prodvinutye-voprosy-po-context-context">Готов ли я ответить на продвинутые вопросы по context.Context?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-9">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-9">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-9">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-9">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-9">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#khorosho-li-ya-znayu-standartnuyu-biblioteku">Хорошо ли я знаю стандартную библиотеку?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-10">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-10">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-10">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-10">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-10">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#ponimayu-li-ya-model-pamyati-go">Понимаю ли я модель памяти Go?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-11">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-11">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-11">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-11">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-11">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-sproektirovat-vysokonagruzhennuyu-sistemu">Могу ли я спроектировать высоконагруженную систему?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-12">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-12">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-12">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-12">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-12">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#prokhodil-li-ya-mock-intervyu">Проходил ли я mock-интервью?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-13">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-13">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-luchshie-praktiki">Под капотом (internals) / Лучшие практики</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-13">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-13">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#umeyu-li-ya-polzovatsya-pprof-i-trace-dlya-otladki">Умею ли я пользоваться pprof и trace для отладки?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-14">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-14">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-13">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-14">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-14">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-provesti-revyu-koda-i-nayti-potentsialnye-problemy-s-proizvoditelnost">Могу ли я провести ревью кода и найти потенциальные проблемы с производительностью?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-15">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-15">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-14">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-15">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-15">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#uveren-li-ya-v-svoikh-otvetakh-na-voprosy-po-linux-i-setyam">Уверен ли я в своих ответах на вопросы по Linux и сетям?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-16">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-16">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-15">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-16">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-16">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#prorabotal-li-ya-vse-temy-iz-etogo-spiska">Проработал ли я все темы из этого списка?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-17">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-17">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-16">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-17">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-17">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#znayu-li-ya-kak-otvetit-na-vopros-chto-novogo-v-go-1-23">Знаю ли я, как ответить на вопрос «Что нового в Go 1.23+»?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-18">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-18">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-17">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-18">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-18">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-napisat-testy-dlya-konkurentnogo-koda-i-nayti-data-race">Могу ли я написать тесты для конкурентного кода и найти data race?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-19">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-19">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-18">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-19">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-19">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-realizovat-osnovnye-struktury-dannykh-na-go-bez-podskazok">Могу ли я реализовать основные структуры данных на Go без подсказок?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-20">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-20">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-19">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-20">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-20">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#uveren-li-ya-v-svoey-sposobnosti-argumentirovat-vybor-mezhdu-sql-i-nosql">Уверен ли я в своей способности аргументировать выбор между SQL и NoSQL?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-21">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-21">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-20">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-21">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-21">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-narisovat-i-obyasnit-arkhitekturu-svoey-posledney-sistemy">Могу ли я нарисовать и объяснить архитектуру своей последней системы?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-22">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-22">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-21">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-22">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-22">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-obyasnit-kak-rabotaet-tls-handshake-i-chto-takoe-vzaimnyy-autentifika">Могу ли я объяснить, как работает TLS handshake и что такое взаимный аутентификация?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-23">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-23">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-22">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-23">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-23">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#znayu-li-ya-svoi-slabye-storony-i-est-li-u-menya-plan-po-ikh-usileniyu">Знаю ли я свои слабые стороны и есть ли у меня план по их усилению?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-24">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-24">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-intervyu">Под капотом (интервью)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-24">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-24">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#gotov-li-ya-k-povedencheskim-voprosam-i-voprosam-pro-liderstvo">Готов ли я к поведенческим вопросам и вопросам про лидерство?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-25">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-25">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-intervyu-2">Под капотом (интервью)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-25">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-25">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-nazvat-5-poslednikh-statey-ili-knig-kotorye-ya-prochital-po-svoey-spe">Могу ли я назвать 5 последних статей или книг, которые я прочитал по своей специальности?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-26">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-26">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-internals-23">Под капотом (internals)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-26">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-26">Возможные дополнительные вопросы интервьюера</a></li><li class="toc-item toc-h2"><a href="#mogu-li-ya-vnyatno-obyasnit-pochemu-ya-khochu-rabotat-imenno-v-etoy-kompanii">Могу ли я внятно объяснить, почему я хочу работать именно в этой компании?</a></li><li class="toc-item toc-h3"><a href="#kratkiy-otvet-3060-sekund-27">Краткий ответ (30–60 секунд)</a></li><li class="toc-item toc-h3"><a href="#razvyornutyy-otvet-27">Развёрнутый ответ</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-intervyu-3">Под капотом (интервью)</a></li><li class="toc-item toc-h3"><a href="#tipichnye-oshibki-kandidatov-27">Типичные ошибки кандидатов</a></li><li class="toc-item toc-h3"><a href="#vozmozhnye-dopolnitelnye-voprosy-intervyuera-27">Возможные дополнительные вопросы интервьюера</a></li>
   </ul>
 </aside>
 
