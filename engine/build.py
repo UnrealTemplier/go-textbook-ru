@@ -129,8 +129,10 @@ def build(
     dist_dir: str = "./dist",
     limit: Optional[int] = None,
     target_module: Optional[int] = None,
-    is_pilot: bool = False
-):
+    is_pilot: bool = False,
+    strict: bool = False
+) -> List[str]:
+    """Сборка книги. Возвращает предупреждения; strict=True — при предупреждениях BuildError."""
     # Ядро в книге не редактируется: предупреждаем о локальных правках engine/ (если есть .checksums.json)
     issues = verify_checksums()
     if issues:
@@ -152,6 +154,11 @@ def build(
     all_articles = scanner.scan()
     print(f"      Всего обнаружено статей: {len(all_articles)}")
     print(f"      Всего модулей: {len(scanner.modules_tree)}")
+    module_nums = {m["num"] for m in scanner.modules_tree}
+    for ov in config.overlays:
+        missing = [n for n in ov["modules"] if n not in module_nums]
+        if missing:
+            raise BuildError(f"overlays «{ov['title']}»: нет модулей с номерами {missing}")
 
     # Фильтрация если указан --pilot, --limit или --module
     articles_to_build = all_articles
@@ -233,6 +240,16 @@ def build(
         fp.write(index_html)
     print("      index.html успешно создан.")
 
+    warnings = converter.warnings
+    if warnings:
+        print(f"\n⚠️ Предупреждения сборки: {len(warnings)}")
+        for w in warnings[:20]:
+            print(f"   {w}")
+        if len(warnings) > 20:
+            print(f"   … и ещё {len(warnings) - 20}")
+    if strict and warnings:
+        raise BuildError(f"--strict: {len(warnings)} предупреждений")
+
     elapsed = time.time() - start_time
     print("\n=====================================================================")
     print(f"✅ СБОРКА УСПЕШНО ЗАВЕРШЕНА за {elapsed:.2f} сек!")
@@ -241,6 +258,12 @@ def build(
     print(f"   Выходная директория: {os.path.abspath(dist_dir)}")
     print(f"   Главная страница: file://{os.path.abspath(index_path)}")
     print("=====================================================================")
+    return warnings
+
+
+class BuildError(RuntimeError):
+    """Ошибка сборки (оверлеи, предупреждения в режиме --strict)."""
+
 
 def main():
     parser = argparse.ArgumentParser(description="Сборка книги движком html-textbook-engine")
@@ -251,6 +274,7 @@ def main():
     parser.add_argument("--book", default=None, help="Путь к book.toml (по умолчанию ./book.toml)")
     parser.add_argument("--sources", default=None, help="Путь к исходникам (по умолчанию content.root из book.toml)")
     parser.add_argument("--dist", default="./dist", help="Выходная папка (по умолчанию ./dist)")
+    parser.add_argument("--strict", action="store_true", help="Предупреждения (неизвестные выноски, неоднозначные ссылки, незакрытые ограды) — ошибки")
 
     args = parser.parse_args()
 
@@ -263,7 +287,8 @@ def main():
         dist_dir=args.dist,
         limit=args.limit,
         target_module=args.module,
-        is_pilot=is_pilot
+        is_pilot=is_pilot,
+        strict=args.strict
     )
 
 if __name__ == "__main__":

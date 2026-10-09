@@ -155,6 +155,16 @@ class Article:
             "headings": [{"level": h[0], "title": h[1], "anchor": h[2]} for h in self.headings]
         }
 
+class _RecordingIndex:
+    """Запись в индекс wikilinks через функцию (учёт всех кандидатов на ключ)."""
+
+    def __init__(self, put):
+        self._put = put
+
+    def __setitem__(self, key, art):
+        self._put(key, art)
+
+
 class KnowledgeBaseScanner:
     def __init__(self, sources_dir: str, config: Optional[BookConfig] = None):
         self.sources_dir = os.path.abspath(sources_dir)
@@ -310,31 +320,52 @@ class KnowledgeBaseScanner:
             pass
 
     def _build_wikilink_index(self) -> None:
+        # Ключ → все статьи, которым он подходит: для предупреждения о неоднозначных ссылках.
+        # Разрешение прежнее: при совпадении ключей побеждает статья, идущая позже.
+        self.wikilink_candidates: Dict[str, set] = {}
+        original_setitem = self.wikilink_index.__setitem__
+
+        def put(key, art):
+            self.wikilink_candidates.setdefault(key, set()).add(art.rel_output_path)
+            original_setitem(key, art)
+        index = _RecordingIndex(put)
+        self._fill_wikilink_index(index)
+
+    def ambiguous_link(self, link_raw: str) -> List[str]:
+        """Пути статей, если имя ссылки (до '|' и '#') подходит нескольким статьям."""
+        target = link_raw.split("|", 1)[0].split("#", 1)[0].strip()
+        for key in (target, normalize_key(target)):
+            cands = self.wikilink_candidates.get(key)
+            if cands and len(cands) > 1:
+                return sorted(cands)
+        return []
+
+    def _fill_wikilink_index(self, index) -> None:
         for art in self.articles:
             # 1. По каноническому заголовку
-            self.wikilink_index[art.title] = art
-            self.wikilink_index[art.title + ".md"] = art
+            index[art.title] = art
+            index[art.title + ".md"] = art
 
             norm = normalize_key(art.title)
-            self.wikilink_index[norm] = art
+            index[norm] = art
 
             m = re.match(r"^\d+\.\s*(.+)$", art.title)
             if m:
                 clean = m.group(1).strip()
-                self.wikilink_index[clean] = art
-                self.wikilink_index[normalize_key(clean)] = art
+                index[clean] = art
+                index[normalize_key(clean)] = art
 
             # 2. По физическому имени файла на диске (если отличается)
             if art.raw_filename and art.raw_filename != art.title:
-                self.wikilink_index[art.raw_filename] = art
-                self.wikilink_index[art.raw_filename + ".md"] = art
+                index[art.raw_filename] = art
+                index[art.raw_filename + ".md"] = art
                 norm_raw = normalize_key(art.raw_filename)
-                self.wikilink_index[norm_raw] = art
+                index[norm_raw] = art
                 m_raw = re.match(r"^\d+\.\s*(.+)$", art.raw_filename)
                 if m_raw:
                     clean_raw = m_raw.group(1).strip()
-                    self.wikilink_index[clean_raw] = art
-                    self.wikilink_index[normalize_key(clean_raw)] = art
+                    index[clean_raw] = art
+                    index[normalize_key(clean_raw)] = art
 
     def resolve_wikilink(self, link_raw: str, current_output_rel: str) -> Tuple[Optional[str], str]:
         if "|" in link_raw:

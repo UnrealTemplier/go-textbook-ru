@@ -64,6 +64,7 @@ class MarkdownConverter:
         self.scanner = scanner
         self.config = config or (scanner.config if scanner is not None else BookConfig())
         self.warnings: List[str] = []
+        self.current_article: Optional[Article] = None
         extensions = ["fenced_code", "tables", "sane_lists", "nl2br"]
         mcfg = self.config.markdown
         if mcfg.indented_fences:
@@ -79,6 +80,7 @@ class MarkdownConverter:
         Полный цикл конвертации статьи из файла .md в HTML.
         Возвращает (html_body, table_of_contents).
         """
+        self.current_article = article
         with open(article.source_path, "r", encoding="utf-8", errors="ignore") as fp:
             raw_text = fp.read()
 
@@ -102,8 +104,9 @@ class MarkdownConverter:
         # 3. Обработка Obsidian Callouts
         processed_text = self._transform_callouts(processed_text)
 
-        # 4. Преобразование Wikilinks [[...]]
-        processed_text = self._transform_wikilinks(processed_text, article)
+        # 4. Преобразование Wikilinks [[...]] (content.wikilinks = false — шаг выключен)
+        if self.config.content.wikilinks:
+            processed_text = self._transform_wikilinks(processed_text, article)
 
         # 5. Парсинг заголовков и простановка id-анкоров
         processed_text, toc = self._process_headings(processed_text)
@@ -123,6 +126,10 @@ class MarkdownConverter:
         html_content = self._enhance_code_blocks(html_content)
 
         return html_content, toc
+
+    def warn(self, message: str) -> None:
+        where = self.current_article.source_path if self.current_article is not None else "?"
+        self.warnings.append(f"{where}: {message}")
 
     def _clean_cliches(self, text: str) -> str:
         """Удаление шаблонных фраз (content.clean_cliches в book.toml) из HTML; sources/ не меняется."""
@@ -350,6 +357,10 @@ class MarkdownConverter:
 
     def callout_style(self, callout_type: str, custom_title: str):
         """Оформление и заголовок выноски: тип (неизвестный → note), заголовок по умолчанию, эвристика."""
+        callout_type = self.config.callouts.alias.get(callout_type, callout_type)
+        if callout_type not in CALLOUT_CONFIG:
+            self.warn(f"неизвестный тип выноски [!{callout_type}] — оформлено как note "
+                      f"(задайте [callouts.alias] в book.toml)")
         known = callout_type if callout_type in CALLOUT_CONFIG else "note"
         cfg = CALLOUT_CONFIG[known]
         title = custom_title if custom_title else self.config.t(f"callouts.{known}")
@@ -370,6 +381,9 @@ class MarkdownConverter:
         def repl(match):
             raw_link = match.group(1).strip()
             href, display_text = self.scanner.resolve_wikilink(raw_link, current_article.rel_output_path)
+            ambiguous = self.scanner.ambiguous_link(raw_link)
+            if ambiguous:
+                self.warn(f"неоднозначная ссылка [[{raw_link}]]: подходят {', '.join(ambiguous)}")
             if href:
                 return f'<a href="{href}" class="wikilink">{html.escape(display_text)}</a>'
             else:

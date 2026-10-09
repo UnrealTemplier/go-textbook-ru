@@ -38,6 +38,8 @@ class ContentConfig:
     title_source: str = "filename"
     # Регулярное выражение имени индексного файла каталога (U22), например "^0+\\. "; пусто — выключено
     index_file: str = ""
+    # false — [[…]] не разбираются вовсе (в данных книги это не ссылки, например вывод программ)
+    wikilinks: bool = True
 
 
 @dataclass
@@ -53,6 +55,8 @@ class SlugConfig:
 class CalloutsConfig:
     # «собеседован», «интервью», «interview» в заголовке выноски → оформление interview
     interview_heuristic: bool = False
+    # Алиасы типов: {"critical": "note"}; неизвестный тип без алиаса — предупреждение (в --strict ошибка)
+    alias: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -154,6 +158,9 @@ class BookConfig:
     branding: BrandingConfig = field(default_factory=BrandingConfig)
     article_page: ArticlePageConfig = field(default_factory=ArticlePageConfig)
     index_page: IndexPageConfig = field(default_factory=IndexPageConfig)
+    # Оверлеи навигации (траектории): [{title, modules = [номера модулей]}]; модуль может входить
+    # в несколько оверлеев или ни в один
+    overlays: List[Dict[str, Any]] = field(default_factory=list)
     # Переопределения строк интерфейса движка (engine/strings/ru.toml), та же структура
     strings: Dict[str, Any] = field(default_factory=dict)
     # Каталог, относительно которого заданы пути конфига (каталог book.toml)
@@ -262,6 +269,14 @@ def _validate(cfg: BookConfig) -> None:
         if not isinstance(st, dict) or set(st) != {"badge", "title_html", "text_html"}:
             raise ConfigError(f"index_page.roadmap_steps[{i}]: ожидаются ключи badge, title_html, text_html")
     merge_strings(cfg.strings)
+    for i, ov in enumerate(cfg.overlays):
+        if (not isinstance(ov, dict) or set(ov) != {"title", "modules"} or not isinstance(ov["modules"], list)
+                or not all(isinstance(n, int) for n in ov["modules"])):
+            raise ConfigError(f"overlays[{i}]: ожидаются title и modules = [номера модулей]")
+    for k, v in cfg.callouts.alias.items():
+        if not isinstance(v, str):
+            raise ConfigError(f"callouts.alias.{k}: ожидается имя типа выноски")
+    cfg.callouts.alias = {k.lower(): v.lower() for k, v in cfg.callouts.alias.items()}
     if cfg.markdown.indented_fences and not cfg.markdown.obsidian_lists:
         raise ConfigError("markdown.indented_fences требует markdown.obsidian_lists = true: "
                           "без перевода отступов списков блок кода не попадёт в свой пункт")
