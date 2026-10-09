@@ -81,6 +81,8 @@ go-textbook/
 │   ├── audit_all.py       # Сквозной QA-аудит (ОС-совместимость, ссылки, анкоры, Mermaid + рантайм-разбор в headless Firefox)
 │   ├── verify_editorial.py# Инструмент верификации авторской редактуры ДО и ПОСЛЕ
 │   ├── batch_runner.py    # ⚠️ Исторический скрипт пакетной конвертации модулей 2–22 (не запускать, см. ниже)
+│   ├── tests/             # Тесты генератора (unittest): характеризационные + книжный тест корпуса, см. § 3.3а
+│   ├── tools/             # Инструменты проверки рефакторинга движка: verify_diff.py (сравнение сборок), см. § 3.3б
 │   └── assets/            # Исходные статические ассеты (стили, скрипты, вендор)
 │       ├── themes/        # Реестр и CSS-токены тем (один файл — одна тема)
 │       │   ├── manifest.json  # Реестр тем: порядок, label, icon, default
@@ -179,6 +181,16 @@ python3 builder/verify_editorial.py "sources/path/to/article.md" --original-file
 python3 -m unittest discover -s builder/tests -t .
 ```
 Стандартный `unittest`, без сторонних пакетов, ~13 сек. Характеризационные тесты фиксируют текущее поведение: `slugify` и длины slug по уровням, канонические названия, клише, выноски, wikilinks, заголовки и TOC, санитайзер Mermaid, конфиг KaTeX в `main.js`, чтение версии. Книжный тест `test_book_corpus.py` рендерит все 1 413 статей и `index.html` в памяти и сравнивает с закоммиченным `dist/` побайтно, а санитайзер на 2 486 диаграммах — со снимком sha256. Поэтому после правок `sources/` или генератора сначала пересоберите `dist/`, затем запускайте тесты. Если поведение меняется намеренно, ожидаемые значения в тестах обновляются в том же коммите.
+
+### 3.3б. Сравнение двух сборок (`builder/tools/verify_diff.py`)
+```bash
+# Весь dist/ побайтно (выделение движка без изменения вывода):
+python3 builder/tools/verify_diff.py dist /tmp/dist-new
+# Только <article class="article-body"> после нормализаторов, с реестром разрешённых изменений этапа:
+python3 builder/tools/verify_diff.py dist /tmp/dist-new --mode article \
+    --normalizers whitespace_between_tags,code_chrome --exceptions content-exceptions.txt --stage А3а
+```
+Код возврата `0` — расхождений вне реестра исключений нет. Нормализаторы: `whitespace_between_tags`, `code_chrome`, `strip_sidebar`, `strip_conditional_scripts`, `strip_asset_query`; `--dedup-map` — таблица переименованных `id`. Модуль также даёт проекции для оракулов (текст с маркерами списков и выделения, видимый текст заголовков, блоки внутри `<p>`, мультимножество блоков кода). Порядок применения — `engine-extraction/html-textbook-engine-technical-plan.md`.
 
 ### 3.4. Текущие базовые метрики (Snapshot Baseline):
 На момент текущего базового среза репозитория (сверено 2026-10-06, `HEAD b237c2e6`):
