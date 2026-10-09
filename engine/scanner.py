@@ -38,6 +38,16 @@ def find_first_h1(content: str) -> Optional[Tuple[int, str]]:
             return i, h.group(1)
     return None
 
+
+def duplicate_h1(content: str, title: str) -> Optional[int]:
+    """Номер строки первого H1, если он — точная копия заголовка страницы (U14), иначе None.
+
+    Сравнивается исходный текст заголовка, а не HTML: «# 5. Тема» и «5. Тема» совпадают,
+    «# Тема: подробности» и «5. Тема» — нет (такие пары идут в реестр title_duplicates).
+    """
+    h1 = find_first_h1(content)
+    return h1[0] if h1 is not None and h1[1] == title else None
+
 CYRILLIC_TO_LATIN = {
     'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
     'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',

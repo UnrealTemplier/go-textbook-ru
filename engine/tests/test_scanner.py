@@ -9,7 +9,8 @@ import unittest
 from engine.build import build
 from engine.config import BookConfig, ContentConfig, ProjectConfig
 from engine.converter import MarkdownConverter
-from engine.scanner import KnowledgeBaseScanner, ScanError
+from engine.scanner import KnowledgeBaseScanner, ScanError, duplicate_h1
+from engine.tools import title_duplicates
 from engine.template import render_article_page
 
 
@@ -151,6 +152,44 @@ class IndexBookTest(unittest.TestCase):
         with open(os.path.join(dist, "index.html"), encoding="utf-8") as fp:
             index = fp.read()
         self.assertIn("2 статей", index)
+
+
+class DuplicateH1Test(unittest.TestCase):
+    """U14: при title_source = "filename" из тела убирается только точная копия заголовка страницы."""
+
+    FILES = {
+        "1. М/1. Тема.md": "# 1. Тема\n\nТекст.\n",
+        "1. М/2. Другая.md": "# 2. Другая: подробности\n\nТекст.\n",
+        "1. М/3. Без H1.md": "```\n# 3. Без H1\n```\n",
+    }
+
+    def test_duplicate_h1(self):
+        self.assertEqual(duplicate_h1("\n# Тема\nтекст", "Тема"), 1)
+        self.assertIsNone(duplicate_h1("# Тема: подробности", "Тема"))
+        self.assertIsNone(duplicate_h1("```\n# Тема\n```", "Тема"))
+
+    def test_converter_and_registry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            make_tree(tmp, {"book.toml": '[project]\nversion = "1.0.0"\n'})
+            make_tree(tmp, {f"sources/{k}": v for k, v in self.FILES.items()})
+            from engine.config import load_config
+            cfg = load_config(os.path.join(tmp, "book.toml"))
+            sc = KnowledgeBaseScanner(os.path.join(tmp, "sources"), cfg)
+            arts = sc.scan()
+            conv = MarkdownConverter(sc, cfg)
+            bodies = [conv.convert_article(a)[0] for a in arts]
+            self.assertNotIn("<h1>", bodies[0])
+            self.assertIn("<h1>2. Другая: подробности</h1>", bodies[1])
+            self.assertIn("# 3. Без H1", bodies[2])
+            pairs, exact = title_duplicates.collect(cfg)
+            self.assertEqual((pairs, exact), ([("1. М/2. Другая.md", "2. Другая", "2. Другая: подробности")], 1))
+            out = os.path.join(tmp, "fact-checks", "title-duplicates.md")
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(title_duplicates.main(["--book", os.path.join(tmp, "book.toml"), "--out", out, "--check"]), 1)
+                self.assertEqual(title_duplicates.main(["--book", os.path.join(tmp, "book.toml"), "--out", out]), 0)
+                self.assertEqual(title_duplicates.main(["--book", os.path.join(tmp, "book.toml"), "--out", out, "--check"]), 0)
+            with open(out, encoding="utf-8") as fp:
+                self.assertIn("| 1 | `1. М/2. Другая.md` | 2. Другая | 2. Другая: подробности |", fp.read())
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ import textwrap
 from typing import Tuple, Dict, Any, List, Optional
 import markdown
 from ..config import BookConfig
-from ..scanner import slugify, Article, KnowledgeBaseScanner, find_first_h1
+from ..scanner import slugify, Article, KnowledgeBaseScanner, find_first_h1, duplicate_h1
 from .indented_fence import IndentedFenceExtension
 from .math_protect import MathProtectExtension
 from .obsidian_lists import ObsidianListsExtension
@@ -99,15 +99,18 @@ class MarkdownConverter:
         with open(article.source_path, "r", encoding="utf-8", errors="ignore") as fp:
             raw_text = fp.read()
 
-        # 0. Хук книги transform_markdown, затем title_source = "h1": первый «# …» стал заголовком
-        #    страницы — убираем его из тела
+        # 0. Хук книги transform_markdown, затем убираем из тела первый «# …», который дублирует
+        #    заголовок страницы: при title_source = "h1" — всегда, иначе — точную копию (U14)
         raw_text = load_hooks(self.config).transform_markdown(raw_text, article)
         if self.config.content.title_source == "h1":
             h1 = find_first_h1(raw_text)
-            if h1 is not None:
-                lines = raw_text.split("\n")
-                del lines[h1[0]]
-                raw_text = "\n".join(lines)
+            h1_line = h1[0] if h1 is not None else None
+        else:
+            h1_line = duplicate_h1(raw_text, article.title)
+        if h1_line is not None:
+            lines = raw_text.split("\n")
+            del lines[h1_line]
+            raw_text = "\n".join(lines)
 
         # 1. Очистка от шаблонных фраз (вне кода: маска текста статьи)
         cleaned_text = self._clean_cliches(raw_text, self._mask(raw_text))

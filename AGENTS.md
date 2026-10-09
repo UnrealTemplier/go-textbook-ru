@@ -94,7 +94,7 @@ go-textbook/
 │   ├── template.py        # Каркас HTML5, шаблоны страниц, навигация, сайдбар, TOC, версия, anti-flicker
 │   ├── audit.py           # Сквозной QA-аудит: python -m engine.audit (ОС-совместимость, управляющие символы, ссылки, анкоры, Mermaid + рантайм-разбор)
 │   ├── tests/             # Тесты ядра (unittest), см. § 3.3а
-│   ├── tools/             # Инструменты проверки рефакторинга движка: verify_diff.py, runtime_projection.py, см. § 3.3б
+│   ├── tools/             # Инструменты проверки рефакторинга движка: verify_diff.py, runtime_projection.py, см. § 3.3б; title_duplicates.py, см. § 11.4
 │   └── assets/            # Исходные статические ассеты (стили, скрипты, вендор)
 │       ├── themes/        # Реестр и CSS-токены тем (один файл — одна тема)
 │       │   ├── manifest.json  # Реестр тем: порядок, label, icon, default
@@ -114,7 +114,7 @@ go-textbook/
 │   ├── tests/             # Книжные тесты: генератор воспроизводит dist/, маска кода на корпусе, см. § 3.3а
 │   └── tools/
 │       └── verify_editorial.py  # Верификация авторской редактуры ДО и ПОСЛЕ, см. § 3.3
-├── fact-checks/           # Архив отчётов фактчека v2 по модулям (mod1/ … mod4/), см. § 11.4
+├── fact-checks/           # Архив отчётов фактчека v2 по модулям (mod1/ … mod4/) и реестр двойных H1, см. § 11.4
 ├── engine-extraction/     # Выделение движка html-textbook-engine: итоговый анализ (источник решений) и дорожная карта этапов
 ├── .github/workflows/
 │   └── pages.yml          # Деплой каталога dist/ на GitHub Pages при push в main (без сборки в CI)
@@ -208,7 +208,7 @@ python3 -m unittest discover -s book/tests              # книжные тес�
 python3 engine/tools/verify_diff.py dist /tmp/dist-new
 # Только <article class="article-body"> после нормализаторов, с реестром разрешённых изменений этапа:
 python3 engine/tools/verify_diff.py dist /tmp/dist-new --mode article \
-    --normalizers whitespace_between_tags,code_chrome --exceptions content-exceptions.txt --stage А3а
+    --normalizers whitespace_between_tags,code_chrome --exceptions book/content-exceptions.txt --stage А3а
 ```
 Код возврата `0` — расхождений вне реестра исключений нет. Нормализаторы: `whitespace_between_tags`, `code_chrome`, `strip_sidebar`, `strip_conditional_scripts`, `strip_asset_query`; `--dedup-map` — таблица переименованных `id`. Модуль также даёт проекции для оракулов (текст с маркерами списков и выделения, видимый текст заголовков, блоки внутри `<p>`, мультимножество блоков кода). Порядок применения — `engine-extraction/html-textbook-engine-technical-plan.md`.
 
@@ -364,6 +364,7 @@ python3 engine/tools/runtime_projection.py --compare old.json new.json
 ## 📊 7. Архитектура и пайплайн Mermaid
 
 ### Полный конвейер конвертации статьи (`MarkdownConverter.convert_article`)
+0. Убирается первый H1 тела, если он побуквенно равен заголовку страницы из имени файла (U14): шаблон уже рисует этот заголовок. H1 с отличающимся текстом остаётся; такие пары перечислены в `fact-checks/title-duplicates.md` (§ 11.4).
 1. `_clean_cliches` — вырезает из текста (вне кода, по маске) шаблонные вводные фразы из `[content] clean_cliches` в `book.toml` («Как известно, », «Не секрет, что », «Важно понимать, что », «Давайте рассмотрим …:», «В современном мире …, »). Для `go-textbook` список постоянный: отключение изменит видимый текст.
 2. `_extract_mermaid` — вынимает блоки ```` ```mermaid ```` в плейсхолдеры, санитизирует и оборачивает их (см. ниже).
 3. Выноски (`converter/callouts.py`) — Obsidian-выноски `> [!type] Заголовок` заменяются плейсхолдером `<!--CALLOUT_PLACEHOLDER_N-->`, тело рендерится отдельно (маска кода → wikilinks → Python-Markdown) и подставляется после основного прохода как `<aside class="callout callout-{type}">`. Типы: `tip`, `interview`, `info`, `warning`, `note`, `important`, `caution`, `danger`.
@@ -545,6 +546,12 @@ Markdown Source (sources/**/*.md)
 3. `docs(fact-check): move module N fact checking results to separate folder` — отчёты переезжают в `fact-checks/mod{N}/`.
 
 **Статус на 2026-10-06:** модули 1–4 завершены (`fact-checks/mod1/` … `mod4/`). Для модулей 5–22 готовы только скаут-отчёты (для 5 и 6 — ещё и alt); они временно лежат в корне (см. § 2). До v2 все модули 1–10 прошли однопроходный фактчек v1 (`docs(factcheck): correct module N technical claims`, 2026-09-23…25).
+
+**Реестр двойных H1** `fact-checks/title-duplicates.md`: статьи, где первый «# …» в тексте отличается от заголовка страницы (на странице видны оба). Реестр генерирует инструмент, вручную его не правят; при сведении пары информация из обоих заголовков сохраняется, после чего H1 удаляется из исходника и реестр перегенерируется:
+```bash
+python3 -m engine.tools.title_duplicates --book book.toml --out fact-checks/title-duplicates.md          # перегенерировать
+python3 -m engine.tools.title_duplicates --book book.toml --out fact-checks/title-duplicates.md --check  # 1, если устарел
+```
 
 > [!IMPORTANT]
 > Отчёты фактчека — рабочие материалы, а не источник правды. Правило § 11.2 действует и здесь: исправление ошибки не должно сокращать фактуру, выноски `[!interview]` и wikilinks.
