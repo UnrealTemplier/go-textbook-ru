@@ -16,6 +16,7 @@ from .math_protect import MathProtectExtension
 from .obsidian_lists import ObsidianListsExtension
 from .code_mask import UnifiedCodeLineMask, INLINE_CODE_RE
 from .callouts import CalloutExtractor
+from .headings import HeadingIdsExtension, escape_trailing_hashes
 from ..hooks import load_hooks
 
 CALLOUT_CONFIG = {
@@ -79,7 +80,7 @@ class MarkdownConverter:
         self.config = config or (scanner.config if scanner is not None else BookConfig())
         self.warnings: List[str] = []
         self.current_article: Optional[Article] = None
-        extensions = ["fenced_code", "tables", "sane_lists", "nl2br"]
+        extensions = ["fenced_code", "tables", "sane_lists", "nl2br", HeadingIdsExtension()]
         mcfg = self.config.markdown
         if mcfg.indented_fences:
             extensions.append(IndentedFenceExtension(self.warnings.append))
@@ -127,9 +128,15 @@ class MarkdownConverter:
         # 5. Парсинг заголовков и простановка id-анкоров
         processed_text, toc = self._process_headings(processed_text)
 
-        # 6. Основная конвертация через Python-Markdown
+        # 6. Основная конвертация через Python-Markdown; id заголовков H2–H4 — по TOC (только здесь,
+        #    в вызовах для тел выносок список пуст и treeprocessor пассивен)
         self.md.reset()
-        html_content = self.md.convert(processed_text)
+        self.md.heading_slugs = [item["anchor"] for item in toc]
+        try:
+            html_content = self.md.convert(processed_text)
+        finally:
+            self.md.heading_slugs = None
+            self.md.reset()
 
         # 7. Возврат Mermaid и выносок на свои места (до таблиц и блоков кода)
         for ph, m_code in mermaid_placeholders.items():
@@ -508,8 +515,9 @@ class MarkdownConverter:
                     "anchor": h_slug
                 })
 
-                # Вставляем явный HTML заголовок с id
-                out_lines.append(f'<h{level} id="{h_slug}">{raw_title}</h{level}>')
+                # Заголовок остаётся Markdown (разметка внутри обрабатывается, U24); id по TOC
+                # ставит HeadingTreeprocessor. Приклеенный хвост «#» экранируется (Е1).
+                out_lines.append(escape_trailing_hashes(f'{m.group(1)} {raw_title}'))
             else:
                 # Остальные заголовки (H1, H5, H6) разбирает Python-Markdown: '#' в конце он
                 # считает закрывающей последовательностью даже без пробела ('C#' -> 'C').

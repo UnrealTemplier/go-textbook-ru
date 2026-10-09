@@ -129,10 +129,10 @@ class HeadingsTest(unittest.TestCase):
     def setUp(self):
         self.conv = MarkdownConverter(None)
 
-    def test_toc_and_raw_html(self):
+    def test_toc_and_markdown_line(self):
         text = "## Заголовок `код`\n### [Ссылка](x) и *курсив*\n#### Четвёртый"
         out, toc = self.conv._process_headings(text)
-        self.assertEqual(out.splitlines()[0], '<h2 id="zagolovok-kod">Заголовок `код`</h2>')
+        self.assertEqual(out.splitlines()[0], "## Заголовок `код`")      # А3е: строка остаётся Markdown
         self.assertEqual(toc, [
             {"level": 2, "title": "Заголовок код", "anchor": "zagolovok-kod"},
             {"level": 3, "title": "Ссылка и курсив", "anchor": "ssylka-i-kursiv"},
@@ -216,4 +216,19 @@ class DedupIdsTest(unittest.TestCase):
         self.assertEqual(unique_slug("shag", used), "shag-3")       # shag-2 уже занят
         out, toc = MarkdownConverter(None)._process_headings("## Ответ\n## Ответ\n### Ответ")
         self.assertEqual([t["anchor"] for t in toc], ["otvet", "otvet-2", "otvet-3"])
-        self.assertIn('<h2 id="otvet-2">Ответ</h2>', out)
+        self.assertEqual(out, "## Ответ\n## Ответ\n### Ответ")
+
+
+class HeadingsPipelineTest(unittest.TestCase):
+    """А3е: разметка в H2–H4 обрабатывается, id — по TOC, хвост «#» сохраняется, у выносок id нет."""
+
+    def test_full_conversion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            make_tree(tmp, {"1. М/1. С.md": "## Анатомия `testing.B`\n## Go против PHP и C#\n## **Жирный** & <pid>\n\n> [!note] X\n> ### Внутри выноски\n"})
+            sc = KnowledgeBaseScanner(tmp)
+            html_out, toc = MarkdownConverter(sc).convert_article(sc.scan()[0])
+        self.assertIn('<h2 id="anatomiya-testing-b">Анатомия <code>testing.B</code></h2>', html_out)
+        self.assertIn('<h2 id="go-protiv-php-i-c">Go против PHP и C#</h2>', html_out)
+        self.assertIn('<h2 id="zhirnyy-pid"><strong>Жирный</strong> &amp; <pid></h2>', html_out)
+        self.assertIn("<h3>Внутри выноски</h3>", html_out)
+        self.assertEqual([t["anchor"] for t in toc], ["anatomiya-testing-b", "go-protiv-php-i-c", "zhirnyy-pid"])
