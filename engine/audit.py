@@ -356,7 +356,7 @@ class SiteAuditor:
 
             # Относительный путь к файлу
             parts = href_clean.split("#", 1)
-            file_part = parts[0]
+            file_part = parts[0].split("?", 1)[0]          # ?v=<хэш> — кэш-бастинг, не часть пути
             anchor_part = parts[1] if len(parts) > 1 else ""
 
             target_file_path = os.path.normpath(os.path.join(page_dir, unquote(file_part)))

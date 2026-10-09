@@ -253,19 +253,9 @@ python3 engine/tools/runtime_projection.py --compare old.json new.json
 2. **Единый плавающий переключатель (Floating Theme Switcher):**  
    Элемент переключения темы вынесен из сайдбара в единую плавающую кнопку в правом нижнем углу экрана (`bottom: 24px, right: 24px`, класс `.floating-theme-switcher`). Это круглая icon-only кнопка с SVG-иконками (Paper — документ, Light — солнце, Dark — луна), доступным атрибутом `aria-label` и тултипом с названием текущей темы. Нажатие циклически переключает тему на клиенте на лету без перезагрузки: `<html data-theme="dark|paper|light">`. Порядок цикла задаётся полем `order` в `manifest.json`: `paper → light → dark → paper`.
 3. **Персистентность в `localStorage`:** Выбранная тема сохраняется под ключом `go_encyclopedia_theme`.
-4. **Защита от мигания (Anti-flicker):** В `<head>` каждой страницы первым выполняется синхронный инлайн-скрипт «Theme anti-flicker», генерируемый функцией `make_anti_flicker_script()` из `engine/template.py`. До начала отрисовки он восстанавливает тему из `localStorage` (ключ `go_encyclopedia_theme`); неизвестное или отсутствующее значение даёт тему по умолчанию.
-   ```html
-   <script>/* Theme anti-flicker */(function(){try{
-     var d=document.documentElement;
-     var t=localStorage.getItem('go_encyclopedia_theme');
-     if(t&&['paper','light','dark'].includes(t)){d.dataset.theme=t;}else{d.dataset.theme='dark';}
-   }catch(e){}})();</script>
-   ```
-   > [!NOTE]
-   > Список тем в скрипте (`['paper','light','dark']`) и тема по умолчанию генерируются автоматически из `manifest.json` (поля `themes[].key` и `default`). Добавление новой темы в манифест обновляет этот список при следующей сборке.
-
+4. **Рантайм книги и защита от мигания (`window.__BOOK__`, с А3ж):** первым скриптом `<head>` каждой страницы `make_anti_flicker_script()` (`engine/template.py`) объявляет `window.__BOOK__` — данные книги (`storagePrefix` из `book.toml`, `defaultTheme`, `availableThemes`, `themeNames` из `manifest.json`, строки JS, конфиг KaTeX из `[math]`) и функции `storageKey()`, `getTheme()`, `applyTheme()`, `saveTheme()` — и сразу ставит тему до отрисовки. `main.js` вызывает **те же функции**, своих копий логики темы у него нет: так inline-скрипт и `main.js` не могут разойтись (инциденты `27337fe5`/`eb135e7d`). Ключи хранилища строятся `storageKey()`: для `go-textbook` прежние `go_encyclopedia_theme` и `go_encyclopedia_sidebar_width`.
    > [!IMPORTANT]
-   > **Anti-flicker обязан совпадать с `main.js`.** Ключ хранилища, список тем и тема по умолчанию в inline-скрипте и в `initThemeSwitcher()`/`toggleTheme()` должны быть одинаковыми. Если меняется любое из них, в том же коммите обновляется `make_anti_flicker_script()` и в браузере проверяется, что `data-theme` сразу после inline-скрипта совпадает с состоянием после `DOMContentLoaded`.
+   > **Старый HTML с новым `main.js`** (кэш браузера, частичная сборка): без `window.__BOOK__` `main.js` не запускает только переключатель темы, Mermaid, KaTeX (запасной конфиг), копирование, сайдбар и поиск работают. Проверку `if (window.__BOOK__)` держать только вокруг `initThemeSwitcher()`, не выходить из обработчика `DOMContentLoaded`. Тест — `engine/tests/test_runtime.py` (7 сценариев в headless Firefox: пустое хранилище, сохранённая тема при перезагрузке, неизвестное значение, недоступное хранилище, старые ключи ретро-эффектов, переключение с перерисовкой Mermaid, старый HTML без `window.__BOOK__`).
 5. **Семантические токены CSS Custom Properties:**  
    Токены тем определены в отдельных файлах `engine/assets/themes/{theme-key}.css` и при сборке конкатенируются в `dist/assets/style.css` через функцию `build_themed_css()`:
    - Фоновые слои: `--bg`, `--bg-surface`, `--bg-card`, `--bg-card-hover`, `--bg-elevated`.
@@ -306,6 +296,7 @@ python3 engine/tools/runtime_projection.py --compare old.json new.json
 Разметка генерируется `engine/template.py` и `engine/converter.py` с соблюдением стандартов HTML5 и спецификаций доступности (WAI-ARIA).
 
 Типы страниц и подключаемые скрипты:
+* **Кэш-бастинг:** `style.css`, `main.js`, `search-data.js`, `nav-data.js`, `extra.*` подключаются с `?v=<первые 10 символов sha256 файла в dist/>` (хэш считается один раз за сборку, `set_asset_versions`), поэтому браузер не возьмёт устаревший файл после публикации. Вендорные библиотеки — без `?v=`.
 * **Страница статьи** (`render_article_page`): `style.css`, `katex.min.css` (если нужен KaTeX), `nav-data.js` (`defer`), затем в конце `<body>` — `prism-bundle.min.js`, `mermaid.min.js`, `katex.min.js`, `auto-render.min.js`, `main.js`. **Условная загрузка** (`[features] conditional_scripts`, с А3в): Mermaid — только на страницах с `pre.mermaid`, Prism — с блоками кода, KaTeX — если в тексте вне кода есть левый разделитель формулы (консервативно; совпадение числа формул проверено рантайм-проекцией). В `go-textbook` Mermaid не грузится на 8 страницах, KaTeX — на 630, Prism — на 86. Содержит сайдбар с фильтром (`#sidebar-filter`), TOC, пагинацию и модальное окно диаграмм (`#mermaid-modal`).
 * **Главная страница** (`render_index_page`): только `style.css`, `search-data.js` и `main.js` (без Prism, Mermaid и KaTeX). Содержит hero-секцию, глобальный поиск (`#global-search-input`) и каталог модулей.
 
@@ -356,7 +347,7 @@ python3 engine/tools/runtime_projection.py --compare old.json new.json
   - `window.toggleTheme()`
 * **Основные архитектурные модули в `main.js`:**
   - `saveMermaidSources()` / `initMermaid()` / `rerenderMermaid()` — управление жизненным циклом диаграмм.
-  - `initThemeSwitcher()` — переключение тем и синхронизация с `localStorage`; читает список тем из `data-available-themes` / `data-theme-labels` атрибутов `<html>`.
+  - `initThemeSwitcher()` — переключение тем через функции `window.__BOOK__` (запускается, только если объект есть).
   - `initSidebarResize()` — изменение ширины сайдбара мышью с сохранением значения.
   - `initHybridSidebar()` — гибридный сайдбар: счётчик статей и достраивание модулей из `window.NAV_DATA` (создаёт модули, которых нет в HTML, если `static_module_list = false`).
   - `initSidebarFilter()` — мгновенный фильтр по дереву лекций (перед поиском достраивает все модули).
@@ -366,7 +357,7 @@ python3 engine/tools/runtime_projection.py --compare old.json new.json
   - `initGlobalSearch()` — клиентский поиск на главной странице по `window.SEARCH_DATA` из `search-data.js` (поля `title`, `url`, `module`, `sub`, `num`). Это поиск по **названиям**, а не по тексту статей: запрос делится на слова, каждое слово обязано найтись в названии статьи (+10 к рейтингу) или модуля (+3).
   - `initKaTeX()` — локальный рендеринг математических формул LaTeX (разделители `$$…$$`, `$…$`, `\(…\)`, `\[…\]`; код, `pre` и Mermaid игнорируются).
 * **Порядок инициализации на `DOMContentLoaded`:** `saveMermaidSources → initMermaid → initKaTeX → initActionDelegation → initSidebarResize → initHybridSidebar → initSidebarFilter → initSidebarCentering → initScrollProgress → initMobileMenu → initGlobalSearch → initThemeSwitcher`. Функции проверяют наличие своих элементов в DOM и выходят, если их нет, поэтому один `main.js` обслуживает и статьи, и главную.
-* **Ключи `localStorage`:** `go_encyclopedia_theme` (тема), `go_encyclopedia_sidebar_width` (ширина сайдбара, допускается 220–550 px). Ключи `go_encyclopedia_retro_effects*` от удалённой подсистемы ретро-эффектов (§ 13) больше не читаются и не пишутся; у старых посетителей они остаются в хранилище и ни на что не влияют. Все обращения обёрнуты в `try/catch`: если хранилище недоступно (например, отключено в браузере), исключение внутри одной `init*`-функции прервало бы весь обработчик `DOMContentLoaded`, и следующие модули не инициализировались бы.
+* **Ключи `localStorage`:** строятся `window.__BOOK__.storageKey()` из `[project] storage_prefix`: для `go-textbook` — `go_encyclopedia_theme` (тема), `go_encyclopedia_sidebar_width` (ширина сайдбара, допускается 220–550 px; без `window.__BOOK__` не сохраняется). Ключи `go_encyclopedia_retro_effects*` от удалённой подсистемы ретро-эффектов (§ 13) больше не читаются и не пишутся; у старых посетителей они остаются в хранилище и ни на что не влияют. Все обращения обёрнуты в `try/catch`: если хранилище недоступно (например, отключено в браузере), исключение внутри одной `init*`-функции прервало бы весь обработчик `DOMContentLoaded`, и следующие модули не инициализировались бы.
 
 ---
 

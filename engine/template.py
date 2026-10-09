@@ -51,8 +51,8 @@ def extra_asset_tags(config: BookConfig, rel_root: str, kind: str) -> str:
     if not os.path.isfile(config.path(os.path.join(config.layout.extra_assets_dir, name))):
         return ""
     if kind == "css":
-        return f'\n  <link rel="stylesheet" href="{rel_root}assets/extra.css">'
-    return f'\n  <script src="{rel_root}assets/extra.js"></script>'
+        return f'\n  <link rel="stylesheet" href="{asset_url(rel_root, "assets/extra.css")}">'
+    return f'\n  <script src="{asset_url(rel_root, "assets/extra.js")}"></script>'
 
 
 def partial(name: str, config: BookConfig, ctx: Dict[str, Any]) -> str:
@@ -137,20 +137,61 @@ def _load_themes_manifest():
             {"key": "dark",  "label": "Dark",  "icon": "moon"},
         ]
 
-def make_anti_flicker_script(config: BookConfig) -> str:
-    """Генерирует anti-flicker инлайн-скрипт с динамическим списком тем из manifest.json."""
+# Функции рантайма книги (анализ § 4.9): один источник для anti-flicker в <head> и для main.js.
+_BOOK_RUNTIME_JS = (
+    "window.__BOOK__=(function(c){"
+    "function storageKey(n){return c.storagePrefix+n;}"
+    "function getTheme(){try{var t=localStorage.getItem(storageKey('theme'));"
+    "if(t&&c.availableThemes.indexOf(t)!==-1)return t;}catch(e){}return c.defaultTheme;}"
+    "function applyTheme(t){var th=(t&&c.availableThemes.indexOf(t)!==-1)?t:c.defaultTheme;"
+    "document.documentElement.dataset.theme=th;return th;}"
+    "function saveTheme(t){try{localStorage.setItem(storageKey('theme'),t);}catch(e){}}"
+    "function init(){try{applyTheme(getTheme());}catch(e){}}"
+    "c.storageKey=storageKey;c.getTheme=getTheme;c.applyTheme=applyTheme;c.saveTheme=saveTheme;c.init=init;"
+    "return c;})(%s);window.__BOOK__.init();"
+)
+
+
+def book_runtime_data(config: BookConfig) -> Dict[str, Any]:
     default_theme, themes = _load_themes_manifest()
-    theme_keys = [t["key"] for t in themes]
-    theme_keys_js = str(theme_keys).replace("'", "'")
-    return (
-        '<script>/* Theme anti-flicker */(function(){'
-        'try{'
-        "var d=document.documentElement;"
-        f"var t=localStorage.getItem('{config.storage_key('theme')}');"
-        f"if(t&&{theme_keys_js}.includes(t)){{d.dataset.theme=t;}}else{{d.dataset.theme='{default_theme}';}}"
-        "}catch(e){}"
-        '})();</script>'
-    )
+    m = config.math
+    return {
+        "storagePrefix": config.project.storage_prefix,
+        "defaultTheme": default_theme,
+        "availableThemes": [t["key"] for t in themes],
+        "themeNames": {t["key"]: t["label"] for t in themes},
+        "strings": {"copied": config.t("js.copied"), "themeLabel": config.t("js.theme_label")},
+        "math": {"delimiters": m.delimiters, "ignoredTags": m.ignored_tags, "ignoredClasses": m.ignored_classes},
+    }
+
+
+def make_anti_flicker_script(config: BookConfig) -> str:
+    """Первый скрипт <head>: объявляет window.__BOOK__ (конфиг книги и функции темы) и ставит тему до отрисовки."""
+    if not hasattr(config, "_runtime_script"):
+        data = json.dumps(book_runtime_data(config), ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+        config._runtime_script = "<script>/* Book runtime + theme anti-flicker */" + (_BOOK_RUNTIME_JS % data) + "</script>"
+    return config._runtime_script
+
+
+# Версии ассетов для кэш-бастинга ?v=: первые 10 символов sha256 файла, уже записанного в dist/
+ASSET_VERSIONS: Dict[str, str] = {}
+
+
+def set_asset_versions(dist_dir: str, rel_paths: List[str]) -> None:
+    """Вызывается сборкой после записи ассетов: хэш считается один раз за сборку."""
+    import hashlib
+    ASSET_VERSIONS.clear()
+    for rel in rel_paths:
+        path = os.path.join(dist_dir, rel)
+        if os.path.isfile(path):
+            with open(path, "rb") as fp:
+                ASSET_VERSIONS[rel] = hashlib.sha256(fp.read()).hexdigest()[:10]
+
+
+def asset_url(rel_root: str, rel_asset_path: str) -> str:
+    """URL ассета от rel_root страницы, с ?v=<хэш>, если хэш известен."""
+    v = ASSET_VERSIONS.get(rel_asset_path)
+    return f"{rel_root}{rel_asset_path}" + (f"?v={v}" if v else "")
 
 def theme_switcher_html(config: BookConfig) -> str:
     aria = config.t("page.theme_switcher_aria")
@@ -446,7 +487,7 @@ def render_article_page(
     if extra_css:
         head_lines.append(extra_css.lstrip("\n"))
     if hybrid:
-        head_lines.append(f'  <script src="{rel_root}assets/nav-data.js" defer></script>')
+        head_lines.append(f'  <script src="{asset_url(rel_root, "assets/nav-data.js")}" defer></script>')
     head_extra = "\n".join(head_lines)
     vendor_scripts = "".join(
         f'  <script src="{rel_root}assets/vendor/{src}"></script>\n' for src, need in (
@@ -480,7 +521,7 @@ def render_article_page(
   <meta name="description" content="{ap.meta_description_html.replace('{title}', html.escape(article.title))}">
   {render_favicon_links(config, rel_root)}
   {make_anti_flicker_script(config)}
-  <link rel="stylesheet" href="{rel_root}assets/style.css">
+  <link rel="stylesheet" href="{asset_url(rel_root, 'assets/style.css')}">
 {head_extra}
 </head>
 <body>{icon_sprite}
@@ -573,7 +614,7 @@ def render_article_page(
   {theme_switcher_html(config)}
 
   <!-- Скрипты -->
-{vendor_scripts}  <script src="{rel_root}assets/main.js"></script>{extra_asset_tags(config, rel_root, "js")}
+{vendor_scripts}  <script src="{asset_url(rel_root, 'assets/main.js')}"></script>{extra_asset_tags(config, rel_root, "js")}
 </body>
 </html>
 """
@@ -663,7 +704,7 @@ def render_index_page(
   <meta name="description" content="{fc(ip.meta_description_html)}">
   {render_favicon_links(config, rel_root)}
   {make_anti_flicker_script(config)}
-  <link rel="stylesheet" href="{rel_root}assets/style.css">{extra_asset_tags(config, rel_root, "css")}
+  <link rel="stylesheet" href="{asset_url(rel_root, 'assets/style.css')}">{extra_asset_tags(config, rel_root, "css")}
 </head>
 <body class="index-page">
   <main class="index-container" id="main-content">
@@ -698,8 +739,8 @@ def render_index_page(
   <!-- Единый плавающий переключатель темы -->
   {theme_switcher_html(config)}
 
-  <script src="{rel_root}assets/search-data.js"></script>
-  <script src="{rel_root}assets/main.js"></script>{extra_asset_tags(config, rel_root, "js")}
+  <script src="{asset_url(rel_root, 'assets/search-data.js')}"></script>
+  <script src="{asset_url(rel_root, 'assets/main.js')}"></script>{extra_asset_tags(config, rel_root, "js")}
 </body>
 </html>
 """

@@ -179,7 +179,8 @@ class KatexConfigTest(unittest.TestCase):
         path = os.path.join(os.path.dirname(__file__), "..", "assets", "main.js")
         with open(path, encoding="utf-8") as fp:
             js = fp.read()
-        block = re.search(r"renderMathInElement\(content, \{(.*?)\}\);", js, re.S).group(1)
+        # запасной конфиг main.js (для страниц без window.__BOOK__) = текущие значения go-textbook
+        block = re.search(r"window\.__BOOK__\.math\) \|\| \{(.*?)\n        \};", js, re.S).group(1)
         delims = re.findall(r"\{ left: '(.*?)', right: '(.*?)', display: (true|false) \}", block)
         self.assertEqual(delims, [("$$", "$$", "true"), ("$", "$", "false"),
                                   ("\\\\(", "\\\\)", "false"), ("\\\\[", "\\\\]", "true")])

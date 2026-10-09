@@ -78,9 +78,9 @@ class BookLayerTest(unittest.TestCase):
         _, dist = self.build()
         page = read(dist, "docs/01-modul/1-statya.html")
         self.assertIn('<footer class="app-footer">СВОЙ: <p>Подвал книги</p></footer>', page)
-        self.assertIn('<link rel="stylesheet" href="../../assets/extra.css">', page)
-        self.assertIn('<script src="../../assets/extra.js"></script>', page)
-        self.assertIn('<script src="./assets/extra.js"></script>', read(dist, "index.html"))
+        self.assertRegex(page, r'<link rel="stylesheet" href="\.\./\.\./assets/extra\.css\?v=[0-9a-f]{10}">')
+        self.assertRegex(page, r'<script src="\.\./\.\./assets/extra\.js\?v=[0-9a-f]{10}"></script>')
+        self.assertRegex(read(dist, "index.html"), r'<script src="\./assets/extra\.js\?v=[0-9a-f]{10}"></script>')
         self.assertEqual(read(dist, "assets/main.js"), "// свой main.js\n")
         self.assertEqual(read(dist, "assets/extra.css"), "body{}\n")
 

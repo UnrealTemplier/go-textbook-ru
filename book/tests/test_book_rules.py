@@ -57,7 +57,7 @@ class MathConfigMatchesMainJsTest(unittest.TestCase):
         import re
         with open(os.path.join(ROOT, "engine", "assets", "main.js"), encoding="utf-8") as fp:
             js = fp.read()
-        block = re.search(r"renderMathInElement\(content, \{(.*?)\}\);", js, re.S).group(1)
+        block = re.search(r"window\.__BOOK__\.math\) \|\| \{(.*?)\n        \};", js, re.S).group(1)
         delims = [{"left": l.replace("\\\\", "\\"), "right": r.replace("\\\\", "\\"), "display": d == "true"}
                   for l, r, d in re.findall(r"\{ left: '(.*?)', right: '(.*?)', display: (true|false) \}", block)]
         self.assertEqual(CONFIG.math.delimiters, delims)
@@ -66,6 +66,11 @@ class MathConfigMatchesMainJsTest(unittest.TestCase):
         self.assertEqual(CONFIG.math.ignored_tags, re.findall(r"'(.*?)'", tags))
         self.assertEqual(CONFIG.math.ignored_classes, re.findall(r"'(.*?)'", classes))
         self.assertEqual(CONFIG.math.protect, [])
+        # и тот же конфиг уходит в браузер через window.__BOOK__.math
+        from engine.template import book_runtime_data
+        runtime = book_runtime_data(CONFIG)["math"]
+        self.assertEqual(runtime["delimiters"], CONFIG.math.delimiters)
+        self.assertEqual(runtime["ignoredClasses"], CONFIG.math.ignored_classes)
 
 
 if __name__ == "__main__":
