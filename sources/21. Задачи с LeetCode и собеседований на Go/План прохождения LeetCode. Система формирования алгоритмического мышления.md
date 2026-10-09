@@ -52,12 +52,12 @@ flowchart TD
 #### Фаза 1. Базовое линейное мышление (Массивы, строки, слайсы)
 - **Цель:** Искоренить наивный квадратичный брутфорс $O(N^2)$, научиться мыслить линейной асимптотикой $O(N)$ и контролировать емкость срезов (`cap`).
 - **Теория:** [[1. Теория. Массивы и строки]], [[1. Теория. Строковые задачи]].
-- **Ключевые задачи:** [[3. Two Sum]], [[4. Contains Duplicate]], [[12. Valid Anagram]], [[10. Move Zeroes]], [[5. Best Time to Buy and Sell Stock]], [[6. Maximum Subarray]], [[7. Product of Array Except Self]], [[11. Longest Common Prefix]].
+- **Ключевые задачи:** [[3. Two Sum]], [[7. Contains Duplicate]], [[12. Valid Anagram]], [[10. Move Zeroes]], [[8. Best Time to Buy and Sell Stock]], [[5. Maximum Subarray (Kadane)]], [[6. Product of Array Except Self]], [[11. Longest Common Prefix]].
 
 #### Фаза 2. Два указателя и скользящее окно (Управление интервалом)
 - **Цель:** Освоить динамическое сужение и расширение окна данных без повторных аллокаций памяти.
 - **Теория:** [[1. Теория. Два указателя]], [[1. Теория. Скользящее окно]], [[1. Теория. Интервальные задачи]].
-- **Ключевые задачи:** [[3. Valid Palindrome]], [[4. Two Sum II Sorted Array]], [[5. Remove Duplicates from Sorted Array]], [[6. 3Sum]], [[7. Container With Most Water]], [[4. Longest Substring Without Repeating Characters]], [[5. Minimum Window Substring]], [[6. Longest Repeating Character Replacement]], [[3. Merge Intervals]].
+- **Ключевые задачи:** [[3. Valid Palindrome]], [[4. Two Sum II Sorted Array]], [[5. Remove Duplicates from Sorted Array]], [[6. 3Sum]], [[7. Container With Most Water]], [[4. Longest Substring Without Repeating Characters]], [[5. Minimum Window Substring]], [[7. Longest Repeating Character Replacement]], [[3. Merge Intervals]].
 
 #### Фаза 3. Хеш-таблицы и префиксные суммы (Переиспользование вычислений)
 - **Цель:** Научиться обменивать память на время ($O(1)$ lookup), хранить кумулятивное состояние и работать с коллизиями.
@@ -67,52 +67,52 @@ flowchart TD
 #### Фаза 4. Стеки и очереди (Монотонность и потоки данных)
 - **Цель:** Освоить структуры LIFO и FIFO, научиться строить монотонные последовательности для поиска ближайших больших/меньших элементов за $O(N)$.
 - **Теория:** [[1. Теория. Стек]], [[1. Теория. Очередь]].
-- **Ключевые задачи:** [[3. Valid Parentheses]], [[4. Min Stack]], [[5. Daily Temperatures]], [[6. Next Greater Element I]], [[7. Largest Rectangle in Histogram]], [[5. Sliding Window Maximum]], [[3. Implement Queue using Stacks]].
+- **Ключевые задачи:** [[3. Valid Parentheses]], [[4. Min Stack]], [[5. Daily Temperatures]], [[6. Next Greater Element I]], [[7. Largest Rectangle in Histogram]], [[07. Очередь/6. Sliding Window Maximum]], [[3. Implement Queue using Stacks]].
 
 #### Фаза 5. Связные списки (Манипуляция указателями)
 - **Цель:** Научиться безопасно перестраивать топологию связных структур без потери указателей и утечек памяти, освоить алгоритм Флойда («черепаха и заяц»).
 - **Теория:** [[1. Теория. Связные списки]].
-- **Ключевые задачи:** [[3. Reverse Linked List]], [[4. Merge Two Sorted Lists]], [[5. Linked List Cycle]], [[6. Remove Nth Node From End of List]], [[7. Reorder List]], [[8. Copy List with Random Pointer]].
+- **Ключевые задачи:** [[3. Reverse Linked List]], [[4. Merge Two Sorted Lists]], [[5. Linked List Cycle]], [[6. Remove Nth Node From End]], [[8. Reorder List]], [[9. Copy List with Random Pointer]].
 
 #### Фаза 6. Бинарный поиск и поиск по пространству ответов
 - **Цель:** Научиться искать не только в отсортированном массиве, но и в пространстве монотонных предикатов (Binary Search on Answer).
 - **Теория:** [[1. Теория. Бинарный поиск]].
-- **Ключевые задачи:** [[3. Binary Search]], [[4. Search in Rotated Sorted Array]], [[5. Find Minimum in Rotated Sorted Array]], [[6. Koko Eating Bananas]], [[7. Capacity To Ship Packages Within D Days]].
+- **Ключевые задачи:** [[3. Binary Search]], [[7. Search in Rotated Sorted Array]], [[6. Find Minimum in Rotated Sorted Array]], [[8. Koko Eating Bananas]], [[9. Capacity To Ship Packages]].
 
 #### Фаза 7. Поиск в глубину (DFS), ширину (BFS) и деревья
 - **Цель:** Научиться исследовать рекурсивные деревья решений и пространственные сетки (grid-задачи).
 - **Теория:** [[1. Теория. DFS]], [[1. Теория. BFS]], [[1. Теория. Деревья]], [[1. Теория. Grid задачи]].
-- **Ключевые задачи:** [[3. Number of Islands]], [[3. Binary Tree Level Order Traversal]], [[3. Maximum Depth of Binary Tree]], [[4. Lowest Common Ancestor of a Binary Tree]], [[4. Rotting Oranges]], [[5. Word Ladder]], [[3. Set Matrix Zeroes]].
+- **Ключевые задачи:** [[3. Number of Islands]], [[3. Binary Tree Level Order Traversal]], [[3. Maximum Depth of Binary Tree]], [[7. Lowest Common Ancestor]], [[6. Rotting Oranges]], [[5. Word Ladder]], [[3. Set Matrix Zeroes]].
 
 #### Фаза 8. Графы и системы непересекающихся множеств (Disjoint Set / Union-Find)
 - **Цель:** Моделирование сетей зависимостей, топологическая сортировка и выявление компонент связности.
 - **Теория:** [[1. Теория. Графы]], [[1. Теория. Union Find]].
-- **Ключевые задачи:** [[3. Course Schedule]], [[4. Course Schedule II]], [[3. Number of Connected Components in an Undirected Graph]], [[4. Redundant Connection]], [[5. Pacific Atlantic Water Flow]], [[4. Clone Graph]].
+- **Ключевые задачи:** [[3. Course Schedule]], [[4. Course Schedule II]], [[3. Number of Connected Components]], [[4. Redundant Connection]], [[6. Pacific Atlantic Water Flow]], [[4. Clone Graph]].
 
 #### Фаза 9. Backtracking (Исчерпывающий поиск с отсечением)
 - **Цель:** Генерация комбинаторных объектов, обход дерева ветвлений с ранним отсечением неперспективных ветвей (pruning).
 - **Теория:** [[1. Теория. Backtracking]].
-- **Ключевые задачи:** [[3. Subsets]], [[4. Permutations]], [[5. Combination Sum]], [[10. Generate Parentheses]], [[7. N-Queens]], [[8. Word Search]].
+- **Ключевые задачи:** [[3. Subsets]], [[5. Permutations]], [[7. Combination Sum]], [[10. Generate Parentheses]], [[9. N Queens]], [[8. Word Search]].
 
 #### Фаза 10. Жадные алгоритмы (Локальный оптимум)
 - **Цель:** Доказательство свойства жадного выбора и решение интервальных задач без полного перебора.
 - **Теория:** [[1. Теория. Жадные алгоритмы]].
-- **Ключевые задачи:** [[3. Jump Game]], [[4. Jump Game II]], [[5. Gas Station]], [[6. Non-overlapping Intervals]], [[7. Minimum Number of Arrows to Burst Balloons]].
+- **Ключевые задачи:** [[3. Jump Game]], [[4. Jump Game II]], [[5. Gas Station]], [[17. Жадные алгоритмы/7. Non-overlapping Intervals]], [[17. Жадные алгоритмы/8. Minimum Number of Arrows]].
 
 #### Фаза 11. Динамическое программирование (1D, 2D, Strings, Trees)
 - **Цель:** Оптимальная подструктура и перекрывающиеся подзадачи. Переход от экспоненциального перебора к полиномиальному заполнению мемоизационных таблиц.
 - **Теория:** [[1. Теория. Динамическое программирование 1D]], [[1. Теория. Динамическое программирование 2D]], [[1. Теория. DP на строках]], [[1. Теория. DP на деревьях]].
-- **Ключевые задачи:** [[3. Climbing Stairs]], [[4. House Robber]], [[5. Coin Change]], [[3. Unique Paths]], [[4. Minimum Path Sum]], [[5. Edit Distance]], [[3. Longest Common Subsequence]], [[3. House Robber III]].
+- **Ключевые задачи:** [[3. Climbing Stairs]], [[4. House Robber]], [[6. Coin Change]], [[3. Unique Paths]], [[5. Minimum Path Sum]], [[6. Edit Distance]], [[3. Longest Common Subsequence]], [[3. House Robber III]].
 
 #### Фаза 12. Системные структуры: Design, Кучи, Потоки, Битовые операции
 - **Цель:** Построение композитных структур данных промышленного уровня (O(1) кэши, рандомизация, потоковые квантили, битмаски).
 - **Теория:** [[1. Теория. Кучи]], [[1. Теория. Design задачи]], [[1. Теория. Битовые операции]], [[1. Теория. Рандомизированные алгоритмы]], [[1. Теория. Потоковые алгоритмы]].
-- **Ключевые задачи:** [[3. LRU Cache]], [[4. LFU Cache]], [[3. Kth Largest Element in Array]], [[5. Find Median from Data Stream]], [[3. Single Number]], [[3. Random Pick with Weight]], [[3. Top K Frequent Elements stream]].
+- **Ключевые задачи:** [[3. LRU Cache]], [[4. LFU Cache]], [[3. Kth Largest Element in Array]], [[6. Find Median from Data Stream]], [[3. Single Number]], [[3. Random Pick with Weight]], [[3. Top K Frequent Elements stream]].
 
 #### Финальная фаза: Комплексный синтез (Сложные задачи)
 - **Цель:** Решение нестандартных составных задач уровня Hard, комбинирующих 2–3 различных алгоритмических паттерна.
 - **Теория:** [[1. Теория. Подход к сложным задачам]].
-- **Ключевые задачи:** [[3. Trapping Rain Water]], [[4. Merge k Sorted Lists]], [[5. Serialize and Deserialize Binary Tree]], [[6. Median of Two Sorted Arrays]].
+- **Ключевые задачи:** [[3. Trapping Rain Water]], [[4. Merge k Sorted Lists]], [[29. Сложные задачи/7. Serialize and Deserialize Binary Tree]], [[6. Median of Two Sorted Arrays]].
 
 ---
 
