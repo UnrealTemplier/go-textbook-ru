@@ -429,6 +429,10 @@ class MarkdownConverter:
             ambiguous = self.scanner.ambiguous_link(raw_link)
             if ambiguous:
                 self.warn(f"неоднозначная ссылка [[{raw_link}]]: подходят {', '.join(ambiguous)}")
+            elif href:
+                dropped = self.scanner.number_dropped(raw_link)
+                if dropped is not None:
+                    self.warn(f"ссылка [[{raw_link}]] нашла статью только без номера: «{dropped.title}» — номер устарел?")
             return href, display_text
 
         def display_html(text):

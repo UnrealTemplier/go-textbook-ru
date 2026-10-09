@@ -63,6 +63,28 @@ class PathWikilinkTest(unittest.TestCase):
         self.assertEqual(self.sc.resolve_wikilink("Нет/8. Транзакции", here)[0], None)
 
 
+class NumberDroppedTest(unittest.TestCase):
+    """[[N. Название]] с номером, которого нет: предупреждение; несколько статей с этим названием — неоднозначность."""
+
+    def test_warnings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            src = os.path.join(tmp, "sources")
+            make_tree(src, {
+                "1. А/1. Статья.md": "[[7. Retry]] [[9. Только одна]] [[2. Только одна]] [[Только одна]]",
+                "1. А/2. Только одна.md": "", "1. А/3. Retry.md": "", "2. Б/5. Retry.md": "",
+            })
+            sc = KnowledgeBaseScanner(src, BookConfig())
+            arts = sc.scan()
+            conv = MarkdownConverter(sc, BookConfig())
+            conv.convert_article(arts[0])
+        text = "\n".join(conv.warnings)
+        self.assertIn("неоднозначная ссылка [[7. Retry]]", text)
+        self.assertIn("ссылка [[9. Только одна]] нашла статью только без номера", text)
+        self.assertNotIn("[[2. Только одна]]", text)
+        self.assertNotIn("[[Только одна]]", text)
+        self.assertEqual(len(conv.warnings), 2)
+
+
 class ContentOptionsTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

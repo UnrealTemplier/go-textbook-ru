@@ -346,6 +346,15 @@ class KnowledgeBaseScanner:
             rel = os.path.relpath(art.source_path, self.sources_dir).replace(os.sep, "/")
             self.wikilink_paths.append((rel[:-3].casefold() if rel.endswith(".md") else rel.casefold(), art))
 
+    def number_dropped(self, link_raw: str) -> Optional["Article"]:
+        """Статья, если ссылка «N. Название» нашлась только после отбрасывания номера: статьи с таким
+        номером нет, а «Название» есть (как правило, номер в ссылке устарел). Иначе None."""
+        target = link_raw.split("|", 1)[0].split("#", 1)[0].strip()
+        if not target or target in self.wikilink_index or normalize_key(target) in self.wikilink_index:
+            return None
+        m = re.match(r"^\d+\.\s*(.+)$", target)
+        return self.wikilink_index.get(normalize_key(m.group(1))) if m else None
+
     def path_matches(self, target: str) -> List["Article"]:
         """Статьи, путь которых (от корня книги, без .md) равен target или оканчивается на «/target»."""
         t = target.strip().strip("/")
@@ -364,6 +373,11 @@ class KnowledgeBaseScanner:
             if cands and len(cands) > 1:
                 return sorted(cands)
         m = re.match(r"^\d+\.\s*(.+)$", target)
+        if m and not any(k in self.wikilink_candidates for k in (target, normalize_key(target))):
+            # нашлась только без номера — неоднозначность проверяем и по этому ключу
+            cands = self.wikilink_candidates.get(normalize_key(m.group(1)))
+            if cands:
+                return sorted(cands) if len(cands) > 1 else []
         keys = [target, normalize_key(target)] + ([normalize_key(m.group(1))] if m else [])
         if any(k in self.wikilink_candidates for k in keys):
             return []
