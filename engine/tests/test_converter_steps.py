@@ -108,6 +108,23 @@ class WikilinksTest(unittest.TestCase):
         self.assertEqual(self.link("[[#Раздел один]]"), '<a href="#razdel-odin" class="wikilink">Раздел один</a>')
 
 
+class InlineCodeWikilinksTest(WikilinksTest):
+    """U20: [[…]] в inline-коде — ссылка, только если код целиком — найденная ссылка."""
+
+    def test_found_becomes_monospace_link(self):
+        self.assertEqual(self.link("см. `[[Глубокая]]`."),
+                         'см. <a href="../02-drugoy/podrazdel/1-glubokaya.html" class="wikilink"><code>1. Глубокая</code></a>.')
+
+    def test_unresolved_and_data_stay_literal(self):
+        for text in ("`[[Нет такой]]`", "`map[[2]int]State`", "`[[1, 2], [3]]`"):
+            self.assertEqual(self.link(text), text)
+
+    def test_link_containing_code_is_still_a_link(self):
+        out = self.link("[[Первая статья#Раздел `x`]] и `код`")
+        self.assertTrue(out.startswith('<a href="1-pervaya-statya.html#razdel-x" class="wikilink">'))
+        self.assertTrue(out.endswith(" и `код`"))
+
+
 class HeadingsTest(unittest.TestCase):
     def setUp(self):
         self.conv = MarkdownConverter(None)

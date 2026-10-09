@@ -374,11 +374,11 @@ python3 engine/tools/runtime_projection.py --compare old.json new.json
 ### Полный конвейер конвертации статьи (`MarkdownConverter.convert_article`)
 1. `_clean_cliches` — вырезает из текста (вне кода, по маске) шаблонные вводные фразы из `[content] clean_cliches` в `book.toml` («Как известно, », «Не секрет, что », «Важно понимать, что », «Давайте рассмотрим …:», «В современном мире …, »). Для `go-textbook` список постоянный: отключение изменит видимый текст.
 2. `_extract_mermaid` — вынимает блоки ```` ```mermaid ```` в плейсхолдеры, санитизирует и оборачивает их (см. ниже).
-3. `_transform_callouts` — Obsidian-выноски `> [!type] Заголовок` → `<aside class="callout callout-{type}">`. Типы: `tip`, `interview`, `info`, `warning`, `note`, `important`, `caution`, `danger`.
-4. `_transform_wikilinks` — `[[…]]` → относительные ссылки через `scanner.resolve_wikilink`. Строки кода (маска `code_mask.py` по тексту этого шага) не трогаются: ссылки не попадают внутрь fenced-кода (U10).
+3. Выноски (`converter/callouts.py`) — Obsidian-выноски `> [!type] Заголовок` заменяются плейсхолдером `<!--CALLOUT_PLACEHOLDER_N-->`, тело рендерится отдельно (маска кода → wikilinks → Python-Markdown) и подставляется после основного прохода как `<aside class="callout callout-{type}">`. Типы: `tip`, `interview`, `info`, `warning`, `note`, `important`, `caution`, `danger`.
+4. `_transform_wikilinks` — `[[…]]` → относительные ссылки через `scanner.resolve_wikilink`. Строки кода (маска `code_mask.py` по тексту этого шага) не трогаются: ссылки не попадают внутрь fenced-кода (U10). В inline-коде (U20): если код целиком — найденная ссылка `` `[[X]]` ``, получается `<a class="wikilink"><code>X</code></a>`; иначе код остаётся буквальным (`map[[2]int]T`, массивы, ненайденные названия).
 5. `_process_headings` — `id` заголовков H2–H4 через `slugify(…, 80)` и сбор TOC; H2–H4 выводятся сырым HTML (Markdown-разметка в них не обрабатывается). В остальных заголовках (H1, H5, H6), которые разбирает Python-Markdown, экранируется `#`, приклеенный к концу (`C#` → `C\#`): иначе библиотека срезает его как закрывающую последовательность.
 6. Python-Markdown (`fenced_code`, `tables`, `sane_lists`, `nl2br`).
-7. Возврат Mermaid-блоков на место плейсхолдеров.
+7. Возврат Mermaid-блоков и выносок на место плейсхолдеров.
 8. `_wrap_tables` — обёртка `.table-container`.
 9. `_enhance_code_blocks` — шапка блока кода и кнопка копирования.
 

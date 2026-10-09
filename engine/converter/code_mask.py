@@ -20,6 +20,8 @@ LIST_MARKER_RE = re.compile(r'^(?:[-*+]|\d+\.)\s+')
 OPEN_FENCE_RE = re.compile(
     r'^(?P<indent>[ \t]+)(?P<fence>`{3,}|~{3,})[ ]*(?:\{?[. ]*(?P<lang>[\w#.+-]*)[ ]*\}?)?[ ]*$')
 CLOSE_FENCE_RE = re.compile(r'^(?P<indent>[ \t]*)(?P<fence>`{3,}|~{3,})[ ]*$')
+# Inline-код в строке (как BACKTICK_RE Python-Markdown, без экранированных обратных кавычек)
+INLINE_CODE_RE = re.compile(r"(?<!\\)(`+)(.+?)(?<!`)\1(?!`)")
 
 
 def find_list_context(lines: List[str], fence_idx: int, fence_indent_len: int) -> Tuple[bool, int]:

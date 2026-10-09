@@ -14,7 +14,8 @@ from ..scanner import slugify, Article, KnowledgeBaseScanner, find_first_h1
 from .indented_fence import IndentedFenceExtension
 from .math_protect import MathProtectExtension
 from .obsidian_lists import ObsidianListsExtension
-from .code_mask import UnifiedCodeLineMask
+from .code_mask import UnifiedCodeLineMask, INLINE_CODE_RE
+from .callouts import CalloutExtractor
 from ..hooks import load_hooks
 
 CALLOUT_CONFIG = {
@@ -102,8 +103,9 @@ class MarkdownConverter:
         mermaid_placeholders: Dict[str, str] = {}
         processed_text = self._extract_mermaid(cleaned_text, mermaid_placeholders)
 
-        # 3. Обработка Obsidian Callouts
-        processed_text = self._transform_callouts(processed_text)
+        # 3. Выноски Obsidian → плейсхолдеры; тело каждой рендерится отдельно (маска, wikilinks, md)
+        callout_placeholders: Dict[str, str] = {}
+        processed_text = CalloutExtractor(self).extract_callouts(processed_text, callout_placeholders, article)
 
         # 4. Преобразование Wikilinks [[...]] вне кода (content.wikilinks = false — шаг выключен).
         #    Маска строится по тексту этого шага: Mermaid и выноски к этому моменту уже заменены.
@@ -117,9 +119,11 @@ class MarkdownConverter:
         self.md.reset()
         html_content = self.md.convert(processed_text)
 
-        # 7. Возврат Mermaid блоков на свои места с красивой оберткой
+        # 7. Возврат Mermaid и выносок на свои места (до таблиц и блоков кода)
         for ph, m_code in mermaid_placeholders.items():
             html_content = html_content.replace(ph, m_code)
+        for ph, box in callout_placeholders.items():
+            html_content = html_content.replace(ph, box)
 
         # 8. Оборачивание таблиц в адаптивный контейнер
         html_content = self._wrap_tables(html_content)
@@ -392,24 +396,58 @@ class MarkdownConverter:
         """Преобразование [[Target|Display]] в <a href="..." class="wikilink">.
 
         mask (UnifiedCodeLineMask по этому же тексту): строки кода не трогаются.
+        Inline-код (U20): если код целиком — найденная ссылка `[[X]]`, он становится ссылкой
+        с моноширинным текстом <a class="wikilink"><code>X</code></a>; иначе остаётся кодом
+        буквально (данные вроде map[[2]int]T, массивы LeetCode, ненайденные названия).
         """
         pattern = re.compile(r"\[\[(.*?)\]\]")
 
-        def repl(match):
-            raw_link = match.group(1).strip()
+        def resolve(raw_link):
             href, display_text = self.scanner.resolve_wikilink(raw_link, current_article.rel_output_path)
             ambiguous = self.scanner.ambiguous_link(raw_link)
             if ambiguous:
                 self.warn(f"неоднозначная ссылка [[{raw_link}]]: подходят {', '.join(ambiguous)}")
+            return href, display_text
+
+        def repl(match):
+            href, display_text = resolve(match.group(1).strip())
             if href:
                 return f'<a href="{href}" class="wikilink">{html.escape(display_text)}</a>'
             else:
                 return f'<span class="wikilink-unresolved" title="{self.config.t("content.wikilink_unresolved_title")}">{html.escape(display_text)}</span>'
 
-        if mask is None:
-            return pattern.sub(repl, text)
+        def code_span(match):
+            whole = re.fullmatch(r"\s*\[\[(.+?)\]\]\s*", match.group(2))
+            if whole:
+                href, display_text = resolve(whole.group(1).strip())
+                if href:
+                    return f'<a href="{href}" class="wikilink"><code>{html.escape(display_text)}</code></a>'
+            return match.group(0)
+
+        def transform_line(line):
+            # Что начинается раньше, то и разбирается: ссылка [[…]] (в том числе с `кодом` внутри)
+            # или inline-код (правило U20 для `[[…]]`).
+            if "[[" not in line:
+                return line
+            out, pos = [], 0
+            while pos < len(line):
+                link = pattern.search(line, pos)
+                code = INLINE_CODE_RE.search(line, pos)
+                if link is None and code is None:
+                    break
+                if code is None or (link is not None and link.start() < code.start()):
+                    out.append(line[pos:link.start()])
+                    out.append(repl(link))
+                    pos = link.end()
+                else:
+                    out.append(line[pos:code.start()])
+                    out.append(code_span(code))
+                    pos = code.end()
+            out.append(line[pos:])
+            return "".join(out)
+
         lines = text.split("\n")
-        return "\n".join(line if mask.is_line_in_code(i) else pattern.sub(repl, line)
+        return "\n".join(line if (mask is not None and mask.is_line_in_code(i)) else transform_line(line)
                          for i, line in enumerate(lines))
 
     def _process_headings(self, text: str) -> Tuple[str, List[Dict[str, Any]]]:
