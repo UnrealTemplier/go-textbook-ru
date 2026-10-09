@@ -288,8 +288,8 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 9</span>
-              <span class="meta-tag read-time">⏱ ~19 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 1 Mermaid диаграмм</span>
+              <span class="meta-tag read-time">⏱ ~30 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">10. Graceful shutdown</h1>
           </header>
@@ -558,13 +558,217 @@ func startWorker(ctx context.Context) {
 
 
 <hr />
+<h3 id="koroche-signal-notifycontext-go-1-16">Короче: <code>signal.NotifyContext</code> (Go 1.16+)</h3>
+<p>Связку <code>chan os.Signal</code> + <code>signal.Notify</code> с Go 1.16 заменяет контекст, который отменяется при получении сигнала. Он сразу встраивается в цепочку контекстов приложения:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+defer stop()
+
+go func() {
+    if err := srv.ListenAndServe(); err != nil &amp;&amp; !errors.Is(err, http.ErrServerClosed) {
+        slog.Error(&quot;server failed&quot;, &quot;error&quot;, err)
+        os.Exit(1)
+    }
+}()
+
+&lt;-ctx.Done() // SIGINT или SIGTERM
+stop()       // вернуть обработку сигналов по умолчанию: второй Ctrl+C завершит процесс сразу
+
+shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+defer cancel()
+if err := srv.Shutdown(shutdownCtx); err != nil {
+    slog.Error(&quot;graceful shutdown failed&quot;, &quot;error&quot;, err)
+}
+</code></pre>
+</div>
+
+<p>Контекст завершения создаётся от <code>context.Background()</code>, а не от <code>ctx</code>: тот уже отменён сигналом, и <code>Shutdown</code> с ним вернулся бы мгновенно.</p>
+<hr />
+<h3 id="kubernetes-pochemu-zaprosy-teryayutsya-dazhe-s-pravilnym-shutdown">Kubernetes: почему запросы теряются даже с правильным <code>Shutdown</code></h3>
+<p>Под завершают по многим причинам: rolling update новой версии, сжатие автоскейлером при спаде нагрузки, выселение с ноды на обслуживание (Node Drain, Eviction), перезапуск после превышения лимита памяти. Так же устроены и другие оркестраторы (AWS ECS, Nomad). Kubernetes выводит под из эксплуатации в три фазы:</p>
+<ol>
+<li><strong><code>SIGTERM</code>.</strong> Kubelet отправляет процессу (PID 1 контейнера) POSIX-сигнал 15 — вежливую просьбу завершиться.</li>
+<li><strong>Окно <code>terminationGracePeriodSeconds</code></strong> (по умолчанию 30 секунд). Процесс жив и доделывает работу.</li>
+<li><strong><code>SIGKILL</code>.</strong> Если процесс не завершился, ядро убивает его сигналом 9. Этот сигнал нельзя перехватить, заблокировать или проигнорировать.</li>
+</ol>
+<p>Код выше всё делает правильно, и всё же при первом rolling update клиенты видят <code>502 Bad Gateway</code> и <code>Connection refused</code>. Причина в том, что Kubernetes — асинхронная распределённая система. Решив удалить под, Control Plane <strong>одновременно</strong> отправляет <code>SIGTERM</code> и сообщает <code>kube-proxy</code> и Ingress-контроллерам на всех нодах: «уберите IP этого пода из маршрутов (EndpointSlice, iptables/IPVS/eBPF)».</p>
+
+<figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
+  <figcaption class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button type="button" class="btn-mermaid-fullscreen" data-action="mermaid-fullscreen" title="Развернуть на весь экран" aria-label="Развернуть схему на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
+    </button>
+  </figcaption>
+  <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant K8s as K8s Control Plane
+    participant Ingress as Ingress / kube-proxy
+    participant Pod as Go Сервер (Pod)
+
+    K8s-&gt;&gt;Pod: 1. Отправка SIGTERM (Мгновенно!)
+    K8s-&gt;&gt;Ingress: 2. Асинхронное обновление EndpointSlice
+
+    Note over Pod: Go ловит сигнал за 1 мс&lt;br&gt;srv.Shutdown() закрывает порт :8080!
+
+    Note over Ingress: Обновление iptables занимает 2–4 секунды!
+    Ingress-&gt;&gt;Pod: 3. Новый клиентский HTTP-запрос!
+    Pod--xIngress: 💥 Connection Refused (TCP RST) -&gt; 502 Bad Gateway!
+  </pre>
+</figure>
+
+
+<p>Сигнал процесс получает за доли миллисекунды и тут же закрывает слушающий сокет. А новость об удалении пода расходится по нодам кластера <strong>2–5 секунд</strong>. Всё это время балансировщик считает под живым и шлёт в него запросы на уже закрытый порт.</p>
+
+<aside class="callout callout-warning" aria-label="Ловушка / Gotcha: лекарство от асинхронности (The Sleep Hack)">
+  <header class="callout-header">
+    <span class="callout-icon" aria-hidden="true">⚠️</span>
+    <span class="callout-title">Ловушка / Gotcha: лекарство от асинхронности (The Sleep Hack)</span>
+  </header>
+  <div class="callout-body">
+    <p>Остановку listener'а нужно <strong>искусственно задержать</strong>, чтобы маршруты успели обновиться.</p>
+<p><strong>Способ А (в коде Go):</strong> получив <code>SIGTERM</code>, не вызывайте <code>srv.Shutdown()</code> сразу, а подождите <code>time.Sleep(5 * time.Second)</code>. Эти 5 секунд сервер продолжает принимать запросы, <code>kube-proxy</code> вычёркивает под из маршрутов, трафик иссякает, и только тогда вызывается <code>Shutdown()</code>.</p>
+<p><strong>Способ Б (манифест Kubernetes):</strong> хук <code>preStop</code> в описании контейнера:</p>
+
+<div class="code-block" data-lang="yaml">
+  <header class="code-header">
+    <span class="code-lang-tag">YAML</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-yaml"><code class="language-yaml">lifecycle:
+  preStop:
+    exec:
+      command: [&quot;/bin/sh&quot;, &quot;-c&quot;, &quot;sleep 5&quot;]
+</code></pre>
+</div>
+
+<p>Kubelet сначала выполняет <code>sleep 5</code> и только затем отправляет <code>SIGTERM</code>. Пауза хука входит в <code>terminationGracePeriodSeconds</code>: сумма паузы и таймаута <code>Shutdown</code> должна оставаться меньше этого окна.</p>
+  </div>
+</aside>
+
+
+<hr />
+<h3 id="ozhidanie-fonovykh-zadach-s-dedlaynom">Ожидание фоновых задач с дедлайном</h3>
+<p><code>workerWG.Wait()</code> из раздела выше ждёт бесконечно. Если один воркер завис, процесс так и не дойдёт до <code>db.Close()</code>, а через 30 секунд его убьёт <code>SIGKILL</code>. Ожидание стоит ограничить тем же контекстом завершения:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">package worker
+
+import (
+    &quot;context&quot;
+    &quot;sync&quot;
+)
+
+type BackgroundWorker struct {
+    wg sync.WaitGroup
+}
+
+// RunTask безопасно регистрирует и запускает фоновую задачу
+func (w *BackgroundWorker) RunTask(task func()) {
+    w.wg.Add(1)
+    go func() {
+        defer w.wg.Done()
+        task() // Выполнение бизнес-логики
+    }()
+}
+
+// Wait ожидает завершения всех запущенных горутин или истечения дедлайна контекста
+func (w *BackgroundWorker) Wait(ctx context.Context) error {
+    done := make(chan struct{})
+    go func() {
+        w.wg.Wait()
+        close(done)
+    }()
+
+    select {
+    case &lt;-done:
+        return nil // Все фоновые воркеры завершились штатно
+    case &lt;-ctx.Done():
+        return ctx.Err() // Таймаут Graceful Shutdown: принудительный выход
+    }
+}
+</code></pre>
+</div>
+
+<p>Вызов <code>worker.Wait(shutdownCtx)</code> ставится после <code>srv.Shutdown</code> и перед закрытием базы данных.</p>
+<hr />
+<h3 id="grpc-gracefulstop-i-stop">gRPC: <code>GracefulStop()</code> и <code>Stop()</code></h3>
+
+<aside class="callout callout-interview" aria-label="Собеседование: Graceful Shutdown в gRPC">
+  <header class="callout-header">
+    <span class="callout-icon" aria-hidden="true">🎯</span>
+    <span class="callout-title">Собеседование: Graceful Shutdown в gRPC</span>
+  </header>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Мы используем gRPC вместо REST. Как реализовать Graceful Shutdown для gRPC-сервера? Есть ли подводные камни?</p>
+<p><strong>Ответ:</strong><br />
+У <code>grpc.Server</code> есть метод <code>GracefulStop()</code>. Он перестаёт принимать новые RPC и ждёт завершения активных вызовов.<br />
+<strong>Опасная ловушка:</strong> <code>GracefulStop()</code> <strong>не принимает контекст с таймаутом</strong>.<br />
+Если клиент держит открытый двунаправленный стрим (<a href="../10-proektirovanie-api-i-setevye-protok/18-grpc-streaming.html" class="wikilink">18. gRPC streaming</a>) и не закрывает его, <code>GracefulStop()</code> <strong>будет ждать бесконечно</strong>, пока через 30 секунд Kubernetes не пришлёт <code>SIGKILL</code>.</p>
+<p><strong>Правильный паттерн:</strong> <code>GracefulStop()</code> запускается в отдельной горутине, а основная ждёт по таймеру. Если за 15 секунд вызовы не завершились, вызывается принудительный <code>Stop()</code>:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">stopped := make(chan struct{})
+go func() {
+    grpcServer.GracefulStop()
+    close(stopped)
+}()
+
+select {
+case &lt;-stopped:
+    slog.Info(&quot;gRPC server stopped cleanly&quot;)
+case &lt;-time.After(15 * time.Second):
+    slog.Warn(&quot;gRPC graceful stop timed out, forcing stop&quot;)
+    grpcServer.Stop() // Жесткий разрыв оставшихся зависших соединений
+}
+</code></pre>
+</div>
+
+  </div>
+</aside>
+
+
+<p>Проверить, что всё это действительно работает, можно только убивая поды под нагрузкой: как поставить такой эксперимент, разобрано в <a href="../10-proektirovanie-api-i-setevye-protok/35-chaos-testing-api.html" class="wikilink">35. Chaos testing API</a>.</p>
+<hr />
 <h3 id="itog">Итог</h3>
 <ol>
 <li>Graceful shutdown — обязательный атрибут production-сервиса, работающего в кластере.</li>
 <li><code>http.Server.Shutdown(ctx)</code> закрывает listener, ждет завершения активных запросов и корректно закрывает соединения.</li>
 <li>Всегда используйте контекст с таймаутом, меньшим, чем <code>terminationGracePeriodSeconds</code> оркестратора.</li>
 <li>Фоновые горутины и зависимости должны явно отслеживать отмену контекста или использовать <code>sync.WaitGroup</code>.</li>
-<li>Связка <code>SIGTERM</code> -&gt; <code>Shutdown</code> -&gt; <code>cleanup</code> -&gt; <code>exit 0</code> гарантирует нулевую потерю данных и отсутствие 502 при деплое.</li>
+<li>В Kubernetes остановку listener'а задерживают на несколько секунд (The Sleep Hack: пауза в коде или хук <code>preStop</code>), чтобы маршруты успели забыть под.</li>
+<li>Ожидание фоновых задач и gRPC <code>GracefulStop()</code> ограничиваются тем же дедлайном: по его истечении — <code>ctx.Err()</code> и принудительный <code>Stop()</code>.</li>
+<li>Связка <code>SIGTERM</code> -&gt; пауза -&gt; <code>Shutdown</code> -&gt; <code>cleanup</code> -&gt; <code>exit 0</code> гарантирует нулевую потерю данных и отсутствие 502 при деплое.</li>
 </ol>
 <p>Следующая статья: <a href="11-konfiguratsiya-prilozheniya.html" class="wikilink">11. Конфигурация приложения</a></p>
           </div>
@@ -594,7 +798,7 @@ func startWorker(ctx context.Context) {
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#graceful-shutdown-korrektnoe-zavershenie-servisa">Graceful shutdown. Корректное завершение сервиса</a></li><li class="toc-item toc-h3"><a href="#uroven-os-i-tcp-steytmashina">Уровень ОС и TCP-стейтмашина</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-kak-rabotaet-http-server-shutdown">Под капотом. Как работает http.Server.Shutdown</a></li><li class="toc-item toc-h3"><a href="#production-realizatsiya">Production-реализация</a></li><li class="toc-item toc-h3"><a href="#upravlenie-fonovymi-protsessami-i-zavisimostyami">Управление фоновыми процессами и зависимостями</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
+    <li class="toc-item toc-h2"><a href="#graceful-shutdown-korrektnoe-zavershenie-servisa">Graceful shutdown. Корректное завершение сервиса</a></li><li class="toc-item toc-h3"><a href="#uroven-os-i-tcp-steytmashina">Уровень ОС и TCP-стейтмашина</a></li><li class="toc-item toc-h3"><a href="#pod-kapotom-kak-rabotaet-http-server-shutdown">Под капотом. Как работает http.Server.Shutdown</a></li><li class="toc-item toc-h3"><a href="#production-realizatsiya">Production-реализация</a></li><li class="toc-item toc-h3"><a href="#upravlenie-fonovymi-protsessami-i-zavisimostyami">Управление фоновыми процессами и зависимостями</a></li><li class="toc-item toc-h3"><a href="#koroche-signal-notifycontext-go-1-16">Короче: signal.NotifyContext (Go 1.16+)</a></li><li class="toc-item toc-h3"><a href="#kubernetes-pochemu-zaprosy-teryayutsya-dazhe-s-pravilnym-shutdown">Kubernetes: почему запросы теряются даже с правильным Shutdown</a></li><li class="toc-item toc-h3"><a href="#ozhidanie-fonovykh-zadach-s-dedlaynom">Ожидание фоновых задач с дедлайном</a></li><li class="toc-item toc-h3"><a href="#grpc-gracefulstop-i-stop">gRPC: GracefulStop() и Stop()</a></li><li class="toc-item toc-h3"><a href="#itog">Итог</a></li>
   </ul>
 </aside>
 

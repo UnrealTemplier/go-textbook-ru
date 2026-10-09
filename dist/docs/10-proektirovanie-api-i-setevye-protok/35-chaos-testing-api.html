@@ -284,138 +284,128 @@
           <header class="article-header">
             <div class="article-meta-tags">
               <span class="meta-tag module-tag">Модуль 10</span>
-              <span class="meta-tag read-time">⏱ ~27 мин чтения</span>
-              <span class="meta-tag mermaid-tag">📐 3 Mermaid диаграмм</span>
+              <span class="meta-tag read-time">⏱ ~39 мин чтения</span>
+              <span class="meta-tag mermaid-tag">📐 2 Mermaid диаграмм</span>
             </div>
             <h1 class="article-title">35. Chaos testing API</h1>
           </header>
 
           <div class="article-markdown">
-            <p><em>Graceful Shutdown и устойчивость API в Go: искусство уходить красиво</em></p>
+            <p><em>Как проверить, что API переживает задержки, обрывы и отказы зависимостей, до того как это проверят пользователи</em></p>
 <blockquote>
-<p><em>«Сбои неизбежны — такова единственная константа компьютерного мира. Умение плавно и предсказуемо деградировать — визитная карточка зрелой инженерной системы».</em>  <br />
-— Принцип надежности Bell Labs</p>
+<p><em>«Всё ломается, и ломается постоянно».</em><br />
+— Вернер Фогельс, CTO Amazon</p>
 </blockquote>
-<p>Мы прошли колоссальный путь проектирования надежной распределенной системы: наш Go-сервис обладает чистой модульной архитектурой, покрыт комплексными RED-метриками (<a href="31-api-observability.html" class="wikilink">31. API observability</a>), защищен двусторонним криптографическим протоколом <a href="29-mtls-v-servisakh.html" class="wikilink">29. mTLS в сервисах</a> и гарантирован от регрессий строгими контрактными тестами (<a href="34-contract-testing.html" class="wikilink">34. Contract testing</a>).</p>
-<p>Вы нажимаете заветную кнопку «Deploy», оркестратор Kubernetes запускает процедуру непрерывного обновления (Rolling Update)... и в ту же секунду мониторинг фиксирует неприятный всплеск: у 1% активных пользователей вылетает ошибка <code>502 Bad Gateway</code>, а в базе данных зависают незавершенные финансовые транзакции.</p>
-<p>Почему идеально написанный и всесторонне протестированный код внезапно теряет клиентские запросы при обычном штатном релизе?</p>
-<p>Ответ кроется в фундаментальном пробеле: <strong>мы не научили наше приложение правильно умирать</strong>.</p>
+<p>Контрактные тесты из <a href="34-contract-testing.html" class="wikilink">34. Contract testing</a> доказывают, что сервисы понимают друг друга, когда всё исправно. Юнит-тесты и <code>httptest</code> из <a href="33-api-testing.html" class="wikilink">33. API testing</a> доказывают, что обработчик верно считает. Но ни один из этих тестов не спрашивает: <strong>что сделает наш API, когда база ответит через пять секунд, сосед вернёт половину JSON, а под с сервисом убьют посреди запроса?</strong></p>
+<p>В продакшене такие вещи случаются не «иногда», а каждый день. И если поведение API в эти моменты никто не проверял, его поведение не определено: где-то сработает таймаут, где-то горутины будут копиться, пока процесс не съест память, а где-то клиент молча получит обрезанный ответ со статусом <code>200 OK</code>.</p>
+<p><strong>Chaos testing API</strong> — это проверка поведения API под управляемыми неисправностями. Общую методологию хаос-инженерии (стабильное состояние, гипотеза, радиус поражения, откат) мы разобрали в <a href="../14-raspredelennye-sistemy-na-go/05-nadezhnost/8-chaos-engineering.html" class="wikilink">8. Chaos engineering</a>. Здесь применим её к границе API и пройдём три уровня: от быстрых тестов на Go, которые запускаются в CI на каждый коммит, до экспериментов в кластере.</p>
 <hr />
-<h2 id="1-iskusstvo-ukhodit-krasivo-zachem-prilozheniyu-umet-umirat">1. Искусство уходить красиво: Зачем приложению уметь умирать</h2>
-<p>В современных облачных средах (Kubernetes, AWS ECS, Nomad) контейнеры и поды рождаются и уничтожаются сотни раз в сутки:</p>
-<ul>
-<li>Плановые релизы новых версий (Rolling Update).</li>
-<li>Автоматическое горизонтальное масштабирование (Autoscaling при снижении нагрузки).</li>
-<li>Перемещение нагрузки при обслуживании нод кластера (Node Drain / Eviction).</li>
-<li>Перезапуск из-за превышения лимитов памяти или падения соседних процессов.</li>
-</ul>
-<p>Если ваш Go-сервер при получении команды на завершение просто «роняет» процесс (<code>os.Exit(0)</code>), он мгновенно сбрасывает сетевые TCP-сокеты пакетом <code>RST</code>. Клиенты получают внезапный обрыв соединения прямо посреди загрузки файла, оформления заказа или обработки платежа.</p>
+<h2 id="1-chto-lomaetsya-na-granitse-api">1. Что ломается на границе API</h2>
+<p>Прежде чем что-то ломать, полезно перечислить, что именно может сломаться. Для HTTP- и gRPC-API список удивительно короткий:</p>
+<div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
+<thead>
+<tr>
+<th>Неисправность</th>
+<th>Что видит вызывающий код</th>
+<th>Что должен сделать наш API</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Зависимость отвечает медленно</td>
+<td>запрос висит</td>
+<td>уложиться в бюджет времени (дедлайн контекста), вернуть <code>504</code> или ответ из запасного источника</td>
+</tr>
+<tr>
+<td>Соединение сброшено (<code>RST</code>)</td>
+<td><code>connection reset by peer</code></td>
+<td>повторить только идемпотентный запрос, с паузой и джиттером</td>
+</tr>
+<tr>
+<td>Ответ оборван посередине</td>
+<td><code>200 OK</code>, затем <code>unexpected EOF</code> при чтении тела</td>
+<td>считать ответ ошибкой, а не пустым результатом</td>
+</tr>
+<tr>
+<td>Зависимость вернула <code>5xx</code></td>
+<td>ошибочный статус</td>
+<td>не усиливать отказ ретраями, разомкнуть Circuit Breaker</td>
+</tr>
+<tr>
+<td>Зависимость недоступна совсем</td>
+<td><code>connection refused</code>, ошибка DNS</td>
+<td>быстро отказать (<code>503</code> + <code>Retry-After</code>) или деградировать</td>
+</tr>
+<tr>
+<td>Под убит во время запроса</td>
+<td>обрыв соединения</td>
+<td>завершиться по правилам Graceful Shutdown, не потеряв принятые запросы</td>
+</tr>
+<tr>
+<td>Канал узкий или нестабильный</td>
+<td>медленное тело, потери</td>
+<td>не держать ресурсы бесконечно: таймауты на чтение и запись</td>
+</tr>
+</tbody>
+</table></div>
+<p>Правая колонка — это и есть гипотезы для экспериментов. Механизмы из неё описаны в других статьях: таймауты в <a href="../14-raspredelennye-sistemy-na-go/05-nadezhnost/3-timeout.html" class="wikilink">3. Timeout</a>, ретраи в <a href="../14-raspredelennye-sistemy-na-go/05-nadezhnost/2-retry-i-backoff.html" class="wikilink">2. Retry и backoff</a>, размыкатель в <a href="../14-raspredelennye-sistemy-na-go/05-nadezhnost/1-circuit-breaker.html" class="wikilink">1. Circuit breaker</a>, деградация в <a href="../14-raspredelennye-sistemy-na-go/05-nadezhnost/7-graceful-degradation.html" class="wikilink">7. Graceful degradation</a>, идемпотентность в <a href="13-idempotency-klyuchi.html" class="wikilink">13. Idempotency ключи</a>, завершение в <a href="../09-bekend-na-go-praktika-razrabotki/10-graceful-shutdown.html" class="wikilink">10. Graceful shutdown</a>. Хаос-тест не добавляет новых механизмов. Он проверяет, что существующие действительно срабатывают.</p>
 
-<figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
-  <figcaption class="mermaid-header">
-    <div class="mermaid-title">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-      <span>Архитектурная схема</span>
-    </div>
-    <button type="button" class="btn-mermaid-fullscreen" data-action="mermaid-fullscreen" title="Развернуть на весь экран" aria-label="Развернуть схему на весь экран">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-      <span>На весь экран</span>
-    </button>
-  </figcaption>
-  <pre class="mermaid">
-flowchart LR
-    subgraph Bad [&quot;Антипаттерн: Мгновенная смерть (Hard Kill)&quot;]
-        direction TB
-        SIG1[&quot;Сигнал SIGTERM&quot;] --&gt; Crash[&quot;os.Exit(0)&quot;]
-        Crash --&gt; RST[&quot;💥 TCP RST клиентам: 502 Bad Gateway / Broken Pipe&quot;]
-    end
-
-    subgraph Good [&quot;Паттерн: Graceful Shutdown (Плавное завершение)&quot;]
-        direction TB
-        SIG2[&quot;Сигнал SIGTERM&quot;] --&gt; Drain[&quot;1. Остановка приема новых запросов&quot;]
-        Drain --&gt; Finish[&quot;2. Ожидание завершения активных транзакций&quot;]
-        Finish --&gt; Close[&quot;3. Закрытие пулов БД и очередей (db.Close)&quot;]
-        Close --&gt; ExitOK[&quot;4. Чистый выход: 0 потерянных запросов&quot;]
-    end
-
-    style Bad fill:#1e293b,stroke:#f43f5e,stroke-width:1px,color:#f8fafc
-    style Good fill:#1e293b,stroke:#10b981,stroke-width:2px,color:#f8fafc
-  </pre>
-</figure>
-
-
-<p>Паттерн <strong>Graceful Shutdown (Плавное завершение)</strong> — это способность приложения:</p>
-<ol>
-<li>Корректно перехватить системный сигнал завершения от ядра ОС.</li>
-<li>Прекратить регистрацию новых входящих TCP-соединений.</li>
-<li>Дать уже исполняющимся HTTP/gRPC запросам разумное время на штатное завершение.</li>
-<li>Дождаться завершения фоновых воркеров (Background Workers).</li>
-<li>Атомарно сбросить кэши, закрыть дескрипторы базы данных (<code>db.Close()</code>) и лишь затем передать управление операционной системе.</li>
-</ol>
-<hr />
-<h2 id="2-anatomiya-ubiystva-pod-lifecycle-v-kubernetes">2. Анатомия убийства: Pod Lifecycle в Kubernetes</h2>
-<p>Чтобы написать отказоустойчивый код на Go, необходимо проявить <strong>Mechanical Sympathy</strong> к жизненному циклу контейнера в операционной системе Linux.</p>
-<p>Как именно Kubernetes выводит ваш сервис из эксплуатации?</p>
-<ol>
-<li><strong>Фаза 1: Предупреждение (SIGTERM).</strong> Демон Kubelet отправляет вашему процессу (PID 1) стандартный POSIX-сигнал <code>SIGTERM</code> (сигнал 15). Это вежливая просьба ядра: <em>«Пожалуйста, заверши текущие дела, сохрани состояние и освободи ресурсы»</em>.</li>
-<li><strong>Фаза 2: Окно благодати (Grace Period).</strong> По умолчанию Kubernetes выделяет процессу ровно <strong>30 секунд</strong> (параметр спецификации пода <code>terminationGracePeriodSeconds</code>). В течение этого окна процесс остается живым.</li>
-<li><strong>Фаза 3: Принудительная ликвидация (SIGKILL).</strong> Если по истечении 30 секунд процесс все еще висит в таблице процессов (например, горутина застряла в бесконечном цикле или заблокировалась на зависшем сокете), ядро Linux отправляет безжалостный сигнал <code>SIGKILL</code> (сигнал 9). Сигнал <code>SIGKILL</code> <strong>невозможно перехватить, заблокировать или проигнорировать</strong> — операционная система принудительно вычищает память процесса из страниц MMU.</li>
-</ol>
-
-<figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
-  <figcaption class="mermaid-header">
-    <div class="mermaid-title">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-      <span>Архитектурная схема</span>
-    </div>
-    <button type="button" class="btn-mermaid-fullscreen" data-action="mermaid-fullscreen" title="Развернуть на весь экран" aria-label="Развернуть схему на весь экран">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-      <span>На весь экран</span>
-    </button>
-  </figcaption>
-  <pre class="mermaid">
-gantt
-    title Жизненный цикл завершения Pod&#x27;а в Kubernetes
-    dateFormat s
-    axisFormat %S
-
-    section Сигналы ОС
-    Отправка SIGTERM                  :milestone, m1, 0, 0s
-    Grace Period (30s)                :active, a1, 0, 30s
-    Отправка SIGKILL                  :milestone, m2, 30, 0s
-
-    section Go Приложение
-    Перехват сигнала (NotifyContext)  :crit, c1, 0, 1s
-    Остановка Listener (Новых нет)    :active, c2, 1, 2s
-    Доработка текущих запросов        :c3, 2, 10s
-    Закрытие БД и выход (Exit 0)      :milestone, m3, 10, 0s
-  </pre>
-</figure>
-
-
-<hr />
-<h2 id="3-idiomatichnyy-go-realizatsiya-graceful-shutdown">3. Идиоматичный Go: Реализация Graceful Shutdown</h2>
-<p>Исторически перехват сигналов операционной системы в Go требовал ручного создания буферизованного канала <code>chan os.Signal</code> и вызова <code>signal.Notify()</code>.<br />
-Начиная с <strong>Go 1.16</strong>, стандартная библиотека предлагает гораздо более чистый и безопасный механизм, интегрированный с контекстами — <strong><code>signal.NotifyContext</code></strong>.</p>
-
-<aside class="callout callout-info" aria-label="Под капотом: Как устроен метод `http.Server.Shutdown(ctx)`">
+<aside class="callout callout-info" aria-label="Под капотом: почему зависшая зависимость убивает Go-сервис">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
-    <span class="callout-title">Под капотом: Как устроен метод `http.Server.Shutdown(ctx)`</span>
+    <span class="callout-title">Под капотом: почему зависшая зависимость убивает Go-сервис</span>
   </header>
   <div class="callout-body">
-    <p>Когда вы вызываете <code>srv.Shutdown(ctx)</code> у стандартного HTTP-сервера Go:</p>
-<ol>
-<li>Сервер <strong>немедленно закрывает все активные слушающие сокеты (Listeners)</strong>. Попытка новых клиентов установить TCP-соединение будет отклонена на уровне ОС.</li>
-<li>Закрывает все простаивающие keep-alive соединения, которые в данный момент не обрабатывают запросы.</li>
-<li>Блокирует вызывающую горутину и терпеливо ожидает, пока все <strong>уже активные горутины-обработчики</strong> завершат выполнение своих HTTP-методов и вернут ответ клиенту.</li>
-<li>Если время ожидания превышает дедлайн переданного <code>ctx</code> (например, 20 секунд), метод принудительно разрывает оставшиеся сокеты и возвращает ошибку <code>context.DeadlineExceeded</code>.</li>
-</ol>
+    <p>Сервер <code>net/http</code> запускает горутину на каждое соединение. Пока обработчик ждёт ответа от зависшей базы, горутина припаркована в <code>netpoll</code> и почти не тратит CPU, поэтому снаружи кажется, что всё спокойно. Но каждая такая горутина держит свой стек (от 2 КБ), буферы запроса и, что хуже всего, соединение из пула <code>database/sql</code>. Когда пул (<code>SetMaxOpenConns</code>) исчерпан, новые запросы встают в очередь за соединением, хотя в их собственной логике база может быть и не нужна. Входящий поток не останавливается, горутины копятся, растёт память, и через несколько минут медленная база превращается в упавший API.</p>
+<p>Отдельная ловушка — клиент по умолчанию: у <code>http.DefaultClient</code> нулевой <code>Timeout</code>, а нулевой таймаут означает «ждать вечно». Хаос-тест с задержкой ловит такой код за секунды.</p>
   </div>
 </aside>
 
 
-<h3 id="etalonnyy-shablon-main-go-dlya-promyshlennogo-prodakshena">Эталонный шаблон <code>main.go</code> для промышленного продакшена:</h3>
+<hr />
+<h2 id="2-gipoteza-v-terminakh-api">2. Гипотеза в терминах API</h2>
+<p>Эксперимент без гипотезы — это просто поломка. Для API гипотеза формулируется в метриках, которые мы уже собираем (RED из <a href="31-api-observability.html" class="wikilink">31. API observability</a>: частота запросов, ошибки, длительность):</p>
+<blockquote>
+<p>Если Postgres отвечает на 2 секунды медленнее обычного, то <code>GET /orders/{id}</code>:</p>
+<ul>
+<li>отвечает не дольше 300 мс на p99;</li>
+<li>возвращает <code>503</code> с заголовком <code>Retry-After</code> не более чем для 5% запросов, остальные обслуживает из кэша;</li>
+<li>число горутин процесса не растёт больше чем вдвое;</li>
+<li>после снятия задержки возвращается к норме за 30 секунд.</li>
+</ul>
+</blockquote>
+<p>Каждая строка — проверяемое число. Если хоть одно не выполнилось, мы нашли дефект ещё до аварии. Это и есть цель упражнения.</p>
+
+<figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
+  <figcaption class="mermaid-header">
+    <div class="mermaid-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      <span>Архитектурная схема</span>
+    </div>
+    <button type="button" class="btn-mermaid-fullscreen" data-action="mermaid-fullscreen" title="Развернуть на весь экран" aria-label="Развернуть схему на весь экран">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+      <span>На весь экран</span>
+    </button>
+  </figcaption>
+  <pre class="mermaid">
+flowchart TD
+    L1[&quot;Уровень 1: тесты Go&lt;br/&gt;RoundTripper с неисправностями, httptest&lt;br/&gt;секунды, каждый коммит&quot;]:::success
+    L2[&quot;Уровень 2: Toxiproxy&lt;br/&gt;настоящая сеть до БД и соседей&lt;br/&gt;минуты, интеграционные тесты&quot;]:::process
+    L3[&quot;Уровень 3: кластер&lt;br/&gt;Istio fault injection, Chaos Mesh&lt;br/&gt;часы, staging и прод&quot;]:::warning
+    L1 --&gt;|&quot;дешевле и чаще&quot;| L2
+    L2 --&gt;|&quot;ближе к реальности&quot;| L3
+
+    classDef success fill:#064e3b,stroke:#34d399,stroke-width:1px,color:#f8fafc
+    classDef process fill:#1e293b,stroke:#38bdf8,stroke-width:1px,color:#f8fafc
+    classDef warning fill:#78350f,stroke:#fbbf24,stroke-width:1px,color:#f8fafc
+  </pre>
+</figure>
+
+
+<p>Чем ниже уровень, тем дешевле и быстрее тест. Чем выше, тем больше настоящих компонентов в нём участвует. Хорошая стратегия похожа на пирамиду тестирования: большинство проверок внизу, немного наверху.</p>
+<hr />
+<h2 id="3-uroven-1-neispravnosti-v-testakh-go">3. Уровень 1: неисправности в тестах Go</h2>
+<p>Самое дешёвое место для хаоса — исходящий HTTP-клиент. Весь сетевой обмен <code>http.Client</code> проходит через интерфейс <code>http.RoundTripper</code>, и подменить его можно без единой строчки в рабочем коде: достаточно передать клиенту другой транспорт.</p>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -425,74 +415,212 @@ gantt
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-go"><code class="language-go">package main
+  <pre class="language-go"><code class="language-go">package faults
 
 import (
-    &quot;context&quot;
-    &quot;errors&quot;
-    &quot;log/slog&quot;
+    &quot;math/rand/v2&quot;
     &quot;net/http&quot;
-    &quot;os&quot;
-    &quot;os/signal&quot;
-    &quot;syscall&quot;
+    &quot;sync&quot;
     &quot;time&quot;
 )
 
-func main() {
-    // 1. Создаем контекст, перехватывающий сигналы SIGINT (Ctrl+C) и SIGTERM (K8s/Docker)
-    ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-    defer stop() // Восстанавливаем стандартную обработку сигналов при выходе
+// Fault — неисправность, которую транспорт подмешивает в исходящие запросы.
+type Fault struct {
+    Rate  float64       // доля затронутых запросов: 0.1 — каждый десятый
+    Delay time.Duration // задержка перед отправкой запроса
+    Err   error         // сетевая ошибка вместо ответа (nil — запрос уходит дальше)
+}
 
-    srv := &amp;http.Server{
-        Addr:         &quot;:8080&quot;,
-        Handler:      businessLogicHandler(),
-        ReadTimeout:  5 * time.Second,
-        WriteTimeout: 30 * time.Second, // Запас на длительные операции
+// Transport — http.RoundTripper, который вносит неисправность перед настоящим транспортом.
+type Transport struct {
+    Next  http.RoundTripper
+    Fault Fault
+
+    mu  sync.Mutex
+    rnd *rand.Rand
+}
+
+// New создаёт транспорт с фиксированным зерном: тест с хаосом обязан быть воспроизводимым.
+func New(next http.RoundTripper, f Fault, seed uint64) *Transport {
+    return &amp;Transport{Next: next, Fault: f, rnd: rand.New(rand.NewPCG(seed, seed))}
+}
+
+func (t *Transport) hit() bool {
+    t.mu.Lock()
+    defer t.mu.Unlock()
+    return t.rnd.Float64() &lt; t.Fault.Rate
+}
+
+func (t *Transport) RoundTrip(req *http.Request) (*http.Response, error) {
+    if !t.hit() {
+        return t.Next.RoundTrip(req)
     }
-
-    // 2. Запуск HTTP-сервера в фоновой горутине, чтобы не блокировать поток main
-    go func() {
-        slog.Info(&quot;Server is starting&quot;, &quot;port&quot;, 8080)
-        // ErrServerClosed — это ШТАТНОЕ поведение при вызове Shutdown, не паникуем!
-        if err := srv.ListenAndServe(); err != nil &amp;&amp; !errors.Is(err, http.ErrServerClosed) {
-            slog.Error(&quot;Server failed to start&quot;, &quot;error&quot;, err)
-            os.Exit(1)
+    if t.Fault.Delay &gt; 0 {
+        timer := time.NewTimer(t.Fault.Delay)
+        defer timer.Stop()
+        select {
+        case &lt;-timer.C:
+        case &lt;-req.Context().Done():
+            return nil, req.Context().Err() // задержка честно уважает дедлайн запроса
         }
-    }()
-
-    // 3. Блокируемся до получения системного сигнала от ОС
-    &lt;-ctx.Done()
-    slog.Info(&quot;Shutdown signal received, initiating graceful shutdown...&quot;)
-
-    // 4. Выделяем окну завершения максимум 20 секунд (строго меньше 30 секунд K8s!)
-    shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-    defer cancel()
-
-    // 5. Вызываем Shutdown: прекращаем прием новых соединений и ждем текущие запросы
-    if err := srv.Shutdown(shutdownCtx); err != nil {
-        slog.Error(&quot;Graceful shutdown failed (timeout or error)&quot;, &quot;error&quot;, err)
-    } else {
-        slog.Info(&quot;Server stopped gracefully&quot;)
     }
-
-    // 6. Очистка зависимостей (Закрытие пулов БД, flush логов, отключение от Kafka)
-    // db.Close()
-    // kafkaProducer.Close()
-    slog.Info(&quot;Resources cleaned up, exiting.&quot;)
+    if t.Fault.Err != nil {
+        return nil, t.Fault.Err
+    }
+    return t.Next.RoundTrip(req)
 }
 </code></pre>
 </div>
 
+<p>Три детали делают этот транспорт пригодным для CI. Генератор случайных чисел (<code>math/rand/v2</code>, Go 1.22+) создаётся с фиксированным зерном: тест, который падает «иногда», хуже, чем никакого теста. Генератор защищён мьютексом, потому что <code>RoundTrip</code> вызывается из многих горутин одновременно. А задержка слушает контекст запроса, иначе мы проверяли бы не таймауты клиента, а терпение <code>time.Sleep</code>.</p>
+<p>Теперь проверим код, который ходит в сервис цен с бюджетом в 300 мс:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">func fetchPrice(ctx context.Context, c *http.Client, url string) error {
+    ctx, cancel := context.WithTimeout(ctx, 300*time.Millisecond)
+    defer cancel()
+    req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+    if err != nil {
+        return err
+    }
+    resp, err := c.Do(req)
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
+    _, err = io.ReadAll(resp.Body)
+    return err
+}
+
+func TestFetchPriceRespectsDeadline(t *testing.T) {
+    srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Write([]byte(`{&quot;price&quot;:42}`))
+    }))
+    defer srv.Close()
+
+    // Каждый запрос задерживается на 2 секунды: зависимость «подвисла».
+    client := &amp;http.Client{Transport: New(http.DefaultTransport, Fault{Rate: 1, Delay: 2 * time.Second}, 1)}
+
+    start := time.Now()
+    err := fetchPrice(context.Background(), client, srv.URL)
+    if !errors.Is(err, context.DeadlineExceeded) {
+        t.Fatalf(&quot;ждали DeadlineExceeded, получили %v&quot;, err)
+    }
+    if took := time.Since(start); took &gt; 500*time.Millisecond {
+        t.Fatalf(&quot;бюджет 300 мс не соблюдён: %v&quot;, took)
+    }
+}
+
+func TestFetchPriceSurfacesReset(t *testing.T) {
+    client := &amp;http.Client{Transport: New(http.DefaultTransport, Fault{Rate: 1, Err: syscall.ECONNRESET}, 1)}
+    err := fetchPrice(context.Background(), client, &quot;http://prices.invalid/&quot;)
+    if !errors.Is(err, syscall.ECONNRESET) {
+        t.Fatalf(&quot;ждали ECONNRESET, получили %v&quot;, err)
+    }
+}
+</code></pre>
+</div>
+
+<p>Тест проходит за 300 мс, а не за 2 секунды, и доказывает ровно одну вещь: бюджет времени соблюдается. Если кто-то однажды заменит контекст запроса на <code>context.Background()</code>, тест упадёт сразу, а не через полгода на продакшене.</p>
+<p>Отдельно проверим неисправность, о которой обычно забывают: <strong>ответ, оборванный посередине</strong>. Статус <code>200 OK</code> уже пришёл, а тело так и не дочиталось. В <code>httptest</code> такой сервер пишется в несколько строк: стандартная паника <code>http.ErrAbortHandler</code> прерывает ответ и закрывает соединение без записи в лог.</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">func TestTruncatedBodyIsAnError(t *testing.T) {
+    srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set(&quot;Content-Length&quot;, &quot;1000&quot;)
+        w.WriteHeader(http.StatusOK)
+        w.Write([]byte(`{&quot;items&quot;:[`))
+        w.(http.Flusher).Flush()
+        panic(http.ErrAbortHandler) // сервер «умер» посреди ответа
+    }))
+    defer srv.Close()
+
+    err := fetchPrice(context.Background(), srv.Client(), srv.URL)
+    if !errors.Is(err, io.ErrUnexpectedEOF) {
+        t.Fatalf(&quot;ждали io.ErrUnexpectedEOF, получили %v&quot;, err)
+    }
+}
+</code></pre>
+</div>
+
+<p>Код, который проверяет только <code>resp.StatusCode</code>, на этом тесте обнаруживает, что пустой список товаров и оборванный список товаров для него одно и то же.</p>
+
+<aside class="callout callout-warning" aria-label="Ловушка / Gotcha: хаос не должен уехать в продакшен">
+  <header class="callout-header">
+    <span class="callout-icon" aria-hidden="true">⚠️</span>
+    <span class="callout-title">Ловушка / Gotcha: хаос не должен уехать в продакшен</span>
+  </header>
+  <div class="callout-body">
+    <p>Транспорт с неисправностями живёт в тестах и передаётся клиенту явно. Если же неисправности нужны в работающем бинарнике (стенд, демонстрация, эксперимент на проде), их встраивают через теги сборки <code>//go:build chaos</code>, как в <a href="../14-raspredelennye-sistemy-na-go/05-nadezhnost/8-chaos-engineering.html" class="wikilink">8. Chaos engineering</a>: в обычной сборке такой код просто не компилируется.</p>
+  </div>
+</aside>
+
+
 <hr />
-<h2 id="4-uzhas-asinkhronnosti-pochemu-kubernetes-vsyo-ravno-teryaet-zaprosy">4. Ужас асинхронности: Почему Kubernetes всё равно теряет запросы?</h2>
-<p>Вы аккуратно внедрили код выше. Он безупречен. Но при первом же Rolling Update в продакшене вы с изумлением видите в логах клиентов ошибки <code>502 Bad Gateway</code> и <code>Connection Refused</code>.</p>
-<p>Почему это происходит?</p>
-<p>Это самая коварная архитектурная ловушка распределенных контейнерных сред.<br />
-Kubernetes — <strong>асинхронная распределенная система</strong>. Когда Control Plane принимает решение об удалении пода, он выполняет <strong>два независимых действия параллельно</strong>:</p>
-<ol>
-<li>Отправляет сигнал <code>SIGTERM</code> вашему Go-контейнеру.</li>
-<li>Отправляет директиву демонам <code>kube-proxy</code> и Ingress-контроллерам на всех нодах кластера: <em>«Удалите IP-адрес этого пода из таблиц маршрутизации (iptables/IPVS/eBPF)»</em>.</li>
-</ol>
+<h2 id="4-uroven-2-toxiproxy-nastoyashchaya-set-pod-kontrolem">4. Уровень 2: Toxiproxy — настоящая сеть под контролем</h2>
+<p>Транспорт из прошлого раздела ломает только HTTP-клиент. А драйвер Postgres, клиент Redis и gRPC ходят в сеть своими путями. Для них нужен инструмент, который ломает саму TCP-связь.</p>
+<p><strong>Toxiproxy</strong> (написан на Go в Shopify) — это TCP-прокси, который встаёт между сервисом и зависимостью и по команде через HTTP API (порт <code>8474</code>) подмешивает в трафик <strong>токсины</strong>:</p>
+<div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
+<thead>
+<tr>
+<th>Токсин</th>
+<th>Что делает</th>
+<th>Ключевые атрибуты</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>latency</code></td>
+<td>задерживает данные</td>
+<td><code>latency</code>, <code>jitter</code> (мс)</td>
+</tr>
+<tr>
+<td><code>bandwidth</code></td>
+<td>ограничивает скорость</td>
+<td><code>rate</code> (КБ/с)</td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>перестаёт пропускать данные и закрывает соединение через заданное время (<code>0</code> — никогда)</td>
+<td><code>timeout</code> (мс)</td>
+</tr>
+<tr>
+<td><code>reset_peer</code></td>
+<td>обрывает соединение <code>RST</code> («connection reset by peer»)</td>
+<td><code>timeout</code> (мс)</td>
+</tr>
+<tr>
+<td><code>slow_close</code></td>
+<td>задерживает закрытие соединения</td>
+<td><code>delay</code> (мс)</td>
+</tr>
+<tr>
+<td><code>slicer</code></td>
+<td>режет поток на мелкие пакеты с паузами</td>
+<td><code>average_size</code>, <code>size_variation</code>, <code>delay</code> (мкс)</td>
+</tr>
+<tr>
+<td><code>limit_data</code></td>
+<td>закрывает соединение после N байт</td>
+<td><code>bytes</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Полный отказ зависимости — не токсин, а выключенный прокси (<code>proxy.Disable()</code>). Каждый токсин действует в одном направлении: <code>downstream</code> (от зависимости к нам) или <code>upstream</code> (от нас к ней), а атрибут <code>toxicity</code> задаёт долю затронутых соединений.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -508,38 +636,118 @@ Kubernetes — <strong>асинхронная распределенная си�
   <pre class="mermaid">
 sequenceDiagram
     autonumber
-    participant K8s as K8s Control Plane
-    participant Ingress as Ingress / kube-proxy
-    participant Pod as Go Сервер (Pod)
+    participant T as Тест Go
+    participant TP as Toxiproxy, API на порту 8474
+    participant API as Наш API
+    participant DB as Postgres
 
-    K8s-&gt;&gt;Pod: 1. Отправка SIGTERM (Мгновенно!)
-    K8s-&gt;&gt;Ingress: 2. Асинхронное обновление EndpointSlice
-
-    Note over Pod: Go ловит сигнал за 1 мс&lt;br&gt;srv.Shutdown() закрывает порт :8080!
-
-    Note over Ingress: Обновление iptables занимает 2–4 секунды!
-    Ingress-&gt;&gt;Pod: 3. Новый клиентский HTTP-запрос!
-    Pod--xIngress: 💥 Connection Refused (TCP RST) -&gt; 502 Bad Gateway!
+    T-&gt;&gt;TP: CreateProxy postgres, порт 25432 → postgres 5432
+    T-&gt;&gt;TP: AddToxic latency 2000 мс (downstream)
+    T-&gt;&gt;API: GET /orders/42
+    API-&gt;&gt;TP: запрос к БД через порт 25432
+    TP-&gt;&gt;DB: запрос без изменений
+    DB--&gt;&gt;TP: ответ
+    Note over TP: держит ответ 2 секунды
+    API--&gt;&gt;T: 503 + Retry-After через 200 мс
+    T-&gt;&gt;TP: RemoveToxic, Delete
   </pre>
 </figure>
 
 
-<p><strong>Суть ловушки:</strong><br />
-Сигнал <code>SIGTERM</code> ваш Go-процесс ловит за доли миллисекунды и тут же закрывает сетевой сокет.<br />
-А распространение информации об удалении пода по распределенному кластеру (обновление <code>iptables</code> на десятках нод) занимает <strong>от 2 до 5 секунд</strong>.</p>
-<p>В эти 3–4 секунды внешний балансировщик (Ingress) искренне считает ваш под живым и продолжает перенаправлять в него трафик реальных пользователей! Но порт <code>:8080</code> уже закрыт вашим сервером. Результат — мгновенный <code>Connection Refused</code>.</p>
+<p>Интеграционный тест с Toxiproxy выглядит так. Сервер Toxiproxy запущен рядом, например <code>docker run -p 8474:8474 -p 25432:25432 ghcr.io/shopify/toxiproxy</code> в одной Docker-сети с Postgres (или через Testcontainers, как в <a href="33-api-testing.html" class="wikilink">33. API testing</a>). Сервис подключается к базе не напрямую, а через порт прокси:</p>
 
-<aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Лекарство от асинхронности (The Sleep Hack)">
-  <header class="callout-header">
-    <span class="callout-icon" aria-hidden="true">⚠️</span>
-    <span class="callout-title">Ловушка / Gotcha: Лекарство от асинхронности (The Sleep Hack)</span>
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
   </header>
-  <div class="callout-body">
-    <p>Чтобы полностью исключить эту рассинхронизацию, вы <strong>обязаны искусственно задержать остановку Listener'а</strong>:</p>
-<p><strong>Способ А (В коде Go):</strong><br />
-При получении <code>SIGTERM</code> не вызывайте <code>srv.Shutdown()</code> мгновенно. Сделайте паузу <code>time.Sleep(5 * time.Second)</code>. В эти 5 секунд сервер продолжает штатно принимать входящие запросы. За это время <code>kube-proxy</code> гарантированно вычеркнет IP пода из всех таблиц, трафик иссякнет, и только после этого Go вызывает <code>Shutdown()</code>.</p>
-<p><strong>Способ Б (Идиоматичный K8s манифест, The Sleep Hack):</strong><br />
-Настроить хук жизненного цикла <code>preStop</code> в манифесте Deployment:</p>
+  <pre class="language-go"><code class="language-go">//go:build integration
+
+package orders
+
+import (
+    &quot;database/sql&quot;
+    &quot;net/http&quot;
+    &quot;net/http/httptest&quot;
+    &quot;testing&quot;
+    &quot;time&quot;
+
+    toxiproxy &quot;github.com/Shopify/toxiproxy/v2/client&quot;
+    _ &quot;github.com/jackc/pgx/v5/stdlib&quot; // драйвер &quot;pgx&quot; для database/sql
+)
+
+func TestOrdersAPIUnderSlowDatabase(t *testing.T) {
+    tp := toxiproxy.NewClient(&quot;localhost:8474&quot;)
+    proxy, err := tp.CreateProxy(&quot;postgres&quot;, &quot;0.0.0.0:25432&quot;, &quot;postgres:5432&quot;)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer proxy.Delete()
+
+    db, err := sql.Open(&quot;pgx&quot;, &quot;postgres://app:app@localhost:25432/orders&quot;)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer db.Close()
+    srv := httptest.NewServer((&amp;API{DB: db}).Handler())
+    defer srv.Close()
+
+    // База отвечает на 2 секунды дольше: ответы вниз по течению (downstream) задерживаются.
+    if _, err := proxy.AddToxic(&quot;slow_db&quot;, &quot;latency&quot;, &quot;downstream&quot;, 1.0,
+        toxiproxy.Attributes{&quot;latency&quot;: 2000, &quot;jitter&quot;: 100}); err != nil {
+        t.Fatal(err)
+    }
+    defer proxy.RemoveToxic(&quot;slow_db&quot;)
+
+    start := time.Now()
+    resp, err := http.Get(srv.URL)
+    if err != nil {
+        t.Fatal(err)
+    }
+    resp.Body.Close()
+
+    if resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get(&quot;Retry-After&quot;) == &quot;&quot; {
+        t.Fatalf(&quot;ждали 503 с Retry-After, получили %d&quot;, resp.StatusCode)
+    }
+    if took := time.Since(start); took &gt; 400*time.Millisecond {
+        t.Fatalf(&quot;API ждало базу %v вместо бюджета 200 мс&quot;, took)
+    }
+}
+</code></pre>
+</div>
+
+<p>Обработчик, который проходит этот тест, ограничивает поход в базу собственным дедлайном и честно сообщает клиенту, когда вернуться:</p>
+
+<div class="code-block" data-lang="go">
+  <header class="code-header">
+    <span class="code-lang-tag">Go</span>
+    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
+      <span>Копировать</span>
+    </button>
+  </header>
+  <pre class="language-go"><code class="language-go">func (a *API) get(w http.ResponseWriter, r *http.Request) {
+    ctx, cancel := context.WithTimeout(r.Context(), 200*time.Millisecond)
+    defer cancel()
+    if err := a.DB.PingContext(ctx); err != nil {
+        w.Header().Set(&quot;Retry-After&quot;, &quot;1&quot;)
+        http.Error(w, &quot;database unavailable&quot;, http.StatusServiceUnavailable)
+        return
+    }
+    w.Write([]byte(`{&quot;status&quot;:&quot;ok&quot;}`))
+}
+</code></pre>
+</div>
+
+<p>Тег сборки <code>integration</code> отделяет такие тесты от быстрых: <code>go test ./...</code> их не трогает, а <code>go test -tags integration ./...</code> запускается там, где поднят Docker. Тот же приём с токсином <code>reset_peer</code> проверяет ретраи, <code>bandwidth</code> — таймауты на чтение тела, а <code>limit_data</code> — обработку оборванных ответов уже не в HTTP-клиенте, а в драйвере базы.</p>
+<hr />
+<h2 id="5-uroven-3-eksperimenty-v-klastere">5. Уровень 3: эксперименты в кластере</h2>
+<p>Тесты на Go проверяют один сервис. Но самые неприятные отказы возникают из сочетаний: балансировщик, ретраи на трёх уровнях, автоскейлер и очередь. Их можно увидеть только в системе целиком, поэтому третий уровень — эксперименты в Kubernetes, сначала на staging, затем на проде с ограниченным радиусом поражения.</p>
+<h3 id="istio-neispravnosti-na-urovne-service-mesh">Istio: неисправности на уровне service mesh</h3>
+<p>Если сервисы общаются через sidecar-прокси Envoy, неисправность можно внести без изменения кода — правилом <code>VirtualService</code>. Правило ниже задерживает на 3 секунды запросы к сервису платежей, но <strong>только</strong> запросы с заголовком <code>x-chaos: on</code>. Так радиус поражения ограничен синтетическими клиентами:</p>
 
 <div class="code-block" data-lang="yaml">
   <header class="code-header">
@@ -549,127 +757,115 @@ sequenceDiagram
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-yaml"><code class="language-yaml">lifecycle:
-  preStop:
-    exec:
-      command: [&quot;/bin/sh&quot;, &quot;-c&quot;, &quot;sleep 5&quot;]
+  <pre class="language-yaml"><code class="language-yaml">apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: payments
+spec:
+  hosts:
+  - payments
+  http:
+  - match:
+    - headers:
+        x-chaos:
+          exact: &quot;on&quot;
+    fault:
+      delay:
+        percentage:
+          value: 100
+        fixedDelay: 3s
+    route:
+    - destination:
+        host: payments
+  - route:
+    - destination:
+        host: payments
 </code></pre>
 </div>
 
-<p>Kubelet сначала исполнит <code>sleep 5</code>, дождется перестроения маршрутов <code>iptables</code>, и только затем отправит <code>SIGTERM</code> вашему Go-приложению.</p>
-  </div>
-</aside>
+<p>Вместо <code>delay</code> можно указать <code>abort</code> с <code>httpStatus: 503</code> — тогда Envoy сам ответит ошибкой, и мы увидим, размыкается ли Circuit Breaker у вызывающей стороны.</p>
+<h3 id="chaos-mesh-http-set-i-pody">Chaos Mesh: HTTP, сеть и поды</h3>
+<p><strong>Chaos Mesh</strong> — проект CNCF, который описывает эксперименты как ресурсы Kubernetes. Для API особенно полезны три вида.</p>
+<p><code>HTTPChaos</code> вмешивается в HTTP-трафик пода: задерживает, обрывает или подменяет запросы и ответы по пути и методу:</p>
 
-
-<hr />
-<h2 id="5-fonovye-zadachi-zashchita-gorutin-workers">5. Фоновые задачи: Защита горутин (Workers)</h2>
-<p>Метод <code>http.Server.Shutdown()</code> контролирует только входящие веб-запросы. Но в любом реальном бэкенде есть асинхронные фоновые воркеры (Background Workers): раз в минуту горутина вычитывает очередь Kafka, пересчитывает кэши или отправляет email-уведомления.</p>
-<p>Если процесс выполнит <code>os.Exit(0)</code> сразу после завершения HTTP-запросов, все работающие фоновые горутины будут грубо оборваны на полуслове (Hard Kill), оставляя испорченные файлы и битые записи в БД.</p>
-<p>Для координации фоновых задач используется паттерн <strong>Tracker на базе <code>sync.WaitGroup</code></strong>:</p>
-
-<div class="code-block" data-lang="go">
+<div class="code-block" data-lang="yaml">
   <header class="code-header">
-    <span class="code-lang-tag">Go</span>
+    <span class="code-lang-tag">YAML</span>
     <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
       <span>Копировать</span>
     </button>
   </header>
-  <pre class="language-go"><code class="language-go">package worker
-
-import (
-    &quot;context&quot;
-    &quot;sync&quot;
-)
-
-type BackgroundWorker struct {
-    wg sync.WaitGroup
-}
-
-// RunTask безопасно регистрирует и запускает фоновую задачу
-func (w *BackgroundWorker) RunTask(task func()) {
-    w.wg.Add(1)
-    go func() {
-        defer w.wg.Done()
-        task() // Выполнение бизнес-логики
-    }()
-}
-
-// Wait ожидает завершения всех запущенных горутин или истечения дедлайна контекста
-func (w *BackgroundWorker) Wait(ctx context.Context) error {
-    done := make(chan struct{})
-    go func() {
-        w.wg.Wait()
-        close(done)
-    }()
-
-    select {
-    case &lt;-done:
-        return nil // Все фоновые воркеры завершились штатно
-    case &lt;-ctx.Done():
-        return ctx.Err() // Таймаут Graceful Shutdown: принудительный выход
-    }
-}
+  <pre class="language-yaml"><code class="language-yaml">apiVersion: chaos-mesh.org/v1alpha1
+kind: HTTPChaos
+metadata:
+  name: orders-api-slow
+spec:
+  mode: all
+  selector:
+    labelSelectors:
+      app: orders-api
+  target: Request
+  port: 8080
+  method: GET
+  path: /api/v1/orders/*
+  delay: 2s
+  duration: 5m
 </code></pre>
 </div>
 
-<p>Вызов <code>worker.Wait(shutdownCtx)</code> встраивается в фазу завершения перед закрытием дескрипторов баз данных.</p>
-<hr />
-<h2 id="6-nyuansy-grpc-gracefulstop-vs-stop">6. Нюансы gRPC: <code>GracefulStop()</code> vs <code>Stop()</code></h2>
+<p><code>NetworkChaos</code> работает уровнем ниже, в сетевом пространстве пода: задержки, потери и дублирование пакетов (через <code>tc netem</code>) и сетевые разделы между группами подов (через <code>iptables</code>). <code>PodChaos</code> с действием <code>pod-kill</code> убивает поды по расписанию. Это лучшая проверка Graceful Shutdown из <a href="../09-bekend-na-go-praktika-razrabotki/10-graceful-shutdown.html" class="wikilink">10. Graceful shutdown</a>: под нагрузкой (например, генератором <code>vegeta</code> или <code>k6</code>) убиваем по одному поду и смотрим, появились ли у клиентов ошибки <code>502</code> и оборванные запросы. Правильный ответ — ноль.</p>
 
-<aside class="callout callout-interview" aria-label="Собеседование: Graceful Shutdown в gRPC">
+<aside class="callout callout-important" aria-label="Важно">
   <header class="callout-header">
-    <span class="callout-icon" aria-hidden="true">🎯</span>
-    <span class="callout-title">Собеседование: Graceful Shutdown в gRPC</span>
+    <span class="callout-icon" aria-hidden="true">⚡</span>
+    <span class="callout-title">Важно</span>
   </header>
   <div class="callout-body">
-    <p><strong>Вопрос:</strong> Мы используем gRPC вместо REST. Как реализовать Graceful Shutdown для gRPC-сервера? Есть ли подводные камни?</p>
-<p><strong>Ответ:</strong><br />
-У структуры <code>grpc.Server</code> есть метод <code>grpcServer.GracefulStop()</code>. Он перестает принимать новые RPC и ждет завершения активных вызовов.<br />
-<strong>Опасная ловушка:</strong> Метод <code>GracefulStop()</code> <strong>не принимает контекст с таймаутом</strong>!<br />
-Если клиент держит открытый двунаправленный стрим (<a href="18-grpc-streaming.html" class="wikilink">18. gRPC streaming</a>) и не закрывает его, вызов <code>GracefulStop()</code> <strong>заблокирует процесс навсегда</strong>. Через 30 секунд Kubernetes отправит <code>SIGKILL</code>.  </p>
-<p><strong>Правильный паттерн для gRPC:</strong><br />
-Метод <code>GracefulStop()</code> запускается в отдельной горутине, а основная горутина ждет по таймеру. Если за 15 секунд соединения не закрылись — вызывается принудительный <code>grpcServer.Stop()</code>:</p>
-
-<div class="code-block" data-lang="go">
-  <header class="code-header">
-    <span class="code-lang-tag">Go</span>
-    <button type="button" class="btn-code-copy" data-action="copy-code" title="Скопировать" aria-label="Скопировать код">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><use href="#icon-copy"></use></svg>
-      <span>Копировать</span>
-    </button>
-  </header>
-  <pre class="language-go"><code class="language-go">stopped := make(chan struct{})
-go func() {
-    grpcServer.GracefulStop()
-    close(stopped)
-}()
-
-select {
-case &lt;-stopped:
-    slog.Info(&quot;gRPC server stopped cleanly&quot;)
-case &lt;-time.After(15 * time.Second):
-    slog.Warn(&quot;gRPC graceful stop timed out, forcing stop&quot;)
-    grpcServer.Stop() // Жесткий разрыв оставшихся зависших сокетов
-}
-</code></pre>
-</div>
-
+    <p>У эксперимента в кластере всегда должны быть ограниченная длительность (<code>duration</code>), узкий селектор подов и кнопка остановки. Удаление ресурса Chaos Mesh (<code>kubectl delete httpchaos orders-api-slow</code>) немедленно снимает неисправность. Проверьте эту кнопку <strong>до</strong> первого эксперимента, а не во время.</p>
   </div>
 </aside>
 
 
 <hr />
-<h2 id="7-itog-i-zavershenie-tsikla">7. Итог и завершение цикла</h2>
+<h2 id="6-chto-smotret-vo-vremya-eksperimenta">6. Что смотреть во время эксперимента</h2>
+<p>Хаос-тест считается пройденным не тогда, когда сервис выжил, а когда все числа гипотезы остались в границах. Минимальный список наблюдений для API:</p>
 <ol>
-<li><strong>Graceful Shutdown</strong> — это знак уважения к пользователям и данным. При штатных обновлениях не должно теряться ни одно клиентское соединение и ни одна транзакция.</li>
-<li>Используйте <strong><code>signal.NotifyContext</code></strong> для идиоматичного перехвата сигналов <code>SIGTERM</code> и <code>SIGINT</code> (Go 1.16+).</li>
-<li>Всегда устанавливайте жесткий таймаут для <code>srv.Shutdown(ctx)</code> (например, 20 секунд), чтобы защититься от бесконечного зависания. Этот таймаут должен быть строго меньше <code>terminationGracePeriodSeconds</code> в K8s (по умолчанию 30с).</li>
-<li>Нейтрализуйте асинхронную рассинхронизацию K8s (<code>iptables</code>) с помощью <strong>The Sleep Hack</strong> (задержка в 3–5 секунд перед закрытием Listener'а).</li>
-<li>Защищайте асинхронные горутины через <code>sync.WaitGroup</code>, а для gRPC используйте связку <code>GracefulStop()</code> с принудительным <code>Stop()</code> по таймауту.</li>
-<li>В финале всегда закрывайте пулы соединений базы данных (<code>db.Close()</code>) и сбрасывайте буферы очередей.</li>
+<li><strong>Задержка p99 и доля ошибок</strong> по эндпоинтам — укладываются ли в SLO.</li>
+<li><strong>Коды ответов.</strong> Перегрузка — <code>503</code> с <code>Retry-After</code>, истёкший бюджет на зависимость — <code>504</code>, превышение лимита — <code>429</code>. Ответ <code>500</code> на сетевую неисправность зависимости обычно означает, что ошибку никто не обработал.</li>
+<li><strong>Число горутин и память процесса</strong> (<code>go_goroutines</code>, <code>go_memstats_heap_inuse_bytes</code>). Рост без возврата после эксперимента — утечка. В тестах её ловит <code>goleak</code> от Uber.</li>
+<li><strong>Заполнение пулов</strong>: <code>db.Stats().WaitCount</code> и <code>WaitDuration</code> у <code>database/sql</code>, число соединений у HTTP-клиента.</li>
+<li><strong>Ретраи.</strong> Сколько попыток дошло до зависимости. Если каждый из трёх уровней делает по 3 попытки, одна неудача внизу превращается в 27 запросов — <strong>шторм ретраев</strong>, который добивает и без того больную зависимость.</li>
+<li><strong>Возврат к норме.</strong> После снятия неисправности метрики должны вернуться к стабильному состоянию сами, без перезапуска.</li>
 </ol>
-<p>Умение мягко завершать работу — фундамент надежности. Но как проектировать API так, чтобы другие инженеры получали удовольствие от интеграции с вашим сервисом? Каковы золотые стандарты создания технической документации, SDK и песочниц (Developer Experience)? Об этом пойдет речь в следующей статье: <a href="36-dokumentatsiya-api-best-practices.html" class="wikilink">36. Документация API best practices</a>.</p>
+
+<aside class="callout callout-interview" aria-label="Собеседование">
+  <header class="callout-header">
+    <span class="callout-icon" aria-hidden="true">🎯</span>
+    <span class="callout-title">Собеседование</span>
+  </header>
+  <div class="callout-body">
+    <p><strong>Вопрос:</strong> Чем chaos testing отличается от нагрузочного тестирования?<br />
+<strong>Ответ:</strong> Нагрузочный тест спрашивает «сколько выдержит исправная система?» и увеличивает поток запросов. Chaos testing спрашивает «как поведёт себя система, когда что-то сломалось?» и вносит неисправность при обычной нагрузке. Их часто совмещают: неисправность под нагрузкой показывает каскадные эффекты, например исчерпание пула соединений, которых нет ни в одном тесте по отдельности.</p>
+<p><strong>Вопрос:</strong> Почему хаос-тест в CI должен быть детерминированным, если в продакшене неисправности случайны?<br />
+<strong>Ответ:</strong> Задача теста в CI — поймать регрессию в конкретном механизме (таймаут, ретрай, обработка обрыва). Случайный тест падает «иногда», ему перестают верить и выключают. Поэтому в CI неисправность вносится с фиксированным зерном или с долей 100%, а случайность оставляют экспериментам в кластере, где их проводят люди с метриками перед глазами.</p>
+<p><strong>Вопрос:</strong> Сервис платежей отвечает с задержкой 3 секунды. Что должен сделать наш API, если клиент повторяет запрос <code>POST /orders</code>?<br />
+<strong>Ответ:</strong> Повтор <code>POST</code> без ключа идемпотентности может создать второй заказ. Наш API должен принять <code>Idempotency-Key</code> и для повтора вернуть результат первой попытки, а свой поход в платежи ограничить бюджетом времени и не ретраить неидемпотентную операцию вслепую. Хаос-тест с задержкой как раз проверяет, что двойного списания не будет.</p>
+  </div>
+</aside>
+
+
+<hr />
+<h2 id="7-itog">7. Итог</h2>
+<ol>
+<li><strong>Chaos testing API</strong> проверяет не новые механизмы, а существующие: таймауты, ретраи, размыкатели, деградацию и Graceful Shutdown под управляемыми неисправностями.</li>
+<li><strong>Гипотеза формулируется в числах</strong> из RED-метрик и SLO: задержка, доля ошибок, коды ответов, горутины, возврат к норме.</li>
+<li><strong>Уровень 1 — тесты Go.</strong> <code>http.RoundTripper</code> с неисправностями и <code>httptest</code> с <code>http.ErrAbortHandler</code> проверяют дедлайны, сбросы соединений и оборванные ответы за секунды, детерминированно, на каждом коммите.</li>
+<li><strong>Уровень 2 — Toxiproxy.</strong> Токсины <code>latency</code>, <code>timeout</code>, <code>reset_peer</code>, <code>bandwidth</code>, <code>limit_data</code> ломают настоящую TCP-связь с базой и соседями в интеграционных тестах.</li>
+<li><strong>Уровень 3 — кластер.</strong> Istio <code>VirtualService</code> с <code>fault</code> и ресурсы Chaos Mesh (<code>HTTPChaos</code>, <code>NetworkChaos</code>, <code>PodChaos</code>) показывают каскадные эффекты всей системы. Радиус поражения, длительность и кнопка остановки обязательны.</li>
+<li><strong>Главная находка любого хаос-теста</strong> — код без бюджета времени. Зависшая зависимость без таймаута копит горутины и соединения, пока не уронит весь API.</li>
+</ol>
+<p>Мы научили API переживать отказы и проверили это экспериментами. Но как проектировать API так, чтобы другие инженеры получали удовольствие от интеграции с вашим сервисом? Каковы золотые стандарты создания технической документации, SDK и песочниц (Developer Experience)? Об этом пойдёт речь в следующей статье: <a href="36-dokumentatsiya-api-best-practices.html" class="wikilink">36. Документация API best practices</a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->
@@ -697,7 +893,7 @@ case &lt;-time.After(15 * time.Second):
     <span>На этой странице</span>
   </header>
   <ul class="toc-list">
-    <li class="toc-item toc-h2"><a href="#1-iskusstvo-ukhodit-krasivo-zachem-prilozheniyu-umet-umirat">1. Искусство уходить красиво: Зачем приложению уметь умирать</a></li><li class="toc-item toc-h2"><a href="#2-anatomiya-ubiystva-pod-lifecycle-v-kubernetes">2. Анатомия убийства: Pod Lifecycle в Kubernetes</a></li><li class="toc-item toc-h2"><a href="#3-idiomatichnyy-go-realizatsiya-graceful-shutdown">3. Идиоматичный Go: Реализация Graceful Shutdown</a></li><li class="toc-item toc-h3"><a href="#etalonnyy-shablon-main-go-dlya-promyshlennogo-prodakshena">Эталонный шаблон main.go для промышленного продакшена:</a></li><li class="toc-item toc-h2"><a href="#4-uzhas-asinkhronnosti-pochemu-kubernetes-vsyo-ravno-teryaet-zaprosy">4. Ужас асинхронности: Почему Kubernetes всё равно теряет запросы?</a></li><li class="toc-item toc-h2"><a href="#5-fonovye-zadachi-zashchita-gorutin-workers">5. Фоновые задачи: Защита горутин (Workers)</a></li><li class="toc-item toc-h2"><a href="#6-nyuansy-grpc-gracefulstop-vs-stop">6. Нюансы gRPC: GracefulStop() vs Stop()</a></li><li class="toc-item toc-h2"><a href="#7-itog-i-zavershenie-tsikla">7. Итог и завершение цикла</a></li>
+    <li class="toc-item toc-h2"><a href="#1-chto-lomaetsya-na-granitse-api">1. Что ломается на границе API</a></li><li class="toc-item toc-h2"><a href="#2-gipoteza-v-terminakh-api">2. Гипотеза в терминах API</a></li><li class="toc-item toc-h2"><a href="#3-uroven-1-neispravnosti-v-testakh-go">3. Уровень 1: неисправности в тестах Go</a></li><li class="toc-item toc-h2"><a href="#4-uroven-2-toxiproxy-nastoyashchaya-set-pod-kontrolem">4. Уровень 2: Toxiproxy — настоящая сеть под контролем</a></li><li class="toc-item toc-h2"><a href="#5-uroven-3-eksperimenty-v-klastere">5. Уровень 3: эксперименты в кластере</a></li><li class="toc-item toc-h3"><a href="#istio-neispravnosti-na-urovne-service-mesh">Istio: неисправности на уровне service mesh</a></li><li class="toc-item toc-h3"><a href="#chaos-mesh-http-set-i-pody">Chaos Mesh: HTTP, сеть и поды</a></li><li class="toc-item toc-h2"><a href="#6-chto-smotret-vo-vremya-eksperimenta">6. Что смотреть во время эксперимента</a></li><li class="toc-item toc-h2"><a href="#7-itog">7. Итог</a></li>
   </ul>
 </aside>
 
