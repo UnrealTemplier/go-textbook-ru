@@ -78,10 +78,16 @@ go-textbook/
 │   ├── config.py          # Загрузка и проверка book.toml (tomllib + dataclasses; неизвестный ключ — ошибка)
 │   ├── strings/ru.toml    # Строки интерфейса движка (подписи, aria-label, заголовки выносок); книга переопределяет их в book.toml [strings]
 │   ├── scanner.py         # Рекурсивный обход sources/ любой глубины (ошибки вместо тихих потерь файлов), индексные файлы каталогов, title_source, slugify, граф wikilinks
-│   ├── converter.py       # Парсер Markdown в семантический HTML, callouts, автосанитизация Mermaid
+│   ├── converter/         # Конвертер Markdown → семантический HTML (пакет)
+│   │   ├── __init__.py    # MarkdownConverter: клише, Mermaid (+санитайзер), выноски, wikilinks, заголовки/TOC, таблицы, блоки кода
+│   │   ├── code_mask.py   # Строчная маска кода и сканер оград с отступом
+│   │   ├── obsidian_lists.py  # Списки в стиле Obsidian (флаг markdown.obsidian_lists; в go-textbook выключен до А3л)
+│   │   ├── indented_fence.py  # Ограды с отступом в списках (markdown.indented_fences; выключен до А3з)
+│   │   ├── math_protect.py    # Защита формул от Python-Markdown (math.protect; пуст до А3и)
+│   │   ├── headings.py        # Разметка в H2–H4 и id по TOC (не подключено до А3е)
+│   │   └── callouts.py        # Выноски-плейсхолдеры (не подключено до А3а′)
 │   ├── template.py        # Каркас HTML5, шаблоны страниц, навигация, сайдбар, TOC, версия, anti-flicker
 │   ├── audit.py           # Сквозной QA-аудит: python -m engine.audit (ОС-совместимость, управляющие символы, ссылки, анкоры, Mermaid + рантайм-разбор)
-│   ├── code_mask.py       # Строчная маска кода (сканер оград с отступом); пока не подключена к конвейеру
 │   ├── tests/             # Тесты ядра (unittest), см. § 3.3а
 │   ├── tools/             # Инструменты проверки рефакторинга движка: verify_diff.py, runtime_projection.py, см. § 3.3б
 │   └── assets/            # Исходные статические ассеты (стили, скрипты, вендор)

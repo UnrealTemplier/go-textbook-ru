@@ -1,5 +1,5 @@
 """
-engine/converter.py
+engine/converter/__init__.py
 Преобразование Markdown-статей в чистый семантический HTML5.
 Обработка Callouts, Mermaid диаграмм, Prism.js подсветки, Wikilinks и TOC.
 """
@@ -9,8 +9,11 @@ import html
 import textwrap
 from typing import Tuple, Dict, Any, List, Optional
 import markdown
-from .config import BookConfig
-from .scanner import slugify, Article, KnowledgeBaseScanner, find_first_h1
+from ..config import BookConfig
+from ..scanner import slugify, Article, KnowledgeBaseScanner, find_first_h1
+from .indented_fence import IndentedFenceExtension
+from .math_protect import MathProtectExtension
+from .obsidian_lists import ObsidianListsExtension
 
 CALLOUT_CONFIG = {
     "tip": {
@@ -59,14 +62,16 @@ class MarkdownConverter:
     def __init__(self, scanner: Optional[KnowledgeBaseScanner], config: Optional[BookConfig] = None):
         self.scanner = scanner
         self.config = config or (scanner.config if scanner is not None else BookConfig())
-        self.md = markdown.Markdown(
-            extensions=[
-                "fenced_code",
-                "tables",
-                "sane_lists",
-                "nl2br"
-            ]
-        )
+        self.warnings: List[str] = []
+        extensions = ["fenced_code", "tables", "sane_lists", "nl2br"]
+        mcfg = self.config.markdown
+        if mcfg.indented_fences:
+            extensions.append(IndentedFenceExtension(self.warnings.append))
+        if mcfg.obsidian_lists:
+            extensions.append(ObsidianListsExtension())
+        if self.config.math.protect:
+            extensions.append(MathProtectExtension(self.config.math.delimiters, self.config.math.protect))
+        self.md = markdown.Markdown(extensions=extensions)
 
     def convert_article(self, article: Article) -> Tuple[str, List[Dict[str, Any]]]:
         """
@@ -317,22 +322,17 @@ class MarkdownConverter:
 
     def _render_callout_block(self, callout_type: str, custom_title: str, body_lines: List[str]) -> str:
         """Генерация HTML для отдельного блока Callout."""
-        known = callout_type if callout_type in CALLOUT_CONFIG else "note"
-        cfg = CALLOUT_CONFIG[known]
-        title = custom_title if custom_title else self.config.t(f"callouts.{known}")
-
-        # Если в заголовке или теле есть слова собеседование/интервью, стилизуем под interview
-        if self.config.callouts.interview_heuristic and (
-                "собеседован" in title.lower() or "интервью" in title.lower() or "interview" in title.lower()):
-            cfg = CALLOUT_CONFIG["interview"]
-            if not custom_title:
-                title = self.config.t("callouts.interview")
+        cfg, title = self.callout_style(callout_type, custom_title)
 
         # Парсим внутренний markdown
         inner_md = "\n".join(body_lines)
         inner_html = self.md.convert(inner_md)
         self.md.reset()
+        return self._callout_html(cfg, title, inner_html)
 
+    @staticmethod
+    def _callout_html(cfg: Dict[str, str], title: str, inner_html: str) -> str:
+        """HTML выноски; его же собирает CalloutExtractor (плейсхолдеры, А3а′)."""
         return f"""
 <aside class="callout {cfg['class']}" aria-label="{html.escape(title)}">
   <header class="callout-header">
@@ -345,8 +345,23 @@ class MarkdownConverter:
 </aside>
 """
 
-    def _transform_wikilinks(self, text: str, current_article: Article) -> str:
-        """Преобразование [[Target|Display]] в <a href="..." class="wikilink">."""
+    def callout_style(self, callout_type: str, custom_title: str):
+        """Оформление и заголовок выноски: тип (неизвестный → note), заголовок по умолчанию, эвристика."""
+        known = callout_type if callout_type in CALLOUT_CONFIG else "note"
+        cfg = CALLOUT_CONFIG[known]
+        title = custom_title if custom_title else self.config.t(f"callouts.{known}")
+        if self.config.callouts.interview_heuristic and (
+                "собеседован" in title.lower() or "интервью" in title.lower() or "interview" in title.lower()):
+            cfg = CALLOUT_CONFIG["interview"]
+            if not custom_title:
+                title = self.config.t("callouts.interview")
+        return cfg, title
+
+    def _transform_wikilinks(self, text: str, current_article: Article, mask=None) -> str:
+        """Преобразование [[Target|Display]] в <a href="..." class="wikilink">.
+
+        mask (UnifiedCodeLineMask по этому же тексту): строки кода не трогаются.
+        """
         pattern = re.compile(r"\[\[(.*?)\]\]")
 
         def repl(match):
@@ -357,7 +372,11 @@ class MarkdownConverter:
             else:
                 return f'<span class="wikilink-unresolved" title="{self.config.t("content.wikilink_unresolved_title")}">{html.escape(display_text)}</span>'
 
-        return pattern.sub(repl, text)
+        if mask is None:
+            return pattern.sub(repl, text)
+        lines = text.split("\n")
+        return "\n".join(line if mask.is_line_in_code(i) else pattern.sub(repl, line)
+                         for i, line in enumerate(lines))
 
     def _process_headings(self, text: str) -> Tuple[str, List[Dict[str, Any]]]:
         """Добавление id в заголовки H2..H4 и формирование оглавления (TOC).

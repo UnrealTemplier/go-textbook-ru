@@ -49,5 +49,24 @@ class CalloutHeuristicTest(unittest.TestCase):
         self.assertIn('class="callout callout-interview"', out)
 
 
+
+class MathConfigMatchesMainJsTest(unittest.TestCase):
+    """[math] в book.toml = конфиг KaTeX в main.js (до А3ж браузер берёт значения из main.js)."""
+
+    def test_equal(self):
+        import re
+        with open(os.path.join(ROOT, "engine", "assets", "main.js"), encoding="utf-8") as fp:
+            js = fp.read()
+        block = re.search(r"renderMathInElement\(content, \{(.*?)\}\);", js, re.S).group(1)
+        delims = [{"left": l.replace("\\\\", "\\"), "right": r.replace("\\\\", "\\"), "display": d == "true"}
+                  for l, r, d in re.findall(r"\{ left: '(.*?)', right: '(.*?)', display: (true|false) \}", block)]
+        self.assertEqual(CONFIG.math.delimiters, delims)
+        tags = re.search(r"ignoredTags: \[(.*?)\]", block).group(1)
+        classes = re.search(r"ignoredClasses: \[(.*?)\]", block).group(1)
+        self.assertEqual(CONFIG.math.ignored_tags, re.findall(r"'(.*?)'", tags))
+        self.assertEqual(CONFIG.math.ignored_classes, re.findall(r"'(.*?)'", classes))
+        self.assertEqual(CONFIG.math.protect, [])
+
+
 if __name__ == "__main__":
     unittest.main()

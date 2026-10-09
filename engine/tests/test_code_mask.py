@@ -4,7 +4,7 @@ from collections import Counter
 
 import markdown
 
-from engine.code_mask import UnifiedCodeLineMask, scan_indented_fences, find_list_context
+from engine.converter.code_mask import UnifiedCodeLineMask, scan_indented_fences, find_list_context
 
 
 def new_md():

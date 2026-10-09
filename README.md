@@ -133,10 +133,9 @@ go-textbook/
 │   ├── config.py        # Загрузка и проверка book.toml
 │   ├── strings/ru.toml  # Строки интерфейса движка (переопределяются в book.toml [strings])
 │   ├── scanner.py       # Сканирование источников, wikilinks-резолвер, канонизация якорей
-│   ├── converter.py     # AST-конвертер Markdown -> HTML5, Callouts, автосанитизация Mermaid
+│   ├── converter/       # Конвертер Markdown -> HTML5: Callouts, Mermaid, маска кода, расширения (списки Obsidian, ограды в списках, защита формул, заголовки)
 │   ├── template.py      # HTML5 каркас, семантическая разметка, KaTeX, сайдбар, TOC
 │   ├── audit.py         # Сквозной QA-аудитор: python -m engine.audit (ссылки, анкоры, Mermaid, кроссплатформенность)
-│   ├── code_mask.py     # Строчная маска кода (готовится для выделения движка)
 │   ├── tests/           # Тесты ядра (unittest)
 │   ├── tools/           # Проверка рефакторинга: verify_diff.py, runtime_projection.py
 │   └── assets/          # Исходные ассеты

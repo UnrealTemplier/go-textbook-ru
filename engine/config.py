@@ -68,6 +68,33 @@ class NavigationConfig:
 
 
 @dataclass
+class MarkdownConfig:
+    # Списки в стиле Obsidian (U17): список сразу после абзаца, вложенность 2–3 пробела
+    obsidian_lists: bool = False
+    # Ограды кода с отступом внутри списков (U13); требует obsidian_lists
+    indented_fences: bool = False
+
+
+def _default_delimiters() -> List[Dict[str, Any]]:
+    return [
+        {"left": "$$", "right": "$$", "display": True},
+        {"left": "$", "right": "$", "display": False},
+        {"left": "\\(", "right": "\\)", "display": False},
+        {"left": "\\[", "right": "\\]", "display": True},
+    ]
+
+
+@dataclass
+class MathConfig:
+    # Разделители KaTeX auto-render (передаются в браузер как есть)
+    delimiters: List[Dict[str, Any]] = field(default_factory=_default_delimiters)
+    # Левые разделители формул, которые защищаются от Python-Markdown (каждый — из delimiters)
+    protect: List[str] = field(default_factory=list)
+    ignored_tags: List[str] = field(default_factory=lambda: ["script", "noscript", "style", "textarea", "pre", "code", "option"])
+    ignored_classes: List[str] = field(default_factory=lambda: ["code-block", "mermaid", "mermaid-wrapper"])
+
+
+@dataclass
 class BrandingConfig:
     # Пути — относительно каталога book.toml; SVG вставляются в страницу как есть
     logo_icon_svg_file: str = ""
@@ -113,6 +140,8 @@ class BookConfig:
     slug: SlugConfig = field(default_factory=SlugConfig)
     callouts: CalloutsConfig = field(default_factory=CalloutsConfig)
     navigation: NavigationConfig = field(default_factory=NavigationConfig)
+    markdown: MarkdownConfig = field(default_factory=MarkdownConfig)
+    math: MathConfig = field(default_factory=MathConfig)
     branding: BrandingConfig = field(default_factory=BrandingConfig)
     article_page: ArticlePageConfig = field(default_factory=ArticlePageConfig)
     index_page: IndexPageConfig = field(default_factory=IndexPageConfig)
@@ -224,6 +253,17 @@ def _validate(cfg: BookConfig) -> None:
         if not isinstance(st, dict) or set(st) != {"badge", "title_html", "text_html"}:
             raise ConfigError(f"index_page.roadmap_steps[{i}]: ожидаются ключи badge, title_html, text_html")
     merge_strings(cfg.strings)
+    if cfg.markdown.indented_fences and not cfg.markdown.obsidian_lists:
+        raise ConfigError("markdown.indented_fences требует markdown.obsidian_lists = true: "
+                          "без перевода отступов списков блок кода не попадёт в свой пункт")
+    lefts = []
+    for i, d in enumerate(cfg.math.delimiters):
+        if not isinstance(d, dict) or set(d) != {"left", "right", "display"}:
+            raise ConfigError(f"math.delimiters[{i}]: ожидаются ключи left, right, display")
+        lefts.append(d["left"])
+    missing = [p for p in cfg.math.protect if p not in lefts]
+    if missing:
+        raise ConfigError(f"math.protect: {missing} нет среди левых разделителей math.delimiters")
     if cfg.navigation.reading_time.method != "bytes":
         raise ConfigError("navigation.reading_time.method: поддерживается только 'bytes'")
 
