@@ -65,7 +65,7 @@ class MathConfigMatchesMainJsTest(unittest.TestCase):
         classes = re.search(r"ignoredClasses: \[(.*?)\]", block).group(1)
         self.assertEqual(CONFIG.math.ignored_tags, re.findall(r"'(.*?)'", tags))
         self.assertEqual(CONFIG.math.ignored_classes, re.findall(r"'(.*?)'", classes))
-        self.assertEqual(CONFIG.math.protect, [])
+        self.assertEqual(CONFIG.math.protect, ["\\(", "\\["])          # А3и (U12)
         # и тот же конфиг уходит в браузер через window.__BOOK__.math
         from engine.template import book_runtime_data
         runtime = book_runtime_data(CONFIG)["math"]
