@@ -110,6 +110,15 @@ class FeaturesConfig:
 
 
 @dataclass
+class AuditConfig:
+    # Предел длины относительного пути в репозитории (символов): длинные пути ломают Windows
+    path_max: int = 180
+    # JSON известных дефектов (мёртвые wikilinks, ошибки рантайма KaTeX/Mermaid), путь от каталога
+    # book.toml; пусто — без базы: мёртвые wikilinks только печатаются
+    baseline: str = ""
+
+
+@dataclass
 class LayoutConfig:
     # Пути — относительно каталога book.toml; отсутствующие файлы и каталоги просто не используются
     overrides_dir: str = "book/overrides"     # templates/<имя>.html и assets/<путь> заменяют файлы движка
@@ -167,6 +176,7 @@ class BookConfig:
     math: MathConfig = field(default_factory=MathConfig)
     layout: LayoutConfig = field(default_factory=LayoutConfig)
     features: FeaturesConfig = field(default_factory=FeaturesConfig)
+    audit: AuditConfig = field(default_factory=AuditConfig)
     branding: BrandingConfig = field(default_factory=BrandingConfig)
     article_page: ArticlePageConfig = field(default_factory=ArticlePageConfig)
     index_page: IndexPageConfig = field(default_factory=IndexPageConfig)
@@ -280,6 +290,8 @@ def _validate(cfg: BookConfig) -> None:
     for i, st in enumerate(cfg.index_page.roadmap_steps):
         if not isinstance(st, dict) or set(st) != {"badge", "title_html", "text_html"}:
             raise ConfigError(f"index_page.roadmap_steps[{i}]: ожидаются ключи badge, title_html, text_html")
+    if cfg.audit.path_max <= 0:
+        raise ConfigError("audit.path_max: ожидается положительное число")
     merge_strings(cfg.strings)
     for i, ov in enumerate(cfg.overlays):
         if (not isinstance(ov, dict) or set(ov) != {"title", "modules"} or not isinstance(ov["modules"], list)

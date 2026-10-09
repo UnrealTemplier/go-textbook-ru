@@ -7,6 +7,14 @@ engine/audit.py
 4. Отсутствие управляющих символов в sources/*.md (C0 кроме \n/\t, DEL; TAB внутри формул вне кода).
 5. Корректность и синтаксис диаграмм Mermaid (статические проверки + реальный разбор
    вендорным mermaid.min.js в headless-браузере Firefox по протоколу file://).
+6. Длина относительных путей репозитория (audit.path_max), дубли id на странице.
+7. Ассеты: файлы из <script src>, <link href>, <img src>, srcset, <source>, <iframe> существуют.
+8. Offline Guard: внешние http(s):// и //… в этих атрибутах, CSS url( и @import — ошибка
+   (внешние <a href> в тексте допустимы).
+9. Мёртвые wikilinks и ошибки рантайма KaTeX/Mermaid относительно базы книги (audit.baseline):
+   рост или новые места — ошибка (--write-baseline перезаписывает базу).
+10. --strict: предупреждения сборки (неоднозначные wikilinks, неизвестные выноски) — ошибки.
+11. --katex-runtime: рантайм-проекция в headless Firefox (.katex-error, ошибки Mermaid, JS).
 """
 
 import os
@@ -17,6 +25,7 @@ import json
 import shutil
 import argparse
 import tempfile
+from collections import Counter
 import threading
 import subprocess
 import http.server
@@ -42,6 +51,14 @@ MERMAID_RUNTIME_TIMEOUT = 300
 FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
 CALLOUT_PREFIX_RE = re.compile(r"^(\s*>)+\s?")
 INLINE_CODE_RE = re.compile(r"(`+)(.+?)(?<!`)\1(?!`)")
+
+ID_RE = re.compile(r'(?<![\w-])id=["\']([^"\']+)["\']')
+RESOURCE_RE = re.compile(r'<(script|link|img|source|iframe)\b[^>]*?\s(src|href|srcset)=["\']([^"\']*)["\']', re.I)
+EXTERNAL_RE = re.compile(r"^(?:[a-z][a-z0-9+.-]*:)?//", re.I)
+CSS_URL_RE = re.compile(r"url\(\s*[\"']?([^\"')]+)")
+CSS_IMPORT_RE = re.compile(r"@import\s+[\"']([^\"']+)")     # форму @import url(…) ловит CSS_URL_RE
+STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>(.*?)</style>", re.S | re.I)
+UNRESOLVED_RE = re.compile(r'<span class="wikilink-unresolved"[^>]*>(.*?)</span>', re.S)
 
 
 def code_mask(text: str) -> bytearray:
@@ -94,8 +111,20 @@ def formula_spans(text: str, mask: bytearray) -> List[Tuple[int, int]]:
 
 class SiteAuditor:
     def __init__(self, dist_dir: str = "./dist", repo_root: str = ".", mermaid_runtime: bool = True,
-                 config=None):
+                 config=None, strict: bool = False, katex_runtime: bool = False, write_baseline: bool = False):
         self.config = config
+        self.strict = strict
+        self.katex_runtime = katex_runtime
+        self.write_baseline = write_baseline
+        self.path_max = config.audit.path_max if config is not None else 180
+        self.duplicate_ids: List[Tuple[str, str, int]] = []
+        self.missing_assets: List[Tuple[str, str]] = []
+        self.offline_issues: List[Tuple[str, str]] = []
+        self.unresolved: Dict[str, List[str]] = {}          # страница dist/ → тексты мёртвых wikilinks
+        self.runtime: Optional[Dict[str, Dict[str, int]]] = None
+        self.baseline_issues: List[str] = []
+        self.strict_issues: List[str] = []
+        self.runtime_issues: List[str] = []
         self.hook_errors: List[str] = []
         self.mermaid_runtime = mermaid_runtime
         # (страница, порядковый номер блока на странице, исходный код) — для рантайм-разбора
@@ -159,11 +188,21 @@ class SiteAuditor:
         for page_path in self.html_files:
             self._audit_single_page(page_path, file_ids_cache)
 
+        self._audit_css_files()
+
         # 3b. Реальный разбор диаграмм рантаймом Mermaid (ловит ошибки, невидимые статическому анализу)
         if self.mermaid_runtime:
             self._audit_mermaid_runtime()
         else:
             print("      ℹ️ Рантайм-разбор Mermaid отключён (--no-mermaid-runtime).")
+
+        # 3c. Предупреждения сборки (--strict), рантайм-проекция (--katex-runtime), база известных дефектов
+        if self.strict and self.config is not None:
+            print("      🧪 --strict: конвертация статей в памяти для предупреждений сборки...")
+            self._audit_strict()
+        if self.katex_runtime:
+            self._audit_katex_runtime()
+        self._audit_baseline()
 
         # 4. Подведение итогов
         print("\n[4/4] 📊 Результаты проверки:")
@@ -177,6 +216,16 @@ class SiteAuditor:
         print(f"      Ошибок анкоров (Missing Anchors): {len(self.missing_anchors)}")
         print(f"      Ошибок диаграмм Mermaid: {len(self.mermaid_errors)}")
         print(f"      Предупреждений по диаграммам Mermaid: {len(self.mermaid_warnings)}")
+        print(f"      Повторов id на странице: {len(self.duplicate_ids)}")
+        print(f"      Отсутствующих ассетов: {len(self.missing_assets)}")
+        print(f"      Обращений во внешнюю сеть (Offline Guard): {len(self.offline_issues)}")
+        print(f"      Мёртвых wikilinks: {sum(len(v) for v in self.unresolved.values())}"
+              + ("" if self._baseline_path() else " (база не задана: audit.baseline)")
+              + f"; новых относительно базы: {len(self.baseline_issues)}")
+        if self.strict:
+            print(f"      Предупреждений сборки (--strict): {len(self.strict_issues)}")
+        if self.katex_runtime:
+            print(f"      Ошибок рантайм-проекции (--katex-runtime): {len(self.runtime_issues)}")
 
         success = True
 
@@ -205,6 +254,23 @@ class SiteAuditor:
             if len(self.hook_errors) > 20:
                 print(f"  ... и еще {len(self.hook_errors) - 20}.")
 
+        groups = [
+            ("ПОВТОРЯЮЩИЕСЯ id НА СТРАНИЦЕ", [f"{os.path.relpath(p, self.dist_dir)}: id=\"{i}\" ×{n}" for p, i, n in self.duplicate_ids]),
+            ("ОТСУТСТВУЮЩИЕ АССЕТЫ", [f"{os.path.relpath(p, self.dist_dir)}: {m}" for p, m in self.missing_assets]),
+            ("OFFLINE GUARD: ВНЕШНИЕ РЕСУРСЫ", [f"{os.path.relpath(p, self.dist_dir)}: {m}" for p, m in self.offline_issues]),
+            ("МЁРТВЫЕ WIKILINKS СВЕРХ БАЗЫ", self.baseline_issues),
+            ("ПРЕДУПРЕЖДЕНИЯ СБОРКИ (--strict)", self.strict_issues),
+            ("РАНТАЙМ-ПРОЕКЦИЯ (--katex-runtime)", self.runtime_issues),
+        ]
+        for title, items in groups:
+            if items:
+                success = False
+                print(f"\n❌ {title}:")
+                for item in items[:15]:
+                    print(f"  {item}")
+                if len(items) > 15:
+                    print(f"  ... и еще {len(items) - 15}.")
+
         if self.broken_links:
             success = False
             print("\n❌ НАЙДЕНЫ БИТЫЕ ССЫЛКИ:")
@@ -216,8 +282,9 @@ class SiteAuditor:
                 print(f"  ... и еще {len(self.broken_links) - 10} битых ссылок.")
 
         if self.missing_anchors:
-            print(f"\n⚠️ Замечания по анкорам (#anchor): {len(self.missing_anchors)} штук.")
-            for item in self.missing_anchors[:5]:
+            success = False
+            print(f"\n❌ НЕНАЙДЕННЫЕ ЯКОРЯ (#anchor): {len(self.missing_anchors)}")
+            for item in self.missing_anchors[:15]:
                 print(f"  В файле: {os.path.relpath(item['source'], self.dist_dir)} -> {item['raw_href']}")
 
         if self.mermaid_warnings:
@@ -283,7 +350,14 @@ class SiteAuditor:
                 if base_name in WIN_RESERVED_NAMES:
                     self.filename_issues.append((f_rel, f"Имя файла совпадает с зарезервированным именем устройства Windows: {repr(f)}"))
 
-            # 3. Проверка регистронезависимых коллизий в рамках одной директории
+            # 3. Длина относительного пути (Windows без длинных путей ломается раньше 260 символов
+            #    полного пути, а репозиторий кладут в произвольный каталог)
+            for name in dirs + files:
+                rel = os.path.join(rel_root, name) if rel_root != "." else name
+                if len(rel) > self.path_max:
+                    self.filename_issues.append((rel, f"Путь длиннее {self.path_max} символов: {len(rel)}"))
+
+            # 4. Проверка регистронезависимых коллизий в рамках одной директории
             lower_map = {}
             for name in dirs + files:
                 low = name.lower()
@@ -330,9 +404,20 @@ class SiteAuditor:
         with open(page_path, "r", encoding="utf-8", errors="ignore") as fp:
             content = fp.read()
 
-        # Извлекаем все id в текущем файле
-        ids_in_page = set(re.findall(r'id=["\']([^"\']+)["\']', content))
+        # Извлекаем все id в текущем файле; повтор id на странице — ошибка (якорь ведёт не туда)
+        id_counts = Counter(ID_RE.findall(content))
+        ids_in_page = set(id_counts)
         file_ids_cache[page_path] = ids_in_page
+        for dup_id, n in id_counts.items():
+            if n > 1:
+                self.duplicate_ids.append((page_path, dup_id, n))
+
+        self._audit_resources(page_path, content)
+        for css in STYLE_BLOCK_RE.findall(content):
+            self._audit_css_text(page_path, css)
+        found = [html.unescape(re.sub(r"<[^>]+>", "", t)) for t in UNRESOLVED_RE.findall(content)]
+        if found:
+            self.unresolved[os.path.relpath(page_path, self.dist_dir).replace(os.sep, "/")] = found
 
         # Проверяем ссылки <a href="...">
         hrefs = re.findall(r'<a\s+[^>]*href=["\']([^"\']+)["\']', content)
@@ -370,7 +455,7 @@ class SiteAuditor:
                 # Проверим анкор в целевом файле
                 if target_file_path not in file_ids_cache:
                     with open(target_file_path, "r", encoding="utf-8", errors="ignore") as tfp:
-                        file_ids_cache[target_file_path] = set(re.findall(r'id=["\']([^"\']+)["\']', tfp.read()))
+                        file_ids_cache[target_file_path] = set(ID_RE.findall(tfp.read()))
                 
                 target_ids = file_ids_cache[target_file_path]
                 if unquote(anchor_part) not in target_ids:
@@ -430,6 +515,109 @@ class SiteAuditor:
                     "file": page_path,
                     "reason": f"Неизвестный тип диаграммы Mermaid: \"{first_line[:40]}\""
                 })
+
+    def _audit_resources(self, page_path: str, content: str):
+        """Offline Guard и существование файлов ассетов (query и fragment отрезаются)."""
+        page_dir = os.path.dirname(page_path)
+        for tag, attr, value in RESOURCE_RE.findall(content):
+            urls = [part.strip().split()[0] for part in value.split(",") if part.strip()] \
+                if attr.lower() == "srcset" else [value.strip()]
+            for url in urls:
+                if EXTERNAL_RE.match(url):
+                    self.offline_issues.append((page_path, f"<{tag} {attr}> ведёт во внешнюю сеть: {url}"))
+                    continue
+                if not url or url.startswith(("data:", "#", "javascript:")):
+                    continue
+                file_part = url.split("#", 1)[0].split("?", 1)[0]
+                if not os.path.exists(os.path.normpath(os.path.join(page_dir, unquote(file_part)))):
+                    self.missing_assets.append((page_path, f"<{tag} {attr}=\"{url}\">: файла нет"))
+
+    def _audit_css_text(self, where: str, css: str):
+        for url in CSS_URL_RE.findall(css):
+            if EXTERNAL_RE.match(url.strip()):
+                self.offline_issues.append((where, f"CSS url() ведёт во внешнюю сеть: {url.strip()}"))
+        for url in CSS_IMPORT_RE.findall(css):
+            if EXTERNAL_RE.match(url):
+                self.offline_issues.append((where, f"CSS @import из внешней сети: {url}"))
+
+    def _audit_css_files(self):
+        for root, _, files in os.walk(self.dist_dir):
+            for f in files:
+                if f.endswith(".css"):
+                    path = os.path.join(root, f)
+                    with open(path, encoding="utf-8", errors="ignore") as fp:
+                        self._audit_css_text(path, fp.read())
+
+    def _baseline_path(self) -> Optional[str]:
+        if self.config is None or not self.config.audit.baseline:
+            return None
+        return self.config.path(self.config.audit.baseline)
+
+    def _audit_baseline(self):
+        """Мёртвые wikilinks и ошибки рантайма не должны прибавляться относительно базы книги."""
+        path = self._baseline_path()
+        total = sum(len(v) for v in self.unresolved.values())
+        if path is None:
+            return
+        if self.write_baseline:
+            data = {}
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as fp:
+                    data = json.load(fp)
+            data["unresolved_wikilinks"] = {k: sorted(v) for k, v in sorted(self.unresolved.items())}
+            if self.runtime is not None:
+                data["runtime"] = {m: {p: r[m] for p, r in sorted(self.runtime.items()) if r.get(m)}
+                                   for m in ("katex_error", "mermaid_error")}
+            with open(path, "w", encoding="utf-8") as fp:
+                json.dump(data, fp, ensure_ascii=False, indent=1)
+                fp.write("\n")
+            print(f"      📝 База записана: {os.path.relpath(path, self.repo_root)} (мёртвых wikilinks: {total})")
+            return
+        if not os.path.exists(path):
+            self.baseline_issues.append(f"нет файла базы {path} (создайте: --write-baseline)")
+            return
+        with open(path, encoding="utf-8") as fp:
+            data = json.load(fp)
+        known = data.get("unresolved_wikilinks", {})
+        known_total = sum(len(v) for v in known.values())
+        for page, texts in sorted(self.unresolved.items()):
+            for text, n in (Counter(texts) - Counter(known.get(page, []))).items():
+                self.baseline_issues.append(f"{page}: новая мёртвая wikilink «{text}»" + (f" ×{n}" if n > 1 else ""))
+        if total > known_total:
+            self.baseline_issues.append(f"мёртвых wikilinks стало больше: {known_total} → {total}")
+        elif total < known_total:
+            print(f"      ℹ️ Мёртвых wikilinks меньше, чем в базе ({known_total} → {total}): обновите её --write-baseline")
+        if self.runtime is not None:
+            base_rt = data.get("runtime", {})
+            for metric in ("katex_error", "mermaid_error"):
+                known_m = base_rt.get(metric, {})
+                for page, r in sorted(self.runtime.items()):
+                    if r.get(metric, 0) > known_m.get(page, 0):
+                        self.runtime_issues.append(f"{page}: {metric} {known_m.get(page, 0)} → {r.get(metric, 0)}")
+
+    def _audit_strict(self):
+        """Предупреждения сборки (неоднозначные wikilinks, неизвестные выноски) как ошибки: конвертация в памяти."""
+        from .scanner import KnowledgeBaseScanner
+        from .converter import MarkdownConverter
+        cfg = self.config
+        scanner = KnowledgeBaseScanner(cfg.path(cfg.content.root), cfg)
+        conv = MarkdownConverter(scanner, cfg)
+        for art in scanner.scan():
+            conv.convert_article(art)
+        self.strict_issues = list(conv.warnings)
+
+    def _audit_katex_runtime(self):
+        """Рантайм-проекция: отрисованные формулы и диаграммы, ошибки JS (engine/tools/runtime_projection)."""
+        from .tools.runtime_projection import project
+        print("      🧪 Рантайм-проекция KaTeX/Mermaid в headless Firefox (~100 с)...")
+        try:
+            self.runtime = project(self.dist_dir)
+        except Exception as e:            # нет Firefox и т. п.
+            self.runtime_issues.append(f"рантайм-проекция не выполнена: {e}")
+            return
+        for page, r in sorted(self.runtime.items()):
+            if r.get("js_errors"):
+                self.runtime_issues.append(f"{page}: ошибок JS {r['js_errors']}")
 
     @staticmethod
     def _find_browser() -> Optional[str]:
@@ -554,10 +742,17 @@ def main():
     parser.add_argument("--no-mermaid-runtime", action="store_true",
                         help="Не запускать рантайм-разбор диаграмм Mermaid в headless Firefox")
     parser.add_argument("--book", default=None, help="Путь к book.toml (по умолчанию ./book.toml): хук extra_audit_checks")
+    parser.add_argument("--strict", action="store_true",
+                        help="Предупреждения сборки (неоднозначные wikilinks, неизвестные выноски) — ошибки")
+    parser.add_argument("--katex-runtime", action="store_true",
+                        help="Рантайм-проекция в headless Firefox: ошибки KaTeX/Mermaid не сверх базы, 0 ошибок JS (~100 с)")
+    parser.add_argument("--write-baseline", action="store_true",
+                        help="Записать текущие мёртвые wikilinks (и рантайм с --katex-runtime) в audit.baseline")
     args = parser.parse_args()
 
     auditor = SiteAuditor(args.dist, args.repo_root, mermaid_runtime=not args.no_mermaid_runtime,
-                          config=load_config(args.book))
+                          config=load_config(args.book), strict=args.strict,
+                          katex_runtime=args.katex_runtime, write_baseline=args.write_baseline)
     success = auditor.run_audit()
     sys.exit(0 if success else 1)
 

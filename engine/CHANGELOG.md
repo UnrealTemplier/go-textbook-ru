@@ -20,6 +20,8 @@
 - А3л: `[markdown] obsidian_lists` — списки Obsidian/CommonMark (U17): список сразу после абзаца, вложенность 2–3 пробела, цитата в пункте, списки в обычных цитатах.
 - А3з: `[markdown] indented_fences` — ограда с отступом внутри пункта списка становится блоком кода (U13); язык блока кода — `[\w#.+-]+` (`c++`, `c#`).
 
+Аудит (А4, вывод не меняет): длина путей (`[audit] path_max`), повторы `id` и ненайденные якоря — ошибки, существование ассетов, Offline Guard (атрибуты, CSS `url(`/`@import`), база известных дефектов `[audit] baseline` (мёртвые wikilinks, с `--katex-runtime` — ошибки KaTeX/Mermaid в браузере), `--strict`, `--write-baseline`.
+
 Без изменения вывода (А1–А2):
 
 - Пакет `engine/` вместо `builder/`: `python -m engine.build`, `python -m engine.audit`.
