@@ -3,14 +3,16 @@ engine/tools/lists_oracle.py
 Оракул этапа А3л (анализ § 6.4): что меняет препроцессор списков (U17) на каждой странице книги.
 
 Статьи конвертируются в памяти дважды: с текущим book.toml и с obsidian_lists = true
-(--with-fences: ещё и indented_fences = true). Для изменившихся страниц:
+(--with-fences: ещё и indented_fences = true). Поэтому оракул запускают до того, как флаг
+включён в book.toml. Для изменившихся страниц:
 
 * тексты всех <pre><code> обязаны совпасть (Н10), иначе провал;
 * сравниваются текстовые проекции verify_diff.text_projection. Псевдосписок «- a<br>» и
   настоящий <li> дают в проекции одну и ту же строку «- a», поэтому сравнение видит только
   изменения видимого текста. Перед сравнением снимаются TAB-ы вложенности, буквальный маркер
   «* »/«+ » в начале строки приравнивается к «- », а маркер свободного пункта (<li><p>),
-  оторванный от текста, приклеивается обратно;
+  оторванный от текста, приклеивается обратно. Проекция не отличает <em> от буквального «_»,
+  поэтому выделение, исчезнувшее из формулы $…$, ищется по HTML (класс 3 или 4);
 * каждое оставшееся расхождение относится к классу:
     0 — видимый текст тот же: псевдосписок стал списком;
     1 — маркер «* » раньше читался как курсив, теперь пункт (и последующие куски страницы,
@@ -44,6 +46,7 @@ LONE_MARKER_RE = re.compile(r"(-|\d+\.)")
 MARKER_RE = re.compile(r"^(- |\d+\. |_ ?)")
 EMPHASIS_RE = re.compile(r"[*_]")
 FORMULA_STAR_RE = re.compile(r"\$[^$\n]*\*[^$\n]*\$")
+EMPHASIS_IN_FORMULA_RE = re.compile(r"\$[^$]*</?(?:em|strong)>[^$]*\$")
 
 
 def normalize(projection: str) -> List[str]:
@@ -78,10 +81,13 @@ def classify_hunk(old: List[str], new: List[str], page_has_formula_star: bool, a
 
 def classify_page(old_html: str, new_html: str, source: str) -> Tuple[List[str], List[Tuple[str, List[str], List[str]]]]:
     old, new = normalize(text_projection(old_html)), normalize(text_projection(new_html))
-    if old == new:
-        return ["0"], []
     star = bool(FORMULA_STAR_RE.search(source))
     classes, hunks = [], []
+    # Проекция не отличает <em> от буквального «_»: выделение, исчезнувшее из формулы, ищем в HTML
+    if len(EMPHASIS_IN_FORMULA_RE.findall(new_html)) < len(EMPHASIS_IN_FORMULA_RE.findall(old_html)):
+        classes.append("4" if star else "3")
+    if old == new:
+        return classes or ["0"], []
     sm = difflib.SequenceMatcher(None, old, new, autojunk=False)
     for op, i1, i2, j1, j2 in sm.get_opcodes():
         if op == "equal":

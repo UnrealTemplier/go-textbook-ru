@@ -20,6 +20,11 @@ class ClassifyTest(unittest.TestCase):
         new = "<ol>\n<li>a</li>\n<li>b</li>\n</ol>"
         self.assertEqual(classify_page(old, new, "")[0], ["2"])
 
+    def test_class3_underscore_in_formula_html_only(self):
+        old = "<ol>\n<li>a<br />\n$$x<em>{1}$$</li>\n<li>b<br />\n$$y</em>{2}$$</li>\n</ol>"
+        new = "<ol>\n<li>a<br />\n$$x_{1}$$</li>\n<li>b<br />\n$$y_{2}$$</li>\n</ol>"
+        self.assertEqual(classify_page(old, new, "$$x_{1}$$"), (["3"], []))
+
     def test_class4_star_in_formula(self):
         old = "<ul>\n<li>$a <em>b$ c</em></li>\n</ul>"
         new = "<ul>\n<li>$a *b$ c</li>\n</ul>"
