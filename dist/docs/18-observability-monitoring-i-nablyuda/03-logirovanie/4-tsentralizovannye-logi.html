@@ -344,13 +344,15 @@ flowchart LR
 </figure>
 
 
-<p>Каждое звено этой цепи решает строгую задачу:<br />
-1. <strong>Приложение (Go App):</strong> генерирует структурированные записи и сбрасывает их в файловые дескрипторы 1 и 2.<br />
-2. <strong>Контейнерный рантайм (Containerd / CRI-O):</strong> перехватывает пайпы процесса и сохраняет строки в стандартные файлы хоста.<br />
-3. <strong>Локальный агент (DaemonSet Agent):</strong> непрерывно читает файлы логов на ноде, обогащает их метаданными Kubernetes и пачками отправляет в сеть.<br />
-4. <strong>Агрегатор / Приемник (Loki / Logstash):</strong> валидирует поток, строит индексы и записывает сжатые блоки данных в хранилище.<br />
-5. <strong>Хранилище (Storage):</strong> объектное хранилище (S3/MinIO) или дисковые кластеры для долгосрочного архива.<br />
-6. <strong>Пользовательский интерфейс (UI):</strong> веб-консоль для визуализации, фильтрации и расследования инцидентов.</p>
+<p>Каждое звено этой цепи решает строгую задачу:</p>
+<ol>
+<li><strong>Приложение (Go App):</strong> генерирует структурированные записи и сбрасывает их в файловые дескрипторы 1 и 2.</li>
+<li><strong>Контейнерный рантайм (Containerd / CRI-O):</strong> перехватывает пайпы процесса и сохраняет строки в стандартные файлы хоста.</li>
+<li><strong>Локальный агент (DaemonSet Agent):</strong> непрерывно читает файлы логов на ноде, обогащает их метаданными Kubernetes и пачками отправляет в сеть.</li>
+<li><strong>Агрегатор / Приемник (Loki / Logstash):</strong> валидирует поток, строит индексы и записывает сжатые блоки данных в хранилище.</li>
+<li><strong>Хранилище (Storage):</strong> объектное хранилище (S3/MinIO) или дисковые кластеры для долгосрочного архива.</li>
+<li><strong>Пользовательский интерфейс (UI):</strong> веб-консоль для визуализации, фильтрации и расследования инцидентов.</li>
+</ol>
 <hr />
 <h2 id="mechanical-sympathy-stdout-vs-file">Mechanical Sympathy: Stdout vs File</h2>
 <p>В традиционных монолитных системах сервисы писали логи напрямую в файлы на диске (<code>/var/log/app.log</code>). В среде контейнеризации и Kubernetes этот паттерн категорически запрещен: <strong>приложение обязано писать исключительно в stdout/stderr</strong>.</p>
@@ -361,10 +363,12 @@ flowchart LR
 <li><strong>Separation of Concerns:</strong> Приложение не знает о инфраструктуре. Инженеры SRE могут менять драйвер логирования (например, отправлять сразу в Fluentd), не меняя код приложения.</li>
 </ol>
 <h3 id="under-the-hood-kak-eto-rabotaet-v-go">Under the Hood: Как это работает в Go?</h3>
-<p>Когда вы пишете <code>fmt.Println</code> или <code>slog.Info</code> в Go:<br />
-1.  Данные попадают в файловый дескриптор <code>1</code> (stdout) или <code>2</code> (stderr).<br />
-2.  Это простой <code>write</code> syscall ядра Linux.<br />
-3.  Контейнерный рантайм читает этот пайп и пишет на диск хоста (обычно <code>/var/log/pods/...</code> в формате JSON, где есть поле <code>log</code> и <code>time</code>).</p>
+<p>Когда вы пишете <code>fmt.Println</code> или <code>slog.Info</code> в Go:</p>
+<ol>
+<li>Данные попадают в файловый дескриптор <code>1</code> (stdout) или <code>2</code> (stderr).</li>
+<li>Это простой <code>write</code> syscall ядра Linux.</li>
+<li>Контейнерный рантайм читает этот пайп и пишет на диск хоста (обычно <code>/var/log/pods/...</code> в формате JSON, где есть поле <code>log</code> и <code>time</code>).</li>
+</ol>
 
 <div class="code-block" data-lang="text">
   <header class="code-header">
@@ -395,10 +399,12 @@ Stdout/stderr в Go небуферизированы по умолчанию (и
 <hr />
 <h2 id="agenty-sbora-log-agents">Агенты сбора (Log Agents)</h2>
 <p>Следующий шаг — забрать логи с ноды. Для этого используется <strong>DaemonSet</strong> (под, который крутится на каждой ноде кластера). Популярные агенты: <strong>Promtail</strong> (для Loki), <strong>Filebeat</strong> (для Elastic), <strong>Fluent Bit</strong>.</p>
-<p>Их задача:<br />
-1.  Следить за файлами в <code>/var/log/containers/</code>.<br />
-2.  Парсить строки (JSON → Fields).<br />
-3.  Отправлять в хранилище.</p>
+<p>Их задача:</p>
+<ol>
+<li>Следить за файлами в <code>/var/log/containers/</code>.</li>
+<li>Парсить строки (JSON → Fields).</li>
+<li>Отправлять в хранилище.</li>
+</ol>
 <p>Агент монтирует системную директорию ноды <code>/var/log/pods</code> в режиме read-only и держит открытыми файловые дескрипторы на активные логи (механизм <code>tail -f</code>).</p>
 <h3 id="label-based-routing">Label-based Routing</h3>
 <p>Агенты используют Kubernetes Metadata для enrichment (обогащения) логов. К логу добавляются лейблы: <code>app=payment-service</code>, <code>namespace=prod</code>, <code>pod_name=...</code>.<br />

@@ -317,9 +317,11 @@
 
 <h3 id="1-under-the-hood-struktura-transport-i-persistconn">1. Under the hood: Структура Transport и persistConn</h3>
 <p>При вызове <code>client.Do(req)</code> запрос попадает в <code>Transport.roundTrip()</code>. Ключевая абстракция — <code>persistConn</code> (persistent connection). Это обертка над <code>net.Conn</code>, управляющая состоянием соединения, чтением/записью через <code>bufio</code>, обработкой <code>Connection: keep-alive</code> и сигнализацией пулу о освобождении ресурса.</p>
-<p>Внутренний пул (<code>http.connPool</code>) управляет двумя типами очередей:<br />
-1. <strong>Idle Connections</strong>: Свободные, готовые к повторному использованию соединения.<br />
-2. <strong>Dialing Connections</strong>: Соединения в процессе установки (DNS resolve + TCP handshake + TLS).</p>
+<p>Внутренний пул (<code>http.connPool</code>) управляет двумя типами очередей:</p>
+<ol>
+<li><strong>Idle Connections</strong>: Свободные, готовые к повторному использованию соединения.</li>
+<li><strong>Dialing Connections</strong>: Соединения в процессе установки (DNS resolve + TCP handshake + TLS).</li>
+</ol>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -339,15 +341,19 @@ type connPool struct {
 </code></pre>
 </div>
 
-<p>Метод <code>getConn()</code> реализует логику получения соединения:<br />
-1. Ищет в <code>idle</code> по ключу хоста.<br />
-2. Если есть — возвращает немедленно.<br />
-3. Если нет — проверяет <code>dialing</code>. Если уже идет установка, горутина блокируется на канале и ждет завершения handshake.<br />
-4. Если нет активных диалов — создает новый через <code>dialConn()</code>.</p>
+<p>Метод <code>getConn()</code> реализует логику получения соединения:</p>
+<ol>
+<li>Ищет в <code>idle</code> по ключу хоста.</li>
+<li>Если есть — возвращает немедленно.</li>
+<li>Если нет — проверяет <code>dialing</code>. Если уже идет установка, горутина блокируется на канале и ждет завершения handshake.</li>
+<li>Если нет активных диалов — создает новый через <code>dialConn()</code>.</li>
+</ol>
 <h3 id="2-mekhanika-connection-pool-ot-zaprosa-do-pula">2. Механика Connection Pool: От запроса до пула</h3>
-<p>Когда ответ получен, <code>Transport</code> не закрывает сокет сразу. Он проверяет заголовки сервера:<br />
-* Если <code>Connection: keep-alive</code> (или HTTP/1.1 без <code>Connection: close</code>) — сокет помечается как idle и кладется в пул.<br />
-* Если сервер вернул <code>Connection: close</code> или тело прочитано не полностью — сокет закрывается принудительно.</p>
+<p>Когда ответ получен, <code>Transport</code> не закрывает сокет сразу. Он проверяет заголовки сервера:</p>
+<ul>
+<li>Если <code>Connection: keep-alive</code> (или HTTP/1.1 без <code>Connection: close</code>) — сокет помечается как idle и кладется в пул.</li>
+<li>Если сервер вернул <code>Connection: close</code> или тело прочитано не полностью — сокет закрывается принудительно.</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -402,14 +408,18 @@ flowchart TD
 
 
 <h3 id="3-keep-alive-i-tcp-sostoyaniya">3. Keep-Alive и TCP-состояния</h3>
-<p>HTTP Keep-Alive — это протокольная договоренность. На уровне ядра ОС она поддерживается через TCP-сокеты и опцию <code>SO_KEEPALIVE</code>.<br />
-* <strong>HTTP уровень</strong>: Заголовок <code>Connection: keep-alive</code> разрешает переиспользование сокета для последующих запросов.<br />
-* <strong>TCP уровень</strong>: <code>SO_KEEPALIVE</code> отправляет пустые пакеты каждые 2 часа (по умолчанию в Linux) для обнаружения разорванных соединений. В Go <code>Transport</code> включает <code>SetKeepAlive(true)</code> и <code>SetKeepAlivePeriod(3 * time.Minute)</code> по умолчанию.</p>
+<p>HTTP Keep-Alive — это протокольная договоренность. На уровне ядра ОС она поддерживается через TCP-сокеты и опцию <code>SO_KEEPALIVE</code>.</p>
+<ul>
+<li><strong>HTTP уровень</strong>: Заголовок <code>Connection: keep-alive</code> разрешает переиспользование сокета для последующих запросов.</li>
+<li><strong>TCP уровень</strong>: <code>SO_KEEPALIVE</code> отправляет пустые пакеты каждые 2 часа (по умолчанию в Linux) для обнаружения разорванных соединений. В Go <code>Transport</code> включает <code>SetKeepAlive(true)</code> и <code>SetKeepAlivePeriod(3 * time.Minute)</code> по умолчанию.</li>
+</ul>
 <p>При закрытии пулом соединения (по таймауту <code>IdleConnTimeout</code>) происходит вызов <code>conn.Close()</code>. Ядро ОС переводит сокет в состояние <code>FIN_WAIT2</code>, а затем <code>TIME_WAIT</code> (обычно 60 секунд в Linux). Это не проблема для пула, но если вы создаете тысячи одноразовых соединений без Keep-Alive, <code>TIME_WAIT</code> быстро исчерпает лимит локальных портов (<code>net.ipv4.ip_local_port_range</code>).</p>
 <h3 id="4-http1-1-vs-http2-multipleksirovanie-pula">4. HTTP/1.1 vs HTTP/2: Мультиплексирование пула</h3>
-<p>Логика пула кардинально меняется в зависимости от версии протокола:<br />
-* <strong>HTTP/1.1</strong>: Одно соединение обрабатывает <strong>один запрос за раз</strong>. Чтобы обслуживать 100 одновременных запросов к одному хосту, пул должен держать до 100 соединений. Лимит <code>MaxIdleConnsPerHost</code> (по умолчанию 2) быстро вызывает очередь <code>dialing</code>.<br />
-* <strong>HTTP/2</strong>: Использует <code>http2.Transport</code>, который мультиплексирует множество стримов (запросов) по <strong>одному</strong> TCP-соединению. Внутренний пул Go всё равно создает соединения, но их количество кратно меньше. <code>http2.ConfigureTransports</code> настраивает пул под специфику мультиплексирования, увеличивая <code>MaxIdleConns</code> и <code>MaxConnsPerHost</code>.</p>
+<p>Логика пула кардинально меняется в зависимости от версии протокола:</p>
+<ul>
+<li><strong>HTTP/1.1</strong>: Одно соединение обрабатывает <strong>один запрос за раз</strong>. Чтобы обслуживать 100 одновременных запросов к одному хосту, пул должен держать до 100 соединений. Лимит <code>MaxIdleConnsPerHost</code> (по умолчанию 2) быстро вызывает очередь <code>dialing</code>.</li>
+<li><strong>HTTP/2</strong>: Использует <code>http2.Transport</code>, который мультиплексирует множество стримов (запросов) по <strong>одному</strong> TCP-соединению. Внутренний пул Go всё равно создает соединения, но их количество кратно меньше. <code>http2.ConfigureTransports</code> настраивает пул под специфику мультиплексирования, увеличивая <code>MaxIdleConns</code> и <code>MaxConnsPerHost</code>.</li>
+</ul>
 
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
@@ -423,10 +433,12 @@ flowchart TD
 
 
 <h3 id="5-mechanical-sympathy-faylovye-deskriptory-pamyat-i-tyuning">5. Mechanical Sympathy: Файловые дескрипторы, память и тюнинг</h3>
-<p>Каждое активное или idle-соединение потребляет ресурсы:<br />
-1. <strong>File Descriptor</strong>: 1 FD на сокет. Лимит <code>ulimit -n</code> должен быть настроен с запасом.<br />
-2. <strong>Kernel Memory</strong>: Каждому TCP-сокету ядро выделяет буферы чтения/записи (<code>skbuff</code>), структуры <code>sock</code> и таймеры. Idle-соединение держит эти ресурсы занятыми до закрытия.<br />
-3. <strong>User Space Memory</strong>: <code>persistConn</code> содержит <code>bufio.ReadWriter</code> (~4-8 КБ), структуры синхронизации и указатели на <code>Transport</code>.</p>
+<p>Каждое активное или idle-соединение потребляет ресурсы:</p>
+<ol>
+<li><strong>File Descriptor</strong>: 1 FD на сокет. Лимит <code>ulimit -n</code> должен быть настроен с запасом.</li>
+<li><strong>Kernel Memory</strong>: Каждому TCP-сокету ядро выделяет буферы чтения/записи (<code>skbuff</code>), структуры <code>sock</code> и таймеры. Idle-соединение держит эти ресурсы занятыми до закрытия.</li>
+<li><strong>User Space Memory</strong>: <code>persistConn</code> содержит <code>bufio.ReadWriter</code> (~4-8 КБ), структуры синхронизации и указатели на <code>Transport</code>.</li>
+</ol>
 <p><strong>Тюнинг для Production:</strong></p>
 
 <div class="code-block" data-lang="go">

@@ -420,14 +420,18 @@ type pollDesc struct {
 </code></pre>
 </div>
 
-<p>При первом же обращении к сетевым функциям рантайм вызывает процедуру инициализации <code>netpollInit</code>:<br />
-1. На Linux: выполняется системный вызов <code>epoll_create1(EPOLL_CLOEXEC)</code>. Флаг гарантирует, что дескриптор epoll автоматически закроется при возможном вызове <code>execve</code>.<br />
-2. На BSD/macOS: создается глобальный дескриптор очереди вызовом <code>kqueue()</code>.</p>
-<p>После этого все высокоуровневые сетевые операции стандартной библиотеки (<code>net.Dial</code>, <code>conn.Read</code>, <code>conn.Write</code>) работают по строго выверенному протоколу:<br />
-1. Выставляют флаг <code>O_NONBLOCK</code> на дескрипторе сокета.<br />
-2. Регистрируют дескриптор в <code>netpoller</code> через системные вызовы <code>epoll_ctl(EPOLL_CTL_ADD)</code> или <code>kevent</code>.<br />
-3. Пытаются совершить неблокирующее чтение или запись (<code>read</code>/<code>write</code>).<br />
-4. Если операция вернула ошибку <code>EAGAIN</code> (данные еще не подошли), горутина переводится в состояние ожидания <code>waiting</code> вызовом <code>gopark</code>, освобождая системный тред <code>m</code> для другой полезной работы!</p>
+<p>При первом же обращении к сетевым функциям рантайм вызывает процедуру инициализации <code>netpollInit</code>:</p>
+<ol>
+<li>На Linux: выполняется системный вызов <code>epoll_create1(EPOLL_CLOEXEC)</code>. Флаг гарантирует, что дескриптор epoll автоматически закроется при возможном вызове <code>execve</code>.</li>
+<li>На BSD/macOS: создается глобальный дескриптор очереди вызовом <code>kqueue()</code>.</li>
+</ol>
+<p>После этого все высокоуровневые сетевые операции стандартной библиотеки (<code>net.Dial</code>, <code>conn.Read</code>, <code>conn.Write</code>) работают по строго выверенному протоколу:</p>
+<ol>
+<li>Выставляют флаг <code>O_NONBLOCK</code> на дескрипторе сокета.</li>
+<li>Регистрируют дескриптор в <code>netpoller</code> через системные вызовы <code>epoll_ctl(EPOLL_CTL_ADD)</code> или <code>kevent</code>.</li>
+<li>Пытаются совершить неблокирующее чтение или запись (<code>read</code>/<code>write</code>).</li>
+<li>Если операция вернула ошибку <code>EAGAIN</code> (данные еще не подошли), горутина переводится в состояние ожидания <code>waiting</code> вызовом <code>gopark</code>, освобождая системный тред <code>m</code> для другой полезной работы!</li>
+</ol>
 <hr />
 <h2 id="pod-kapotom-kak-svyazyvayutsya-goroutine-i-yadro">Под капотом: Как связываются Goroutine и ядро</h2>
 <p>Связь между планировщиком Go и ядром ОС осуществляется через два ключевых компонента: фоновый монитор планировщика <code>sysmon</code> и рабочие потоки операционной системы <code>m</code> (thread).</p>

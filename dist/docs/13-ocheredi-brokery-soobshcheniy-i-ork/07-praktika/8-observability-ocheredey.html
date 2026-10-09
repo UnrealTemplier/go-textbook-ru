@@ -366,19 +366,23 @@
 <p>В классической синхронной веб-архитектуре отследить путь пользовательского запроса относительно просто: запрос поступил в API Gateway, ушел в <code>net/http</code> хэндлер, сделал пару RPC-вызовов по gRPC и вернул ответ. Если что-то сломалось, разработчик открывает логгер, фильтрует записи по единому <code>request_id</code> и видит связный стек вызовов.</p>
 <p>Но в Event-Driven архитектурах (EDA) эта причинно-следственная связь грубо разрывается брокером сообщений. Отправитель (Publisher) формирует событие, отправляет его в брокер по принципу Fire-and-Forget и немедленно отвечает пользователю HTTP-статусом 202 Accepted. Консьюмер на другом конце мира может вычитать этот пакет через пару миллисекунд, а может через двое суток — если сообщение отлежалось в DLQ после сетевого шторма.</p>
 <p>Если пользователь нажал кнопку оформления заказа, а через 15 минут горутина консьюмера в глубинах биллингового сервиса упала с ошибкой, как понять, <strong>какой конкретно</strong> HTTP-запрос запустил эту цепочку катастрофических событий?</p>
-<p>Ответом служит <strong>Observability (Наблюдаемость)</strong>. В асинхронных системах на Go она опирается на три фундаментальных кита:<br />
-1. <strong>Distributed Tracing (Распределенная трассировка):</strong> Сквозной контекст через заголовки брокера.<br />
-2. <strong>Application Metrics (Метрики приложения):</strong> RED-паттерн и гистограммы Prometheus.<br />
-3. <strong>Structured Contextual Logging (Структурированное контекстное логирование):</strong> Сквозная привязка <code>log/slog</code> к идентификаторам трассировки.</p>
+<p>Ответом служит <strong>Observability (Наблюдаемость)</strong>. В асинхронных системах на Go она опирается на три фундаментальных кита:</p>
+<ol>
+<li><strong>Distributed Tracing (Распределенная трассировка):</strong> Сквозной контекст через заголовки брокера.</li>
+<li><strong>Application Metrics (Метрики приложения):</strong> RED-паттерн и гистограммы Prometheus.</li>
+<li><strong>Structured Contextual Logging (Структурированное контекстное логирование):</strong> Сквозная привязка <code>log/slog</code> к идентификаторам трассировки.</li>
+</ol>
 <hr />
 <h2 id="1-raspredelennaya-trassirovka-distributed-tracing">1. Распределенная трассировка (Distributed Tracing)</h2>
 <p>Единственный способ не потерять нить выполнения между изолированными процессами — передавать <strong>Trace Context</strong> через шину данных. Общепринятым мировым стандартом стал <strong>OpenTelemetry (OTel)</strong> и спецификация W3C Trace Context.</p>
 <h3 id="mekhanika-raboty-propagation">Механика работы (Propagation)</h3>
 <p>Тело сообщения (Payload — будь то JSON, Protobuf или Avro) предназначено для доменной логики. Смешивать транспортные метаданные с бизнес-полями — грубое нарушение принципа разделения ответственности (Separation of Concerns).</p>
-<p>Поэтому метаданные трассировки (<code>TraceID</code>, <code>SpanID</code>) всегда упаковываются в <strong>Заголовки (Headers)</strong> транспортного протокола:<br />
-- В <strong>RabbitMQ</strong> это таблица атрибутов <code>amqp.Table</code> внутри структуры публикации.<br />
-- В <strong>Apache Kafka</strong> это массив ключ-значение <code>Headers</code> внутри структуры <code>Record</code>.<br />
-- В <strong>NATS</strong> это стандартные заголовки <code>nats.Header</code>.</p>
+<p>Поэтому метаданные трассировки (<code>TraceID</code>, <code>SpanID</code>) всегда упаковываются в <strong>Заголовки (Headers)</strong> транспортного протокола:</p>
+<ul>
+<li>В <strong>RabbitMQ</strong> это таблица атрибутов <code>amqp.Table</code> внутри структуры публикации.</li>
+<li>В <strong>Apache Kafka</strong> это массив ключ-значение <code>Headers</code> внутри структуры <code>Record</code>.</li>
+<li>В <strong>NATS</strong> это стандартные заголовки <code>nats.Header</code>.</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">

@@ -303,10 +303,12 @@
 <p>В конце 1970-х годов, на заре зарождения ARPANET, таблица соответствия человекочитаемых имен компьютеров и их сетевых адресов хранилась в одном-единственном текстовом файле <code>HOSTS.TXT</code>. Его вручную редактировала Элизабет Фейнлер в Стэнфордском исследовательском институте (SRI). Каждый системный администратор в мире раз в неделю скачивал свежую версию файла по протоколу FTP. </p>
 <p>Когда число узлов перевалило за несколько тысяч, централизованная схема рухнула под собственной тяжестью. В 1983 году Пол Мокапетрис предложил революционную архитектуру — <strong>DNS</strong> (<em>Domain Name System</em>, RFC 882/883, позже RFC 1034/1035). Он создал первую в истории человечества глобально распределенную, иерархическую, отказоустойчивую базу данных без единой точки отказа.</p>
 <p>Для бэкенд-разработчика DNS — это не просто абстрактное «преобразование имени в IP-адрес», а самый первый, обязательный и критичный этап абсолютно любого сетевого взаимодействия. <br />
-В Go каждый высокоуровневый вызов:<br />
-- <code>net.Dial("tcp", "api.example.com:443")</code>,<br />
-- <code>http.Client.Do()</code> (или <code>http.Get()</code>),<br />
-- <code>grpc.Dial()</code> (или <code>grpc.NewClient()</code>)</p>
+В Go каждый высокоуровневый вызов:</p>
+<ul>
+<li><code>net.Dial("tcp", "api.example.com:443")</code>,</li>
+<li><code>http.Client.Do()</code> (или <code>http.Get()</code>),</li>
+<li><code>grpc.Dial()</code> (или <code>grpc.NewClient()</code>)</li>
+</ul>
 <p>неявно запускает процесс разрешения доменного имени (<em>DNS Resolution</em>). </p>
 <p>Если DNS-инфраструктура дает сбой или отвечает с задержкой в 500 мс, ваше приложение не просто «не находит хост» — оно блокирует сетевые горутины, исчерпывает пулы TCP-соединений, вызывает каскадные таймауты и способно уложить весь production-кластер в считанные секунды. </p>
 <hr />
@@ -353,14 +355,16 @@ flowchart TD
 <p>Когда Go-приложение обращается к домену <code>api.example.com</code>, в процесс включаются три ключевых участника:</p>
 <ol>
 <li><strong>Stub Resolver (Локальный резолвер):</strong><br />
-   Минималистичный клиент разрешения имен, находящийся на вашей локальной машине. В традиционных Unix-системах это функция <code>getaddrinfo()</code> из библиотеки <code>glibc</code>, а в современных Go-приложениях — встроенный чистый резолвер <strong><code>netgo</code></strong>. Его задача проста: прочитать локальный конфиг <code>/etc/resolv.conf</code> и передать запрос по сети рекурсивному серверу.</li>
+    Минималистичный клиент разрешения имен, находящийся на вашей локальной машине. В традиционных Unix-системах это функция <code>getaddrinfo()</code> из библиотеки <code>glibc</code>, а в современных Go-приложениях — встроенный чистый резолвер <strong><code>netgo</code></strong>. Его задача проста: прочитать локальный конфиг <code>/etc/resolv.conf</code> и передать запрос по сети рекурсивному серверу.</li>
 <li><strong>Recursive Resolver (Рекурсивный резолвер):</strong><br />
-   «Рабочая лошадка» интернета. Это сервер вашего интернет-провайдера, облачного провайдера (AWS Route 53, CoreDNS в Kubernetes) или публичные резолверы вроде Cloudflare (<strong><code>1.1.1.1</code></strong>) и Google (<strong><code>8.8.8.8</code></strong>). Рекурсивный резолвер берет на себя всю тяжелую работу по итеративному обходу цепочки серверов от корня до конца:<br />
-   - Спрашивает у Root-сервера: «Где найти <code>.com</code>?» — Получает адрес TLD-сервера.<br />
-   - Спрашивает у TLD-сервера: «Где найти <code>example.com</code>?» — Получает адреса авторитетных NS-серверов.<br />
-   - Спрашивает у авторитетного сервера: «Какой IP у <code>api.example.com</code>?» — Получает финальный адрес.</li>
+    «Рабочая лошадка» интернета. Это сервер вашего интернет-провайдера, облачного провайдера (AWS Route 53, CoreDNS в Kubernetes) или публичные резолверы вроде Cloudflare (<strong><code>1.1.1.1</code></strong>) и Google (<strong><code>8.8.8.8</code></strong>). Рекурсивный резолвер берет на себя всю тяжелую работу по итеративному обходу цепочки серверов от корня до конца:<ul>
+<li>Спрашивает у Root-сервера: «Где найти <code>.com</code>?» — Получает адрес TLD-сервера.</li>
+<li>Спрашивает у TLD-сервера: «Где найти <code>example.com</code>?» — Получает адреса авторитетных NS-серверов.</li>
+<li>Спрашивает у авторитетного сервера: «Какой IP у <code>api.example.com</code>?» — Получает финальный адрес.</li>
+</ul>
+</li>
 <li><strong>Authoritative Name Server (Авторитетный сервер):</strong><br />
-   Сервер, являющийся первичным источником истины для конкретной зоны. Именно на нем администраторы домена прописывают финальные ресурсные записи: <strong><code>A</code></strong> (IPv4), <strong><code>AAAA</code></strong> (IPv6), <strong><code>CNAME</code></strong> (псевдоним), <code>MX</code> (почта) или <code>TXT</code>.</li>
+    Сервер, являющийся первичным источником истины для конкретной зоны. Именно на нем администраторы домена прописывают финальные ресурсные записи: <strong><code>A</code></strong> (IPv4), <strong><code>AAAA</code></strong> (IPv6), <strong><code>CNAME</code></strong> (псевдоним), <code>MX</code> (почта) или <code>TXT</code>.</li>
 </ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -418,11 +422,11 @@ sequenceDiagram
 <p>Однако за кулисами сетевого стека Go реализован умный fallback-механизм:</p>
 <ol>
 <li><strong>Основной транспорт (UDP 53):</strong><br />
-   Запрос улетает мгновенно, без предварительного установления соединения (0 RTT).</li>
+    Запрос улетает мгновенно, без предварительного установления соединения (0 RTT).</li>
 <li><strong>Флаг Truncation (<code>TC</code>):</strong><br />
-   Если объем ответа сервера превышает размер, допустимый для UDP — <strong><code>512 байт</code></strong> по RFC 1035 без EDNS0 (Go же сам отправляет EDNS0-опцию с размером буфера <strong>1232 байта</strong>, поэтому усечение у Go наступает при ответе больше 1232 байт) (например, домен возвращает десятки IP-адресов или тяжелые криптографические подписи <strong><code>DNSSEC</code></strong>), сервер обрезает ответ и взводит в заголовке битовый флаг <strong><code>TC=1</code></strong> (<strong><code>Truncation</code></strong> — отсечение).</li>
+    Если объем ответа сервера превышает размер, допустимый для UDP — <strong><code>512 байт</code></strong> по RFC 1035 без EDNS0 (Go же сам отправляет EDNS0-опцию с размером буфера <strong>1232 байта</strong>, поэтому усечение у Go наступает при ответе больше 1232 байт) (например, домен возвращает десятки IP-адресов или тяжелые криптографические подписи <strong><code>DNSSEC</code></strong>), сервер обрезает ответ и взводит в заголовке битовый флаг <strong><code>TC=1</code></strong> (<strong><code>Truncation</code></strong> — отсечение).</li>
 <li><strong>Резервный транспорт (TCP 53):</strong><br />
-   Увидев флаг <code>TC</code>, резолвер Go обязан немедленно повторить запрос, установив полноценное соединение через <strong>TCP порт 53</strong>. Это гарантирует надежную передачу объемных данных любого размера, но добавляет как минимум два дополнительных оборота сети (<strong>Round-Trip Time</strong>, <strong><code>RTT</code></strong>) на Three-Way Handshake. Кроме того, TCP 53 исторически используется серверами для полной передачи зон (<strong><code>AXFR</code></strong>).</li>
+    Увидев флаг <code>TC</code>, резолвер Go обязан немедленно повторить запрос, установив полноценное соединение через <strong>TCP порт 53</strong>. Это гарантирует надежную передачу объемных данных любого размера, но добавляет как минимум два дополнительных оборота сети (<strong>Round-Trip Time</strong>, <strong><code>RTT</code></strong>) на Three-Way Handshake. Кроме того, TCP 53 исторически используется серверами для полной передачи зон (<strong><code>AXFR</code></strong>).</li>
 </ol>
 <h3 id="anatomiya-binarnogo-dns-paketa">Анатомия бинарного DNS-пакета</h3>
 <p>DNS-сообщение имеет строгую 12-байтную бинарную структуру заголовка, за которой следуют четыре секции:</p>
@@ -453,19 +457,25 @@ sequenceDiagram
 </code></pre>
 </div>
 
-<p>Флаги заголовка:<br />
-- <strong><code>QR</code> (Query/Response, 1 бит):</strong> <code>0</code> — запрос, <code>1</code> — ответ.<br />
-- <strong><code>opcode</code> (4 бита):</strong> Тип запроса (обычно <code>0</code> — стандартный QUERY).<br />
-- <strong><code>AA</code> (Authoritative Answer, 1 бит):</strong> <code>1</code> означает, что ответ пришел от сервера, владеющего зоной.<br />
-- <strong><code>TC</code> (Truncation, 1 бит):</strong> <code>1</code> означает, что сообщение обрезано из-за превышения лимита размера.<br />
-- <strong><code>RD</code> (Recursion Desired, 1 бит):</strong> Клиент просит сервер выполнить рекурсивный поиск.<br />
-- <strong><code>RA</code> (Recursion Available, 1 бит):</strong> Сервер подтверждает, что поддерживает рекурсию.</p>
-<p>Секции данных:<br />
-- <strong><code>Question</code>:</strong> Содержит запрашиваемое имя, тип записи (<code>A</code> — IPv4, <code>AAAA</code> — IPv6) и класс (<code>IN</code> — Internet).<br />
-- <strong><code>Answer/Authority/Additional</code>:</strong> <br />
-  - <strong><code>Answer</code>:</strong> Непосредственно найденные IP-адреса с их индивидуальным временем жизни (<strong>TTL</strong>).<br />
-  - <strong><code>Authority</code>:</strong> Список авторитетных NS-серверов зоны.<br />
-  - <strong><code>Additional</code>:</strong> Вспомогательные данные (например, IP-адреса самих NS-серверов или служебные записи расширения EDNS0).</p>
+<p>Флаги заголовка:</p>
+<ul>
+<li><strong><code>QR</code> (Query/Response, 1 бит):</strong> <code>0</code> — запрос, <code>1</code> — ответ.</li>
+<li><strong><code>opcode</code> (4 бита):</strong> Тип запроса (обычно <code>0</code> — стандартный QUERY).</li>
+<li><strong><code>AA</code> (Authoritative Answer, 1 бит):</strong> <code>1</code> означает, что ответ пришел от сервера, владеющего зоной.</li>
+<li><strong><code>TC</code> (Truncation, 1 бит):</strong> <code>1</code> означает, что сообщение обрезано из-за превышения лимита размера.</li>
+<li><strong><code>RD</code> (Recursion Desired, 1 бит):</strong> Клиент просит сервер выполнить рекурсивный поиск.</li>
+<li><strong><code>RA</code> (Recursion Available, 1 бит):</strong> Сервер подтверждает, что поддерживает рекурсию.</li>
+</ul>
+<p>Секции данных:</p>
+<ul>
+<li><strong><code>Question</code>:</strong> Содержит запрашиваемое имя, тип записи (<code>A</code> — IPv4, <code>AAAA</code> — IPv6) и класс (<code>IN</code> — Internet).</li>
+<li><strong><code>Answer/Authority/Additional</code>:</strong> <ul>
+<li><strong><code>Answer</code>:</strong> Непосредственно найденные IP-адреса с их индивидуальным временем жизни (<strong>TTL</strong>).</li>
+<li><strong><code>Authority</code>:</strong> Список авторитетных NS-серверов зоны.</li>
+<li><strong><code>Additional</code>:</strong> Вспомогательные данные (например, IP-адреса самих NS-серверов или служебные записи расширения EDNS0).</li>
+</ul>
+</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -507,19 +517,21 @@ flowchart TD
 <p>Внутренняя реализация чистого резолвера <strong><code>netgo</code></strong> (исходные файлы <code>src/net/dnsclient_unix.go</code> и <code>src/net/lookup_unix.go</code>) представляет собой полноценный асинхронный DNS-клиент:</p>
 <ol>
 <li><strong>Парсинг системной конфигурации:</strong><br />
-   При первом DNS-запросе Go читает и кэширует конфигурацию хоста:<br />
-   - В Linux — парсит файл <strong><code>resolv.conf</code></strong> (<code>/etc/resolv.conf</code>).<br />
-   - На остальных Unix-подобных системах, включая macOS при использовании чистого резолвера, — тоже <code>resolv.conf</code>.<br />
-   - В Windows — получает адреса DNS-серверов у системы через вызов <strong><code>GetAdaptersAddresses</code></strong>.<br />
-   Из конфигурации извлекаются директивы: адреса DNS-серверов (<code>nameserver</code>), локальный домен (<code>domain</code>), список поисковых суффиксов (<strong><code>search</code></strong>) и параметр порогового числа точек (<strong><code>ndots</code></strong>).</li>
+    При первом DNS-запросе Go читает и кэширует конфигурацию хоста:<ul>
+<li>В Linux — парсит файл <strong><code>resolv.conf</code></strong> (<code>/etc/resolv.conf</code>).</li>
+<li>На остальных Unix-подобных системах, включая macOS при использовании чистого резолвера, — тоже <code>resolv.conf</code>.</li>
+<li>В Windows — получает адреса DNS-серверов у системы через вызов <strong><code>GetAdaptersAddresses</code></strong>.<br />
+    Из конфигурации извлекаются директивы: адреса DNS-серверов (<code>nameserver</code>), локальный домен (<code>domain</code>), список поисковых суффиксов (<strong><code>search</code></strong>) и параметр порогового числа точек (<strong><code>ndots</code></strong>).</li>
+</ul>
+</li>
 <li><strong>Обработка директив <code>search</code> и <code>ndots</code>:</strong><br />
-   Если запрашиваемое имя содержит точек меньше, чем указано в <code>ndots</code>, Go начинает последовательно дописывать к имени суффиксы из списка <code>search</code>.</li>
+    Если запрашиваемое имя содержит точек меньше, чем указано в <code>ndots</code>, Go начинает последовательно дописывать к имени суффиксы из списка <code>search</code>.</li>
 <li><strong>Дедупликация одновременных запросов (без кэша ответов):</strong><br />
-   Кэша DNS-ответов в стандартном резолвере Go нет. Для параллельных запросов к одному имени используется <code>singleflight.Group</code> (внутренний пакет <code>internal/singleflight</code>, реализованный на <code>map</code> и <code>sync.Mutex</code>): одинаковые запросы «в полёте» объединяются. Это предотвращает повторные отправки одинаковых сетевых пакетов, но следующий запрос после завершения предыдущего снова пойдёт в сеть.</li>
+    Кэша DNS-ответов в стандартном резолвере Go нет. Для параллельных запросов к одному имени используется <code>singleflight.Group</code> (внутренний пакет <code>internal/singleflight</code>, реализованный на <code>map</code> и <code>sync.Mutex</code>): одинаковые запросы «в полёте» объединяются. Это предотвращает повторные отправки одинаковых сетевых пакетов, но следующий запрос после завершения предыдущего снова пойдёт в сеть.</li>
 <li><strong>Асинхронное исполнение через Netpoller:</strong><br />
-   Вызовы <code>(*net.Dialer).DialContext</code> и <code>resolver.LookupIP</code> используют неблокирующие сокеты. Если DNS-сервер задерживает ответ, горутина паркуется в <code>netpoll</code>, не сжигая процессорные циклы.</li>
+    Вызовы <code>(*net.Dialer).DialContext</code> и <code>resolver.LookupIP</code> используют неблокирующие сокеты. Если DNS-сервер задерживает ответ, горутина паркуется в <code>netpoll</code>, не сжигая процессорные циклы.</li>
 <li><strong>Fallback на системный cgo-резолвер:</strong><br />
-   Если в среде выполнения выставлена переменная окружения <strong><code>GODEBUG=netdns=cgo</code></strong>, Go принудительно отключает <code>netgo</code> и передает все DNS-запросы функции <code>getaddrinfo</code> из библиотеки <strong><code>glibc</code></strong>.</li>
+    Если в среде выполнения выставлена переменная окружения <strong><code>GODEBUG=netdns=cgo</code></strong>, Go принудительно отключает <code>netgo</code> и передает все DNS-запросы функции <code>getaddrinfo</code> из библиотеки <strong><code>glibc</code></strong>.</li>
 </ol>
 <hr />
 
@@ -548,20 +560,27 @@ options ndots:5
 
 <p>Параметр <strong><code>ndots: 5</code></strong> указывает резолверу: <em>«Если в запрашиваемом домене меньше 5 точек, считай его относительным именем и сначала последовательно опроси все поисковые домены из списка <code>search</code>!»</em></p>
 <p>Представьте: ваш Go-сервис запускается в кластере, и вы обращаетесь к внутреннему сервису по имени <code>db-master</code> или к внешнему платежному шлюзу <code>api.stripe.com</code> (в имени всего 2 точки, что строго меньше 5).<br />
-Резолвер Go начинает судорожно посылать запросы в CoreDNS кластера:<br />
-1. <code>api.stripe.com.default.svc.cluster.local</code> → NXDOMAIN (ошибка)<br />
-2. <code>api.stripe.com.svc.cluster.local</code> → NXDOMAIN (ошибка)<br />
-3. <code>api.stripe.com.cluster.local</code> → NXDOMAIN (ошибка)<br />
-4. И только четвертым запросом улетает реальный <code>api.stripe.com.</code>!</p>
+Резолвер Go начинает судорожно посылать запросы в CoreDNS кластера:</p>
+<ol>
+<li><code>api.stripe.com.default.svc.cluster.local</code> → NXDOMAIN (ошибка)</li>
+<li><code>api.stripe.com.svc.cluster.local</code> → NXDOMAIN (ошибка)</li>
+<li><code>api.stripe.com.cluster.local</code> → NXDOMAIN (ошибка)</li>
+<li>И только четвертым запросом улетает реальный <code>api.stripe.com.</code>!</li>
+</ol>
 <p>Результат: CoreDNS захлебывается миллионами мусорных запросов, а каждый внешний HTTP-вызов получает штраф в 10–50 мс задержки!</p>
-<p><strong>Как решить проблему:</strong><br />
-1. Всегда используйте абсолютное доменное имя (<strong><code>FQDN</code></strong> — <em>Fully Qualified Domain Name</em>) с точкой на конце в коде: <code>api.stripe.com.</code>. Завершающая точка прямо сообщает резолверу, что имя абсолютное, и <code>search</code>-домены подставляться не будут.<br />
-2. Или явно настройте меньшее значение <code>ndots</code> (обычно <code>1</code> или <code>2</code>; <code>ndots: 0</code> ломает разрешение коротких имён сервисов в Kubernetes) в спецификации пода Kubernetes (<code>PodSpec</code>):<br />
-<code>yaml
-   dnsConfig:
-     options:
-       - name: ndots
-         value: "2"</code></p>
+<p><strong>Как решить проблему:</strong></p>
+<ol>
+<li>Всегда используйте абсолютное доменное имя (<strong><code>FQDN</code></strong> — <em>Fully Qualified Domain Name</em>) с точкой на конце в коде: <code>api.stripe.com.</code>. Завершающая точка прямо сообщает резолверу, что имя абсолютное, и <code>search</code>-домены подставляться не будут.</li>
+<li>Или явно настройте меньшее значение <code>ndots</code> (обычно <code>1</code> или <code>2</code>; <code>ndots: 0</code> ломает разрешение коротких имён сервисов в Kubernetes) в спецификации пода Kubernetes (<code>PodSpec</code>):<br />
+   ```yaml<br />
+   dnsConfig:<br />
+     options:<ul>
+<li>name: ndots<br />
+     value: "2"<br />
+   ```</li>
+</ul>
+</li>
+</ol>
   </div>
 </aside>
 
@@ -588,13 +607,13 @@ options ndots:5
 <p>С точки зрения архитектуры процессора и операционной системы, DNS-резолвинг — это операция с колоссальной стоимостью:</p>
 <ol>
 <li><strong>Context Switch &amp; Syscall:</strong><br />
-   Вызов <code>connect()</code> для UDP-сокета вызывает системный вызов. Если кэш miss, происходит сетевой I/O, который может заблокировать тред ОС на время RTT (10-100ms). В случае с <code>cgo</code>-резолвером (<code>GODEBUG=netdns=cgo</code>), каждый вызов блокирует поток операционной системы. При 100 одновременных запросах Go вынужден порождать 100 системных тредов ОС (<strong><code>M</code></strong>), вызывая переключение контекста ядра и потребляя виртуальную память под стек потоков. Чистый <code>netgo</code> лишен этого недостатка.</li>
+    Вызов <code>connect()</code> для UDP-сокета вызывает системный вызов. Если кэш miss, происходит сетевой I/O, который может заблокировать тред ОС на время RTT (10-100ms). В случае с <code>cgo</code>-резолвером (<code>GODEBUG=netdns=cgo</code>), каждый вызов блокирует поток операционной системы. При 100 одновременных запросах Go вынужден порождать 100 системных тредов ОС (<strong><code>M</code></strong>), вызывая переключение контекста ядра и потребляя виртуальную память под стек потоков. Чистый <code>netgo</code> лишен этого недостатка.</li>
 <li><strong>Загрязнение кэшей CPU (Cache Pollution):</strong><br />
-   Парсинг DNS-пакетов, чтение битовых полей, декодирование сжатых DNS-имен (<em>Name Compression pointers</em>) и сравнение строк создают интенсивный трафик в кэшах данных L1/L2 процессора. При высокой частоте холостых резолвов возникает явление <em>Cache Thrashing</em>, вымывающее полезные данные вашего бизнес-кода из кэша CPU.</li>
+    Парсинг DNS-пакетов, чтение битовых полей, декодирование сжатых DNS-имен (<em>Name Compression pointers</em>) и сравнение строк создают интенсивный трафик в кэшах данных L1/L2 процессора. При высокой частоте холостых резолвов возникает явление <em>Cache Thrashing</em>, вымывающее полезные данные вашего бизнес-кода из кэша CPU.</li>
 <li><strong>Escape Analysis и нагрузка на Garbage Collector:</strong><br />
-   Сетевые структуры ответов <code>[]net.IP</code> и буферы сокетов неизбежно убегают в кучу (<strong>Escape Analysis</strong>), генерируя мусор и увеличивая частоту циклов сборщика мусора Go под нагрузкой.</li>
+    Сетевые структуры ответов <code>[]net.IP</code> и буферы сокетов неизбежно убегают в кучу (<strong>Escape Analysis</strong>), генерируя мусор и увеличивая частоту циклов сборщика мусора Go под нагрузкой.</li>
 <li><strong>Профилирование DNS-задержек:</strong><br />
-   Анализировать влияние DNS на производительность Go-приложения можно с помощью встроенного профилировщика <strong><code>pprof</code></strong> (анализ блокировок в <code>net/http</code> и netpoller) и трассировки HTTP-запросов через пакет <code>net/http/httptrace</code>.</li>
+    Анализировать влияние DNS на производительность Go-приложения можно с помощью встроенного профилировщика <strong><code>pprof</code></strong> (анализ блокировок в <code>net/http</code> и netpoller) и трассировки HTTP-запросов через пакет <code>net/http/httptrace</code>.</li>
 </ol>
 
 <aside class="callout callout-interview" aria-label="Собеседование">

@@ -420,15 +420,19 @@ flowchart TD
 <h2 id="3-chtenie-load-zhizn-bez-blokirovok">3. Чтение (Load): Жизнь без блокировок</h2>
 <p>Посмотрим, что происходит при вызове <code>m.Load("key")</code>:</p>
 <ol>
-<li><strong>Fast Path:</strong> Рантайм атомарно читает указатель на <code>read</code> словарь и ищет там ключ. Если ключ найден:<br />
-   * Он проверяет значение <code>entry.p</code>. Если оно не <code>nil</code> и не <code>expunged</code>, возвращает значение и <code>true</code>.<br />
-   * <strong>Мьютекс не трогался, кэш-линии не инвалидировались. Скорость максимальная (единицы наносекунд).</strong></li>
-<li><strong>Slow Path:</strong> Если ключа в <code>read</code> нет, но флаг <code>read.amended == true</code> (это означает, что в <code>dirty</code> есть ключи, которых еще нет в <code>read</code>):<br />
-   * Рантайм захватывает мьютекс <code>mu</code>.<br />
-   * Делает <strong>double-check</strong> (проверяет <code>read</code> еще раз — вдруг другая горутина успела скопировать <code>dirty</code> в <code>read</code>, пока мы ждали мьютекс).<br />
-   * Если ключ всё еще не в <code>read</code>, ищет его в <code>dirty</code>.<br />
-   * Вызывает <code>missLocked()</code>: инкрементирует счетчик <code>misses</code> (промахов).<br />
-   * Отпускает мьютекс и возвращает результат.</li>
+<li><strong>Fast Path:</strong> Рантайм атомарно читает указатель на <code>read</code> словарь и ищет там ключ. Если ключ найден:<ul>
+<li>Он проверяет значение <code>entry.p</code>. Если оно не <code>nil</code> и не <code>expunged</code>, возвращает значение и <code>true</code>.</li>
+<li><strong>Мьютекс не трогался, кэш-линии не инвалидировались. Скорость максимальная (единицы наносекунд).</strong></li>
+</ul>
+</li>
+<li><strong>Slow Path:</strong> Если ключа в <code>read</code> нет, но флаг <code>read.amended == true</code> (это означает, что в <code>dirty</code> есть ключи, которых еще нет в <code>read</code>):<ul>
+<li>Рантайм захватывает мьютекс <code>mu</code>.</li>
+<li>Делает <strong>double-check</strong> (проверяет <code>read</code> еще раз — вдруг другая горутина успела скопировать <code>dirty</code> в <code>read</code>, пока мы ждали мьютекс).</li>
+<li>Если ключ всё еще не в <code>read</code>, ищет его в <code>dirty</code>.</li>
+<li>Вызывает <code>missLocked()</code>: инкрементирует счетчик <code>misses</code> (промахов).</li>
+<li>Отпускает мьютекс и возвращает результат.</li>
+</ul>
+</li>
 </ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -483,20 +487,24 @@ flowchart TD
 <h2 id="4-zapis-store-atomarnost-ili-myuteks">4. Запись (Store): Атомарность или Мьютекс</h2>
 <p>Что происходит при вызове <code>m.Store("key", value)</code>:</p>
 <ol>
-<li><strong>Fast Path (Обновление существующего ключа):</strong> <br />
-   * Ищем ключ в <code>read</code>. <br />
-   * Если ключ найден, пытаемся атомарно обновить его через <code>entry.tryStore(&amp;value)</code>.<br />
-   * Метод <code>tryStore</code> использует атомарный <code>CAS</code> (Compare-And-Swap). Если в ячейке не стоит статус <code>expunged</code>, CAS проходит успешно. Значение обновлено! Никаких мьютексов.</li>
-<li><strong>Slow Path (Новый ключ или раскомментирование expunged):</strong><br />
-   * Если ключа в <code>read</code> нет (или он помечен как <code>expunged</code>):<br />
-   * Захватываем мьютекс <code>mu</code>.<br />
-   * Делаем double-check в <code>read</code>.<br />
-   * Если ключ в <code>read</code> есть, но был <code>expunged</code> (вычеркнут), сбрасываем <code>expunged</code> в <code>nil</code> и добавляем указатель на <code>entry</code> в <code>dirty</code>. Затем атомарно пишем новое значение.<br />
-   * Если ключ есть в <code>dirty</code>, просто обновляем значение в <code>entry</code>.<br />
-   * Если ключа нет нигде (новый ключ):<ul>
+<li><strong>Fast Path (Обновление существующего ключа):</strong> <ul>
+<li>Ищем ключ в <code>read</code>. </li>
+<li>Если ключ найден, пытаемся атомарно обновить его через <code>entry.tryStore(&amp;value)</code>.</li>
+<li>Метод <code>tryStore</code> использует атомарный <code>CAS</code> (Compare-And-Swap). Если в ячейке не стоит статус <code>expunged</code>, CAS проходит успешно. Значение обновлено! Никаких мьютексов.</li>
+</ul>
+</li>
+<li><strong>Slow Path (Новый ключ или раскомментирование expunged):</strong><ul>
+<li>Если ключа в <code>read</code> нет (или он помечен как <code>expunged</code>):</li>
+<li>Захватываем мьютекс <code>mu</code>.</li>
+<li>Делаем double-check в <code>read</code>.</li>
+<li>Если ключ в <code>read</code> есть, но был <code>expunged</code> (вычеркнут), сбрасываем <code>expunged</code> в <code>nil</code> и добавляем указатель на <code>entry</code> в <code>dirty</code>. Затем атомарно пишем новое значение.</li>
+<li>Если ключ есть в <code>dirty</code>, просто обновляем значение в <code>entry</code>.</li>
+<li>Если ключа нет нигде (новый ключ):<ul>
 <li>Если <code>read.amended == false</code>, помечаем <code>amended = true</code>.</li>
 <li>Если <code>dirty == nil</code>, вызываем <code>dirtyLocked()</code>: создаем новый <code>dirty</code> словарь и копируем туда неудаленные ключи из <code>read</code>.</li>
 <li>Создаем новый <code>entry</code> и добавляем его <strong>только в <code>dirty</code> словарь</strong>.</li>
+</ul>
+</li>
 <li>Отпускаем мьютекс.</li>
 </ul>
 </li>
@@ -533,10 +541,12 @@ flowchart TD
 <p>Самое сложное в <code>sync.Map</code> — это удаление (<code>Delete</code>).<br />
 Мы не можем просто удалить ключ из <code>read</code> мапы, потому что она предназначена только для безопасного конкурентного чтения. <br />
 Поэтому <code>sync.Map</code> использует <strong>Soft Delete (Мягкое удаление)</strong>. </p>
-<p>Указатель <code>entry.p</code> может находиться в трех состояниях:<br />
-1. <code>*Value</code> — Указывает на реальные данные в памяти.<br />
-2. <code>nil</code> — Ключ удален (Soft Delete). Запись еще живет в <code>read</code>, но считается пустой.<br />
-3. <code>expunged</code> (вычеркнут) — Специальный глобальный маркер-синглтон (<code>var expunged = new(any)</code>), означающий, что ключ физически отсутствует в <code>dirty</code>.</p>
+<p>Указатель <code>entry.p</code> может находиться в трех состояниях:</p>
+<ol>
+<li><code>*Value</code> — Указывает на реальные данные в памяти.</li>
+<li><code>nil</code> — Ключ удален (Soft Delete). Запись еще живет в <code>read</code>, но считается пустой.</li>
+<li><code>expunged</code> (вычеркнут) — Специальный глобальный маркер-синглтон (<code>var expunged = new(any)</code>), означающий, что ключ физически отсутствует в <code>dirty</code>.</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -573,20 +583,26 @@ stateDiagram-v2
 <p><strong>Зачем нужен <code>expunged</code>?</strong><br />
 Вспомним фазу копирования (когда <code>dirty == nil</code> и мы создаем его из <code>read</code>). <br />
 Если бы мы копировали в <code>dirty</code> ключи со значением <code>nil</code>, <code>dirty</code> словарь рос бы бесконечно, храня мусорные ключи, которые когда-то давно удалили.<br />
-Поэтому при создании нового <code>dirty</code> рантайм:<br />
-1. Проходит по <code>read</code>.<br />
-2. Если видит <code>nil</code>, он атомарно меняет его через CAS на <code>expunged</code> и <strong>НЕ копирует</strong> этот ключ в <code>dirty</code>.<br />
-3. В <code>dirty</code> попадают только живые ключи. </p>
+Поэтому при создании нового <code>dirty</code> рантайм:</p>
+<ol>
+<li>Проходит по <code>read</code>.</li>
+<li>Если видит <code>nil</code>, он атомарно меняет его через CAS на <code>expunged</code> и <strong>НЕ копирует</strong> этот ключ в <code>dirty</code>.</li>
+<li>В <code>dirty</code> попадают только живые ключи. </li>
+</ol>
 <p>Теперь, если вы захотите снова записать данные по ключу, который помечен как <code>expunged</code>, рантайм поймет: <em>«Ага, этого ключа нет в <code>dirty</code>!»</em>. Он захватит мьютекс, сбросит <code>expunged</code> на <code>nil</code>, добавит ключ обратно в <code>dirty</code> и запишет новое значение.</p>
 <hr />
 <h2 id="mechanical-sympathy-kogda-ispolzovat-sync-map">Mechanical Sympathy: Когда использовать sync.Map?</h2>
 <p>Знание архитектуры дает нам четкие правила использования:</p>
-<p>✅ <strong>Идеальные сценарии (sync.Map уничтожает RWMutex):</strong><br />
-1. <strong>Append-only кэши (Read-Heavy):</strong> Ключи добавляются один раз (например, при инициализации или медленном прогреве), а затем читаются 99% времени. <code>dirty</code> быстро промовируется в <code>read</code>, и вся работа идет без блокировок.<br />
-2. <strong>Disjoint Keys (Разделенные ключи):</strong> Разные горутины работают с совершенно разными ключами (читают, пишут, удаляют). В этом случае <code>RWMutex</code> вызвал бы глобальную пробку, а <code>sync.Map</code> атомарно обновляет независимые <code>entry</code> в <code>read</code> словаре без взаимных блокировок.</p>
-<p>❌ <strong>Плохие сценарии (sync.Map медленнее обычного RWMutex):</strong><br />
-1. <strong>Write-Heavy в классической архитектуре (Частая запись НОВЫХ ключей):</strong> Если вы постоянно пишете новые (уникальные) ключи в классической <code>sync.Map</code> (Go 1.9–1.23), вы постоянно промахиваетесь мимо <code>read</code>. Вы постоянно захватываете мьютекс для <code>dirty</code>, а главное — рантайм регулярно выполняет $O(N)$ копирование из <code>read</code> в <code>dirty</code>. <em>(Примечание: в Go 1.24+ с внедрением Hash Trie Map это ограничение устранено — древовидная структура эффективно масштабирует параллельные записи).</em><br />
-2. <strong>Предсказуемый размер:</strong> <code>sync.Map</code> нельзя инициализировать с заранее заданным <code>capacity</code> (как <code>make(map, 1000)</code>). Она будет динамически расти через внутренние аллокации.</p>
+<p>✅ <strong>Идеальные сценарии (sync.Map уничтожает RWMutex):</strong></p>
+<ol>
+<li><strong>Append-only кэши (Read-Heavy):</strong> Ключи добавляются один раз (например, при инициализации или медленном прогреве), а затем читаются 99% времени. <code>dirty</code> быстро промовируется в <code>read</code>, и вся работа идет без блокировок.</li>
+<li><strong>Disjoint Keys (Разделенные ключи):</strong> Разные горутины работают с совершенно разными ключами (читают, пишут, удаляют). В этом случае <code>RWMutex</code> вызвал бы глобальную пробку, а <code>sync.Map</code> атомарно обновляет независимые <code>entry</code> в <code>read</code> словаре без взаимных блокировок.</li>
+</ol>
+<p>❌ <strong>Плохие сценарии (sync.Map медленнее обычного RWMutex):</strong></p>
+<ol>
+<li><strong>Write-Heavy в классической архитектуре (Частая запись НОВЫХ ключей):</strong> Если вы постоянно пишете новые (уникальные) ключи в классической <code>sync.Map</code> (Go 1.9–1.23), вы постоянно промахиваетесь мимо <code>read</code>. Вы постоянно захватываете мьютекс для <code>dirty</code>, а главное — рантайм регулярно выполняет $O(N)$ копирование из <code>read</code> в <code>dirty</code>. <em>(Примечание: в Go 1.24+ с внедрением Hash Trie Map это ограничение устранено — древовидная структура эффективно масштабирует параллельные записи).</em></li>
+<li><strong>Предсказуемый размер:</strong> <code>sync.Map</code> нельзя инициализировать с заранее заданным <code>capacity</code> (как <code>make(map, 1000)</code>). Она будет динамически расти через внутренние аллокации.</li>
+</ol>
 
 <aside class="callout callout-interview" aria-label="Собеседование. sync.Map vs map+Mutex">
   <header class="callout-header">

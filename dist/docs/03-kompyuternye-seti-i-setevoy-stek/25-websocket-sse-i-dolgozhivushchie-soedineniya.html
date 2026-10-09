@@ -687,12 +687,15 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 <hr />
 <h2 id="pod-kapotom-go-netpoller-i-upravlenie-pamyatyu">Под капотом: Go, netpoller и управление памятью</h2>
 <h3 id="1-netpoller-i-cpu-cache">1. Netpoller и CPU Cache</h3>
-<p>Долгоживущие соединения идеально ложатся на <code>netpoller</code> (epoll в Linux, kqueue в BSD/macOS). Файловые дескрипторы остаются в <code>epoll</code>-инстансе. Когда приходит пакет, ядро будит один из рабочих тредов Go (<code>runtime.netpoll</code>), который пробуждает соответствующую горутину.<br />
-*   <strong>Механический симпатизм:</strong> Если вы обрабатываете сообщения в одной горутине, вы пользуетесь <strong>CPU cache locality</strong>. Регистры и кэш L1/L2 не инвалидируются при переключении контекста. Это критично для high-throughput систем.</p>
+<p>Долгоживущие соединения идеально ложатся на <code>netpoller</code> (epoll в Linux, kqueue в BSD/macOS). Файловые дескрипторы остаются в <code>epoll</code>-инстансе. Когда приходит пакет, ядро будит один из рабочих тредов Go (<code>runtime.netpoll</code>), который пробуждает соответствующую горутину.</p>
+<ul>
+<li><strong>Механический симпатизм:</strong> Если вы обрабатываете сообщения в одной горутине, вы пользуетесь <strong>CPU cache locality</strong>. Регистры и кэш L1/L2 не инвалидируются при переключении контекста. Это критично для high-throughput систем.</li>
+</ul>
 <h3 id="2-gorutinnyy-stek-i-gc">2. Горутинный стек и GC</h3>
-<p>Каждая активная WebSocket/SSE-соединение держит живую горутину.<br />
-*   <strong>Стек:</strong> Изначально 2 КБ. Если данные уходят в кучу (escape analysis), стек перераспределяется. Долгоживущие горутины могут накапливать «хвосты» аллокаций, если не освобождать срезы и мапы.<br />
-*   <strong>GC Pressure:</strong> Частое создание <code>[]byte</code> для payload вызывает нагрузку на GC. Используйте <code>sync.Pool</code> для буферов, если протокол позволяет:<br />
+<p>Каждая активная WebSocket/SSE-соединение держит живую горутину.</p>
+<ul>
+<li><strong>Стек:</strong> Изначально 2 КБ. Если данные уходят в кучу (escape analysis), стек перераспределяется. Долгоживущие горутины могут накапливать «хвосты» аллокаций, если не освобождать срезы и мапы.</li>
+<li><strong>GC Pressure:</strong> Частое создание <code>[]byte</code> для payload вызывает нагрузку на GC. Используйте <code>sync.Pool</code> для буферов, если протокол позволяет:<br />
 <code>go
     var msgPool = sync.Pool{
         New: func() interface{} {
@@ -702,11 +705,14 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
     }
     // ...
     buf := msgPool.Get().(*[]byte)
-    defer msgPool.Put(buf)</code></p>
+    defer msgPool.Put(buf)</code></li>
+</ul>
 <h3 id="3-tcp-i-kernel-buffers">3. TCP и Kernel Buffers</h3>
-<p>Долгоживущее соединение упирается в ограничения ядра:<br />
-*   <code>net.core.rmem_max</code> / <code>wmem_max</code>: Буферы сокета. Если клиент читает медленнее, чем сервер пишет, <code>TCP Window</code> закрывается. Горутина блокируется на <code>Write</code>, ожидая освобождения пространства в ядре.<br />
-*   <strong>Backpressure:</strong> В Go это проявляется как блокировка <code>conn.Write</code>. Не используйте неблокирующие каналы без контроля глубины — это приведет к OOM.</p>
+<p>Долгоживущее соединение упирается в ограничения ядра:</p>
+<ul>
+<li><code>net.core.rmem_max</code> / <code>wmem_max</code>: Буферы сокета. Если клиент читает медленнее, чем сервер пишет, <code>TCP Window</code> закрывается. Горутина блокируется на <code>Write</code>, ожидая освобождения пространства в ядре.</li>
+<li><strong>Backpressure:</strong> В Go это проявляется как блокировка <code>conn.Write</code>. Не используйте неблокирующие каналы без контроля глубины — это приведет к OOM.</li>
+</ul>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
@@ -753,9 +759,11 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 </tbody>
 </table></div>
 <h3 id="gorizontalnoe-masshtabirovanie">Горизонтальное масштабирование</h3>
-<p>Одна инстанция Go не может доставить сообщение всем клиентам, если они распределены по разным нодам. Решение:<br />
-1.  <strong>Sticky Sessions:</strong> Load balancer отправляет все пакеты от клиента на один сервер.<br />
-2.  <strong>External Pub/Sub (Рекомендуется):</strong> Серверы подписываются на канал (Redis Pub/Sub, NATS, Kafka). При получении сообщения от клиента, сервер транслирует его в Pub/Sub, и все узлы рассылают данные своим клиентам.</p>
+<p>Одна инстанция Go не может доставить сообщение всем клиентам, если они распределены по разным нодам. Решение:</p>
+<ol>
+<li><strong>Sticky Sessions:</strong> Load balancer отправляет все пакеты от клиента на один сервер.</li>
+<li><strong>External Pub/Sub (Рекомендуется):</strong> Серверы подписываются на канал (Redis Pub/Sub, NATS, Kafka). При получении сообщения от клиента, сервер транслирует его в Pub/Sub, и все узлы рассылают данные своим клиентам.</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -810,10 +818,12 @@ flowchart TD
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Как обработать ситуацию, когда клиент медленно читает данные, и очередь сообщений растет?<br />
-<strong>Ответ:</strong> <br />
-1. Использовать <code>conn.SetWriteDeadline</code> для таймаута отправки.<br />
-2. Внедрить backpressure: если канал событий переполнен, приостановить чтение от клиента или отбрасывать старые сообщения (drop-oldest).<br />
-3. В ядре: TCP flow control автоматически замедлит отправку, но буфер сокета заполнится. При достижении <code>rmem_max</code> соединение разорвется. Поэтому на уровне приложения нужен контроль глубины буфера.</p>
+<strong>Ответ:</strong> </p>
+<ol>
+<li>Использовать <code>conn.SetWriteDeadline</code> для таймаута отправки.</li>
+<li>Внедрить backpressure: если канал событий переполнен, приостановить чтение от клиента или отбрасывать старые сообщения (drop-oldest).</li>
+<li>В ядре: TCP flow control автоматически замедлит отправку, но буфер сокета заполнится. При достижении <code>rmem_max</code> соединение разорвется. Поэтому на уровне приложения нужен контроль глубины буфера.</li>
+</ol>
   </div>
 </aside>
 

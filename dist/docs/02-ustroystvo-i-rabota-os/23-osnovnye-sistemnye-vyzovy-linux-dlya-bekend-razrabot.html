@@ -416,11 +416,15 @@ flowchart TB
 
 
 <h3 id="futex-i-primitivy-sinkhronizatsii-v-rantayme-go">Futex и примитивы синхронизации в рантайме Go</h3>
-<p>Для синхронизации потоков ОС ядро Linux предоставляет системный вызов <code>futex</code> (Fast Userspace Mutex). В Go разделяются синхронизация горутин и системных потоков:<br />
-1. <strong>Синхронизация горутин (<code>sync.Mutex</code>):</strong> Работает полностью в пространстве пользователя.<br />
-   - <strong>Fast path:</strong> Атомарный <code>CAS</code> (<code>CMPXCHG</code>). Если мьютекс свободен, захват происходит за несколько наносекунд (0 системных вызовов).<br />
-   - <strong>Slow path:</strong> При конфликте горутина после кратковременного спин-цикла уходит в <code>runtime_SemacquireMutex</code>. Рантайм Go помещает горутину в очередь ожидания семафора и переводит в <code>_Gwaiting</code> (<code>gopark</code>). <strong>Системный вызов futex не вызывается</strong> — системный тред <code>M</code> не блокируется в ядре, а сразу берёт на исполнение другую готовую горутину!<br />
-2. <strong>Синхронизация тредов ядра (<code>M</code>):</strong> Если у треда <code>M</code> нет готовых горутин или рантайм захватывает низкоуровневые внутренние локи (<code>runtime.mutex</code>, <code>notesleep</code>), рантайм Go обращается к <code>futex(FUTEX_WAIT)</code> и <code>futex(FUTEX_WAKE)</code> для парковки и пробуждения самого треда ОС.</p>
+<p>Для синхронизации потоков ОС ядро Linux предоставляет системный вызов <code>futex</code> (Fast Userspace Mutex). В Go разделяются синхронизация горутин и системных потоков:</p>
+<ol>
+<li><strong>Синхронизация горутин (<code>sync.Mutex</code>):</strong> Работает полностью в пространстве пользователя.<ul>
+<li><strong>Fast path:</strong> Атомарный <code>CAS</code> (<code>CMPXCHG</code>). Если мьютекс свободен, захват происходит за несколько наносекунд (0 системных вызовов).</li>
+<li><strong>Slow path:</strong> При конфликте горутина после кратковременного спин-цикла уходит в <code>runtime_SemacquireMutex</code>. Рантайм Go помещает горутину в очередь ожидания семафора и переводит в <code>_Gwaiting</code> (<code>gopark</code>). <strong>Системный вызов futex не вызывается</strong> — системный тред <code>M</code> не блокируется в ядре, а сразу берёт на исполнение другую готовую горутину!</li>
+</ul>
+</li>
+<li><strong>Синхронизация тредов ядра (<code>M</code>):</strong> Если у треда <code>M</code> нет готовых горутин или рантайм захватывает низкоуровневые внутренние локи (<code>runtime.mutex</code>, <code>notesleep</code>), рантайм Go обращается к <code>futex(FUTEX_WAIT)</code> и <code>futex(FUTEX_WAKE)</code> для парковки и пробуждения самого треда ОС.</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -454,10 +458,12 @@ flowchart TD
 
 
 <h3 id="epyul-epoll-i-setevoy-stek">Эпюл (epoll) и сетевой стек</h3>
-<p>Go не блокирует системные потоки на операциях чтения/записи. При создании слушателя или подключения Go вызывает:<br />
-1. <code>epoll_create1(EPOLL_CLOEXEC)</code> — создаёт экземпляр epoll.<br />
-2. <code>epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &amp;event)</code> — регистрирует сокет с флагом <code>EPOLLET</code> (edge-triggered) и <code>EPOLLIN</code>/<code>EPOLLOUT</code>.<br />
-3. <code>epoll_wait(epfd, events, maxevents, timeout)</code> — блокируется в ядре, пока хотя бы один сокет не станет готовым, или не истечёт таймаут.</p>
+<p>Go не блокирует системные потоки на операциях чтения/записи. При создании слушателя или подключения Go вызывает:</p>
+<ol>
+<li><code>epoll_create1(EPOLL_CLOEXEC)</code> — создаёт экземпляр epoll.</li>
+<li><code>epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &amp;event)</code> — регистрирует сокет с флагом <code>EPOLLET</code> (edge-triggered) и <code>EPOLLIN</code>/<code>EPOLLOUT</code>.</li>
+<li><code>epoll_wait(epfd, events, maxevents, timeout)</code> — блокируется в ядре, пока хотя бы один сокет не станет готовым, или не истечёт таймаут.</li>
+</ol>
 <p>Когда событие наступает, ядро возвращает управление горутине (через <code>netpoller</code>), а не треду ОС. Подробности механизма разобраны в <a href="38-kak-netpoller-go-ispolzuet-epoll-i-kqueue.html" class="wikilink">38. Как netpoller Go использует epoll и kqueue</a>.</p>
 <hr />
 <h2 id="proizvoditelnost-optimizatsiya-i-tipichnye-lovushki">Производительность, оптимизация и типичные ловушки</h2>
@@ -542,11 +548,13 @@ flowchart TD
 <p>Флаг <code>-c</code> даст сводку по количеству и времени каждого вызова. Если <code>epoll_wait</code> занимает &gt;80% времени, приложение работает в ожидании IO. Если <code>read</code>/<code>write</code> доминируют — возможна проблема с частыми маленькими записями или отсутствием буферизации.</p>
 <hr />
 <h2 id="itog">Итог</h2>
-<p>Системные вызовы — это не магия, а чётко определённые интерфейсы между вашим приложением и ресурсами железа. Понимание их внутренней работы позволяет:<br />
-1. <strong>Минимизировать контекстные переключения</strong> через буферизацию и неблокирующие модели.<br />
-2. <strong>Использовать оптимизации ядра</strong> (<code>mmap</code>, <code>sendfile</code>, vDSO) для снижения latency.<br />
-3. <strong>Правильно проектировать примитивы синхронизации</strong>, опираясь на <code>futex</code> и <code>epoll</code>.<br />
-4. <strong>Диагностировать узкие места</strong> с помощью <code>strace</code> и понимания того, где именно происходит переход в Ring 0.</p>
+<p>Системные вызовы — это не магия, а чётко определённые интерфейсы между вашим приложением и ресурсами железа. Понимание их внутренней работы позволяет:</p>
+<ol>
+<li><strong>Минимизировать контекстные переключения</strong> через буферизацию и неблокирующие модели.</li>
+<li><strong>Использовать оптимизации ядра</strong> (<code>mmap</code>, <code>sendfile</code>, vDSO) для снижения latency.</li>
+<li><strong>Правильно проектировать примитивы синхронизации</strong>, опираясь на <code>futex</code> и <code>epoll</code>.</li>
+<li><strong>Диагностировать узкие места</strong> с помощью <code>strace</code> и понимания того, где именно происходит переход в Ring 0.</li>
+</ol>
 <p>В следующих статьях мы перейдём от теории к практике анализа процессов. Разберём инструменты для чтения поведения приложения в реальном времени: <code>strace</code>, <code>ltrace</code> и анализ трейсов в <a href="24-strace-ltrace-i-chtenie-povedeniya-protsessa.html" class="wikilink">24. strace, ltrace и чтение поведения процесса</a>.</p>
           </div>
 

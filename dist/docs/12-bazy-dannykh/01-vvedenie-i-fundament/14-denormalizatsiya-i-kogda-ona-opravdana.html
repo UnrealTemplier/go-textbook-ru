@@ -618,10 +618,12 @@ func AddComment(ctx context.Context, db *sql.DB, postID int64, text string) erro
 <p>Обратите внимание: мы используем атомарный инкремент непосредственно в SQL (<code>comments_count = comments_count + 1</code>), избегая вычитки счетчика в память Go и полностью исключая состояние гонки без блокировок <code>SELECT ... FOR UPDATE</code>.</p>
 <h3 id="podkhod-2-asinkhronnoe-obnovlenie-eventual-consistency">Подход 2: Асинхронное обновление (Eventual Consistency)</h3>
 <p>Если необходимо обновить аватар пользователя в 5 миллионах его комментариев, попытка выполнить это синхронно в одной транзакции заблокирует сотни тысяч страниц памяти и неминуемо завершится таймаутом.</p>
-<p>В Highload-системах мы переходим к парадигме <strong>Eventual Consistency (Согласованность в конечном счете)</strong>:<br />
-1. В основной транзакции сервис обновляет запись в таблице <code>users</code>.<br />
-2. Событие <code>UserAvatarUpdated</code> сохраняется в локальную транзакционную очередь через паттерн Transactional Outbox (см. <a href="../10-praktika-i-arkhitektura/11-outbox-pattern.html" class="wikilink">11. Outbox pattern</a>) и отправляется в брокер сообщений (Kafka / RabbitMQ).<br />
-3. Фоновые воркеры на Go (Background Workers) вычитывают события и неспешно, небольшими пачками (батчами по 500–1000 строк) обновляют денормализованные поля <code>author_avatar_url</code> в таблице <code>comments</code>. Некоторое время старые комментарии будут содержать прежний аватар, но инфраструктура избежит пиковых блокировок и деградации пропускной способности.</p>
+<p>В Highload-системах мы переходим к парадигме <strong>Eventual Consistency (Согласованность в конечном счете)</strong>:</p>
+<ol>
+<li>В основной транзакции сервис обновляет запись в таблице <code>users</code>.</li>
+<li>Событие <code>UserAvatarUpdated</code> сохраняется в локальную транзакционную очередь через паттерн Transactional Outbox (см. <a href="../10-praktika-i-arkhitektura/11-outbox-pattern.html" class="wikilink">11. Outbox pattern</a>) и отправляется в брокер сообщений (Kafka / RabbitMQ).</li>
+<li>Фоновые воркеры на Go (Background Workers) вычитывают события и неспешно, небольшими пачками (батчами по 500–1000 строк) обновляют денормализованные поля <code>author_avatar_url</code> в таблице <code>comments</code>. Некоторое время старые комментарии будут содержать прежний аватар, но инфраструктура избежит пиковых блокировок и деградации пропускной способности.</li>
+</ol>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">

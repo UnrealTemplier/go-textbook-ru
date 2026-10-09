@@ -340,11 +340,13 @@ flowchart LR
 <hr />
 <h2 id="kak-rabotaet-cdn-ot-dns-do-edge-uzla">Как работает CDN: от DNS до Edge-узла</h2>
 <p>CDN — это географически распределённая сеть серверов, которые кэшируют контент и перенаправляют запросы пользователя к ближайшему физически узлу (PoP — Point of Presence).</p>
-<p>Профиль запроса в CDN выглядит так:<br />
-1. <strong>GeoDNS &amp; Anycast</strong>: DNS-ответ пользователя содержит IP ближайшего PoP. Anycast-маршрутизация позволяет одному IP-адресу транслироваться с множества серверов, а BGP-протокол автоматически направляет трафик к наименее загруженному узлу.<br />
-2. <strong>Edge Termination</strong>: На PoP происходит завершение TCP/TLS-соединения. Это снимает нагрузку с origin-сервера и ускоряет установление соединения за счёт кэширования TLS-сессий (Session Resumption).<br />
-3. <strong>Cache Lookup</strong>: По ключу (URL + заголовки <code>Vary</code>) проверяется RAM/Disk кэш Edge-узла.<br />
-4. <strong>Cache Miss</strong>: Если ответа нет, Edge делает запрос к origin. В зависимости от настроек: <code>cache-control: immutable</code>, <code>stale-while-revalidate</code> или <code>write-through</code>.</p>
+<p>Профиль запроса в CDN выглядит так:</p>
+<ol>
+<li><strong>GeoDNS &amp; Anycast</strong>: DNS-ответ пользователя содержит IP ближайшего PoP. Anycast-маршрутизация позволяет одному IP-адресу транслироваться с множества серверов, а BGP-протокол автоматически направляет трафик к наименее загруженному узлу.</li>
+<li><strong>Edge Termination</strong>: На PoP происходит завершение TCP/TLS-соединения. Это снимает нагрузку с origin-сервера и ускоряет установление соединения за счёт кэширования TLS-сессий (Session Resumption).</li>
+<li><strong>Cache Lookup</strong>: По ключу (URL + заголовки <code>Vary</code>) проверяется RAM/Disk кэш Edge-узла.</li>
+<li><strong>Cache Miss</strong>: Если ответа нет, Edge делает запрос к origin. В зависимости от настроек: <code>cache-control: immutable</code>, <code>stale-while-revalidate</code> или <code>write-through</code>.</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -425,9 +427,11 @@ flowchart TD
 </tbody>
 </table></div>
 <h3 id="validatsiya-i-uslovnye-zaprosy">Валидация и условные запросы</h3>
-<p>Когда CDN получает <code>Cache-Control: no-cache</code> или истёк <code>max-age</code>, он должен проверить актуальность у origin:<br />
-- <strong>ETag / If-None-Match</strong>: Токен (обычно <code>md5</code> или <code>xxhash</code> от тела/метаданных). Если совпадает → <code>304 Not Modified</code> без передачи тела ответа, что экономит трафик и процессорное время.<br />
-- <strong>Last-Modified / If-Modified-Since</strong>: Таймстамп в UTC. Менее точный, но экономит CPU на вычислении хеша.</p>
+<p>Когда CDN получает <code>Cache-Control: no-cache</code> или истёк <code>max-age</code>, он должен проверить актуальность у origin:</p>
+<ul>
+<li><strong>ETag / If-None-Match</strong>: Токен (обычно <code>md5</code> или <code>xxhash</code> от тела/метаданных). Если совпадает → <code>304 Not Modified</code> без передачи тела ответа, что экономит трафик и процессорное время.</li>
+<li><strong>Last-Modified / If-Modified-Since</strong>: Таймстамп в UTC. Менее точный, но экономит CPU на вычислении хеша.</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -477,21 +481,27 @@ sequenceDiagram
 <h3 id="go-vs-javascriptassemblyscript-na-edge">Go vs JavaScript/AssemblyScript на Edge</h3>
 <ul>
 <li><strong>JavaScript</strong>: Стандарт де-факто для edge-функций из-за быстрого cold-start и экосистемы. Но ограничен по памяти (~128-256 MB) и CPU.</li>
-<li><strong>Go на Edge</strong>: Стремительно набирает популярность благодаря:</li>
+<li><strong>Go на Edge</strong>: Стремительно набирает популярность благодаря:<ul>
 <li>Фиксированному, предсказуемому потреблению памяти (GC-паузы в Go есть, но короткие; escape-анализ выполняет компилятор на этапе сборки, а не «на лету»).</li>
 <li>Высокой плотности компиляции (WASM/WASI или нативные статические бинарники; обычный тулчейн Go не компилирует код в eBPF).</li>
 <li>Возможности выносить тяжёлую логику (валидация, маппинг, криптография) с origin на edge.</li>
 </ul>
-<p>В Go-архитектуре edge-функции часто используются для:<br />
-1. <strong>Auth &amp; Rate Limiting</strong>: Проверка JWT, валидация токенов, WAF-правила.<br />
-2. <strong>Request Routing</strong>: A/B тестирование, геолокация, канареечные релизы.<br />
-3. <strong>Response Transformation</strong>: SSI (Server-Side Includes), минификация, перепаковка JSON.</p>
+</li>
+</ul>
+<p>В Go-архитектуре edge-функции часто используются для:</p>
+<ol>
+<li><strong>Auth &amp; Rate Limiting</strong>: Проверка JWT, валидация токенов, WAF-правила.</li>
+<li><strong>Request Routing</strong>: A/B тестирование, геолокация, канареечные релизы.</li>
+<li><strong>Response Transformation</strong>: SSI (Server-Side Includes), минификация, перепаковка JSON.</li>
+</ol>
 <hr />
 <h2 id="pod-kapotom-mekhanika-keshirovaniya-i-mechanical-sympathy">Под капотом: механика кэширования и Mechanical Sympathy</h2>
 <h3 id="cpu-cache-i-kesh-klyuchi">CPU Cache и кэш-ключи</h3>
-<p>CDN использует хеш-таблицы для быстрого поиска записей. Ключом часто является <code>URL + Vary-поля</code>. <br />
-- Вычисление <code>xxhash</code> или <code>murmur3</code> в Go оптимизировано под SIMD-инструкции.<br />
-- На Edge-узлах кэш-ключи хранятся в RAM. При большом количестве <code>Vary</code>-полей возникает <strong>cache bloat</strong>: одна и та же логическая страница хранится в 10+ вариациях, что снижает hit-rate и увеличивает давление на память.</p>
+<p>CDN использует хеш-таблицы для быстрого поиска записей. Ключом часто является <code>URL + Vary-поля</code>. </p>
+<ul>
+<li>Вычисление <code>xxhash</code> или <code>murmur3</code> в Go оптимизировано под SIMD-инструкции.</li>
+<li>На Edge-узлах кэш-ключи хранятся в RAM. При большом количестве <code>Vary</code>-полей возникает <strong>cache bloat</strong>: одна и та же логическая страница хранится в 10+ вариациях, что снижает hit-rate и увеличивает давление на память.</li>
+</ul>
 <h3 id="tcptls-na-edge">TCP/TLS на Edge</h3>
 <ul>
 <li><strong>TCP Fast Open (TFO)</strong>: Позволяет передавать данные в первом пакете SYN, экономя RTT.</li>
@@ -499,9 +509,11 @@ sequenceDiagram
 <li><strong>HTTP/2 &amp; HTTP/3 Multiplexing</strong>: Edge-узлы поддерживают мультиплексирование. Ваш Go-клиент должен использовать <code>http2.Transport</code> и <code>http3</code> для эффективного использования одного соединения к origin.</li>
 </ul>
 <h3 id="memory-gc-na-origin-pri-cache-miss">Memory &amp; GC на Origin при Cache Miss</h3>
-<p>Когда происходит cache miss, origin получает пиковую нагрузку. Если вы не настроили <code>stale-while-revalidate</code>, все запросы падают на Go-приложение.<br />
-- <strong>Thundering Herd</strong>: Одновременный пропуск кэша сотнями горутин. Go-планировщик (<code>runtime.scheduler</code>) эффективно распределяет их по <code>P</code>, но нагрузка на базу данных остаётся.<br />
-- <strong>Решение</strong>: Используйте <code>sync.Once</code> или <code>singleflight</code> (<code>golang.org/x/sync/singleflight</code>) для дедупликации запросов к БД внутри одного процесса Go, а на уровне CDN — <code>stale-while-revalidate</code>.</p>
+<p>Когда происходит cache miss, origin получает пиковую нагрузку. Если вы не настроили <code>stale-while-revalidate</code>, все запросы падают на Go-приложение.</p>
+<ul>
+<li><strong>Thundering Herd</strong>: Одновременный пропуск кэша сотнями горутин. Go-планировщик (<code>runtime.scheduler</code>) эффективно распределяет их по <code>P</code>, но нагрузка на базу данных остаётся.</li>
+<li><strong>Решение</strong>: Используйте <code>sync.Once</code> или <code>singleflight</code> (<code>golang.org/x/sync/singleflight</code>) для дедупликации запросов к БД внутри одного процесса Go, а на уровне CDN — <code>stale-while-revalidate</code>.</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -556,11 +568,13 @@ flowchart TD
 
 <hr />
 <h2 id="praktika-cache-aware-handler-na-go">Практика: Cache-aware Handler на Go</h2>
-<p>Ниже представлен production-ready паттерн обработчика, который корректно работает с CDN:<br />
-- Генерирует <code>ETag</code> на основе тела и версии ресурса.<br />
-- Обрабатывает <code>If-None-Match</code> (возврат <code>304</code>).<br />
-- Устанавливает <code>Cache-Control</code> и <code>Vary</code>.<br />
-- Использует <code>sync</code> для безопасной работы с контекстом.</p>
+<p>Ниже представлен production-ready паттерн обработчика, который корректно работает с CDN:</p>
+<ul>
+<li>Генерирует <code>ETag</code> на основе тела и версии ресурса.</li>
+<li>Обрабатывает <code>If-None-Match</code> (возврат <code>304</code>).</li>
+<li>Устанавливает <code>Cache-Control</code> и <code>Vary</code>.</li>
+<li>Использует <code>sync</code> для безопасной работы с контекстом.</li>
+</ul>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">

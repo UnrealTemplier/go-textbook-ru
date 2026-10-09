@@ -483,10 +483,12 @@ flowchart TD
     <span class="callout-title">Ловушка / Gotcha</span>
   </header>
   <div class="callout-body">
-    <p>Современные СУБД практически не позволяют <code>Dirty Read</code> в продакшене. <br />
-* В PostgreSQL <code>READ UNCOMMITTED</code> явно отображается на <code>READ COMMITTED</code>. Грязное чтение невозможно архитектурно.<br />
-* В MySQL/InnoDB <code>READ UNCOMMITTED</code> технически существует, но используется крайне редко, так как ломает консистентность бинлогов и усложняет репликацию.<br />
-<strong>Практический вывод:</strong> Не тратьте время на защиту от <code>Dirty Read</code>. Уровень <code>READ COMMITTED</code> (по умолчанию) уже его предотвращает.</p>
+    <p>Современные СУБД практически не позволяют <code>Dirty Read</code> в продакшене. </p>
+<ul>
+<li>В PostgreSQL <code>READ UNCOMMITTED</code> явно отображается на <code>READ COMMITTED</code>. Грязное чтение невозможно архитектурно.</li>
+<li>В MySQL/InnoDB <code>READ UNCOMMITTED</code> технически существует, но используется крайне редко, так как ломает консистентность бинлогов и усложняет репликацию.<br />
+<strong>Практический вывод:</strong> Не тратьте время на защиту от <code>Dirty Read</code>. Уровень <code>READ COMMITTED</code> (по умолчанию) уже его предотвращает.</li>
+</ul>
   </div>
 </aside>
 
@@ -735,11 +737,13 @@ SELECT COUNT(*) FROM orders WHERE status = 'new'; -- вернёт 11!
 <h3 id="kesh-linii-cpu-i-false-sharing">Кэш-линии CPU и False Sharing</h3>
 <p>При использовании <code>FOR UPDATE</code> СУБД часто хранит состояния блокировок в общих структурах памяти. Если два ядра CPU одновременно пытаются захватить или проверить блокировки для строк, находящихся на одной странице данных, происходит <strong>invalidation cache lines</strong> через протокол MESI. Это приводит к «шторму» когерентности шины, и ядра простаивают в ожидании обновления кэша.</p>
 <h3 id="vliyanie-na-pul-soedineniy-v-go">Влияние на пул соединений в Go</h3>
-<p>Когда горутина выполняет <code>SELECT ... FOR UPDATE</code> и попадает в очередь блокировки:<br />
-1. Драйвер <code>database/sql</code> блокирует вызов в тред ОС.<br />
-2. Планировщик Go переводит горутину в состояние <code>waiting</code>.<br />
-3. Соединение из пула <strong>остаётся занятым</strong>. Оно не возвращается в <code>idle</code> пул.<br />
-4. Если у вас <code>SetMaxOpenConns(20)</code>, и 20 горутин ждут блокировки в БД, любые новые запросы к этой БД получат <code>sql: connection pool timeout</code>, даже если CPU базы простаивает.</p>
+<p>Когда горутина выполняет <code>SELECT ... FOR UPDATE</code> и попадает в очередь блокировки:</p>
+<ol>
+<li>Драйвер <code>database/sql</code> блокирует вызов в тред ОС.</li>
+<li>Планировщик Go переводит горутину в состояние <code>waiting</code>.</li>
+<li>Соединение из пула <strong>остаётся занятым</strong>. Оно не возвращается в <code>idle</code> пул.</li>
+<li>Если у вас <code>SetMaxOpenConns(20)</code>, и 20 горутин ждут блокировки в БД, любые новые запросы к этой БД получат <code>sql: connection pool timeout</code>, даже если CPU базы простаивает.</li>
+</ol>
 <p><strong>Решение:</strong> Ограничивайте время ожидания блокировки на уровне драйвера или приложения, используйте таймауты контекста:</p>
 
 <div class="code-block" data-lang="go">
@@ -775,10 +779,12 @@ defer cancel()
 <h2 id="5-itog-i-strategiya-vybora">5. Итог и стратегия выбора</h2>
 <ol>
 <li><strong>Dirty Read</strong> — решается автоматически переходом на <code>READ COMMITTED</code>. Не требует внимания в современных СУБД.</li>
-<li><strong>Lost Update</strong> — самая опасная аномалия для бизнес-логики. Решается:<br />
-   * Атомарными <code>UPDATE col = col + val</code> (предпочтительно).<br />
-   * <code>SELECT ... FOR UPDATE</code> (для сложных вычислений в Go).<br />
-   * Оптимистическим версионированием (<code>version</code> столбец).</li>
+<li><strong>Lost Update</strong> — самая опасная аномалия для бизнес-логики. Решается:<ul>
+<li>Атомарными <code>UPDATE col = col + val</code> (предпочтительно).</li>
+<li><code>SELECT ... FOR UPDATE</code> (для сложных вычислений в Go).</li>
+<li>Оптимистическим версионированием (<code>version</code> столбец).</li>
+</ul>
+</li>
 <li><strong>Phantom Read</strong> — критичен для отчётов и агрегаций. Решается <code>REPEATABLE READ</code> (snapshot isolation) или <code>SERIALIZABLE</code> (predicate locks).</li>
 <li><strong>Архитектурный совет:</strong> Начинайте с <code>READ COMMITTED</code>. Добавляйте явные блокировки только там, где доказана гонка. Избегайте <code>SERIALIZABLE</code> в высоконагруженных OLTP-путях, используйте его для критичных финансовых расчётов с редкими транзакциями.</li>
 </ol>

@@ -413,13 +413,15 @@ func (p *Probes) ReadinessHandler() http.HandlerFunc {
 <h3 id="3-mekhanika-raboty-i-mechanical-sympathy">3. Механика работы и Mechanical Sympathy</h3>
 <p>Понимание того, как зонды взаимодействуют с рантаймом Go и ядром Linux, критично для стабильности.</p>
 <p><strong>Сетевой стек и syscalls</strong><br />
-Каждый зонд <code>kubelet</code> — это новый TCP-соединение (в старых версиях K8s) или мультиплексированный поток (HTTP/2 в новых). Для Go <code>net/http</code> сервера это означает:<br />
-1. <code>accept()</code> syscall → получение файлового дескриптора<br />
-2. Регистрация в <code>netpoll</code> (epoll/kqueue)<br />
-3. Запуск горутины-обработчика<br />
-4. <code>read()</code> → парсинг HTTP-заголовков<br />
-5. <code>write()</code> → отправка ответа<br />
-6. Закрытие соединения (если нет keep-alive)</p>
+Каждый зонд <code>kubelet</code> — это новый TCP-соединение (в старых версиях K8s) или мультиплексированный поток (HTTP/2 в новых). Для Go <code>net/http</code> сервера это означает:</p>
+<ol>
+<li><code>accept()</code> syscall → получение файлового дескриптора</li>
+<li>Регистрация в <code>netpoll</code> (epoll/kqueue)</li>
+<li>Запуск горутины-обработчика</li>
+<li><code>read()</code> → парсинг HTTP-заголовков</li>
+<li><code>write()</code> → отправка ответа</li>
+<li>Закрытие соединения (если нет keep-alive)</li>
+</ol>
 <p>Частые зонды (каждую секунду) на 100-подовом кластере генерируют сотни <code>accept</code>/<code>close</code> syscall в секунду. Это нагружает планировщик, увеличивает churn горутин и создает contention на уровне <code>netpoll</code>.</p>
 <p><strong>Атомарные операции vs Мьютексы</strong><br />
 Для флага готовности <code>atomic.Int32</code> предпочтительнее <code>sync.RWMutex</code>. <code>atomic.Store/Load</code> компилируется в инструкции <code>mov</code> с префиксами памяти (x86) или <code>ldxr/stxr</code> (ARM). Это lock-free операция, выполняемая за 1-2 такта CPU в User Space. <code>sync.RWMutex</code> при высокой конкуренции вызывает <code>futex</code> syscall, переводит горутины в состояние <code>_Gwaiting</code> и требует переключения контекста ядра. На hot-path разница достигает 10-50x.</p>

@@ -470,10 +470,12 @@ flowchart TD
 
 <p>Кроме того, на уровне операционной системы должны быть сняты лимиты на размер дампа: <code>ulimit -c unlimited</code>, а в ядре настроен шаблон сохранения через <code>sysctl kernel.core_pattern</code>. В результате аварии в каталоге создается файл <code>core.&lt;pid&gt;</code>, содержащий полный снимок структур рантайма на момент краша. Детально эта механика исследована в <a href="6-core-dumps.html" class="wikilink">6. Core dumps</a>.</p>
 <h3 id="3-avtomaticheskie-triggery-snyatiya-profiley-pri-priblizhenii-k-oom">3. Автоматические триггеры снятия профилей при приближении к OOM</h3>
-<p>Ждать, пока Linux принудительно убьет под сигналом <code>SIGKILL</code> по нехватке памяти — верный путь остаться без улик. Зрелые команды разворачивают фоновые агенты (или sidecar-контейнеры), которые по порогу утилизации снимают дампы:<br />
-* Опрос стандартных эндпоинтов <code>/debug/pprof/heap</code> и <code>/debug/pprof/goroutine</code> при превышении 80% порога памяти.<br />
-* Программный запуск <code>pprof.WriteHeapProfile</code> из самого Go-приложения при приближении метрики <code>runtime.MemProfileRate</code> к критической отметке.<br />
-* Запись 5-секундного среза execution trace (<a href="../08-runtime-i-instrumenty/3-execution-tracer.html" class="wikilink">3. execution tracer</a>) при фиксации скачка перцентиля задержки <code>p99 latency</code>.</p>
+<p>Ждать, пока Linux принудительно убьет под сигналом <code>SIGKILL</code> по нехватке памяти — верный путь остаться без улик. Зрелые команды разворачивают фоновые агенты (или sidecar-контейнеры), которые по порогу утилизации снимают дампы:</p>
+<ul>
+<li>Опрос стандартных эндпоинтов <code>/debug/pprof/heap</code> и <code>/debug/pprof/goroutine</code> при превышении 80% порога памяти.</li>
+<li>Программный запуск <code>pprof.WriteHeapProfile</code> из самого Go-приложения при приближении метрики <code>runtime.MemProfileRate</code> к критической отметке.</li>
+<li>Запись 5-секундного среза execution trace (<a href="../08-runtime-i-instrumenty/3-execution-tracer.html" class="wikilink">3. execution tracer</a>) при фиксации скачка перцентиля задержки <code>p99 latency</code>.</li>
+</ul>
 <hr />
 <h2 id="instrumenty-analiza-posmertnykh-artefaktov">Инструменты анализа посмертных артефактов</h2>
 <h3 id="1-preparirovanie-core-dump-cherez-delve">1. Препарирование Core Dump через Delve</h3>
@@ -491,16 +493,20 @@ flowchart TD
 </code></pre>
 </div>
 
-<p>Внутри посмертной сессии Delve предоставляет полный доступ к состоянию памяти в наносекунду гибели:<br />
-- <strong><code>goroutines</code></strong> — список абсолютно всех горутин на момент падения с указанием их состояний (<code>running</code>, <code>waiting</code>).<br />
-- <strong><code>stack</code></strong> — восстановленный стек вызовов выбранной горутины с номерами строк исходников.<br />
-- <strong><code>locals</code></strong> и <strong><code>print</code></strong> — значения всех локальных переменных и аргументов в каждом стековом фрейме.<br />
-- <strong><code>threads</code></strong> — перечень системных потоков ОС (помогает выявить зависания в блокирующих системных вызовах или сторонних библиотеках CGO).</p>
+<p>Внутри посмертной сессии Delve предоставляет полный доступ к состоянию памяти в наносекунду гибели:</p>
+<ul>
+<li><strong><code>goroutines</code></strong> — список абсолютно всех горутин на момент падения с указанием их состояний (<code>running</code>, <code>waiting</code>).</li>
+<li><strong><code>stack</code></strong> — восстановленный стек вызовов выбранной горутины с номерами строк исходников.</li>
+<li><strong><code>locals</code></strong> и <strong><code>print</code></strong> — значения всех локальных переменных и аргументов в каждом стековом фрейме.</li>
+<li><strong><code>threads</code></strong> — перечень системных потоков ОС (помогает выявить зависания в блокирующих системных вызовах или сторонних библиотеках CGO).</li>
+</ul>
 <h3 id="2-profili-pprof-v-retrospektive">2. Профили pprof в ретроспективе</h3>
-<p>Сохраненные профили процессора (<a href="../03-cpu-profiling/2-cpu-profiling-v-go.html" class="wikilink">2. CPU profiling в Go</a>), памяти (<a href="../04-memory-profiling/5-pprof-memory-profile.html" class="wikilink">5. pprof memory profile</a>), дампы горутин (<a href="../08-runtime-i-instrumenty/4-goroutine-dump.html" class="wikilink">4. goroutine dump</a>) и профили блокировок (<a href="../08-runtime-i-instrumenty/5-block-profile.html" class="wikilink">5. block profile</a>) раскрывают статистику, накопленную перед аварией:<br />
-- <strong>Heap profile (inuse_space):</strong> точно указывает, какая структура данных или кэш раздули кучу перед падением по OOM.<br />
-- <strong>Goroutine profile:</strong> вскрывает утечку горутин (Goroutine Leak) и показывает, на каком канале или мьютексе застряли тысячи воркеров.<br />
-- <strong>Block profile:</strong> визуализирует точки экстремального соперничества за мьютексы (Lock Contention).</p>
+<p>Сохраненные профили процессора (<a href="../03-cpu-profiling/2-cpu-profiling-v-go.html" class="wikilink">2. CPU profiling в Go</a>), памяти (<a href="../04-memory-profiling/5-pprof-memory-profile.html" class="wikilink">5. pprof memory profile</a>), дампы горутин (<a href="../08-runtime-i-instrumenty/4-goroutine-dump.html" class="wikilink">4. goroutine dump</a>) и профили блокировок (<a href="../08-runtime-i-instrumenty/5-block-profile.html" class="wikilink">5. block profile</a>) раскрывают статистику, накопленную перед аварией:</p>
+<ul>
+<li><strong>Heap profile (inuse_space):</strong> точно указывает, какая структура данных или кэш раздули кучу перед падением по OOM.</li>
+<li><strong>Goroutine profile:</strong> вскрывает утечку горутин (Goroutine Leak) и показывает, на каком канале или мьютексе застряли тысячи воркеров.</li>
+<li><strong>Block profile:</strong> визуализирует точки экстремального соперничества за мьютексы (Lock Contention).</li>
+</ul>
 <h3 id="3-execution-trace">3. Execution Trace</h3>
 <p>Если в момент инцидента мониторинг успел записать срез трассировки событий рантайма, утилита <code>go tool trace</code> (<a href="../08-runtime-i-instrumenty/3-execution-tracer.html" class="wikilink">3. execution tracer</a>) позволяет восстановить посекундный фильм: в какой момент планировщик Go заблокировал потоки M, когда сборщик мусора запустил длительную фазу Stop-The-World и какие сетевые события <code>netpoller</code> привели к коллапсу.</p>
 <hr />
@@ -521,13 +527,15 @@ flowchart TD
 </div>
 
 <h3 id="shag-1-sbor-vsekh-dostupnykh-artefaktov">Шаг 1. Сбор всех доступных артефактов</h3>
-<p>Первым делом инженер изолирует и копирует все цифровые улики:<br />
-- Файл core dump (если сервис упал).<br />
-- Логи с временными метками за интервал: время аварии $\pm 10$ минут.<br />
-- Срезы профилей кучи и горутин.<br />
-- Скриншоты и экспорты метрик Prometheus/Grafana (CPU, RAM, RPS, GC Pauses, Network Drops).<br />
-- Журнал событий оркестратора (Kubernetes events, OOMKill timestamps).<br />
-- Хэши коммитов задеплоенных версий и историю изменений инфраструктуры.</p>
+<p>Первым делом инженер изолирует и копирует все цифровые улики:</p>
+<ul>
+<li>Файл core dump (если сервис упал).</li>
+<li>Логи с временными метками за интервал: время аварии $\pm 10$ минут.</li>
+<li>Срезы профилей кучи и горутин.</li>
+<li>Скриншоты и экспорты метрик Prometheus/Grafana (CPU, RAM, RPS, GC Pauses, Network Drops).</li>
+<li>Журнал событий оркестратора (Kubernetes events, OOMKill timestamps).</li>
+<li>Хэши коммитов задеплоенных версий и историю изменений инфраструктуры.</li>
+</ul>
 <h3 id="shag-2-vosstanovlenie-khronologii-timeline">Шаг 2. Восстановление хронологии (Timeline)</h3>
 <p>На основе синхронизированных временных меток строится объективная шкала развития аварии:</p>
 
@@ -554,31 +562,35 @@ flowchart TD
 <p>Метод «Пять почему» (Five Whys) требует последовательно задавать вопрос «Почему это произошло?», пока расследование не выйдет на системные дефекты архитектуры или процессов:</p>
 <ol>
 <li><strong>Почему упали поды payment-service?</strong><br />
-   -&gt; Они были уничтожены ядром Linux по OOMKill из-за превышения лимита памяти в 2 ГБ.</li>
+    -&gt; Они были уничтожены ядром Linux по OOMKill из-за превышения лимита памяти в 2 ГБ.</li>
 <li><strong>Почему память превысила 2 ГБ?</strong><br />
-   -&gt; Число активных горутин в Go выросло с 200 до 45 000, каждая из которых аллоцировала буферы запроса.</li>
+    -&gt; Число активных горутин в Go выросло с 200 до 45 000, каждая из которых аллоцировала буферы запроса.</li>
 <li><strong>Почему число горутин подскочило до 45 000?</strong><br />
-   -&gt; Запросы к PostgreSQL стали выполняться за 20 секунд вместо 5 мс из-за ожидания соединений в очереди.</li>
+    -&gt; Запросы к PostgreSQL стали выполняться за 20 секунд вместо 5 мс из-за ожидания соединений в очереди.</li>
 <li><strong>Почему соединения в пуле базы данных исчерпались?</strong><br />
-   -&gt; В кодовой базе отсутствовал таймаут контекста (<code>context.WithTimeout</code>) на операции резервирования средств, и горутины удерживали открытые соединения бесконечно.</li>
+    -&gt; В кодовой базе отсутствовал таймаут контекста (<code>context.WithTimeout</code>) на операции резервирования средств, и горутины удерживали открытые соединения бесконечно.</li>
 <li><strong>Почему код без таймаута попал в продакшен?</strong><br />
-   -&gt; В линтерах CI/CD не было статической проверки обязательного использования контекстных таймаутов, а нагрузочное тестирование интеграций с СУБД проводилось без эмуляции исчерпания пула соединений.</li>
+    -&gt; В линтерах CI/CD не было статической проверки обязательного использования контекстных таймаутов, а нагрузочное тестирование интеграций с СУБД проводилось без эмуляции исчерпания пула соединений.</li>
 </ol>
 <p>Корневая причина кроется не в том, что «разработчик забыл поставить таймаут», а в <strong>отсутствии автоматизированного контроля таймаутов в CI/CD и пробелах в методике нагрузочного тестирования</strong>.</p>
 <h3 id="shag-4-formirovanie-vyvodov-i-action-items">Шаг 4. Формирование выводов и action items</h3>
 <p>Результаты оформляются в официальный postmortem-документ. Корректирующие действия (Action items) должны быть конкретными, назначенными на владельцев и с жесткими сроками выполнения.</p>
 <h3 id="shag-5-verifikatsiya-ispravleniy">Шаг 5. Верификация исправлений</h3>
-<p>После реализации доработок обязательно:<br />
-- Проводится нагрузочное тестирование, подтверждающее устранение узкого места.<br />
-- Настраиваются новые алерты и метрики в Prometheus.<br />
-- Обновляются эксплуатационные регламенты (runbooks).</p>
+<p>После реализации доработок обязательно:</p>
+<ul>
+<li>Проводится нагрузочное тестирование, подтверждающее устранение узкого места.</li>
+<li>Настраиваются новые алерты и метрики в Prometheus.</li>
+<li>Обновляются эксплуатационные регламенты (runbooks).</li>
+</ul>
 <hr />
 <h2 id="primer-postmortem-rassledovaniya-padeniya-s-panikoy">Пример postmortem-расследования падения с паникой</h2>
 <p><strong>Инцидент:</strong> В ночное время сервис <code>user-api</code> упал с паникой <code>panic: runtime error: invalid memory address or nil pointer dereference</code>. Под перезапустился, но файл <code>core.user-api.3456</code> был успешно сохранен.</p>
-<p><strong>Хронология (из логов):</strong><br />
-- 03:14:05 — запрос с <code>trace_id=abc123</code> поступил на <code>user-api</code>.<br />
-- 03:14:05 — лог <code>processing user update</code>.<br />
-- 03:14:05 — паника, процесс завершён.</p>
+<p><strong>Хронология (из логов):</strong></p>
+<ul>
+<li>03:14:05 — запрос с <code>trace_id=abc123</code> поступил на <code>user-api</code>.</li>
+<li>03:14:05 — лог <code>processing user update</code>.</li>
+<li>03:14:05 — паника, процесс завершён.</li>
+</ul>
 <h3 id="issledovanie-artefakta-cherez-delve">Исследование артефакта через Delve:</h3>
 
 <div class="code-block" data-lang="bash">
@@ -619,11 +631,13 @@ user = main.User {ID: 123, Name: &quot;Ivan&quot;, Email: nil}
 <p>Инспекция показала: в строке <code>user.go:23</code> выполнялось прямое разыменование <code>*user.Email</code>. Поле <code>Email</code> оказалось <code>nil</code>.</p>
 <h3 id="analiz-khroniki-i-formulirovanie-action-items">Анализ хроники и формулирование Action Items:</h3>
 <p>Запрос пришел с <code>trace_id=abc123</code>. Анализ логов показал, что накануне ночью была запущена миграция базы данных, добавившая nullable-колонку <code>email</code>.</p>
-<p><strong>План корректирующих мероприятий (Action Items):</strong><br />
-- [ ] Добавить обязательную валидацию <code>user.Email != nil</code> в функцию <code>processUser</code> (Ответственный: @backend-dev, срок: 1 день).<br />
-- [ ] Покрыть юнит-тестами сценарии обработки пользователей с пустым email (Ответственный: @backend-dev, срок: 2 дня).<br />
-- [ ] Внедрить в пайплайн CI статический анализатор указателей <strong><code>nilaway</code></strong> от Uber для автоматического выявления потенциальных Nil Dereference на этапе компиляции (Ответственный: @lead-dev, срок: 1 неделя).<br />
-- [ ] Провести аудит схемы СУБД и проставить дефолтные значения для пустых колонок (Ответственный: @dba, срок: 3 дня).</p>
+<p><strong>План корректирующих мероприятий (Action Items):</strong></p>
+<ul>
+<li>[ ] Добавить обязательную валидацию <code>user.Email != nil</code> в функцию <code>processUser</code> (Ответственный: @backend-dev, срок: 1 день).</li>
+<li>[ ] Покрыть юнит-тестами сценарии обработки пользователей с пустым email (Ответственный: @backend-dev, срок: 2 дня).</li>
+<li>[ ] Внедрить в пайплайн CI статический анализатор указателей <strong><code>nilaway</code></strong> от Uber для автоматического выявления потенциальных Nil Dereference на этапе компиляции (Ответственный: @lead-dev, срок: 1 неделя).</li>
+<li>[ ] Провести аудит схемы СУБД и проставить дефолтные значения для пустых колонок (Ответственный: @dba, срок: 3 дня).</li>
+</ul>
 <hr />
 <h2 id="mechanical-sympathy-apparatnoe-vliyanie-sbora-artefaktov">Mechanical Sympathy: Аппаратное влияние сбора артефактов</h2>
 <p>Сбор диагностических улик расходует ресурсы сервера. Небрежная автоматизация сбора артефактов способна вызвать «вторичный инцидент», добив едва живой сервер:</p>

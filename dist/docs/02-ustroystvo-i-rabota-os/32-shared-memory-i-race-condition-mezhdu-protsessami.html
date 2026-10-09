@@ -461,10 +461,12 @@ counter = counter + 1;
 </code></pre>
 </div>
 
-<p>Но процессор оперирует не абстрактными формулами, а конкретными машинными инструкциями. На уровне ассемблера этот простой инкремент разваливается в три независимые инструкции:<br />
-1. <code>LOAD R1, [addr]</code> (прочитать значение из памяти по адресу <code>addr</code> в локальный регистр процессора <code>R1</code>)<br />
-2. <code>ADD R1, R1, 1</code> (выполнить арифметическое сложение в АЛУ)<br />
-3. <code>STORE [addr], R1</code> (записать обновленное значение из регистра обратно в память)</p>
+<p>Но процессор оперирует не абстрактными формулами, а конкретными машинными инструкциями. На уровне ассемблера этот простой инкремент разваливается в три независимые инструкции:</p>
+<ol>
+<li><code>LOAD R1, [addr]</code> (прочитать значение из памяти по адресу <code>addr</code> в локальный регистр процессора <code>R1</code>)</li>
+<li><code>ADD R1, R1, 1</code> (выполнить арифметическое сложение в АЛУ)</li>
+<li><code>STORE [addr], R1</code> (записать обновленное значение из регистра обратно в память)</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -499,10 +501,12 @@ sequenceDiagram
 <hr />
 <h2 id="sinkhronizatsiya-na-urovne-os">Синхронизация на уровне ОС</h2>
 <p>Чтобы использовать общую память, нужно наложить примитивы синхронизации. В Go стандартный <code>sync.Mutex</code> <strong>не работает</strong> между процессами, так как он блокируется только в рамках адресного пространства текущего процесса.</p>
-<p>Для cross-process синхронизации используются:<br />
-- <strong>POSIX Semaphores</strong> (<code>sem_open</code>, <code>sem_wait</code>, <code>sem_post</code>) — работают с общей памятью или как именованные объекты. Именованный семафор виден всем процессам в системе через путь в файловой системе.<br />
-- <strong>Futexes</strong> — низкоуровневый примитив Linux, сочетающий блокировку в User Space с системным вызовом только при конфликте. Fast Userspace Mutex позволяет захватывать свободную блокировку за считанные наносекунды с помощью атомарной инструкции CPU, не беспокоя ядро.<br />
-- <strong>Atomic Operations</strong> — инструкции процессора (<code>LOCK XADD</code>, <code>CMPXCHG</code>), гарантирующие атомарность на уровне шины/кэша. Аппаратный блок управления кэшем удерживает строку кэша в эксклюзивном владении на время выполнения всей операции Read-Modify-Write.</p>
+<p>Для cross-process синхронизации используются:</p>
+<ul>
+<li><strong>POSIX Semaphores</strong> (<code>sem_open</code>, <code>sem_wait</code>, <code>sem_post</code>) — работают с общей памятью или как именованные объекты. Именованный семафор виден всем процессам в системе через путь в файловой системе.</li>
+<li><strong>Futexes</strong> — низкоуровневый примитив Linux, сочетающий блокировку в User Space с системным вызовом только при конфликте. Fast Userspace Mutex позволяет захватывать свободную блокировку за считанные наносекунды с помощью атомарной инструкции CPU, не беспокоя ядро.</li>
+<li><strong>Atomic Operations</strong> — инструкции процессора (<code>LOCK XADD</code>, <code>CMPXCHG</code>), гарантирующие атомарность на уровне шины/кэша. Аппаратный блок управления кэшем удерживает строку кэша в эксклюзивном владении на время выполнения всей операции Read-Modify-Write.</li>
+</ul>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -520,10 +524,12 @@ sequenceDiagram
 <h2 id="mechanical-sympathy-kesh-mesi-i-false-sharing">Mechanical Sympathy: Кэш, MESI и False Sharing</h2>
 <p>Даже если вы используете атомарные инструкции, производительность общей памяти может быть убита архитектурой CPU.</p>
 <h3 id="1-cache-coherence-mesi-protocol">1. Cache Coherence (MESI Protocol)</h3>
-<p>Современные CPU имеют локальные кэши L1/L2. Когда два ядра пишут в один кэш-лайн (64 байта), включается протокол <strong>MESI</strong> (Modified, Exclusive, Shared, Invalid).<br />
-- Ядро 1 пишет в байт 0 кэш-лина. Статус меняется на <code>Modified</code>.<br />
-- Ядро 2 пытается прочитать байт 4. Оно должно инвалидировать свою копию кэш-лина и забрать свежие данные у Ядра 1 через шину.<br />
-- Частые записи в один кэш-лайн вызывают <strong>Cache Thrashing</strong> (или Cache Line Bouncing), превращая высокоскоростной CPU в улитку, ожидающую согласования по кольцевой шине межъядерной связи.</p>
+<p>Современные CPU имеют локальные кэши L1/L2. Когда два ядра пишут в один кэш-лайн (64 байта), включается протокол <strong>MESI</strong> (Modified, Exclusive, Shared, Invalid).</p>
+<ul>
+<li>Ядро 1 пишет в байт 0 кэш-лина. Статус меняется на <code>Modified</code>.</li>
+<li>Ядро 2 пытается прочитать байт 4. Оно должно инвалидировать свою копию кэш-лина и забрать свежие данные у Ядра 1 через шину.</li>
+<li>Частые записи в один кэш-лайн вызывают <strong>Cache Thrashing</strong> (или Cache Line Bouncing), превращая высокоскоростной CPU в улитку, ожидающую согласования по кольцевой шине межъядерной связи.</li>
+</ul>
 <h3 id="2-false-sharing-lozhnaya-sovmestnaya-zapis">2. False Sharing (Ложная совместная запись)</h3>
 <p>Если два процесса/потока пишут в разные переменные, но они попадают в один кэш-лайн (например, <code>struct { int a; int b; }</code>), процессор считает, что происходит конфликт. Он будет постоянно инвалидировать кэш-лайн, хотя данные не пересекаются.</p>
 
@@ -585,10 +591,12 @@ type SafeCounter struct {
 <p><em>"Don't communicate by sharing memory; share memory by communicating."</em> — Кен Томпсон / Роб Пайк</p>
 </blockquote>
 <p>Это означает, что горутины должны обмениваться данными через каналы (<code>chan</code>), а не через общую память. Это устраняет <code>Data Race</code> на уровне языка и делает код безопасным.</p>
-<p><strong>Но в реальности:</strong><br />
-1. <strong>Горутины внутри одного процесса</strong> действительно делят память. <code>sync.Mutex</code>, <code>atomic</code> пакет и <code>unsafe.Pointer</code> работают быстро, но требуют дисциплины.<br />
-2. <strong>Cross-process shared memory</strong> в Go поддерживается через <code>syscall.Mmap</code> или <code>golang.org/x/sys/unix</code>. Однако синхронизация требует внешних примитивов (<code>semaphore</code>, <code>futex</code>).<br />
-3. <strong>Race Detector</strong> (<code>go run -race</code>) внедряет Instrumentation на этапе компиляции и отслеживает все чтения/записи. Он работает только в рамках одного процесса. Для cross-process отладки нужны <code>valgrind</code> или <code>helgrind</code>.</p>
+<p><strong>Но в реальности:</strong></p>
+<ol>
+<li><strong>Горутины внутри одного процесса</strong> действительно делят память. <code>sync.Mutex</code>, <code>atomic</code> пакет и <code>unsafe.Pointer</code> работают быстро, но требуют дисциплины.</li>
+<li><strong>Cross-process shared memory</strong> в Go поддерживается через <code>syscall.Mmap</code> или <code>golang.org/x/sys/unix</code>. Однако синхронизация требует внешних примитивов (<code>semaphore</code>, <code>futex</code>).</li>
+<li><strong>Race Detector</strong> (<code>go run -race</code>) внедряет Instrumentation на этапе компиляции и отслеживает все чтения/записи. Он работает только в рамках одного процесса. Для cross-process отладки нужны <code>valgrind</code> или <code>helgrind</code>.</li>
+</ol>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -597,11 +605,13 @@ type SafeCounter struct {
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Когда в Go все-таки оправдано использовать общую память, а не каналы?<br />
-<strong>Ответ:</strong> <br />
-1. Высоконагруженные компоненты, где overhead каналов (<code>chan</code>) слишком велик (например, internal metrics collector, shared ring buffer).<br />
-2. Взаимодействие с C/C++ библиотеками через <code>cgo</code>, где данные уже лежат в общей памяти.<br />
-3. Cross-process кэширование, где производительность критичнее простоты кода (например, <code>memcached</code>-подобные структуры).<br />
-В таких случаях используют <code>unsafe.Pointer</code>, выравнивание по кэш-лайну, атомарные операции и иногда <code>cgo</code> для POSIX семафоров.</p>
+<strong>Ответ:</strong> </p>
+<ol>
+<li>Высоконагруженные компоненты, где overhead каналов (<code>chan</code>) слишком велик (например, internal metrics collector, shared ring buffer).</li>
+<li>Взаимодействие с C/C++ библиотеками через <code>cgo</code>, где данные уже лежат в общей памяти.</li>
+<li>Cross-process кэширование, где производительность критичнее простоты кода (например, <code>memcached</code>-подобные структуры).<br />
+    В таких случаях используют <code>unsafe.Pointer</code>, выравнивание по кэш-лайну, атомарные операции и иногда <code>cgo</code> для POSIX семафоров.</li>
+</ol>
   </div>
 </aside>
 

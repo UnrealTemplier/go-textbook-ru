@@ -317,12 +317,14 @@ conn, err := d.DialContext(ctx, &quot;tcp&quot;, &quot;db.internal:5432&quot;)
 <hr />
 <h2 id="netfilter-skelet-filtratsii-v-linux">Netfilter: Скелет фильтрации в Linux</h2>
 <p>В основе сетевой безопасности Linux лежит фреймворк <strong>Netfilter</strong>. Это не один модуль, а архитектура хуков (hooks), встроенная в подсистему сетевого стека ядра. Она позволяет перехватывать, модифицировать и фильтровать пакеты на разных этапах их жизненного цикла, до того как они попадут в сокет приложения, или после выхода из него.</p>
-<p>Пакет проходит через несколько точек вхождения (hooks) в зависимости от его назначения:<br />
-1. <strong>PREROUTING</strong>: Сразу после получения интерфейсом (для DNAT и маршрутизации).<br />
-2. <strong>INPUT</strong>: Если пакет предназначен для локального процесса.<br />
-3. <strong>FORWARD</strong>: Если пакет маршрутизируется на другой интерфейс (роутер/прокси).<br />
-4. <strong>OUTPUT</strong>: Для пакетов, генерируемых локальными процессами.<br />
-5. <strong>POSTROUTING</strong>: Перед отправкой на физический интерфейс (для SNAT/MASQUERADE).</p>
+<p>Пакет проходит через несколько точек вхождения (hooks) в зависимости от его назначения:</p>
+<ol>
+<li><strong>PREROUTING</strong>: Сразу после получения интерфейсом (для DNAT и маршрутизации).</li>
+<li><strong>INPUT</strong>: Если пакет предназначен для локального процесса.</li>
+<li><strong>FORWARD</strong>: Если пакет маршрутизируется на другой интерфейс (роутер/прокси).</li>
+<li><strong>OUTPUT</strong>: Для пакетов, генерируемых локальными процессами.</li>
+<li><strong>POSTROUTING</strong>: Перед отправкой на физический интерфейс (для SNAT/MASQUERADE).</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -374,10 +376,12 @@ flowchart TD
 <hr />
 <h2 id="iptables-arkhitektura-i-ogranicheniya">iptables: Архитектура и ограничения</h2>
 <p><code>iptables</code> — это клиент для работы с Netfilter, использующий таблично-цепочечную модель. Исторически он опирался на модули ядра <code>xt_*</code> (eXtended Target), которые динамически загружались при необходимости.</p>
-<p><strong>Структура iptables:</strong><br />
-*   <strong>Tables (Таблицы):</strong> <code>filter</code> (стандартная фильтрация), <code>nat</code> (трансляция адресов), <code>mangle</code> (модификация заголовков), <code>raw</code> (отключение conntrack).<br />
-*   <strong>Chains (Цепочки):</strong> Набор правил в одной из точек hook (<code>INPUT</code>, <code>FORWARD</code>, <code>OUTPUT</code>).<br />
-*   <strong>Rules (Правила):</strong> <code>match</code> (условие: IP, порт, протокол, состояние) + <code>target</code> (действие: <code>ACCEPT</code>, <code>DROP</code>, <code>REJECT</code>, <code>LOG</code>).</p>
+<p><strong>Структура iptables:</strong></p>
+<ul>
+<li><strong>Tables (Таблицы):</strong> <code>filter</code> (стандартная фильтрация), <code>nat</code> (трансляция адресов), <code>mangle</code> (модификация заголовков), <code>raw</code> (отключение conntrack).</li>
+<li><strong>Chains (Цепочки):</strong> Набор правил в одной из точек hook (<code>INPUT</code>, <code>FORWARD</code>, <code>OUTPUT</code>).</li>
+<li><strong>Rules (Правила):</strong> <code>match</code> (условие: IP, порт, протокол, состояние) + <code>target</code> (действие: <code>ACCEPT</code>, <code>DROP</code>, <code>REJECT</code>, <code>LOG</code>).</li>
+</ul>
 
 <div class="code-block" data-lang="bash">
   <header class="code-header">
@@ -395,10 +399,12 @@ iptables -A INPUT -j DROP
 </div>
 
 <p><strong>Проблема производительности:</strong><br />
-<code>iptables</code> хранит правила в линейных списках (<code>xt_table</code>). При каждом новом пакете ядро перебирает правила последовательно. Если у вас 5000 правил, каждый пакет проходит до 5000 проверок в контексте ядра. Это вызывает:<br />
-1. <strong>Cache thrashing</strong>: Частое чтение памяти ядра сбивает L1/L2 кэш CPU.<br />
-2. <strong>Lock contention</strong>: В многопоточных нагрузках блокировки таблиц создают contention на SMP-системах.<br />
-3. <strong>Context switch overhead</strong>: Передача правил между user-space (<code>iptables</code>) и kernel-space (<code>netfilter</code>) происходит через netlink-сокеты, что дорого при частых изменениях.</p>
+<code>iptables</code> хранит правила в линейных списках (<code>xt_table</code>). При каждом новом пакете ядро перебирает правила последовательно. Если у вас 5000 правил, каждый пакет проходит до 5000 проверок в контексте ядра. Это вызывает:</p>
+<ol>
+<li><strong>Cache thrashing</strong>: Частое чтение памяти ядра сбивает L1/L2 кэш CPU.</li>
+<li><strong>Lock contention</strong>: В многопоточных нагрузках блокировки таблиц создают contention на SMP-системах.</li>
+<li><strong>Context switch overhead</strong>: Передача правил между user-space (<code>iptables</code>) и kernel-space (<code>netfilter</code>) происходит через netlink-сокеты, что дорого при частых изменениях.</li>
+</ol>
 <p>В кластерах Kubernetes с тысячами сервисов <code>kube-proxy</code> в режиме iptables создавал десятки тысяч правил, что приводило к заметному росту задержек (latency degradation) и загрузке ядер CPU исключительно на перебор цепочек.</p>
 <hr />
 <h2 id="nftables-sovremennyy-standart">nftables: Современный стандарт</h2>
@@ -441,11 +447,13 @@ flowchart LR
 </figure>
 
 
-<p><strong>Ключевые отличия:</strong><br />
-*   <strong>Единый интерфейс</strong>: Одна утилита для всех таблиц (<code>filter</code>, <code>nat</code>, <code>mangle</code>, <code>raw</code>).<br />
-*   <strong>Maps и Sets</strong>: Позволяют хранить списки IP/портов в хеш-таблицах ядра. Проверка <code>IP in set</code> работает за O(1) вместо O(N).<br />
-*   <strong>Динамические наборы</strong>: Возможность автоматически добавлять IP в черный список при обнаружении аномалий.<br />
-*   <strong>Fast path</strong>: Ядро компилирует правила в структуру, близкую к BPF, для быстрого исполнения без перебора линейных списков.</p>
+<p><strong>Ключевые отличия:</strong></p>
+<ul>
+<li><strong>Единый интерфейс</strong>: Одна утилита для всех таблиц (<code>filter</code>, <code>nat</code>, <code>mangle</code>, <code>raw</code>).</li>
+<li><strong>Maps и Sets</strong>: Позволяют хранить списки IP/портов в хеш-таблицах ядра. Проверка <code>IP in set</code> работает за O(1) вместо O(N).</li>
+<li><strong>Динамические наборы</strong>: Возможность автоматически добавлять IP в черный список при обнаружении аномалий.</li>
+<li><strong>Fast path</strong>: Ядро компилирует правила в структуру, близкую к BPF, для быстрого исполнения без перебора линейных списков.</li>
+</ul>
 
 <div class="code-block" data-lang="bash">
   <header class="code-header">

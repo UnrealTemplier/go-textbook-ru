@@ -451,10 +451,12 @@
 <h2 id="trekhznachnaya-logika-3vl">Трехзначная логика (3VL)</h2>
 <p>В классических языках программирования вроде Go логика строго двузначна (Boolean): переменная может принимать значение либо <code>true</code>, либо <code>false</code>.<br />
 Стандарт SQL реализует <strong>трехзначную логику (Three-Valued Logic — 3VL)</strong>, оперирующую тремя состояниями истинности: <code>TRUE</code>, <code>FALSE</code> и <code>UNKNOWN</code>.</p>
-<p>Любая арифметическая операция или предикат сравнения с участием маркера <code>NULL</code> неизбежно порождает <code>UNKNOWN</code>:<br />
-* <code>1 + NULL</code> → <code>UNKNOWN</code> (точнее, арифметический результат <code>NULL</code>, предикат проверки которого дает <code>UNKNOWN</code>)<br />
-* <code>NULL = NULL</code> → <code>UNKNOWN</code><br />
-* <code>NULL != 1</code> → <code>UNKNOWN</code></p>
+<p>Любая арифметическая операция или предикат сравнения с участием маркера <code>NULL</code> неизбежно порождает <code>UNKNOWN</code>:</p>
+<ul>
+<li><code>1 + NULL</code> → <code>UNKNOWN</code> (точнее, арифметический результат <code>NULL</code>, предикат проверки которого дает <code>UNKNOWN</code>)</li>
+<li><code>NULL = NULL</code> → <code>UNKNOWN</code></li>
+<li><code>NULL != 1</code> → <code>UNKNOWN</code></li>
+</ul>
 <h3 id="tablitsy-istinnosti-dlya-unknown">Таблицы истинности для UNKNOWN</h3>
 <p>В реляционном конвейере предложение <code>WHERE</code> пропускает кортеж дальше в обработку <strong>только и исключительно в том случае, если итоговое логическое выражение вычислено в строгое <code>TRUE</code></strong>. Значения <code>FALSE</code> и <code>UNKNOWN</code> безжалостно отбрасываются.</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
@@ -575,9 +577,11 @@ flowchart LR
 
 <ol>
 <li><strong>Заголовок кортежа (<code>Tuple Header</code>):</strong> Содержит служебные поля транзакций (<code>xmin</code>, <code>xmax</code>) и битовую маску флагов.</li>
-<li><strong>Битовая карта NULL-значений (<code>Null Bitmap</code>):</strong> Если в таблице хотя бы одна колонка объявлена без ограничения <code>NOT NULL</code>, в заголовок кортежа помещается компактная битовая шкала (<code>t_bits</code>). Каждый бит строго соответствует порядковому номеру колонки:<br />
-   - Бит <code>1</code> — в колонке присутствуют физические данные;<br />
-   - Бит <code>0</code> — значение колонки равно <code>NULL</code>.</li>
+<li><strong>Битовая карта NULL-значений (<code>Null Bitmap</code>):</strong> Если в таблице хотя бы одна колонка объявлена без ограничения <code>NOT NULL</code>, в заголовок кортежа помещается компактная битовая шкала (<code>t_bits</code>). Каждый бит строго соответствует порядковому номеру колонки:<ul>
+<li>Бит <code>1</code> — в колонке присутствуют физические данные;</li>
+<li>Бит <code>0</code> — значение колонки равно <code>NULL</code>.</li>
+</ul>
+</li>
 <li><strong>Область данных (<code>Data Payload</code>):</strong> Если бит в маске равен <code>0</code>, в полезную нагрузку кортежа <strong>не записывается ни одного байта</strong>! Колонка <code>NULL</code> занимает 0 байт в дисковом пространстве полезных данных.</li>
 <li><strong>Аппаратная скорость проверки:</strong> Проверка условий <code>IS NULL</code> или <code>IS NOT NULL</code> — это молниеносная побитовая инструкция процессора (bitwise AND над байтом заголовка). Процессору даже не требуется обращаться к телу строки и десериализовать байты данных.</li>
 </ol>
@@ -626,11 +630,13 @@ SELECT email FROM users WHERE deleted_at = NULL;
 </code></pre>
 </div>
 
-<p>В отличие от оператора <code>=</code>, предикат <code>IS NOT DISTINCT FROM</code> трактует <code>NULL</code> как обычное определенное значение:<br />
-- Если <code>col1</code> и <code>col2</code> равны <code>NULL</code>, выражение возвращает <code>TRUE</code>.<br />
-- Если одно поле <code>NULL</code>, а другое число — возвращает <code>FALSE</code>.<br />
-- Если оба поля равны числам — возвращает <code>TRUE</code>.<br />
-Аналогично работает предикат неравенства: <code>IS DISTINCT FROM</code>.</p>
+<p>В отличие от оператора <code>=</code>, предикат <code>IS NOT DISTINCT FROM</code> трактует <code>NULL</code> как обычное определенное значение:</p>
+<ul>
+<li>Если <code>col1</code> и <code>col2</code> равны <code>NULL</code>, выражение возвращает <code>TRUE</code>.</li>
+<li>Если одно поле <code>NULL</code>, а другое число — возвращает <code>FALSE</code>.</li>
+<li>Если оба поля равны числам — возвращает <code>TRUE</code>.<br />
+    Аналогично работает предикат неравенства: <code>IS DISTINCT FROM</code>.</li>
+</ul>
   </div>
 </aside>
 
@@ -656,9 +662,11 @@ SELECT COALESCE(phone, email, 'Нет контактов') FROM users;
 
 <p><code>COALESCE</code> вычисляется по принципу короткого замыкания: как только встречен первый не-NULL аргумент, вычисление остальных прекращается.</p>
 <h3 id="3-nullif-predokhranitel">3. NULLIF (Предохранитель)</h3>
-<p>Функция <code>NULLIF(a, b)</code> сравнивает два аргумента:<br />
-- Если $a = b$, функция возвращает <code>NULL</code>;<br />
-- В противном случае возвращается значение $a$.</p>
+<p>Функция <code>NULLIF(a, b)</code> сравнивает два аргумента:</p>
+<ul>
+<li>Если $a = b$, функция возвращает <code>NULL</code>;</li>
+<li>В противном случае возвращается значение $a$.</li>
+</ul>
 <p>Это идеальный, элегантный предохранитель от ошибок деления на ноль (<code>Division by Zero</code>), выступающий лаконичной альтернативой громоздкому выражению <code>CASE</code>:</p>
 
 <div class="code-block" data-lang="sql">
@@ -679,12 +687,16 @@ SELECT total_spent / NULLIF(total_orders, 0) FROM users;
 <h2 id="agregatsiya-i-null-nevidimye-dannye">Агрегация и NULL: Невидимые данные</h2>
 <p>Агрегатные функции стандарта SQL (рассмотренные в статье <a href="7-group-by-i-agregatnye-funktsii.html" class="wikilink">7. GROUP BY и агрегатные функции</a>) содержат встроенный механизм обработки неопределенности, о котором постоянно забывают на собеседованиях.</p>
 <p>Функции <strong><code>SUM</code></strong>, <strong><code>AVG</code></strong>, <strong><code>MIN</code></strong>, <strong><code>MAX</code></strong> <strong>полностью игнорируют значения <code>NULL</code> при расчетах</strong>.</p>
-<p>Представьте таблицу зарплат сотрудников из трех строк: <code>100</code>, <code>200</code> и <code>NULL</code>.<br />
-- <code>SUM(salary)</code> вернет <code>300</code> (сложит только известные величины).<br />
-- <code>AVG(salary)</code> вернет <strong><code>150</code></strong> ($300 / 2$), а не $100$ ($300 / 3$)! Движок базы делит сумму на количество фактически присутствующих значений ($2$), а не на общее число строк в таблице.</p>
-<p>Единственным исключением является функция <strong><code>COUNT(*)</code></strong>, которая подсчитывает физическое количество кортежей (строк), видимых транзакции, полностью игнорируя содержимое колонок:<br />
-- <code>COUNT(*)</code> для этой таблицы вернет <code>3</code>;<br />
-- <code>COUNT(salary)</code> вернет <code>2</code>.</p>
+<p>Представьте таблицу зарплат сотрудников из трех строк: <code>100</code>, <code>200</code> и <code>NULL</code>.</p>
+<ul>
+<li><code>SUM(salary)</code> вернет <code>300</code> (сложит только известные величины).</li>
+<li><code>AVG(salary)</code> вернет <strong><code>150</code></strong> ($300 / 2$), а не $100$ ($300 / 3$)! Движок базы делит сумму на количество фактически присутствующих значений ($2$), а не на общее число строк в таблице.</li>
+</ul>
+<p>Единственным исключением является функция <strong><code>COUNT(*)</code></strong>, которая подсчитывает физическое количество кортежей (строк), видимых транзакции, полностью игнорируя содержимое колонок:</p>
+<ul>
+<li><code>COUNT(*)</code> для этой таблицы вернет <code>3</code>;</li>
+<li><code>COUNT(salary)</code> вернет <code>2</code>.</li>
+</ul>
 <hr />
 <h2 id="go-idioms-borba-s-null-na-bekende">Go Idioms: Борьба с NULL на бэкенде</h2>
 <p>Десериализация колонок, содержащих <code>NULL</code>, в строго типизированные структуры Go — источник частых паник (<code>panic: runtime error</code>) и неэффективного расхода памяти.</p>
@@ -704,8 +716,10 @@ err := rows.Scan(&amp;bio)
 </code></pre>
 </div>
 
-<p>Если в базе данных <code>NULL</code>, драйвер присвоит указателю значение <code>nil</code>. Если строка присутствует — выделит память под строку и вернет указатель.<br />
-* <strong>Недостаток (Mechanical Sympathy):</strong> Передача указателя на указатель в метод <code>rows.Scan</code> ломает оптимизацию компилятора Go (<strong>Escape Analysis</strong>). Строка гарантированно аллоцируется в куче (Heap), а не на быстром стеке горутины. При выборках в сотни тысяч строк это создает колоссальное давление на сборщик мусора Go. Кроме того, прикладной код обрастает бесконечными защитными проверками <code>if bio != nil</code>.</p>
+<p>Если в базе данных <code>NULL</code>, драйвер присвоит указателю значение <code>nil</code>. Если строка присутствует — выделит память под строку и вернет указатель.</p>
+<ul>
+<li><strong>Недостаток (Mechanical Sympathy):</strong> Передача указателя на указатель в метод <code>rows.Scan</code> ломает оптимизацию компилятора Go (<strong>Escape Analysis</strong>). Строка гарантированно аллоцируется в куче (Heap), а не на быстром стеке горутины. При выборках в сотни тысяч строк это создает колоссальное давление на сборщик мусора Go. Кроме того, прикладной код обрастает бесконечными защитными проверками <code>if bio != nil</code>.</li>
+</ul>
 <h3 id="podkhod-2-ispolzovanie-sql-null-idiomatichno-no-mnogoslovno">Подход 2: Использование sql.Null* (Идиоматично, но многословно)</h3>
 <p>Стандартный пакет <code>database/sql</code> предоставляет набор специализированных оберток: <code>sql.NullString</code>, <code>sql.NullInt64</code>, <code>sql.NullFloat64</code>, <code>sql.NullTime</code>:</p>
 

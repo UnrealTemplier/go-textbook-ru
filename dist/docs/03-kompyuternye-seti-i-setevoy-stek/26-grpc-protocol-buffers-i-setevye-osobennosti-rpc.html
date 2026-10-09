@@ -406,11 +406,13 @@ flowchart LR
 </aside>
 
 
-<p><strong>Эволюция схем и совместимость:</strong><br />
-1. Поля в proto имеют номера. Порядок не важен, но номер — нет.<br />
-2. Удаление поля не освобождает место в wire format, если его не пометить как <code>reserved</code>. Если через год другой разработчик использует удаленный номер 2 для другого поля, старые сервисы декодируют данные неверно!<br />
-3. Добавление поля с новым номером безопасно, старые клиенты проигнорируют его (неизвестные поля сохраняются во внутреннем буфере <code>unknownFields</code>).<br />
-4. Изменение типа поля запрещено, если оно уже использовалось.</p>
+<p><strong>Эволюция схем и совместимость:</strong></p>
+<ol>
+<li>Поля в proto имеют номера. Порядок не важен, но номер — нет.</li>
+<li>Удаление поля не освобождает место в wire format, если его не пометить как <code>reserved</code>. Если через год другой разработчик использует удаленный номер 2 для другого поля, старые сервисы декодируют данные неверно!</li>
+<li>Добавление поля с новым номером безопасно, старые клиенты проигнорируют его (неизвестные поля сохраняются во внутреннем буфере <code>unknownFields</code>).</li>
+<li>Изменение типа поля запрещено, если оно уже использовалось.</li>
+</ol>
 <hr />
 <h2 id="arkhitektura-grpc-transport-i-stili-vzaimodeystviya">Архитектура gRPC: Транспорт и Стили взаимодействия</h2>
 <p>gRPC поддерживает четыре стиля взаимодействия, каждый из которых имеет свои сетевые и рантайм-особенности в Go:</p>
@@ -469,12 +471,14 @@ flowchart TD
 <h2 id="pod-kapotom-grpc-http2-i-go-rantaym">Под капотом: gRPC, HTTP/2 и Go-рантайм</h2>
 <p>gRPC работает поверх HTTP/2. Пакет <code>grpc-go</code> не использует стандартный <code>net/http</code>, а напрямую интегрируется с собственной высокопроизводительной реализацией транспорта <code>net/http2</code>. Ключевые компоненты рантайма: <code>transport.Conn</code>, <code>transport.Stream</code>, <code>grpc.codec</code> и <code>grpc.resolver</code>.</p>
 <h3 id="mapping-grpc-na-freymy-http2">Маппинг gRPC на фреймы HTTP/2</h3>
-<p>Каждый вызов gRPC отображается на спецификацию HTTP/2 следующим образом:<br />
-- <strong>HTTP Method:</strong> Всегда <code>POST</code>.<br />
-- <strong>Path:</strong> Строго в формате <code>/{package}.{ServiceName}/{MethodName}</code> (например, <code>/demo.UserService/GetUser</code>).<br />
-- <strong>Content-Type:</strong> Всегда <code>application/grpc</code> (или <code>application/grpc+proto</code>).<br />
-- <strong>Префикс сообщения (5 байт):</strong> Перед каждым Protobuf-сообщением gRPC добавляет 5 байт: 1 байт флага компрессии (<code>0</code> = без сжатия, <code>1</code> = gzip/snappy) и 4 байта длины сообщения (Big-Endian <code>uint32</code>).<br />
-- <strong>Статус завершения:</strong> Передается не в теле, а в трейлерах HTTP/2 (<strong>Trailers</strong>): <code>grpc-status</code> (0 = OK, 1 = Cancelled, 2 = Unknown, etc.) и текстовое пояснение <code>grpc-message</code>.</p>
+<p>Каждый вызов gRPC отображается на спецификацию HTTP/2 следующим образом:</p>
+<ul>
+<li><strong>HTTP Method:</strong> Всегда <code>POST</code>.</li>
+<li><strong>Path:</strong> Строго в формате <code>/{package}.{ServiceName}/{MethodName}</code> (например, <code>/demo.UserService/GetUser</code>).</li>
+<li><strong>Content-Type:</strong> Всегда <code>application/grpc</code> (или <code>application/grpc+proto</code>).</li>
+<li><strong>Префикс сообщения (5 байт):</strong> Перед каждым Protobuf-сообщением gRPC добавляет 5 байт: 1 байт флага компрессии (<code>0</code> = без сжатия, <code>1</code> = gzip/snappy) и 4 байта длины сообщения (Big-Endian <code>uint32</code>).</li>
+<li><strong>Статус завершения:</strong> Передается не в теле, а в трейлерах HTTP/2 (<strong>Trailers</strong>): <code>grpc-status</code> (0 = OK, 1 = Cancelled, 2 = Unknown, etc.) и текстовое пояснение <code>grpc-message</code>.</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -571,10 +575,12 @@ return &lt;-done
 <hr />
 <h2 id="setevye-osobennosti-i-proizvoditelnost">Сетевые особенности и производительность</h2>
 <h3 id="mekhanicheskoe-sochuvstvie-mechanical-sympathy">Механическое сочувствие (Mechanical Sympathy)</h3>
-<p>Бинарный протокол Protobuf в 3-10 раз компактнее JSON. Меньший размер пакета означает:<br />
-1. Меньше промахов TLB (Translation Lookaside Buffer) при работе с сетевыми буферами.<br />
-2. Более предсказуемая работа кэш-линий CPU при десериализации. Процессор последовательно считывает бинарные поля без строкового ветвления и регулярных выражений.<br />
-3. Снижение нагрузки на Garbage Collector: меньше аллокаций строк и байт-массивов. В Go сгенерированный код создает строго типизированные структуры с полями-значениями, которые при вызове могут оставаться на стеке (stack allocation) благодаря эффективному Escape Analysis.</p>
+<p>Бинарный протокол Protobuf в 3-10 раз компактнее JSON. Меньший размер пакета означает:</p>
+<ol>
+<li>Меньше промахов TLB (Translation Lookaside Buffer) при работе с сетевыми буферами.</li>
+<li>Более предсказуемая работа кэш-линий CPU при десериализации. Процессор последовательно считывает бинарные поля без строкового ветвления и регулярных выражений.</li>
+<li>Снижение нагрузки на Garbage Collector: меньше аллокаций строк и байт-массивов. В Go сгенерированный код создает строго типизированные структуры с полями-значениями, которые при вызове могут оставаться на стеке (stack allocation) благодаря эффективному Escape Analysis.</li>
+</ol>
 <h3 id="backpressure-i-flow-control">Backpressure и Flow Control</h3>
 <p>HTTP/2 реализует flow control через окна размером в байты. <code>grpc-go</code> уважает эти окна, но может буферизовать данные в Go-буферах, если приложение читает медленнее, чем пишет. Для контроля используются <code>grpc.MaxCallRecvMsgSize</code> и <code>grpc.MaxCallSendMsgSize</code>.</p>
 

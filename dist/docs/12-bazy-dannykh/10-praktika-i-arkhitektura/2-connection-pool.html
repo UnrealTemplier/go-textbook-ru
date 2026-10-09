@@ -439,11 +439,13 @@
           <div class="article-markdown">
             <h2 id="vvedenie-zachem-nuzhen-pul-soedineniy">Введение: Зачем нужен пул соединений</h2>
 <p>Представьте себе оживленный аэропорт, куда каждую секунду прибывают сотни пассажиров. Если бы диспетчерская служба заставляла каждого пассажира звонить на завод, собирать автомобиль с нуля, регистрировать его в дорожной инспекции и только потом ехать в город — транспортная система сколлапсировала бы в первую же минуту. Разумный город держит на стоянке прогретый таксопарк: машины уже заведены, бензин в баках, водители готовы тронуться немедленно. Пассажир садится, доезжает до места, расплачивается, а автомобиль тут же возвращается на стоянку за следующим клиентом.</p>
-<p>Установка прямого сетевого соединения с базой данных — это как раз сборка автомобиля с нуля:<br />
-*   <strong>Тройное рукопожатие TCP (TCP handshake)</strong>: три сетевых пакета (<code>SYN</code>, <code>SYN-ACK</code>, <code>ACK</code>), добавляющие как минимум один полный круговой путь задержки (<code>RTT</code>).<br />
-*   <strong>Криптографическое рукопожатие TLS (TLS handshake)</strong>: обмен сертификатами, асимметричная криптография по протоколам Диффи-Хеллмана или RSA, согласование симметричных ключей (еще 2–4 <code>RTT</code> и драгоценные миллисекунды тактов CPU).<br />
-*   <strong>Аутентификация и авторизация</strong>: сервер СУБД должен проверить хэши паролей, права доступа в системных каталогах, сверить IP-адрес с <code>pg_hba.conf</code> или таблицами <code>mysql.user</code>.<br />
-*   <strong>Выделение ресурсов на стороне СУБД</strong>: в PostgreSQL на каждое входящее соединение ядро форкает отдельный процесс операционной системы (<code>postgres worker process</code>), выделяет сегменты разделяемой памяти, структуры отслеживания транзакций и буферы сортировки (<code>work_mem</code>).</p>
+<p>Установка прямого сетевого соединения с базой данных — это как раз сборка автомобиля с нуля:</p>
+<ul>
+<li><strong>Тройное рукопожатие TCP (TCP handshake)</strong>: три сетевых пакета (<code>SYN</code>, <code>SYN-ACK</code>, <code>ACK</code>), добавляющие как минимум один полный круговой путь задержки (<code>RTT</code>).</li>
+<li><strong>Криптографическое рукопожатие TLS (TLS handshake)</strong>: обмен сертификатами, асимметричная криптография по протоколам Диффи-Хеллмана или RSA, согласование симметричных ключей (еще 2–4 <code>RTT</code> и драгоценные миллисекунды тактов CPU).</li>
+<li><strong>Аутентификация и авторизация</strong>: сервер СУБД должен проверить хэши паролей, права доступа в системных каталогах, сверить IP-адрес с <code>pg_hba.conf</code> или таблицами <code>mysql.user</code>.</li>
+<li><strong>Выделение ресурсов на стороне СУБД</strong>: в PostgreSQL на каждое входящее соединение ядро форкает отдельный процесс операционной системы (<code>postgres worker process</code>), выделяет сегменты разделяемой памяти, структуры отслеживания транзакций и буферы сортировки (<code>work_mem</code>).</li>
+</ul>
 <p>В высоконагруженной системе, обрабатывающей тысячи сетевых запросов в секунду, создание нового физического сокета на каждый HTTP-запрос привело бы к моментальной деградации: база данных задохнулась бы от переключения контекстов процессов ОС, а бэкенд растратил бы все сокетные дескрипторы.</p>
 <p><strong>Пул соединений (Connection Pool)</strong> — это архитектурный паттерн, при котором клиентское приложение заранее создает и непрерывно поддерживает готовый пул сетевых сокетов, переиспользуя их для миллионов последовательных транзакций. Стандартный пакет <code>database/sql</code> в Go реализует этот паттерн «из коробки», но за кажущейся простотой скрывается сложнейший конкурентный диспетчер.</p>
 
@@ -535,12 +537,14 @@ flowchart LR
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p>Переход между состояниями контролируется мьютексом <code>db.mu</code>. Когда горутина запрашивает соединение:<br />
-1. Захватывается мьютекс <code>db.mu</code>.<br />
-2. Проверяется <code>freeConn</code>: если есть свободные (<code>idle</code>) — берем первое, помечаем <code>inUse</code>.<br />
-3. Если <code>freeConn</code> пуст, но <code>numOpen &lt; maxOpen</code> — инкрементим <code>numOpen</code> и отправляем сигнал в <code>openerCh</code>.<br />
-4. Если лимит достигнут — горутина блокируется на канале ожидания (внутренний <code>waitCh</code>).<br />
-5. Мьютекс освобождается, горутина либо получает соединение, либо ждет в очереди.</p>
+    <p>Переход между состояниями контролируется мьютексом <code>db.mu</code>. Когда горутина запрашивает соединение:</p>
+<ol>
+<li>Захватывается мьютекс <code>db.mu</code>.</li>
+<li>Проверяется <code>freeConn</code>: если есть свободные (<code>idle</code>) — берем первое, помечаем <code>inUse</code>.</li>
+<li>Если <code>freeConn</code> пуст, но <code>numOpen &lt; maxOpen</code> — инкрементим <code>numOpen</code> и отправляем сигнал в <code>openerCh</code>.</li>
+<li>Если лимит достигнут — горутина блокируется на канале ожидания (внутренний <code>waitCh</code>).</li>
+<li>Мьютекс освобождается, горутина либо получает соединение, либо ждет в очереди.</li>
+</ol>
   </div>
 </aside>
 
@@ -787,10 +791,12 @@ db.SetMaxOpenConns(50)
 </code></pre>
 </div>
 
-<p><strong>Как подобрать значение:</strong><br />
-*   <strong>CPU-bound нагрузка</strong>: <code>maxOpen ≈ (CPU cores * 2) + эффективный диск</code><br />
-*   <strong>IO-bound нагрузка</strong> (типичный веб-бэкенд): <code>maxOpen ≈ 50-200</code>, зависит от латентности БД<br />
-*   <strong>Формула Литтла</strong>: <code>MaxConns = QPS * AvgQueryLatency</code> (с запасом 20-30%)</p>
+<p><strong>Как подобрать значение:</strong></p>
+<ul>
+<li><strong>CPU-bound нагрузка</strong>: <code>maxOpen ≈ (CPU cores * 2) + эффективный диск</code></li>
+<li><strong>IO-bound нагрузка</strong> (типичный веб-бэкенд): <code>maxOpen ≈ 50-200</code>, зависит от латентности БД</li>
+<li><strong>Формула Литтла</strong>: <code>MaxConns = QPS * AvgQueryLatency</code> (с запасом 20-30%)</li>
+</ul>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -962,12 +968,14 @@ db.SetMaxIdleConns(25) // при maxOpen=50
 <h2 id="problemy-i-ikh-diagnostika">Проблемы и их диагностика</h2>
 <h3 id="connection-pool-exhausted-prichiny-i-resheniya">Connection pool exhausted: причины и решения</h3>
 <p>Симптом: ошибки <code>sql: connection pool exhausted</code> или бесконечное зависание запросов.</p>
-<p><strong>Чеклист диагностики:</strong><br />
-1.  <strong>Утечка <code>rows.Close()</code></strong>: Проверьте, все ли <code>Query</code> имеют <code>defer rows.Close()</code>.<br />
-2.  <strong>Заброшенные транзакции</strong>: Транзакция без <code>Commit</code>/<code>Rollback</code> удерживает соединение навсегда.<br />
-3.  <strong>Слишком низкий <code>MaxOpen</code></strong>: Увеличьте лимит, если метрики показывают постоянную утилизацию ~100%.<br />
-4.  <strong>Долгие запросы</strong>: Используйте <code>EXPLAIN</code>, добавьте индексы, разбейте сложные запросы.<br />
-5.  <strong>Сетевые проблемы</strong>: Проверьте <code>dial timeout</code>, <code>read timeout</code> на уровне драйвера.</p>
+<p><strong>Чеклист диагностики:</strong></p>
+<ol>
+<li><strong>Утечка <code>rows.Close()</code></strong>: Проверьте, все ли <code>Query</code> имеют <code>defer rows.Close()</code>.</li>
+<li><strong>Заброшенные транзакции</strong>: Транзакция без <code>Commit</code>/<code>Rollback</code> удерживает соединение навсегда.</li>
+<li><strong>Слишком низкий <code>MaxOpen</code></strong>: Увеличьте лимит, если метрики показывают постоянную утилизацию ~100%.</li>
+<li><strong>Долгие запросы</strong>: Используйте <code>EXPLAIN</code>, добавьте индексы, разбейте сложные запросы.</li>
+<li><strong>Сетевые проблемы</strong>: Проверьте <code>dial timeout</code>, <code>read timeout</code> на уровне драйвера.</li>
+</ol>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -1039,17 +1047,21 @@ err = tx.Commit()
 
 <h3 id="dolgie-zaprosy-i-blokirovka-pula">Долгие запросы и блокировка пула</h3>
 <p>Один медленный запрос может «заблокировать» одно соединение из пула на все время выполнения. Если таких запросов много, пул быстро исчерпается.</p>
-<p><strong>Стратегии борьбы:</strong><br />
-*   <strong>Query timeout</strong>: Всегда используйте <code>context.WithTimeout</code>.<br />
-*   <strong>Statement timeout на стороне БД</strong>: Настройте <code>statement_timeout</code> в PostgreSQL для принудительного прерывания долгих запросов.<br />
-*   <strong>Read-only реплики</strong>: Направляйте аналитические/тяжелые запросы на реплики, чтобы не блокировать пул для критичных <code>OLTP</code>-операций.</p>
+<p><strong>Стратегии борьбы:</strong></p>
+<ul>
+<li><strong>Query timeout</strong>: Всегда используйте <code>context.WithTimeout</code>.</li>
+<li><strong>Statement timeout на стороне БД</strong>: Настройте <code>statement_timeout</code> в PostgreSQL для принудительного прерывания долгих запросов.</li>
+<li><strong>Read-only реплики</strong>: Направляйте аналитические/тяжелые запросы на реплики, чтобы не блокировать пул для критичных <code>OLTP</code>-операций.</li>
+</ul>
 <hr />
 <h2 id="mechanical-sympathy-vliyanie-na-proizvoditelnost">Mechanical Sympathy: влияние на производительность</h2>
 <h3 id="syscalls-i-network-io-pri-ustanovke-soedineniya">Syscalls и network I/O при установке соединения</h3>
-<p>Установка нового TCP-соединения требует как минимум:<br />
-*   3 пакета для TCP handshake (SYN, SYN-ACK, ACK)<br />
-*   4-7 пакетов для TLS handshake (ClientHello, ServerHello, Certificate, KeyExchange...)<br />
-*   Системные вызовы <code>socket()</code>, <code>connect()</code>, <code>write()</code>, <code>read()</code></p>
+<p>Установка нового TCP-соединения требует как минимум:</p>
+<ul>
+<li>3 пакета для TCP handshake (SYN, SYN-ACK, ACK)</li>
+<li>4-7 пакетов для TLS handshake (ClientHello, ServerHello, Certificate, KeyExchange...)</li>
+<li>Системные вызовы <code>socket()</code>, <code>connect()</code>, <code>write()</code>, <code>read()</code></li>
+</ul>
 
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
@@ -1154,12 +1166,14 @@ err = tx.Commit()
 </ol>
 <hr />
 <h2 id="itog">Итог</h2>
-<p>Пул соединений в <code>database/sql</code> — это мощный механизм, который при правильной настройке обеспечивает высокую производительность и отказоустойчивость вашего приложения. Ключевые принципы:<br />
-*   <strong>Ограничивайте</strong> (<code>MaxOpen</code>) — чтобы не перегрузить БД.<br />
-*   <strong>Кэшируйте</strong> (<code>MaxIdle</code>) — чтобы избежать накладных расходов на создание.<br />
-*   <strong>Ротируйте</strong> (<code>MaxLifetime</code>) — чтобы избегать сетевых артефактов.<br />
-*   <strong>Мониторьте</strong> (<code>Stats</code>) — чтобы вовремя реагировать на проблемы.<br />
-*   <strong>Защищайте</strong> (<code>Context</code>) — чтобы запросы не висели вечно.</p>
+<p>Пул соединений в <code>database/sql</code> — это мощный механизм, который при правильной настройке обеспечивает высокую производительность и отказоустойчивость вашего приложения. Ключевые принципы:</p>
+<ul>
+<li><strong>Ограничивайте</strong> (<code>MaxOpen</code>) — чтобы не перегрузить БД.</li>
+<li><strong>Кэшируйте</strong> (<code>MaxIdle</code>) — чтобы избежать накладных расходов на создание.</li>
+<li><strong>Ротируйте</strong> (<code>MaxLifetime</code>) — чтобы избегать сетевых артефактов.</li>
+<li><strong>Мониторьте</strong> (<code>Stats</code>) — чтобы вовремя реагировать на проблемы.</li>
+<li><strong>Защищайте</strong> (<code>Context</code>) — чтобы запросы не висели вечно.</li>
+</ul>
 <p>Понимание внутренней механики пула позволяет не просто «настроить по гайду», а осознанно диагностировать и решать проблемы производительности на уровне системного дизайна.</p>
 <p>В следующей статье мы сравним два фундаментальных подхода к работе с данными в Go: написание «сырого» SQL через <code>database/sql</code> и использование ORM-библиотек. Разберем компромиссы между контролем, производительностью и скоростью разработки. Читайте далее: <a href="3-orm-vs-sql.html" class="wikilink">3. ORM vs SQL</a>.</p>
           </div>

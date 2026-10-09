@@ -654,9 +654,11 @@
 — Брайан Керниган</p>
 </blockquote>
 <p>Задача о сопоставлении с маской (<strong>Wildcard Matching / Glob Matching</strong>, LeetCode 44) — близкая родственница <a href="5-regular-expression-matching.html" class="wikilink">5. Regular Expression Matching</a>, но с принципиально иной алгоритмической философией.</p>
-<p>Если в регулярных выражениях квантификатор <code>*</code> жестко привязан к предыдущему символу, то в масках файлов (Globbing) символы <code>*</code> и <code>?</code> самостоятельны:<br />
-- <code>?</code> сопоставляется ровно с <strong>одним любым</strong> символом.<br />
-- <code>*</code> сопоставляется с <strong>любой последовательностью символов</strong> (включая пустую).</p>
+<p>Если в регулярных выражениях квантификатор <code>*</code> жестко привязан к предыдущему символу, то в масках файлов (Globbing) символы <code>*</code> и <code>?</code> самостоятельны:</p>
+<ul>
+<li><code>?</code> сопоставляется ровно с <strong>одним любым</strong> символом.</li>
+<li><code>*</code> сопоставляется с <strong>любой последовательностью символов</strong> (включая пустую).</li>
+</ul>
 <p>Для Senior Go-разработчика эта задача интересна тем, что наряду с классическим двумерным DP она допускает потрясающее инженерное решение: <strong>жадный алгоритм с откатом (Greedy with Backtracking Pointer)</strong>, работающий за $O(M + N)$ в среднем и требующий строго <strong>$O(1)$ памяти</strong> (0 аллокаций в куче).</p>
 <hr />
 <h2 id="1-postanovka-zadachi-i-prakticheskoe-primenenie">1. Постановка задачи и практическое применение</h2>
@@ -677,28 +679,32 @@
 </code></pre>
 </div>
 
-<p>В реальных бэкенд-системах этот алгоритм используется ежесекундно:<br />
-- Маршрутизация HTTP-запросов в API Gateway (Nginx, Traefik, Envoy): маски путей <code>/api/v1/users/*/orders</code>.<br />
-- Политики авторизации IAM (AWS IAM, GCP IAM, Kubernetes RBAC): правила прав доступа <code>arn:aws:s3:::my-bucket/*</code>.<br />
-- Файловый глоббинг в Go: стандартные пакеты <code>path.Match</code> и <code>path/filepath.Glob</code>.</p>
+<p>В реальных бэкенд-системах этот алгоритм используется ежесекундно:</p>
+<ul>
+<li>Маршрутизация HTTP-запросов в API Gateway (Nginx, Traefik, Envoy): маски путей <code>/api/v1/users/*/orders</code>.</li>
+<li>Политики авторизации IAM (AWS IAM, GCP IAM, Kubernetes RBAC): правила прав доступа <code>arn:aws:s3:::my-bucket/*</code>.</li>
+<li>Файловый глоббинг в Go: стандартные пакеты <code>path.Match</code> и <code>path/filepath.Glob</code>.</li>
+</ul>
 <hr />
 <h2 id="2-podkhod-1-dinamicheskoe-programmirovanie-om-cdot-n">2. Подход 1: Динамическое программирование ($O(M \cdot N)$)</h2>
 <p>Определим $dp[i][j]$: совпадает ли префикс $s[0 \dots i-1]$ с префиксом $p[0 \dots j-1]$.</p>
 <h3 id="pravila-perekhodov">Правила переходов:</h3>
 <ol>
 <li><strong>Символы равны или <code>p[j-1] == '?'</code>:</strong><br />
-   $$dp[i][j] = dp[i-1][j-1]$$</li>
+    $$dp[i][j] = dp[i-1][j-1]$$</li>
 <li><strong>Шаблон содержит <code>*</code> (<code>p[j-1] == '*'</code>):</strong><br />
-   Звездочка может либо поглотить 0 символов (смотрим налево по паттерну: $dp[i][j-1]$), либо поглотить текущий символ строки $s[i-1]$ (смотрим вверх по строке: $dp[i-1][j]$):<br />
-   $$dp[i][j] = dp[i][j-1] \;\lor\; dp[i-1][j]$$</li>
+    Звездочка может либо поглотить 0 символов (смотрим налево по паттерну: $dp[i][j-1]$), либо поглотить текущий символ строки $s[i-1]$ (смотрим вверх по строке: $dp[i-1][j]$):<br />
+    $$dp[i][j] = dp[i][j-1] \;\lor\; dp[i-1][j]$$</li>
 </ol>
 <hr />
 <h2 id="3-podkhod-2-idiomatichnyy-go-zhadnyy-algoritm-s-otkatom-o1-pamyati">3. Подход 2: Идиоматичный Go — Жадный алгоритм с откатом ($O(1)$ памяти)</h2>
-<p>В отличие от регулярок, в Wildcard звездочка не зависит от контекста. Это позволяет применить жадную эвристику:<br />
-1. При встрече <code>*</code> мы <strong>жадно предполагаем</strong>, что она заменяет пустую строку (0 символов). Мы запоминаем позицию звездочки (<code>starIdx</code>) и текущую позицию в строке (<code>matchIdx</code>), а указатель паттерна сдвигаем вперед.<br />
-2. Мы продолжаем идти вперед, пока символы совпадают.<br />
-3. Если мы натыкаемся на несовпадение, но ранее встречали <code>*</code>, наше первоначальное предположение было неверным! Мы производим локальный <strong>откат (rollback)</strong>: звездочка обязана поглотить на один символ больше. Мы увеличиваем <code>matchIdx++</code>, сбрасываем <code>i = matchIdx</code>, а <code>j</code> возвращаем на позицию сразу за звездочкой (<code>starIdx + 1</code>).<br />
-4. Если несовпадение возникло, а звездочки в истории не было — строки не совпадают (<code>false</code>).</p>
+<p>В отличие от регулярок, в Wildcard звездочка не зависит от контекста. Это позволяет применить жадную эвристику:</p>
+<ol>
+<li>При встрече <code>*</code> мы <strong>жадно предполагаем</strong>, что она заменяет пустую строку (0 символов). Мы запоминаем позицию звездочки (<code>starIdx</code>) и текущую позицию в строке (<code>matchIdx</code>), а указатель паттерна сдвигаем вперед.</li>
+<li>Мы продолжаем идти вперед, пока символы совпадают.</li>
+<li>Если мы натыкаемся на несовпадение, но ранее встречали <code>*</code>, наше первоначальное предположение было неверным! Мы производим локальный <strong>откат (rollback)</strong>: звездочка обязана поглотить на один символ больше. Мы увеличиваем <code>matchIdx++</code>, сбрасываем <code>i = matchIdx</code>, а <code>j</code> возвращаем на позицию сразу за звездочкой (<code>starIdx + 1</code>).</li>
+<li>Если несовпадение возникло, а звездочки в истории не было — строки не совпадают (<code>false</code>).</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -846,13 +852,15 @@ func IsMatchWildcard(s string, p string) bool {
 
 <hr />
 <h2 id="itog-klastera-dp-na-strokakh">Итог кластера «DP на строках»</h2>
-<p>Мы завершили ключевой строковый блок:<br />
-1. <strong>Теория:</strong> Внутреннее устройство строк в Go (<code>StringHeader</code>), безопасность памяти с <code>strings.Clone</code> и разница между байтами и рунами.<br />
-2. <strong>Дуальность:</strong> Математическая связь $\text{EditDistance} = |S_1| + |S_2| - 2 \cdot \text{LCS}$ и архитектура алгоритма Майерса в Git.<br />
-3. <strong>LCS:</strong> Канонический разбор таблицы для <code>"abcde"</code> и <code>"ace"</code> со сжатием памяти до $O(\min(M, N))$.<br />
-4. <strong>Комбинаторика:</strong> Distinct Subsequences с обратным проходом (0/1 Knapsack паттерн) за $O(N)$ памяти.<br />
-5. <strong>Автоматы и ReDoS:</strong> Регулярные выражения (RE2 / Thompson NFA) с гарантированным $O(M \cdot N)$ против PCRE-уязвимостей.<br />
-6. <strong>Жадный глоббинг:</strong> Wildcard Matching со сведением задачи к 4 регистрам CPU и нулевым аллокациям.</p>
+<p>Мы завершили ключевой строковый блок:</p>
+<ol>
+<li><strong>Теория:</strong> Внутреннее устройство строк в Go (<code>StringHeader</code>), безопасность памяти с <code>strings.Clone</code> и разница между байтами и рунами.</li>
+<li><strong>Дуальность:</strong> Математическая связь $\text{EditDistance} = |S_1| + |S_2| - 2 \cdot \text{LCS}$ и архитектура алгоритма Майерса в Git.</li>
+<li><strong>LCS:</strong> Канонический разбор таблицы для <code>"abcde"</code> и <code>"ace"</code> со сжатием памяти до $O(\min(M, N))$.</li>
+<li><strong>Комбинаторика:</strong> Distinct Subsequences с обратным проходом (0/1 Knapsack паттерн) за $O(N)$ памяти.</li>
+<li><strong>Автоматы и ReDoS:</strong> Регулярные выражения (RE2 / Thompson NFA) с гарантированным $O(M \cdot N)$ против PCRE-уязвимостей.</li>
+<li><strong>Жадный глоббинг:</strong> Wildcard Matching со сведением задачи к 4 регистрам CPU и нулевым аллокациям.</li>
+</ol>
 <p>В следующем кластере мы перенесем идеи динамического программирования на графовые структуры и древовидные иерархии: <a href="../21-dinamicheskoe-programm/1-teoriya-dp-na-derevyakh.html" class="wikilink">1. Теория. DP на деревьях</a>.</p>
           </div>
 

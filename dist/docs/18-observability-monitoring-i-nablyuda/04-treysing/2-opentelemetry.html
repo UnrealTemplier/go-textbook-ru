@@ -368,9 +368,11 @@ flowchart TD
 
 
 <h3 id="1-api-i-sdk">1. API и SDK</h3>
-<p>Архитектура четко разделена на два слоя:<br />
-*   <strong>API (<code>go.opentelemetry.io/otel</code>):</strong> Это тонкие интерфейсы, которые вы используете в бизнес-коде (<code>Tracer</code>, <code>Meter</code>). Они содержат нулевую реализацию (no-op) по умолчанию. Если приложение не зарегистрировало провайдер, вызовы API мгновенно завершаются без каких-либо накладных расходов.<br />
-*   <strong>SDK:</strong> Это конкретная реализация. Она управляет сэмплированием (sampling), буферизацией и отправкой данных.</p>
+<p>Архитектура четко разделена на два слоя:</p>
+<ul>
+<li><strong>API (<code>go.opentelemetry.io/otel</code>):</strong> Это тонкие интерфейсы, которые вы используете в бизнес-коде (<code>Tracer</code>, <code>Meter</code>). Они содержат нулевую реализацию (no-op) по умолчанию. Если приложение не зарегистрировало провайдер, вызовы API мгновенно завершаются без каких-либо накладных расходов.</li>
+<li><strong>SDK:</strong> Это конкретная реализация. Она управляет сэмплированием (sampling), буферизацией и отправкой данных.</li>
+</ul>
 
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
@@ -385,9 +387,11 @@ flowchart TD
 
 <p>Библиотека баз данных может объявить <code>tracer.Start(ctx, "db.query")</code>, не заставляя приложение тащить за собой десятки мегабайт зависимостей Jaeger или gRPC-клиентов.</p>
 <h3 id="2-otlp-opentelemetry-protocol">2. OTLP (OpenTelemetry Protocol)</h3>
-<p>OTel представил <strong>OTLP</strong> — бинарный протокол на основе Protocol Buffers (gRPC или HTTP/2).<br />
-*   <strong>Производительность:</strong> Binary формат кодируется и декодируется быстрее JSON.<br />
-*   <strong>Универсальность:</strong> Один формат для Метрик, Логов и Трейсов.</p>
+<p>OTel представил <strong>OTLP</strong> — бинарный протокол на основе Protocol Buffers (gRPC или HTTP/2).</p>
+<ul>
+<li><strong>Производительность:</strong> Binary формат кодируется и декодируется быстрее JSON.</li>
+<li><strong>Универсальность:</strong> Один формат для Метрик, Логов и Трейсов.</li>
+</ul>
 <p>В отличие от устаревших текстовых форматов или JSON, бинарный Protobuf в OTLP минимизирует объем передаваемого по сети трафика и не требует тяжелых парсеров с обилием строковых аллокаций.</p>
 <hr />
 <h2 id="under-the-hood-kak-eto-rabotaet-v-go">Under the Hood: Как это работает в Go</h2>
@@ -418,10 +422,14 @@ otel.SetTracerProvider(tp)
 </div>
 
 <h3 id="2-spanprocessor">2. SpanProcessor</h3>
-<p>Это механизм обработки спанов.<br />
-*   <strong>BatchSpanProcessor (Рекомендуемый):</strong> Собирает спаны в пачки (batch) и отправляет их раз в N секунд или при достижении лимита размера.<br />
-    *   <em>Почему?</em> Сетевые вызовы дороги. Отправлять каждый спан по сети — убить производительность. Батчинг экономит CPU и сеть. Внутри используется кольцевой буфер и фоновая горутина-сборщик.<br />
-*   <strong>SimpleSpanProcessor:</strong> Отправляет спан сразу после завершения. Используется только для отладки или в короткоживущих CLI-утилитах.</p>
+<p>Это механизм обработки спанов.</p>
+<ul>
+<li><strong>BatchSpanProcessor (Рекомендуемый):</strong> Собирает спаны в пачки (batch) и отправляет их раз в N секунд или при достижении лимита размера.<ul>
+<li><em>Почему?</em> Сетевые вызовы дороги. Отправлять каждый спан по сети — убить производительность. Батчинг экономит CPU и сеть. Внутри используется кольцевой буфер и фоновая горутина-сборщик.</li>
+</ul>
+</li>
+<li><strong>SimpleSpanProcessor:</strong> Отправляет спан сразу после завершения. Используется только для отладки или в короткоживущих CLI-утилитах.</li>
+</ul>
 <h3 id="3-exporter">3. Exporter</h3>
 <p>Отвечает за отправку данных в конкретный бэкенд.<br />
 Чаще всего используют <strong>OTLP Exporter</strong>, который шлет данные в <strong>OpenTelemetry Collector</strong>.</p>
@@ -429,13 +437,17 @@ otel.SetTracerProvider(tp)
 <h2 id="opentelemetry-collector">OpenTelemetry Collector</h2>
 <p>В продакшене приложение не должно знать адреса Jaeger, Prometheus или Loki. Оно должно знать только адрес <code>otel-collector:4317</code>.</p>
 <p><strong>Collector</strong> — это промежуточный прокси-сервис (написан на Go), который принимает данные в формате OTLP и маршрутизирует их.</p>
-<p><strong>Возможности Collector:</strong><br />
-1.  <strong>Рецепшн (Receivers):</strong> Принимает данные (OTLP, Jaeger, Zipkin, Prometheus).<br />
-2.  <strong>Процессоры (Processors):</strong> Обрабатывает данные на лету.<br />
-    *   <code>memory_limiter</code>: Защищает коллектор от OOM.<br />
-    *   <code>batch</code>: Повторный батчинг.<br />
-    *   <code>attributes</code>: Добавление/удаление атрибутов (например, удалить sensitive данные).<br />
-3.  <strong>Экспортеры (Exporters):</strong> Отправляет в бэкенды (Jaeger, ClickHouse, S3).</p>
+<p><strong>Возможности Collector:</strong></p>
+<ol>
+<li><strong>Рецепшн (Receivers):</strong> Принимает данные (OTLP, Jaeger, Zipkin, Prometheus).</li>
+<li><strong>Процессоры (Processors):</strong> Обрабатывает данные на лету.<ul>
+<li><code>memory_limiter</code>: Защищает коллектор от OOM.</li>
+<li><code>batch</code>: Повторный батчинг.</li>
+<li><code>attributes</code>: Добавление/удаление атрибутов (например, удалить sensitive данные).</li>
+</ul>
+</li>
+<li><strong>Экспортеры (Exporters):</strong> Отправляет в бэкенды (Jaeger, ClickHouse, S3).</li>
+</ol>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -444,21 +456,25 @@ otel.SetTracerProvider(tp)
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Зачем нужен OTel Collector, если можно отправлять данные сразу в Jaeger из приложения?<br />
-<strong>Ответ:</strong><br />
-1. <strong>Абстракция:</strong> Приложению не нужно знать топологию мониторинга. Вы можете сменить Jaeger на Tempo, не меняя код приложения и не перезапуская его.<br />
-2. <strong>Offloading (Разгрузка):</strong> Тяжелые операции (ретраи при недоступности бэкенда, батчинг, шифрование) переносятся с приложения на Collector. Это критично для Go-сервисов, где каждая аллокация на счету.<br />
-3. <strong>Очистка данных:</strong> Безопаснее удалить PII (личные данные, email, IP) в Collector'е, чем надеяться, что разработчик забыл их залогировать в приложении.</p>
+<strong>Ответ:</strong></p>
+<ol>
+<li><strong>Абстракция:</strong> Приложению не нужно знать топологию мониторинга. Вы можете сменить Jaeger на Tempo, не меняя код приложения и не перезапуская его.</li>
+<li><strong>Offloading (Разгрузка):</strong> Тяжелые операции (ретраи при недоступности бэкенда, батчинг, шифрование) переносятся с приложения на Collector. Это критично для Go-сервисов, где каждая аллокация на счету.</li>
+<li><strong>Очистка данных:</strong> Безопаснее удалить PII (личные данные, email, IP) в Collector'е, чем надеяться, что разработчик забыл их залогировать в приложении.</li>
+</ol>
   </div>
 </aside>
 
 
 <hr />
 <h2 id="semantic-conventions-semanticheskie-soglasheniya">Semantic Conventions (Семантические соглашения)</h2>
-<p>OpenTelemetry ввел стандарты именования атрибутов. Это делает трейсы универсальными для всех инструментов.<br />
-*   <code>http.method</code>: "GET"<br />
-*   <code>db.system</code>: "postgresql"<br />
-*   <code>db.statement</code>: "SELECT * FROM users"<br />
-*   <code>net.peer.name</code>: "database-server"</p>
+<p>OpenTelemetry ввел стандарты именования атрибутов. Это делает трейсы универсальными для всех инструментов.</p>
+<ul>
+<li><code>http.method</code>: "GET"</li>
+<li><code>db.system</code>: "postgresql"</li>
+<li><code>db.statement</code>: "SELECT * FROM users"</li>
+<li><code>net.peer.name</code>: "database-server"</li>
+</ul>
 <p>Если вы назовете атрибут <code>my_custom_http_method</code>, бэкенд (например, Grafana Tempo) не поймет, что это HTTP-метод, и не сможет построить правильные дашборды.</p>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
@@ -477,11 +493,13 @@ otel.SetTracerProvider(tp)
 
 <hr />
 <h2 id="itog">Итог</h2>
-<p>OpenTelemetry — это "USB" для телеметрии.<br />
-1.  <strong>Единый API:</strong> Вы пишете код под один интерфейс, а бэкенд меняется через конфиг.<br />
-2.  <strong>OTLP:</strong> Эффективный бинарный протокол.<br />
-3.  <strong>Collector:</strong> Централизованная точка управления потоком данных и их обработки.<br />
-4.  <strong>Semantic Conventions:</strong> Словарь общего языка для мониторинга.</p>
+<p>OpenTelemetry — это "USB" для телеметрии.</p>
+<ol>
+<li><strong>Единый API:</strong> Вы пишете код под один интерфейс, а бэкенд меняется через конфиг.</li>
+<li><strong>OTLP:</strong> Эффективный бинарный протокол.</li>
+<li><strong>Collector:</strong> Централизованная точка управления потоком данных и их обработки.</li>
+<li><strong>Semantic Conventions:</strong> Словарь общего языка для мониторинга.</li>
+</ol>
 <p>В следующей статье мы детально рассмотрим строительные блоки трейса — Спаны и Трейсы, и как правильно с ними работать в Go: <a href="3-spany-i-treysy.html" class="wikilink">3. Спаны и трейсы</a>.</p>
           </div>
 

@@ -429,11 +429,13 @@
 </code></pre>
 </div>
 
-<p>Начиная с версии Go 1.21, в стандартную библиотеку вошел пакет <strong><code>log/slog</code></strong>, объединивший лучшие наработки индустрии:<br />
-- Четыре стандартизированных уровня: <code>Debug</code>, <code>Info</code>, <code>Warn</code>, <code>Error</code>.<br />
-- Строго типизированные конструкторы полей (<code>slog.String</code>, <code>slog.Int</code>, <code>slog.Any</code>, <code>slog.Duration</code>), минимизирующие аллокации.<br />
-- Нативная поддержка контекста вызовов (<code>slog.InfoContext</code>, <code>slog.ErrorContext</code>).<br />
-- Модульная архитектура обработчиков (<strong>Handlers</strong>), позволяющая разделять формат вывода (JSONHandler, TextHandler) и транспорт.</p>
+<p>Начиная с версии Go 1.21, в стандартную библиотеку вошел пакет <strong><code>log/slog</code></strong>, объединивший лучшие наработки индустрии:</p>
+<ul>
+<li>Четыре стандартизированных уровня: <code>Debug</code>, <code>Info</code>, <code>Warn</code>, <code>Error</code>.</li>
+<li>Строго типизированные конструкторы полей (<code>slog.String</code>, <code>slog.Int</code>, <code>slog.Any</code>, <code>slog.Duration</code>), минимизирующие аллокации.</li>
+<li>Нативная поддержка контекста вызовов (<code>slog.InfoContext</code>, <code>slog.ErrorContext</code>).</li>
+<li>Модульная архитектура обработчиков (<strong>Handlers</strong>), позволяющая разделять формат вывода (JSONHandler, TextHandler) и транспорт.</li>
+</ul>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -624,9 +626,11 @@ func setLogLevel(w http.ResponseWriter, r *http.Request) {
 <p>Давайте посчитаем: если сервис обрабатывает $10\,000 \text{ RPS}$, и на каждый запрос генерируется всего 5 строк логов, система формирует <strong>50 000 записей в секунду</strong>.<br />
 Если каждая запись создает временный срез атрибутов <code>[]slog.Attr</code> и конкатенирует строки, сервис будет генерировать сотни тысяч паразитных аллокаций в секунду, приводя к непрерывному Stop-The-World и взрывному росту <code>p99 latency</code>.</p>
 <h3 id="sravnenie-logerov-slog-zap-i-zerolog">Сравнение логеров: <code>slog</code>, <code>zap</code> и <code>zerolog</code></h3>
-<p>Для максимальной производительности в экстремальных нагрузках применяются специализированные библиотеки:<br />
-- <strong><code>uber-go/zap</code>:</strong> Пионер высокоскоростного логирования. Использует предварительно выделенные пулы буферов через <code>sync.Pool</code> (<a href="../09-prakticheskie-optimizatsii/2-sync-pool.html" class="wikilink">2. sync Pool</a>) и строгую типизацию без упаковки в <code>interface{}</code>.<br />
-- <strong><code>rs/zerolog</code>:</strong> Архитектура с абсолютным Zero Allocation. Пишет JSON напрямую в байтовые буферы без создания промежуточных структур.</p>
+<p>Для максимальной производительности в экстремальных нагрузках применяются специализированные библиотеки:</p>
+<ul>
+<li><strong><code>uber-go/zap</code>:</strong> Пионер высокоскоростного логирования. Использует предварительно выделенные пулы буферов через <code>sync.Pool</code> (<a href="../09-prakticheskie-optimizatsii/2-sync-pool.html" class="wikilink">2. sync Pool</a>) и строгую типизацию без упаковки в <code>interface{}</code>.</li>
+<li><strong><code>rs/zerolog</code>:</strong> Архитектура с абсолютным Zero Allocation. Пишет JSON напрямую в байтовые буферы без создания промежуточных структур.</li>
+</ul>
 <p>Стандартный <code>slog</code> из Go 1.21 спроектирован с учетом этих практик, однако его дефолтный <code>JSONHandler</code> может немного уступать <code>zerolog</code> по чистым аллокациям. В latency-критичных узлах всегда бенчмаркайте альтернативные реализации бэкендов для <code>slog.Handler</code>.</p>
 <h3 id="asinkhronnoe-logirovanie-i-koltsevye-bufery">Асинхронное логирование и кольцевые буферы</h3>
 <p>Прямой синхронный вызов системного вывода через <code>syscall.Write</code> (<a href="../07-io-i-sistemnyy-uroven/1-sistemnye-vyzovy-i-ikh-stoimost.html" class="wikilink">1. Системные вызовы и их стоимость</a>) может блокировать горутину на миллисекунды, если буфер пайпа ядра Linux или сокет агента сбора логов переполнен.</p>
@@ -664,16 +668,18 @@ func setLogLevel(w http.ResponseWriter, r *http.Request) {
 <hr />
 <h2 id="prakticheskiy-primer-rassledovanie-intsidenta-cherez-strukturirovannye-logi">Практический пример: расследование инцидента через структурированные логи</h2>
 <p><strong>Проблема:</strong> В распределенной платформе электронных платежей сервис чекаута спорадически падал с ошибкой таймаута при списании средств. В старых неструктурированных логах царил хаос из перемешанных строк <code>fmt.Println</code>.</p>
-<p><strong>Инженерный план действий:</strong><br />
-1. Кодовая база была переведена на <code>log/slog</code> с JSON-выводом.<br />
-2. Внедрен <code>TraceIDMiddleware</code>, прокидывающий сквозной заголовок <code>X-Request-Id</code> во все исходящие HTTP- и gRPC-запросы.<br />
-3. Базовый уровень был зафиксирован как <code>Info</code>, а на эндпоинт админки выведено управление <code>level.Set(slog.LevelDebug)</code>.<br />
-4. В момент повторения аномалии уровень был временно переключен в <code>Debug</code>.<br />
-5. По уникальному <code>trace_id</code> из сообщения об ошибке в Grafana Loki был выполнен точный поисковый запрос:<br />
+<p><strong>Инженерный план действий:</strong></p>
+<ol>
+<li>Кодовая база была переведена на <code>log/slog</code> с JSON-выводом.</li>
+<li>Внедрен <code>TraceIDMiddleware</code>, прокидывающий сквозной заголовок <code>X-Request-Id</code> во все исходящие HTTP- и gRPC-запросы.</li>
+<li>Базовый уровень был зафиксирован как <code>Info</code>, а на эндпоинт админки выведено управление <code>level.Set(slog.LevelDebug)</code>.</li>
+<li>В момент повторения аномалии уровень был временно переключен в <code>Debug</code>.</li>
+<li>По уникальному <code>trace_id</code> из сообщения об ошибке в Grafana Loki был выполнен точный поисковый запрос:<br />
 <code>logql
-   {app="checkout-service"} |= "trace_id=f47ac10b-58cc-4372-a567-0e02b2c3d479"</code><br />
-6. Была мгновенно восстановлена посекундная хронология: за 2 секунды до падения внешний сервис курсов валют ответил с задержкой 1.9 с, что исчерпало общий дедлайн контекста родительской горутины.<br />
-7. Логи перестали быть бесполезным шумом и превратились в точнейший измерительный инструмент.</p>
+   {app="checkout-service"} |= "trace_id=f47ac10b-58cc-4372-a567-0e02b2c3d479"</code></li>
+<li>Была мгновенно восстановлена посекундная хронология: за 2 секунды до падения внешний сервис курсов валют ответил с задержкой 1.9 с, что исчерпало общий дедлайн контекста родительской горутины.</li>
+<li>Логи перестали быть бесполезным шумом и превратились в точнейший измерительный инструмент.</li>
+</ol>
 <hr />
 <h2 id="rezyume">Резюме</h2>
 <ol>

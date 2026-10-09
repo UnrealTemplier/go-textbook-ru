@@ -316,10 +316,12 @@
           <div class="article-markdown">
             <h2 id="vvedenie-raznye-filosofii-io">Введение: Разные философии I/O</h2>
 <p>В современной серверной разработке Linux занимает доминирующее положение. Однако компилятор и рантайм языка Go создавались как бескомпромиссно кроссплатформенная среда: один и тот же исходный код обязан с максимальной производительностью работать на ноутбуках разработчиков под управлением macOS, в промышленных кластерах под FreeBSD или в корпоративной инфраструктуре под управлением Windows Server.</p>
-<p>Каждая из этих операционных систем пришла к высоконагруженному сетевому вводу-выводу своим собственным историческим путем. За внешне одинаковым поведением сетевого пакета <code>net/http</code> и планировщика горутин скрываются принципиально разные архитектурные философии:<br />
-- <strong>Linux</strong> сделал ставку на <code>epoll</code> — модель уведомления о готовности (Readiness Model / Reactor).<br />
-- <strong>BSD-семейство (FreeBSD, macOS, OpenBSD)</strong> создало <strong><code>kqueue</code></strong> — универсальную декларативную событийную шину ядра (Event Notification).<br />
-- <strong>Windows</strong> пошла по принципиально иному пути, создав <strong><code>IOCP</code> (I/O Completion Ports)</strong> — архитектуру уведомления о завершении операций (Completion Model / Proactor).</p>
+<p>Каждая из этих операционных систем пришла к высоконагруженному сетевому вводу-выводу своим собственным историческим путем. За внешне одинаковым поведением сетевого пакета <code>net/http</code> и планировщика горутин скрываются принципиально разные архитектурные философии:</p>
+<ul>
+<li><strong>Linux</strong> сделал ставку на <code>epoll</code> — модель уведомления о готовности (Readiness Model / Reactor).</li>
+<li><strong>BSD-семейство (FreeBSD, macOS, OpenBSD)</strong> создало <strong><code>kqueue</code></strong> — универсальную декларативную событийную шину ядра (Event Notification).</li>
+<li><strong>Windows</strong> пошла по принципиально иному пути, создав <strong><code>IOCP</code> (I/O Completion Ports)</strong> — архитектуру уведомления о завершении операций (Completion Model / Proactor).</li>
+</ul>
 <p>Для Senior Go-инженера понимание разницы между <code>kqueue</code> и <code>IOCP</code> — это не академическая экзотика. Это ключ к профилированию сетевых задержек, предотвращению скрытых утечек дескрипторов и пониманию того, как единый <code>netpoller</code> в рантайме Go связывает воедино несовместимые механизмы ядра.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -365,12 +367,14 @@ flowchart TD
 <p>В 2000 году Джонатан Лемон (Jonathan Lemon) представил в FreeBSD 4.1 подсистему <strong>kqueue</strong> (Kernel Queue), которая впоследствии стала стандартом де-факто во всех современных BSD-системах, включая macOS и iOS. </p>
 <p>Главное архитектурное достоинство <code>kqueue</code> перед Linux-овым <code>epoll</code> — его потрясающая <strong>ортогональность и универсальность</strong>. В то время как <code>epoll</code> создавался исключительно под файловые дескрипторы (сокеты, пайпы), <code>kqueue</code> изначально проектировалась как всеобъемлющая событийная шина операционной системы.</p>
 <h3 id="ustroystvo-pod-kapotom">Устройство под капотом</h3>
-<p>В отличие от <code>epoll</code>, где вы создаете единый контекст и добавляете туда дескрипторы, <code>kqueue</code> работает на уровне <strong>очередей событий</strong>. Процесс вызывает системный вызов <code>kqueue()</code> и получает новый дескриптор очереди. Далее через системный вызов <code>kevent()</code> вы регистрируете гибкие фильтры:<br />
-- <code>EVFILT_READ</code> / <code>EVFILT_WRITE</code> — готовность сокета или файла к чтению/записи.<br />
-- <code>EVFILT_TIMER</code> — аппаратные таймеры ядра с точностью до наносекунд (заменяет <code>timerfd</code>).<br />
-- <code>EVFILT_SIGNAL</code> — получение сигналов ядра без традиционных хрупких signal handler (заменяет <code>signalfd</code>).<br />
-- <code>EVFILT_PROC</code> — мониторинг жизненного цикла других процессов (<code>fork</code>, <code>exec</code>, <code>exit</code>).<br />
-- <code>EVFILT_VNODE</code> — отслеживание изменений в файловой системе (удаление, переименование, запись файлов — аналог Linux <code>inotify</code>).</p>
+<p>В отличие от <code>epoll</code>, где вы создаете единый контекст и добавляете туда дескрипторы, <code>kqueue</code> работает на уровне <strong>очередей событий</strong>. Процесс вызывает системный вызов <code>kqueue()</code> и получает новый дескриптор очереди. Далее через системный вызов <code>kevent()</code> вы регистрируете гибкие фильтры:</p>
+<ul>
+<li><code>EVFILT_READ</code> / <code>EVFILT_WRITE</code> — готовность сокета или файла к чтению/записи.</li>
+<li><code>EVFILT_TIMER</code> — аппаратные таймеры ядра с точностью до наносекунд (заменяет <code>timerfd</code>).</li>
+<li><code>EVFILT_SIGNAL</code> — получение сигналов ядра без традиционных хрупких signal handler (заменяет <code>signalfd</code>).</li>
+<li><code>EVFILT_PROC</code> — мониторинг жизненного цикла других процессов (<code>fork</code>, <code>exec</code>, <code>exit</code>).</li>
+<li><code>EVFILT_VNODE</code> — отслеживание изменений в файловой системе (удаление, переименование, запись файлов — аналог Linux <code>inotify</code>).</li>
+</ul>
 
 <div class="code-block" data-lang="c">
   <header class="code-header">

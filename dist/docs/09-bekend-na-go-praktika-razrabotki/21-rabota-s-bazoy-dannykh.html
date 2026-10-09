@@ -358,18 +358,22 @@ func main() {
 
 
 <h2 id="pod-kapotom-pul-soedineniy-i-mekhanika-sql-db">Под капотом. Пул соединений и механика <code>sql.DB</code></h2>
-<p>Структура <code>sql.DB</code> — это не одно соединение, а сложный многопоточный пул (connection pool). Внутри он содержит:<br />
-- <code>freeConn</code>: слайс доступных соединений <code>*driverConn</code>, готовых к немедленному использованию;<br />
-- <code>connRequests</code>: очередь ожидающих горутин <code>chan connRequest</code> при исчерпании лимита;<br />
-- <code>numOpen</code>: атомарный счетчик открытых в данный момент соединений;<br />
-- <code>openerCh</code>: канал для асинхронного открытия новых соединений фоновым воркером;<br />
-- <code>mu</code>: защитный <code>sync.Mutex</code>, координирующий состояние пула.</p>
-<p>При вызове <code>QueryContext</code>:<br />
-1. Горутина берет <code>sync.Mutex</code> пула.<br />
-2. Если <code>freeConn</code> не пуст — берется последнее свободное соединение.<br />
-3. Если свободно ничего нет и <code>numOpen &lt; MaxOpenConns</code> — инициируется создание нового соединения.<br />
-4. Если лимит достигнут — горутина создает структуру запроса с буферизованным каналом (<code>make(chan connRequest, 1)</code>), регистрирует ее в очереди <code>connRequests</code> и ожидает свободного соединения через <code>select</code> между чтением из канала и отменой <code>ctx.Done()</code>.<br />
-5. После выполнения запроса соединение очищается и возвращается в пул либо закрывается, если превышен <code>ConnMaxIdleTime</code> или <code>ConnMaxLifetime</code>.</p>
+<p>Структура <code>sql.DB</code> — это не одно соединение, а сложный многопоточный пул (connection pool). Внутри он содержит:</p>
+<ul>
+<li><code>freeConn</code>: слайс доступных соединений <code>*driverConn</code>, готовых к немедленному использованию;</li>
+<li><code>connRequests</code>: очередь ожидающих горутин <code>chan connRequest</code> при исчерпании лимита;</li>
+<li><code>numOpen</code>: атомарный счетчик открытых в данный момент соединений;</li>
+<li><code>openerCh</code>: канал для асинхронного открытия новых соединений фоновым воркером;</li>
+<li><code>mu</code>: защитный <code>sync.Mutex</code>, координирующий состояние пула.</li>
+</ul>
+<p>При вызове <code>QueryContext</code>:</p>
+<ol>
+<li>Горутина берет <code>sync.Mutex</code> пула.</li>
+<li>Если <code>freeConn</code> не пуст — берется последнее свободное соединение.</li>
+<li>Если свободно ничего нет и <code>numOpen &lt; MaxOpenConns</code> — инициируется создание нового соединения.</li>
+<li>Если лимит достигнут — горутина создает структуру запроса с буферизованным каналом (<code>make(chan connRequest, 1)</code>), регистрирует ее в очереди <code>connRequests</code> и ожидает свободного соединения через <code>select</code> между чтением из канала и отменой <code>ctx.Done()</code>.</li>
+<li>После выполнения запроса соединение очищается и возвращается в пул либо закрывается, если превышен <code>ConnMaxIdleTime</code> или <code>ConnMaxLifetime</code>.</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -494,9 +498,11 @@ func GetUser(ctx context.Context, db *sql.DB, id int64) (*User, error) {
 </div>
 
 <h2 id="kontekst-taymauty-i-otmena-na-urovne-seti">Контекст, таймауты и отмена на уровне сети</h2>
-<p>Контекст в <code>QueryContext</code>/<code>ExecContext</code> управляет двумя критическими аспектами:<br />
-1. <strong>Таймаутом ожидания в очереди пула</strong>: если все соединения заняты, горутина ждет освобождения не дольше дедлайна контекста.<br />
-2. <strong>Отменой выполнения на стороне СУБД</strong>: если драйвер реализует интерфейс <code>driver.QueryerContext</code>, он пересылает отмену по протоколу СУБД.</p>
+<p>Контекст в <code>QueryContext</code>/<code>ExecContext</code> управляет двумя критическими аспектами:</p>
+<ol>
+<li><strong>Таймаутом ожидания в очереди пула</strong>: если все соединения заняты, горутина ждет освобождения не дольше дедлайна контекста.</li>
+<li><strong>Отменой выполнения на стороне СУБД</strong>: если драйвер реализует интерфейс <code>driver.QueryerContext</code>, он пересылает отмену по протоколу СУБД.</li>
+</ol>
 <p>При отмене контекста <code>pgx</code> или <code>mysql</code> драйвер отправляет команду отмены (<code>CANCEL</code> в PostgreSQL) или закрывает сокет. Важно: <strong>отмена контекста не разрывает соединение в пуле сразу</strong>. Соединение остается заблокированным до завершения системного вызова чтения/записи, после чего драйвер помечает его как <code>driver.ErrBadConn</code> и пул закрывает его.</p>
 <h2 id="proizvoditelnost-i-mechanical-sympathy">Производительность и Mechanical Sympathy</h2>
 <p>Работа с БД генерирует измеримое давление на аппаратные ресурсы:</p>

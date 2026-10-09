@@ -374,13 +374,15 @@ flowchart TD
 <hr />
 <h2 id="mekhanika-v-go-filepath-clean-filepath-join-i-ikh-ogranicheniya">Механика в Go: <code>filepath.Clean</code>, <code>filepath.Join</code> и их ограничения</h2>
 <p>Стандартная библиотека Go предоставляет функции <code>filepath.Clean</code> и <code>filepath.Join</code>. Начинающие разработчики часто ошибочно полагают, что вызов <code>filepath.Clean(userInput)</code> или <code>filepath.Join(baseDir, userInput)</code> гарантирует защиту от выхода за пределы каталога. </p>
-<p>Это опасное заблуждение. Функции пакета <code>path/filepath</code> выполняют исключительно <strong>лексическую нормализацию</strong> текстовой строки:<br />
-- Убирают повторяющиеся избыточные разделители (<code>//</code> -&gt; <code>/</code>).<br />
-- Сворачивают относительные сегменты <code>./</code> и <code>../</code> до канонического строкового вида.<br />
-- Удаляют завершающие слэши.<br />
-- <strong>Не разрешают символические ссылки</strong> (symlinks) на реальной файловой системе.<br />
-- <strong>Не проверяют физическое существование файла</strong> или прав доступа.<br />
-- <strong>Не защищают от обхода через двойное кодирование</strong> (<code>%2e%2e%2f</code> или устаревшие UTF-8 оверлонги вроде <code>..%c0%af</code>), если декодирование произведено некорректно.</p>
+<p>Это опасное заблуждение. Функции пакета <code>path/filepath</code> выполняют исключительно <strong>лексическую нормализацию</strong> текстовой строки:</p>
+<ul>
+<li>Убирают повторяющиеся избыточные разделители (<code>//</code> -&gt; <code>/</code>).</li>
+<li>Сворачивают относительные сегменты <code>./</code> и <code>../</code> до канонического строкового вида.</li>
+<li>Удаляют завершающие слэши.</li>
+<li><strong>Не разрешают символические ссылки</strong> (symlinks) на реальной файловой системе.</li>
+<li><strong>Не проверяют физическое существование файла</strong> или прав доступа.</li>
+<li><strong>Не защищают от обхода через двойное кодирование</strong> (<code>%2e%2e%2f</code> или устаревшие UTF-8 оверлонги вроде <code>..%c0%af</code>), если декодирование произведено некорректно.</li>
+</ul>
 <p>Если базовая папка равна <code>/var/app/data</code>, а пользователь передал <code>../../etc/passwd</code>, то <code>filepath.Join("/var/app/data", "../../etc/passwd")</code> честно вычислит лексический результат: <code>/var/etc/passwd</code>. Защита не сработала.</p>
 <h3 id="idiomatichnyy-shablon-bezopasnogo-khendlera-faylov-v-go">Идиоматичный шаблон безопасного хендлера файлов в Go</h3>
 <p>Чтобы надежно запереть чтение файлов внутри целевого каталога, алгоритм обязан включать лексическую нормализацию, получение абсолютных путей, строгую проверку префикса и запрет символических ссылок:</p>
@@ -487,11 +489,13 @@ func SecureFileHandler(baseDir string) http.HandlerFunc {
 <hr />
 <h2 id="pod-kapotom-syscalls-dentry-cache-i-problema-toctou">Под капотом: syscalls, dentry cache и проблема TOCTOU</h2>
 <p>Даже идеальная пользовательская проверка путей через <code>filepath.Clean</code> и <code>os.Lstat</code> страдает от фундаментальной уязвимости многозадачных ОС: <strong>Time-of-Check to Time-of-Use (TOCTOU)</strong>.</p>
-<p>Представьте временной промежуток между двумя системными вызовами:<br />
-1. Шаг проверки: Сервер вызывает <code>os.Lstat("/var/uploads/avatar.png")</code> и убеждается, что это обычный файл.<br />
-2. Интервал времени: Процесс Go уступает тред операционной системы другому процессу.<br />
-3. Атака гонки: Параллельный процесс атакующего (или эксплуатация race condition) удаляет <code>avatar.png</code> и мгновенно создает симлинк с тем же именем, указывающий на <code>/etc/shadow</code>.<br />
-4. Шаг использования: Сервер вызывает <code>os.Open("/var/uploads/avatar.png")</code> и передает содержимое суперсекретного файла наружу!</p>
+<p>Представьте временной промежуток между двумя системными вызовами:</p>
+<ol>
+<li>Шаг проверки: Сервер вызывает <code>os.Lstat("/var/uploads/avatar.png")</code> и убеждается, что это обычный файл.</li>
+<li>Интервал времени: Процесс Go уступает тред операционной системы другому процессу.</li>
+<li>Атака гонки: Параллельный процесс атакующего (или эксплуатация race condition) удаляет <code>avatar.png</code> и мгновенно создает симлинк с тем же именем, указывающий на <code>/etc/shadow</code>.</li>
+<li>Шаг использования: Сервер вызывает <code>os.Open("/var/uploads/avatar.png")</code> и передает содержимое суперсекретного файла наружу!</li>
+</ol>
 <h3 id="reshenie-na-urovne-yadra-linux-5-6-i-sistemnyy-vyzov-openat2">Решение на уровне ядра: Linux 5.6+ и системный вызов <code>openat2</code></h3>
 <p>В современных ядрах Linux для решения проблемы TOCTOU был разработан специализированный системный вызов <code>openat2</code> с набором флагов разрешения путей <code>RESOLVE_*</code>. Флаг <code>RESOLVE_BENEATH</code> заставляет ядро VFS проверять границы пути атомарно, прямо во время обхода <code>dentry cache</code>: если любой компонент пути пытается выйти выше переданного дескриптора базового каталога (включая попытки побега через симлинки), системный вызов немедленно завершается с ошибкой <code>EXDEV</code>.</p>
 <p>В Go доступ к этим возможностям ядра реализуется через пакет <code>golang.org/x/sys/unix</code>:</p>
@@ -575,11 +579,15 @@ func OpenSecure(baseDir, requestPath string) (*os.File, error) {
 <p><strong>Ответ кандидата Senior-уровня:</strong><br />
 «1. <strong>Ложные срабатывания:</strong> Простая подстроковая проверка <code>strings.Contains</code> сломает легитимные пути, содержащие две точки подряд в имени файла (например, <code>file..txt</code> или <code>archive..tar.gz</code>).<br />
 2. <strong>Обход через кодировки:</strong> Входящий путь может содержать URL-кодирование (<code>%2e%2e%2f</code>), двойное кодирование (<code>%252e%252e%252f</code>) или экзотические альтернативные разделители пути в Windows (<code>\</code>). Если проверка на подстроку выполняется до декодирования, она пропустит вектор атаки; если после — может упасть на граничных условиях.<br />
-3. <strong>Архитектурный стандарт защиты:</strong><br />
-   - Полная нормализация через <code>filepath.Clean</code>.<br />
-   - Разрешение в абсолютный путь через <code>filepath.Abs</code>.<br />
-   - Строгая проверка префикса через <code>strings.HasPrefix(absolutePath, allowedBase + string(os.PathSeparator))</code>.<br />
-4. <strong>Аппаратная и ядерная изоляция:</strong> На уровне операционной системы Linux 5.6+ для исключения race conditions (TOCTOU) применяется системный вызов <code>openat2</code> с директивой <code>RESOLVE_BENEATH</code>».</p>
+3. <strong>Архитектурный стандарт защиты:</strong>  </p>
+<ul>
+<li>Полная нормализация через <code>filepath.Clean</code>.  </li>
+<li>Разрешение в абсолютный путь через <code>filepath.Abs</code>.  </li>
+<li>Строгая проверка префикса через <code>strings.HasPrefix(absolutePath, allowedBase + string(os.PathSeparator))</code>.  </li>
+</ul>
+<ol start="4">
+<li><strong>Аппаратная и ядерная изоляция:</strong> На уровне операционной системы Linux 5.6+ для исключения race conditions (TOCTOU) применяется системный вызов <code>openat2</code> с директивой <code>RESOLVE_BENEATH</code>».</li>
+</ol>
   </div>
 </aside>
 

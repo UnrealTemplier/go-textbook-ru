@@ -307,10 +307,12 @@
 <p>Понимание того, как байты из вашего <code>net/http</code> сервера доходят до физического провода через виртуальные лабиринты K8s, критично для устранения tail-latency, предотвращения утечек соединений и обеспечения железной надежности сервисов под пиковой нагрузкой.</p>
 <hr />
 <h3 id="bytovaya-analogiya-ofisnyy-kampus-s-pnevmopochtoy">Бытовая аналогия: Офисный кампус с пневмопочтой</h3>
-<p>Представьте гигантский корпоративный кампус из десятков зданий (ноды кластера Kubernetes):<br />
-- <strong>Традиционный сервер:</strong> У каждого отдела есть постоянный кабинет на третьем этаже с табличкой на двери и медным кабельным телефоном со статическим номером (Bare-Metal сервер со статическим IP).<br />
-- <strong>Kubernetes и модель Flat Network:</strong> Все сотрудники (контейнеры) работают по принципу гибких рабочих мест (Hot-Desking). Рабочие столы (Поды) разворачиваются и исчезают за секунды. Однако руководство кампуса ввело железное правило: у каждого рабочего стола есть персональный номер внутренней телефонной связи (Pod IP). Любой сотрудник с любого стола может напрямую набрать внутренний номер коллеги в соседнем корпусе без секретарей и переадресации (прямая связь Pod-to-Pod без NAT).<br />
-- <strong>Как это работает под полом (CNI):</strong> Под полом кампуса проложена разветвленная сеть гибких пластиковых труб — виртуальных кабелей (<code>veth</code>-пары). Если столы находятся в одном здании, письма летят через локальный коммутатор на этаже (<code>cni0</code> bridge). Если нужно отправить письмо в соседний корпус, письмо упаковывают в герметичную капсулу пневмопочты (инкапсуляция VXLAN/UDP) и выстреливают по магистральной подземной трубе. А регулировщики на перекрестках (<code>kube-proxy</code> и <code>iptables</code>/<code>IPVS</code>) моментально сверяются со списками и перенаправляют капсулы по нужным ячейкам.</p>
+<p>Представьте гигантский корпоративный кампус из десятков зданий (ноды кластера Kubernetes):</p>
+<ul>
+<li><strong>Традиционный сервер:</strong> У каждого отдела есть постоянный кабинет на третьем этаже с табличкой на двери и медным кабельным телефоном со статическим номером (Bare-Metal сервер со статическим IP).</li>
+<li><strong>Kubernetes и модель Flat Network:</strong> Все сотрудники (контейнеры) работают по принципу гибких рабочих мест (Hot-Desking). Рабочие столы (Поды) разворачиваются и исчезают за секунды. Однако руководство кампуса ввело железное правило: у каждого рабочего стола есть персональный номер внутренней телефонной связи (Pod IP). Любой сотрудник с любого стола может напрямую набрать внутренний номер коллеги в соседнем корпусе без секретарей и переадресации (прямая связь Pod-to-Pod без NAT).</li>
+<li><strong>Как это работает под полом (CNI):</strong> Под полом кампуса проложена разветвленная сеть гибких пластиковых труб — виртуальных кабелей (<code>veth</code>-пары). Если столы находятся в одном здании, письма летят через локальный коммутатор на этаже (<code>cni0</code> bridge). Если нужно отправить письмо в соседний корпус, письмо упаковывают в герметичную капсулу пневмопочты (инкапсуляция VXLAN/UDP) и выстреливают по магистральной подземной трубе. А регулировщики на перекрестках (<code>kube-proxy</code> и <code>iptables</code>/<code>IPVS</code>) моментально сверяются со списками и перенаправляют капсулы по нужным ячейкам.</li>
+</ul>
 <hr />
 <h2 id="k8s-networking-model-i-flat-network">K8s Networking Model и Flat Network</h2>
 <p>Сетевая модель Kubernetes строится на концепции <strong>Flat Network</strong> (плоской сети). Она формулирует четыре базовых постулата, которые обязан реализовывать любой сетевой плагин кластера:</p>
@@ -325,9 +327,11 @@
 <h2 id="cni-i-pod-network-ustroystvo-pod-kapotom">CNI и Pod Network: Устройство под капотом</h2>
 <p>Сам Kubernetes не содержит встроенного кода для настройки сетевых интерфейсов. Он делегирует эту задачу плагинам стандарта <strong>CNI (Container Network Interface)</strong>. Индустриальные CNI-плагины (Calico, Cilium, Flannel, Weave) конструируют виртуальные сети непосредственно на уровне ядра Linux.</p>
 <h3 id="kak-eto-rabotaet-na-urovne-os-i-zheleza">Как это работает на уровне ОС и железа</h3>
-<p>Каждый Pod при старте изолируется через Linux <strong>Network Namespace</strong>. Внутри этого пространства создается пара виртуальных сетевых интерфейсов — <strong><code>veth</code> (virtual Ethernet pairs)</strong>, работающих как два конца одного виртуального сетевого кабеля:<br />
-- Один конец пары (<code>eth0</code> или <code>veth0</code>) помещается внутрь Network Namespace пода.<br />
-- Второй конец пары (<code>vethXXXX</code>) остается в пространстве хоста (Host Namespace) и подключается к программному сетевому мосту (Bridge <code>cni0</code> или интерфейсу оверлея <code>flannel.1</code>).</p>
+<p>Каждый Pod при старте изолируется через Linux <strong>Network Namespace</strong>. Внутри этого пространства создается пара виртуальных сетевых интерфейсов — <strong><code>veth</code> (virtual Ethernet pairs)</strong>, работающих как два конца одного виртуального сетевого кабеля:</p>
+<ul>
+<li>Один конец пары (<code>eth0</code> или <code>veth0</code>) помещается внутрь Network Namespace пода.</li>
+<li>Второй конец пары (<code>vethXXXX</code>) остается в пространстве хоста (Host Namespace) и подключается к программному сетевому мосту (Bridge <code>cni0</code> или интерфейсу оверлея <code>flannel.1</code>).</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -361,10 +365,12 @@ flowchart TD
 </figure>
 
 
-<p><strong>Mechanical Sympathy и аппаратная цена абстракций:</strong><br />
-- <code>veth</code> пары работают как виртуальные перемычки. Пакет, отправленный из Pod, проходит через сетевой стек пода, копируется ядром на хостовый конец <code>veth</code>, попадает в bridge, а затем маршрутизируется в физический сетевой адаптер <code>eth0</code>. Это добавляет <strong>контекстные переключения</strong> и копирование пакетов между namespace.<br />
-- При использовании оверлейных сетей (например, VXLAN в Flannel или Calico VXLAN mode) каждый пакет оборачивается в дополнительную внешнюю UDP-оболочку (Outer IP + Outer UDP + VXLAN Header = 50 байт оверхеда). Это снижает полезный MTU (с 1500 до 1450 байт), вызывает дробление пакетов на CPU и требует включения аппаратных оптимизаций <code>GSO/GRO</code> (Generic Segmentation/Receive Offload) на сетевых картах узлов для разгрузки центрального процессора.<br />
-- Современный CNI <strong>Cilium</strong> заменяет bridge и iptables технологией <strong>eBPF/XDP</strong>, перемещая маршрутизацию пакетов в пространство ядра (kernel space) на уровне сокетов (<code>sockops</code>). Это сокращает задержку (latency) на 30–50% и обеспечивает почти нулевое потребление CPU на сетевом стеке.</p>
+<p><strong>Mechanical Sympathy и аппаратная цена абстракций:</strong></p>
+<ul>
+<li><code>veth</code> пары работают как виртуальные перемычки. Пакет, отправленный из Pod, проходит через сетевой стек пода, копируется ядром на хостовый конец <code>veth</code>, попадает в bridge, а затем маршрутизируется в физический сетевой адаптер <code>eth0</code>. Это добавляет <strong>контекстные переключения</strong> и копирование пакетов между namespace.</li>
+<li>При использовании оверлейных сетей (например, VXLAN в Flannel или Calico VXLAN mode) каждый пакет оборачивается в дополнительную внешнюю UDP-оболочку (Outer IP + Outer UDP + VXLAN Header = 50 байт оверхеда). Это снижает полезный MTU (с 1500 до 1450 байт), вызывает дробление пакетов на CPU и требует включения аппаратных оптимизаций <code>GSO/GRO</code> (Generic Segmentation/Receive Offload) на сетевых картах узлов для разгрузки центрального процессора.</li>
+<li>Современный CNI <strong>Cilium</strong> заменяет bridge и iptables технологией <strong>eBPF/XDP</strong>, перемещая маршрутизацию пакетов в пространство ядра (kernel space) на уровне сокетов (<code>sockops</code>). Это сокращает задержку (latency) на 30–50% и обеспечивает почти нулевое потребление CPU на сетевом стеке.</li>
+</ul>
 
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
@@ -437,11 +443,13 @@ flowchart LR
 <hr />
 <h2 id="ingress-i-vneshnyaya-marshrutizatsiya">Ingress и внешняя маршрутизация</h2>
 <p><strong>Ingress</strong> — это манифест и точка входа для маршрутизации внешнего L7-трафика (HTTP/HTTPS) внутрь кластера. Сам ресурс Ingress — это просто декларативное описание маршрутов. Трафик принимает <strong>Ingress Controller</strong> — специализированный обратный прокси (nginx-ingress, envoy, traefik), запущенный внутри кластера.</p>
-<p>Полный маршрут входящего HTTP-запроса от внешнего пользователя до вашей горутины в Go выглядит так:<br />
-1. Внешний клиент $\to$ Cloud Load Balancer (AWS NLB / GCP LB на уровне L4).<br />
-2. Cloud LB $\to$ NodePort/LoadBalancer Service на узлах K8s.<br />
-3. NodePort $\to$ Ingress Controller Pod (где происходит TLS termination, разбор заголовков Host/Path и Rate Limiting).<br />
-4. Ingress Controller $\to$ Backend Service $\to$ Endpoints $\to$ Pod целевого сервиса на Go.</p>
+<p>Полный маршрут входящего HTTP-запроса от внешнего пользователя до вашей горутины в Go выглядит так:</p>
+<ol>
+<li>Внешний клиент $\to$ Cloud Load Balancer (AWS NLB / GCP LB на уровне L4).</li>
+<li>Cloud LB $\to$ NodePort/LoadBalancer Service на узлах K8s.</li>
+<li>NodePort $\to$ Ingress Controller Pod (где происходит TLS termination, разбор заголовков Host/Path и Rate Limiting).</li>
+<li>Ingress Controller $\to$ Backend Service $\to$ Endpoints $\to$ Pod целевого сервиса на Go.</li>
+</ol>
 <p>Для Go-разработчика критично понимать, что Ingress Controller имеет собственные ограничения на <code>worker_connections</code>, <code>proxy_buffer_size</code> и жесткие таймауты проксирования (<code>proxy_read_timeout</code>). Если ваш Go-сервис отвечает медленнее заданного порога Ingress, клиент получит ошибку <code>504 Gateway Timeout</code> задолго до того, как сработает таймаут контекста в Go!</p>
 <hr />
 <h2 id="go-specific-dns-tcp-netpoller-i-connection-limits">Go-specific: DNS, TCP, netpoller и connection limits</h2>
@@ -462,11 +470,13 @@ options ndots:5
 </code></pre>
 </div>
 
-<p>Если имя хоста содержит менее 5 точек (например, <code>api.stripe.com</code> содержит всего 2 точки), встроенный резолвер Go перед отправкой прямого запроса сначала выполняет 4 холостых запроса:<br />
-1. <code>api.stripe.com.default.svc.cluster.local</code> $\to$ NXDOMAIN<br />
-2. <code>api.stripe.com.svc.cluster.local</code> $\to$ NXDOMAIN<br />
-3. <code>api.stripe.com.cluster.local</code> $\to$ NXDOMAIN<br />
-4. <code>api.stripe.com</code> $\to$ SUCCESS!</p>
+<p>Если имя хоста содержит менее 5 точек (например, <code>api.stripe.com</code> содержит всего 2 точки), встроенный резолвер Go перед отправкой прямого запроса сначала выполняет 4 холостых запроса:</p>
+<ol>
+<li><code>api.stripe.com.default.svc.cluster.local</code> $\to$ NXDOMAIN</li>
+<li><code>api.stripe.com.svc.cluster.local</code> $\to$ NXDOMAIN</li>
+<li><code>api.stripe.com.cluster.local</code> $\to$ NXDOMAIN</li>
+<li><code>api.stripe.com</code> $\to$ SUCCESS!</li>
+</ol>
 <p>Это увеличивает задержку первого сетевого подключения на 500–1000 мс и генерирует шквал паразитных DNS-запросов к CoreDNS.<br />
 <strong>Решение:</strong> Всегда использовать абсолютные FQDN с точкой на конце (<code>api.stripe.com.</code> или <code>my-service.default.svc.cluster.local.</code>) либо явно настраивать <code>dnsConfig</code> пода с параметром <code>ndots:2</code> (или в <code>kube-dns</code> config).</p>
 <h3 id="2-tcp-keep-alive-i-cloud-nat">2. TCP Keep-Alive и Cloud NAT</h3>
@@ -513,9 +523,11 @@ func createK8sOptimizedClient() *http.Client {
 <p>В Go TCP keep-alive для сокетов <code>net.Dial</code> уже включён по умолчанию, так что <code>SetKeepAlive(true)</code> вызывать не нужно; в Kubernetes стоит настроить именно <em>период</em> (<code>net.Dialer.KeepAlive</code>, <code>SetKeepAlivePeriod</code>), чтобы зонды укладывались в таймаут облачного NAT.</p>
 <p>Отдельно учтите, что <code>kube-proxy</code> балансирует нагрузку на уровне L4 <em>при установке соединения</em>. Поэтому keep-alive-соединения <code>http.Transport</code>, HTTP/2 и gRPC к <code>ClusterIP</code> остаются «прилипшими» к одному поду, и <code>MaxIdleConnsPerHost: 100</code> сам по себе распределения по подам не даёт (для этого нужны headless-сервис с клиентской балансировкой или L7-прокси).</p>
 <h3 id="3-netpoller-i-epoll">3. Netpoller и epoll</h3>
-<p>Go использует <code>epoll</code> (Linux) для асинхронного I/O. В K8s это работает нативно, но overlay-сети (VXLAN, Wireguard) могут вызывать:<br />
-- <strong>Fragmentation</strong>: Если MTU не настроен, пакеты фрагментируются. Сборкой фрагментов занимается ядро, а не Go; но фрагментация повышает вероятность потерь (потеря одного фрагмента означает потерю всего IP-пакета) и ведет к retransmission.<br />
-- <strong>Reordering</strong>: eBPF/Cilium или балансировщики могут переставлять пакеты. Go TCP congestion control (CUBIC) воспринимает это как потерю и снижает window, деградируя throughput.</p>
+<p>Go использует <code>epoll</code> (Linux) для асинхронного I/O. В K8s это работает нативно, но overlay-сети (VXLAN, Wireguard) могут вызывать:</p>
+<ul>
+<li><strong>Fragmentation</strong>: Если MTU не настроен, пакеты фрагментируются. Сборкой фрагментов занимается ядро, а не Go; но фрагментация повышает вероятность потерь (потеря одного фрагмента означает потерю всего IP-пакета) и ведет к retransmission.</li>
+<li><strong>Reordering</strong>: eBPF/Cilium или балансировщики могут переставлять пакеты. Go TCP congestion control (CUBIC) воспринимает это как потерю и снижает window, деградируя throughput.</li>
+</ul>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">

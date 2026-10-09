@@ -523,10 +523,12 @@ flowchart TD
 
 
 <h3 id="shag-1-sbor-kachestvennogo-profilya">Шаг 1. Сбор качественного профиля</h3>
-<p>Профиль достоверен только при соблюдении метрологических стандартов:<br />
-- Сервис находится под стабильной боевой или синтетической нагрузкой (на холостом ходу в <code>top</code> будут видны только системные функции ожидания: <code>runtime.gopark</code>, <code>netpoll</code>, <code>findrunnable</code>).<br />
-- Длительность записи составляет <strong>не менее 30 секунд</strong> (защита от случайных микровыбросов).<br />
-- Частота сэмплирования зафиксирована на стандартных <strong>100 Гц</strong>.</p>
+<p>Профиль достоверен только при соблюдении метрологических стандартов:</p>
+<ul>
+<li>Сервис находится под стабильной боевой или синтетической нагрузкой (на холостом ходу в <code>top</code> будут видны только системные функции ожидания: <code>runtime.gopark</code>, <code>netpoll</code>, <code>findrunnable</code>).</li>
+<li>Длительность записи составляет <strong>не менее 30 секунд</strong> (защита от случайных микровыбросов).</li>
+<li>Частота сэмплирования зафиксирована на стандартных <strong>100 Гц</strong>.</li>
+</ul>
 <h3 id="shag-2-pervichnyy-osmotr-top-cum">Шаг 2. Первичный осмотр: <code>top -cum</code></h3>
 <p>Запускаем <code>go tool pprof</code> и сортируем список по убыванию кумулятивного времени:</p>
 
@@ -582,9 +584,11 @@ Dropped 40 nodes (cum &lt;= 0.02s)
 </code></pre>
 </div>
 
-<p>Или открываем веб-интерфейс (<code>-http</code>) с интерактивным графом или flamegraph (<a href="3-flamegraph.html" class="wikilink">3. Flamegraph</a>). Мы видим, что из 70% времени <code>ProcessRequest</code>:<br />
-- 40% уходит в <code>encoding/json.Unmarshal</code>.<br />
-- 24% уходит в <code>myapp.ValidateRecord</code>.</p>
+<p>Или открываем веб-интерфейс (<code>-http</code>) с интерактивным графом или flamegraph (<a href="3-flamegraph.html" class="wikilink">3. Flamegraph</a>). Мы видим, что из 70% времени <code>ProcessRequest</code>:</p>
+<ul>
+<li>40% уходит в <code>encoding/json.Unmarshal</code>.</li>
+<li>24% уходит в <code>myapp.ValidateRecord</code>.</li>
+</ul>
 <h3 id="shag-4-klassifikatsiya-goryachego-koda">Шаг 4. Классификация «горячего» кода</h3>
 <p>Теперь мы исследуем листовые функции с максимальным значением <code>flat</code>. Большинство из них принадлежит рантайму Go. Опытный инженер классифицирует их по типам затрат и применяет соответствующий протокол лечения.</p>
 <hr />
@@ -631,21 +635,25 @@ flowchart LR
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> Высокий <code>flat</code> у <code>runtime.mallocgc</code>, <code>runtime.newobject</code>.</li>
 <li><strong>Физическая первопричина:</strong> Программа непрерывно создает короткоживущие объекты в динамической куче (Heap), перегружая потоковые кэши <code>mcache</code> и заставляя рантайм тратить такты на поиск свободных span-блоков и фоновую маркировку GC (<a href="../04-memory-profiling/5-pprof-memory-profile.html" class="wikilink">5. pprof memory profile</a>).</li>
-<li><strong>Протокол действий:</strong><br />
-  1. Немедленно снять профиль памяти с флагом <code>-alloc_space</code> (<a href="../04-memory-profiling/4-allocation-profiling.html" class="wikilink">4. Allocation profiling</a>).<br />
-  2. Провести ревизию побега переменных через <code>go build -gcflags="-m"</code>: устранить неявный боксинг в интерфейсы <code>any</code>, замыкания и возврат структур по указателю.<br />
-  3. Внедрить пул буферов <code>sync.Pool</code> (<a href="../09-prakticheskie-optimizatsii/2-sync-pool.html" class="wikilink">2. sync Pool</a>) или перейти на структуры с фиксированным размером (<a href="../09-prakticheskie-optimizatsii/1-umenshenie-allokatsiy.html" class="wikilink">1. Уменьшение аллокаций</a>).</li>
+<li><strong>Протокол действий:</strong><ol>
+<li>Немедленно снять профиль памяти с флагом <code>-alloc_space</code> (<a href="../04-memory-profiling/4-allocation-profiling.html" class="wikilink">4. Allocation profiling</a>).</li>
+<li>Провести ревизию побега переменных через <code>go build -gcflags="-m"</code>: устранить неявный боксинг в интерфейсы <code>any</code>, замыкания и возврат структур по указателю.</li>
+<li>Внедрить пул буферов <code>sync.Pool</code> (<a href="../09-prakticheskie-optimizatsii/2-sync-pool.html" class="wikilink">2. sync Pool</a>) или перейти на структуры с фиксированным размером (<a href="../09-prakticheskie-optimizatsii/1-umenshenie-allokatsiy.html" class="wikilink">1. Уменьшение аллокаций</a>).</li>
+</ol>
+</li>
 </ul>
 <hr />
 <h3 id="klass-2-kopirovanie-pamyati-memmove-duffcopy-memclrnoheappointers">Класс 2: Копирование памяти (<code>memmove</code>, <code>duffcopy</code>, <code>memclrNoHeapPointers</code>)</h3>
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> Доминирование <code>runtime.memmove</code>, <code>runtime.duffcopy</code>, <code>runtime.memclrNoHeapPointers</code>.</li>
 <li><strong>Физическая первопричина:</strong> Процессор тратит колоссальное количество тактов на тупое перекладывание байт из одной области памяти в другую. Это происходит при передаче тяжелых структур по значению, конкатенации строк, динамическом расширении срезов или заполнении структур нулями.</li>
-<li><strong>Протокол действий:</strong><br />
-  1. Найти вызывающую строку через команду <code>list</code>.<br />
-  2. Передавать структуры размером более 64 байт по указателю <code>*MyStruct</code>.<br />
-  3. Для строк использовать <code>strings.Builder</code> с обязательным предварительным вызовом <code>Grow(size)</code>.<br />
-  4. Применять Zero-Copy подходы (<a href="../07-io-i-sistemnyy-uroven/5-zero-copy-podkhody.html" class="wikilink">5. Zero copy подходы</a>).</li>
+<li><strong>Протокол действий:</strong><ol>
+<li>Найти вызывающую строку через команду <code>list</code>.</li>
+<li>Передавать структуры размером более 64 байт по указателю <code>*MyStruct</code>.</li>
+<li>Для строк использовать <code>strings.Builder</code> с обязательным предварительным вызовом <code>Grow(size)</code>.</li>
+<li>Применять Zero-Copy подходы (<a href="../07-io-i-sistemnyy-uroven/5-zero-copy-podkhody.html" class="wikilink">5. Zero copy подходы</a>).</li>
+</ol>
+</li>
 </ul>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Иллюзия скорости `runtime.memmove`">
@@ -665,58 +673,70 @@ flowchart LR
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> Появление <code>runtime.lock</code>, <code>runtime.unlock</code>, <code>runtime.semacquire</code>, операций <code>sync.Mutex</code> (<code>sync.(*Mutex).Lock</code>).</li>
 <li><strong>Физическая первопричина:</strong> Жесткий <strong>Lock Contention</strong>. Ядра процессора конкурируют за общие мьютексы рантайма (аллокатор, планировщик) или пользовательские примитивы синхронизации. Процессор тратит такты на атомарные инструкции <code>CMPXCHG</code>, спинлоки рантайма и системные вызовы ядра <code>futex</code>.</li>
-<li><strong>Протокол действий:</strong><br />
-  1. Снять профиль мьютексов <code>go test -mutexprofile=mutex.prof</code> (<a href="../08-runtime-i-instrumenty/6-mutex-profile.html" class="wikilink">6. mutex profile</a>) и профиль блокировок (<a href="../08-runtime-i-instrumenty/5-block-profile.html" class="wikilink">5. block profile</a>).<br />
-  2. Сократить критические секции: вынести из-под лока сетевые вызовы и аллокации.<br />
-  3. Шардировать разделяемые кэши на независимые корзины (Striped Mutex).<br />
-  4. Проверить код на False Sharing (<a href="../06-konkurentnost/8-false-sharing.html" class="wikilink">8. False sharing</a>), разнеся счетчики по разным 64-байтным кэш-линиям.</li>
+<li><strong>Протокол действий:</strong><ol>
+<li>Снять профиль мьютексов <code>go test -mutexprofile=mutex.prof</code> (<a href="../08-runtime-i-instrumenty/6-mutex-profile.html" class="wikilink">6. mutex profile</a>) и профиль блокировок (<a href="../08-runtime-i-instrumenty/5-block-profile.html" class="wikilink">5. block profile</a>).</li>
+<li>Сократить критические секции: вынести из-под лока сетевые вызовы и аллокации.</li>
+<li>Шардировать разделяемые кэши на независимые корзины (Striped Mutex).</li>
+<li>Проверить код на False Sharing (<a href="../06-konkurentnost/8-false-sharing.html" class="wikilink">8. False sharing</a>), разнеся счетчики по разным 64-байтным кэш-линиям.</li>
+</ol>
+</li>
 </ul>
 <hr />
 <h3 id="klass-4-cgo-cgocall-asmcgocall">Класс 4: CGO (<code>cgocall</code>, <code>asmcgocall</code>)</h3>
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> Заметное присутствие <code>runtime.cgocall</code>, <code>runtime.asmcgocall</code>.</li>
 <li><strong>Физическая первопричина:</strong> Слишком гранулярные FFI-вызовы в код на C/C++. Каждый переход требует смены стека, переключения ABI, сохранения регистров и вызова <code>entersyscall</code> (<a href="../07-io-i-sistemnyy-uroven/1-sistemnye-vyzovy-i-ikh-stoimost.html" class="wikilink">1. Системные вызовы и их стоимость</a>).</li>
-<li><strong>Протокол действий:</strong><br />
-  1. Батчинг: передавать пачки данных (например, массив из 5 000 элементов) за один вызов в C вместо 5 000 индивидуальных обращений.<br />
-  2. Переписать узкий участок на чистый Go.</li>
+<li><strong>Протокол действий:</strong><ol>
+<li>Батчинг: передавать пачки данных (например, массив из 5 000 элементов) за один вызов в C вместо 5 000 индивидуальных обращений.</li>
+<li>Переписать узкий участок на чистый Go.</li>
+</ol>
+</li>
 </ul>
 <hr />
 <h3 id="klass-5-operatsii-s-mapami-mapaccess-mapassign-growwork">Класс 5: Операции с мапами (<code>mapaccess</code>, <code>mapassign</code>, <code>growWork</code>)</h3>
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> Функции <code>runtime.mapaccess1_fast64</code> (или аналоги), <code>runtime.mapassign</code>, <code>runtime.growWork</code>.</li>
 <li><strong>Физическая первопричина:</strong> Массовые обращения к хэш-таблицам. Если в топе виден <code>runtime.growWork</code> — мапа динамически растет под нагрузкой, непрерывно аллоцируя новые бакеты и эвакуируя старые элементы.</li>
-<li><strong>Протокол действий:</strong><br />
-  1. Всегда предвыделять размер хэш-таблицы: <code>make(map[K]V, expectedSize)</code>.<br />
-  2. Для множеств-флагов использовать пустое значение <code>struct{}</code> (размером 0 байт).<br />
-  3. При критических нагрузках применять плоские структуры данных или специализированные алгоритмы (<span class="wikilink-unresolved" title="Заметка в разработке">20. Алгоритмы и структуры данных (DSA) на Go</span>).</li>
+<li><strong>Протокол действий:</strong><ol>
+<li>Всегда предвыделять размер хэш-таблицы: <code>make(map[K]V, expectedSize)</code>.</li>
+<li>Для множеств-флагов использовать пустое значение <code>struct{}</code> (размером 0 байт).</li>
+<li>При критических нагрузках применять плоские структуры данных или специализированные алгоритмы (<span class="wikilink-unresolved" title="Заметка в разработке">20. Алгоритмы и структуры данных (DSA) на Go</span>).</li>
+</ol>
+</li>
 </ul>
 <hr />
 <h3 id="klass-6-rost-slaysov-growslice">Класс 6: Рост слайсов (<code>growslice</code>)</h3>
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> <code>runtime.growslice</code>.</li>
 <li><strong>Физическая первопричина:</strong> Вызовы <code>append()</code> к срезам с нулевой начальной емкостью. При каждом переполнении емкость удваивается, вызывая вызов аллокатора и <code>runtime.memmove</code>.</li>
-<li><strong>Протокол действий:</strong><br />
-  1. Предвыделять емкость слайса при создании: <code>make([]T, 0, capacity)</code> (<a href="../09-prakticheskie-optimizatsii/4-predvydelenie-pamyati.html" class="wikilink">4. Предвыделение памяти</a>).<br />
-  2. Переиспользовать срезы через <code>slice = slice[:0]</code>.</li>
+<li><strong>Протокол действий:</strong><ol>
+<li>Предвыделять емкость слайса при создании: <code>make([]T, 0, capacity)</code> (<a href="../09-prakticheskie-optimizatsii/4-predvydelenie-pamyati.html" class="wikilink">4. Предвыделение памяти</a>).</li>
+<li>Переиспользовать срезы через <code>slice = slice[:0]</code>.</li>
+</ol>
+</li>
 </ul>
 <hr />
 <h3 id="klass-7-serializatsiya-deserializatsiya">Класс 7: Сериализация / десериализация</h3>
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> <code>encoding/json.Unmarshal</code>, <code>encoding/json.Marshal</code>, <code>xml.Decode</code>, <code>protobuf.Marshal</code>.</li>
 <li><strong>Физическая первопричина:</strong> Рефлексия <code>reflect</code>, парсинг текстовых представлений, боксинг интерфейсов.</li>
-<li><strong>Протокол действий:</strong><br />
-  1. Использовать сверхбыстрые парсеры с кодогенерацией (<code>easyjson</code>) или SIMD-ускорением (<code>sonic</code>).<br />
-  2. Использовать стриминговый <code>json.Decoder</code> с переиспользованием внутренних буферов.<br />
-  3. Для межсервисного общения перейти на бинарный протокол Protobuf/gRPC.</li>
+<li><strong>Протокол действий:</strong><ol>
+<li>Использовать сверхбыстрые парсеры с кодогенерацией (<code>easyjson</code>) или SIMD-ускорением (<code>sonic</code>).</li>
+<li>Использовать стриминговый <code>json.Decoder</code> с переиспользованием внутренних буферов.</li>
+<li>Для межсервисного общения перейти на бинарный протокол Protobuf/gRPC.</li>
+</ol>
+</li>
 </ul>
 <hr />
 <h3 id="klass-8-regulyarnye-vyrazheniya">Класс 8: Регулярные выражения</h3>
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> <code>regexp.(*Regexp).FindAllString</code>, <code>regexp.(*Regexp).Find</code>, <code>regexp.(*Regexp).doExecute</code>.</li>
 <li><strong>Физическая первопричина:</strong> Компиляция регулярного выражения на лету внутри цикла или тяжелый обход автомата NFA.</li>
-<li><strong>Протокол действий:</strong><br />
-  1. Вынести компиляцию в глобальную переменную через <code>regexp.MustCompile</code> один раз при старте сервиса.<br />
-  2. Для тривиальных проверок (поиск подстроки, префикса, суффикса) заменить регулярку на высокооптимизированные функции стандартного пакета <code>strings</code> (<code>strings.Contains</code>, <code>strings.HasPrefix</code>).</li>
+<li><strong>Протокол действий:</strong><ol>
+<li>Вынести компиляцию в глобальную переменную через <code>regexp.MustCompile</code> один раз при старте сервиса.</li>
+<li>Для тривиальных проверок (поиск подстроки, префикса, суффикса) заменить регулярку на высокооптимизированные функции стандартного пакета <code>strings</code> (<code>strings.Contains</code>, <code>strings.HasPrefix</code>).</li>
+</ol>
+</li>
 </ul>
 <hr />
 <h2 id="protsess-analiza-algoritmicheskiy-podkhod">Процесс анализа: алгоритмический подход</h2>
@@ -775,16 +795,20 @@ flowchart LR
 <ol>
 <li><code>main.handleRequest</code> держит 84% кумулятивного времени (<code>cum</code>), но ее собственный <code>flat</code> всего 0.05s — это транспортная точка входа.</li>
 <li>Спускаемся в <code>myapp.BusinessLogic</code> (<code>cum = 3.80s</code>, 76%). Ее собственные вычисления малы (0.30s). Смотрим дочерние ветви.</li>
-<li>Дочерние вызовы:<br />
-   - <code>encoding/json.Unmarshal</code> — 50% CPU!<br />
-   - <code>myapp.Validate</code> — 18% CPU.</li>
-<li>Смотрим листовые функции:<br />
-   - <code>runtime.mallocgc</code> (36% cum, 8% flat).<br />
-   - <code>runtime.memmove</code> (14% flat, 14% cum — чистый лист!).</li>
+<li>Дочерние вызовы:<ul>
+<li><code>encoding/json.Unmarshal</code> — 50% CPU!</li>
+<li><code>myapp.Validate</code> — 18% CPU.</li>
+</ul>
+</li>
+<li>Смотрим листовые функции:<ul>
+<li><code>runtime.mallocgc</code> (36% cum, 8% flat).</li>
+<li><code>runtime.memmove</code> (14% flat, 14% cum — чистый лист!).</li>
+</ul>
+</li>
 <li><strong>Синтез картины:</strong><br />
-   Половина всей мощности CPU сервера сгорает в стандартном JSON-парсере, который на каждой структуре заставляет аллокатор выделять память (<code>mallocgc</code>), а процессор — побайтово перекопировать ее (<code>memmove</code>).</li>
+    Половина всей мощности CPU сервера сгорает в стандартном JSON-парсере, который на каждой структуре заставляет аллокатор выделять память (<code>mallocgc</code>), а процессор — побайтово перекопировать ее (<code>memmove</code>).</li>
 <li><strong>Решение:</strong><br />
-   Замена <code>encoding/json</code> на библиотеку <code>sonic</code> сокращает аллокации в 4 раза. Повторный профиль демонстрирует падение <code>mallocgc</code> и <code>memmove</code> до фоновых 2%, а общая пропускная способность сервиса возрастает на <strong>65%</strong>.</li>
+    Замена <code>encoding/json</code> на библиотеку <code>sonic</code> сокращает аллокации в 4 раза. Повторный профиль демонстрирует падение <code>mallocgc</code> и <code>memmove</code> до фоновых 2%, а общая пропускная способность сервиса возрастает на <strong>65%</strong>.</li>
 </ol>
 <hr />
 <h2 id="mechanical-sympathy-chitaem-mezhdu-strok">Mechanical Sympathy: читаем между строк</h2>
@@ -834,11 +858,11 @@ flowchart TD
 
 <ol>
 <li><strong><code>runtime.memmove</code> и промахи кэша:</strong><br />
-   Массивное перемещение памяти физически стирает горячие данные прикладного кода из быстрейших кэшей L1D (задержка ~1 нс) и L2 (~3 нс), принуждая следующие инструкции замирать на сотни тактов в ожидании шины DRAM (<a href="8-cache-friendliness.html" class="wikilink">8. Cache friendliness</a>).</li>
+    Массивное перемещение памяти физически стирает горячие данные прикладного кода из быстрейших кэшей L1D (задержка ~1 нс) и L2 (~3 нс), принуждая следующие инструкции замирать на сотни тактов в ожидании шины DRAM (<a href="8-cache-friendliness.html" class="wikilink">8. Cache friendliness</a>).</li>
 <li><strong><code>runtime.lock</code> и сброс TLB/BTB:</strong><br />
-   Частая борьба за мьютексы вызывает сброс аппаратного буфера предсказателя переходов <strong>BTB</strong> (Branch Target Buffer) и буфера трансляции адресов <strong>TLB</strong> при переключении контекста планировщиком. Процессор теряет накопленную статистику спекулятивного исполнения.</li>
+    Частая борьба за мьютексы вызывает сброс аппаратного буфера предсказателя переходов <strong>BTB</strong> (Branch Target Buffer) и буфера трансляции адресов <strong>TLB</strong> при переключении контекста планировщиком. Процессор теряет накопленную статистику спекулятивного исполнения.</li>
 <li><strong>Глубокие цепочки и провал инлайнинга:</strong><br />
-   Если в <code>top -cum</code> виден частокол мелких вспомогательных функций, компилятор Go не смог применить оптимизацию <strong>Inline Expansion</strong> (<a href="5-inline-i-vliyanie-na-performance.html" class="wikilink">5. Inline и влияние на performance</a>), и процессор вынужден непрерывно тратить драгоценные инструкции на организацию кадров стека (<code>PUSH</code>/<code>POP</code>).</li>
+    Если в <code>top -cum</code> виден частокол мелких вспомогательных функций, компилятор Go не смог применить оптимизацию <strong>Inline Expansion</strong> (<a href="5-inline-i-vliyanie-na-performance.html" class="wikilink">5. Inline и влияние на performance</a>), и процессор вынужден непрерывно тратить драгоценные инструкции на организацию кадров стека (<code>PUSH</code>/<code>POP</code>).</li>
 </ol>
 <hr />
 <h2 id="itog">Итог</h2>

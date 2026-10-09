@@ -456,11 +456,13 @@ flowchart TD
 <h2 id="mechanical-sympathy-stoimost-allokatsii">Mechanical Sympathy: Стоимость аллокации</h2>
 <p>С точки зрения железа, стек (Stack) — это исключительно быстрая память, так как она практически всегда "прогрета" и находится в L1/L2 кэше процессора (о механике кэшей мы говорили в <a href="../03-cpu-profiling/8-cache-friendliness.html" class="wikilink">8. Cache friendliness</a>). Аллокация на стеке — это сдвиг указателя <code>SP</code> (Stack Pointer) на несколько байт. Это выполняется за одну ассемблерную инструкцию (<code>SUBQ $24, SP</code>). Освобождение — обратный сдвиг (<code>ADDQ $24, SP</code>). Нулевая нагрузка на GC, нулевая фрагментация.</p>
 <p>Аллокация в куче — это вызов сложной функции рантайма <code>runtime.mallocgc</code>. <br />
-Даже если <code>mcache</code> (локальный кэш аллокатора текущего потока <code>M</code>) имеет свободные блоки нужного размера, это всё равно десятки инструкций:<br />
-1. Вычисление подходящего размерного класса (<code>sizeclass</code>).<br />
-2. Извлечение свободного слота из битовой карты <code>mspan</code>.<br />
-3. Очистка памяти нулями (<code>memclrNoHeapPointersChunk</code>).<br />
-4. Назначение барьеров записи, если объект содержит указатели.</p>
+Даже если <code>mcache</code> (локальный кэш аллокатора текущего потока <code>M</code>) имеет свободные блоки нужного размера, это всё равно десятки инструкций:</p>
+<ol>
+<li>Вычисление подходящего размерного класса (<code>sizeclass</code>).</li>
+<li>Извлечение свободного слота из битовой карты <code>mspan</code>.</li>
+<li>Очистка памяти нулями (<code>memclrNoHeapPointersChunk</code>).</li>
+<li>Назначение барьеров записи, если объект содержит указатели.</li>
+</ol>
 <p>А если объект "переживет" текущую горутину, доступ к нему будет разбросан по памяти, что приведет к кэш-промахам (Cache Misses) при чтении из DRAM.</p>
 
 <aside class="callout callout-info" aria-label="Под капотом: размерные классы runtime.mallocgc">
@@ -469,10 +471,12 @@ flowchart TD
     <span class="callout-title">Под капотом: размерные классы runtime.mallocgc</span>
   </header>
   <div class="callout-body">
-    <p>Аллокатор Go делит объекты на три категории:<br />
-1. <strong>Tiny-аллокации (&lt; 16 байт без указателей):</strong> Упаковываются по нескольку штук в единый 16-байтный блок внутри <code>mcache.tiny</code>.<br />
-2. <strong>Small-аллокации (до 32 КБ):</strong> Выделяются из преднарезанных блоков <code>mspan</code> одного из 67 размерных классов без глобальных блокировок.<br />
-3. <strong>Large-аллокации (&gt; 32 КБ):</strong> Выделяются напрямую через <code>mheap</code> с захватом глобального мьютекса кучи, что создает ощутимую задержку.</p>
+    <p>Аллокатор Go делит объекты на три категории:</p>
+<ol>
+<li><strong>Tiny-аллокации (&lt; 16 байт без указателей):</strong> Упаковываются по нескольку штук в единый 16-байтный блок внутри <code>mcache.tiny</code>.</li>
+<li><strong>Small-аллокации (до 32 КБ):</strong> Выделяются из преднарезанных блоков <code>mspan</code> одного из 67 размерных классов без глобальных блокировок.</li>
+<li><strong>Large-аллокации (&gt; 32 КБ):</strong> Выделяются напрямую через <code>mheap</code> с захватом глобального мьютекса кучи, что создает ощутимую задержку.</li>
+</ol>
   </div>
 </aside>
 
@@ -523,11 +527,13 @@ func NewUser(id int, name string) User {
 <hr />
 <h2 id="2-predvaritelnaya-allokatsiya-preallocation">2. Предварительная аллокация (Preallocation)</h2>
 <p>Когда вы добавляете элементы в <code>slice</code> через <code>append</code>, рантайм проверяет, есть ли место (<code>capacity</code>). Если места нет, вызывается функция <code>runtime.growslice</code>. </p>
-<p>Что делает <code>growslice</code>:<br />
-1. Вычисляет новую вместимость (в Go 1.18+ для малых слайсов удваивает, для больших плавно растет с коэффициентом ~1.25x).<br />
-2. Аллоцирует новый, более крупный массив в памяти кучи.<br />
-3. Копирует старые данные в новый массив (<code>memmove</code>).<br />
-4. Бросает старый массив на растерзание Garbage Collector-у.</p>
+<p>Что делает <code>growslice</code>:</p>
+<ol>
+<li>Вычисляет новую вместимость (в Go 1.18+ для малых слайсов удваивает, для больших плавно растет с коэффициентом ~1.25x).</li>
+<li>Аллоцирует новый, более крупный массив в памяти кучи.</li>
+<li>Копирует старые данные в новый массив (<code>memmove</code>).</li>
+<li>Бросает старый массив на растерзание Garbage Collector-у.</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -596,9 +602,11 @@ func getIDs(users []User) []int {
 <p>Для мап (<code>map</code>) логика аналогична. Внутренний механизм <code>runtime.mapassign</code> при достижении порога load factor (6.5 элементов на бакет) начнет процесс эвакуации (evacuation), что крайне дорого, так как требует аллокации новых бакетов и перехеширования. Инициализируйте мапы так: <code>make(map[string]int, expectedSize)</code>.</p>
 <hr />
 <h2 id="3-skrytye-allokatsii-v-interfeysakh-boxing">3. Скрытые аллокации в интерфейсах (Boxing)</h2>
-<p>Интерфейс в Go под капотом — это структура <code>eface</code> (empty interface, <code>any</code>) или <code>iface</code> (interface with methods), занимающая 16 байт на 64-битных системах. Она содержит два указателя:<br />
-1. <code>_type</code> (для <code>eface</code>) или <code>itab</code> (для <code>iface</code>) — указатель на метаданные типа и таблицу виртуальных методов.<br />
-2. <code>data</code> — указатель на сами данные.</p>
+<p>Интерфейс в Go под капотом — это структура <code>eface</code> (empty interface, <code>any</code>) или <code>iface</code> (interface with methods), занимающая 16 байт на 64-битных системах. Она содержит два указателя:</p>
+<ol>
+<li><code>_type</code> (для <code>eface</code>) или <code>itab</code> (для <code>iface</code>) — указатель на метаданные типа и таблицу виртуальных методов.</li>
+<li><code>data</code> — указатель на сами данные.</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">

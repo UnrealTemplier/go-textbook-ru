@@ -361,11 +361,13 @@ graph TD
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p>В Go состояние стека горутины хранится в структуре <code>runtime.g</code>. Ключевые поля:<br />
-- <code>g.stack</code> — пара <code>[lo, hi]</code>, указывающая диапазон выделенной памяти стека.<br />
-- <code>g.sched.sp</code> — текущий указатель стека (аналог <code>RSP</code>).<br />
-- <code>g.stackguard0</code> — граница, при достижении которой runtime инициирует проверку размера стека.<br />
-- <code>g.stackguard1</code> — используется внутри runtime для предотвращения рекурсивных вызовов <code>newstack</code>.</p>
+    <p>В Go состояние стека горутины хранится в структуре <code>runtime.g</code>. Ключевые поля:</p>
+<ul>
+<li><code>g.stack</code> — пара <code>[lo, hi]</code>, указывающая диапазон выделенной памяти стека.</li>
+<li><code>g.sched.sp</code> — текущий указатель стека (аналог <code>RSP</code>).</li>
+<li><code>g.stackguard0</code> — граница, при достижении которой runtime инициирует проверку размера стека.</li>
+<li><code>g.stackguard1</code> — используется внутри runtime для предотвращения рекурсивных вызовов <code>newstack</code>.</li>
+</ul>
   </div>
 </aside>
 
@@ -373,9 +375,11 @@ graph TD
 <hr />
 <h2 id="mekhanizm-zashchity-pamyati-guard-pages-i-page-fault">Механизм защиты памяти: Guard Pages и Page Fault</h2>
 <p>ОС не доверяет программе управление собственным адресным пространством. Когда процесс создаётся, ядро выделяет стек в конце виртуального адресного пространства процесса. На самом краю (вниз по адресам) размещается <strong>Guard Page</strong> (стражевая страница).</p>
-<p>Это страница, которая:<br />
-1. <strong>Не имеет физической backing-памяти</strong> (не отображена на RAM/swap).<br />
-2. Имеет права доступа <code>PROT_NONE</code> (ни чтение, ни запись, ни исполнение).</p>
+<p>Это страница, которая:</p>
+<ol>
+<li><strong>Не имеет физической backing-памяти</strong> (не отображена на RAM/swap).</li>
+<li>Имеет права доступа <code>PROT_NONE</code> (ни чтение, ни запись, ни исполнение).</li>
+</ol>
 <p>Что происходит, когда <code>g.sched.sp</code> приближается к guard page?</p>
 <ol>
 <li>CPU выполняет инструкцию записи в память (<code>MOV</code>, <code>PUSH</code>, <code>CALL</code>).</li>
@@ -436,11 +440,13 @@ sequenceDiagram
 <li><strong>Инициализация:</strong> Новая горутина получает стартовый стек размером <code>minStackSize</code> (обычно 2 КБ).</li>
 <li><strong>Проверка перед вызовом:</strong> При каждом вызове функции компилятор вставляет в пролог функции проверку стека: она сравнивает указатель стека <code>SP</code> с <code>g.stackguard0</code> (отдельной функции-проверки вроде <code>gostacksplit</code> в рантайме нет).</li>
 <li><strong>Триггер роста:</strong> Если расстояние меньше порога (например, 8 КБ), управление передаётся в <code>runtime.morestack</code>.</li>
-<li><strong>Расширение:</strong> <code>runtime.morestack</code> вызывает <code>runtime.newstack</code>:<br />
-   - Берёт новый блок из пулов стеков рантайма (<code>stackalloc</code>: <code>stackpool</code>/<code>stackcache</code>, а крупные стеки — из кучи рантайма). Отдельного <code>mmap</code> на каждое удвоение нет: память под кучу рантайма уже отображена заранее (см. <a href="18-mmap-otobrazhenie-faylov-i-pamyati.html" class="wikilink"><code>18. mmap. Отображение файлов и памяти</code></a>).<br />
-   - Копирует содержимое старого стека на новый (<code>copystack</code> копирует всегда) и поправляет указатели, которые вели внутрь стека.<br />
-   - Освобождает старый стек (<code>stackfree</code>): блок возвращается в пул стеков рантайма, а не отдаётся ядру через <code>madvise</code>. Физическую память ядру при необходимости возвращает уже фоновый scavenger, и позже.<br />
-   - Обновляет <code>g.stack</code>, <code>g.sched.sp</code> и сбрасывает <code>g.stackguard0</code>.</li>
+<li><strong>Расширение:</strong> <code>runtime.morestack</code> вызывает <code>runtime.newstack</code>:<ul>
+<li>Берёт новый блок из пулов стеков рантайма (<code>stackalloc</code>: <code>stackpool</code>/<code>stackcache</code>, а крупные стеки — из кучи рантайма). Отдельного <code>mmap</code> на каждое удвоение нет: память под кучу рантайма уже отображена заранее (см. <a href="18-mmap-otobrazhenie-faylov-i-pamyati.html" class="wikilink"><code>18. mmap. Отображение файлов и памяти</code></a>).</li>
+<li>Копирует содержимое старого стека на новый (<code>copystack</code> копирует всегда) и поправляет указатели, которые вели внутрь стека.</li>
+<li>Освобождает старый стек (<code>stackfree</code>): блок возвращается в пул стеков рантайма, а не отдаётся ядру через <code>madvise</code>. Физическую память ядру при необходимости возвращает уже фоновый scavenger, и позже.</li>
+<li>Обновляет <code>g.stack</code>, <code>g.sched.sp</code> и сбрасывает <code>g.stackguard0</code>.</li>
+</ul>
+</li>
 <li><strong>Возврат:</strong> рантайм возобновляет выполнение функции уже на новом стеке. (<code>gostartcall</code> к этому не относится: он используется при <em>создании</em> горутины, а не при росте стека.)</li>
 </ol>
 

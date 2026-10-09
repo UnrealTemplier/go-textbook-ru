@@ -477,10 +477,12 @@ sequenceDiagram
 </figure>
 
 
-<p><strong>Зачем это Go-разработчику:</strong><br />
-1. <strong>Zero-downtime деплой:</strong> systemd держит сокет открытым. Новый процесс получает его, старый завершается после <code>SIGUSR1</code> и обработки активных соединений.<br />
-2. <strong>Устранение холодного старта:</strong> TCP-рукопожатие (SYN/SYN-ACK/ACK) и инициализация TLS занимают 1-3 RTT. С активацией сокета приложение стартует мгновенно при первом запросе, а сокет уже в состоянии <code>LISTEN</code>.<br />
-3. <strong>Балансировка нагрузки:</strong> systemd может передавать сокет сразу нескольким инстансам сервиса (socket-based activation).</p>
+<p><strong>Зачем это Go-разработчику:</strong></p>
+<ol>
+<li><strong>Zero-downtime деплой:</strong> systemd держит сокет открытым. Новый процесс получает его, старый завершается после <code>SIGUSR1</code> и обработки активных соединений.</li>
+<li><strong>Устранение холодного старта:</strong> TCP-рукопожатие (SYN/SYN-ACK/ACK) и инициализация TLS занимают 1-3 RTT. С активацией сокета приложение стартует мгновенно при первом запросе, а сокет уже в состоянии <code>LISTEN</code>.</li>
+<li><strong>Балансировка нагрузки:</strong> systemd может передавать сокет сразу нескольким инстансам сервиса (socket-based activation).</li>
+</ol>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -534,18 +536,22 @@ func getListenFD() (net.Listener, error) {
 <ol>
 <li><strong>Парсинг unit-файла:</strong> systemd читает директивы, создает <strong>cgroup v2</strong> группу <code>system.slice/myapp.service</code>.</li>
 <li><strong>Изоляция ресурсов:</strong> <code>MemoryMax</code> и <code>CPUQuota</code> применяются к cgroup через <code>/sys/fs/cgroup/</code>, а <code>LimitNOFILE</code> (как и остальные <code>Limit*</code>) — это не cgroup, а обычный <code>rlimit</code> процесса (<code>setrlimit</code>). Всё это <strong>жесткие</strong> ограничения ядра. Если Go-приложение превысит <code>MemoryMax</code>, ядро убьет процесс (OOMKilled), даже если GC работает корректно.</li>
-<li><strong>Формирование процесса:</strong> <br />
-   - <code>fork()</code> -&gt; <code>clone()</code> с флагами <code>CLONE_NEWPID</code>, <code>CLONE_NEWNS</code>, <code>CLONE_NEWNET</code> (если настроено в <code>ProtectSystem</code>, <code>ProtectHome</code>, <code>PrivateTmp</code>).<br />
-   - <code>setuid</code>/<code>setgid</code> для <code>User</code>/<code>Group</code>.<br />
-   - <code>chdir</code> в <code>WorkingDirectory</code>.<br />
-   - Установка <code>EnvironmentFile</code>.</li>
+<li><strong>Формирование процесса:</strong> <ul>
+<li><code>fork()</code> -&gt; <code>clone()</code> с флагами <code>CLONE_NEWPID</code>, <code>CLONE_NEWNS</code>, <code>CLONE_NEWNET</code> (если настроено в <code>ProtectSystem</code>, <code>ProtectHome</code>, <code>PrivateTmp</code>).</li>
+<li><code>setuid</code>/<code>setgid</code> для <code>User</code>/<code>Group</code>.</li>
+<li><code>chdir</code> в <code>WorkingDirectory</code>.</li>
+<li>Установка <code>EnvironmentFile</code>.</li>
+</ul>
+</li>
 <li><strong>Exec:</strong> <code>execve()</code> бинарника. Передача <code>LISTEN_FDS</code> через env.</li>
 <li><strong>Наблюдение:</strong> systemd отслеживает PID главного процесса (<code>$MAINPID</code>). Если он падает, systemd проверяет <code>Restart=</code> и <code>RestartSec=</code>.</li>
 </ol>
-<p><strong>Сравнение с другими подходами:</strong><br />
-- <strong>PHP-FPM:</strong> Тоже поддерживает socket activation, но управляет только воркерами PHP. systemd универсален и работает с любым бинарником.<br />
-- <strong>Docker/K8s:</strong> В контейнеризованном мире systemd часто заменяется на <code>tini</code> или <code>dumb-init</code> (PID 1 в контейнере). Однако на bare-metal или в гибридных кластерах systemd остается стандартом.<br />
-- <strong>C++/C#:</strong> В этих экосистемах часто используют <code>systemd</code> для управления демоном, но Go-приложения выигрывают от <code>Type=notify</code> благодаря отсутствию тяжелых фреймворков.</p>
+<p><strong>Сравнение с другими подходами:</strong></p>
+<ul>
+<li><strong>PHP-FPM:</strong> Тоже поддерживает socket activation, но управляет только воркерами PHP. systemd универсален и работает с любым бинарником.</li>
+<li><strong>Docker/K8s:</strong> В контейнеризованном мире systemd часто заменяется на <code>tini</code> или <code>dumb-init</code> (PID 1 в контейнере). Однако на bare-metal или в гибридных кластерах systemd остается стандартом.</li>
+<li><strong>C++/C#:</strong> В этих экосистемах часто используют <code>systemd</code> для управления демоном, но Go-приложения выигрывают от <code>Type=notify</code> благодаря отсутствию тяжелых фреймворков.</li>
+</ul>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -620,12 +626,14 @@ go func() {
 </div>
 
 <p><strong>Graceful Shutdown в связке с systemd:</strong><br />
-systemd посылает <code>SIGTERM</code> при <code>stop</code> или <code>reload</code>. Задержка определяется <code>TimeoutStopSec</code> (по умолчанию 90s). Внутри этого окна приложение должно:<br />
-1. Остановить прием новых соединений (<code>listener.Close()</code>).<br />
-2. Завершить обработку активных запросов.<br />
-3. Отключиться от БД/брокеров.<br />
-4. Отправить <code>SdNotifyStopping</code> (опционально, для ускорения таймаута).<br />
-5. Завершиться с кодом 0.</p>
+systemd посылает <code>SIGTERM</code> при <code>stop</code> или <code>reload</code>. Задержка определяется <code>TimeoutStopSec</code> (по умолчанию 90s). Внутри этого окна приложение должно:</p>
+<ol>
+<li>Остановить прием новых соединений (<code>listener.Close()</code>).</li>
+<li>Завершить обработку активных запросов.</li>
+<li>Отключиться от БД/брокеров.</li>
+<li>Отправить <code>SdNotifyStopping</code> (опционально, для ускорения таймаута).</li>
+<li>Завершиться с кодом 0.</li>
+</ol>
 <p>Если приложение не завершится за <code>TimeoutStopSec</code>, systemd пришлет <code>SIGKILL</code>. Это вызовет <code>core dump</code>, который можно исследовать через <code>coredumpctl</code>.</p>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
@@ -643,20 +651,26 @@ systemd посылает <code>SIGTERM</code> при <code>stop</code> или <c
 <h2 id="lovushki-i-voprosy-na-sobesedovanii">Ловушки и вопросы на собеседовании</h2>
 <ol>
 <li>
-<p><strong><code>Type=simple</code> vs <code>Type=notify</code></strong><br />
-   - <code>simple</code>: systemd считает процесс запущенным сразу после <code>exec</code>. Если приложение падает в инициализации, systemd не узнает об этом, пока не упадет PID.<br />
-   - <code>notify</code>: ждет сигнала <code>READY=1</code>. Надежнее для production.</p>
+<p><strong><code>Type=simple</code> vs <code>Type=notify</code></strong></p>
+<ul>
+<li><code>simple</code>: systemd считает процесс запущенным сразу после <code>exec</code>. Если приложение падает в инициализации, systemd не узнает об этом, пока не упадет PID.</li>
+<li><code>notify</code>: ждет сигнала <code>READY=1</code>. Надежнее для production.</li>
+</ul>
 </li>
 <li>
-<p><strong><code>KillMode</code></strong><br />
-   - <code>control-group</code> (default): убивает все процессы в cgroup.<br />
-   - <code>process</code>: убивает только <code>$MAINPID</code>. Оставшиеся процессы (например, воркеры) могут создать zombies или повиснуть в памяти.<br />
-   - <code>mixed</code>: <code>SIGTERM</code> для <code>$MAINPID</code>, <code>SIGKILL</code> для группы. Часто используется для Go-приложений с отдельными воркерами.</p>
+<p><strong><code>KillMode</code></strong></p>
+<ul>
+<li><code>control-group</code> (default): убивает все процессы в cgroup.</li>
+<li><code>process</code>: убивает только <code>$MAINPID</code>. Оставшиеся процессы (например, воркеры) могут создать zombies или повиснуть в памяти.</li>
+<li><code>mixed</code>: <code>SIGTERM</code> для <code>$MAINPID</code>, <code>SIGKILL</code> для группы. Часто используется для Go-приложений с отдельными воркерами.</li>
+</ul>
 </li>
 <li>
-<p><strong><code>Restart=always</code> vs <code>Restart=on-failure</code></strong><br />
-   - <code>always</code> перезапускает сервис даже при успешном завершении (<code>exit 0</code>). Для демонов это нормально, но для скриптов приведет к бесконечному циклу.<br />
-   - <code>on-failure</code> перезапускает только при ненулевом коде или сигнале.</p>
+<p><strong><code>Restart=always</code> vs <code>Restart=on-failure</code></strong></p>
+<ul>
+<li><code>always</code> перезапускает сервис даже при успешном завершении (<code>exit 0</code>). Для демонов это нормально, но для скриптов приведет к бесконечному циклу.</li>
+<li><code>on-failure</code> перезапускает только при ненулевом коде или сигнале.</li>
+</ul>
 </li>
 <li>
 <p><strong>Вопрос на интервью:</strong> <em>Как systemd управляет памятью Go-приложения? Что произойдет, если приложение превысит <code>MemoryMax</code>?</em><br />
@@ -665,11 +679,13 @@ systemd посылает <code>SIGTERM</code> при <code>stop</code> или <c
 </ol>
 <hr />
 <h2 id="itog">Итог</h2>
-<p>systemd — это не просто «менеджер сервисов», а фундамент операционной системы для управления процессами в production. Понимание его работы позволяет:<br />
-1. Корректно настраивать жизненный цикл Go-приложения (<code>Type=notify</code>, <code>Watchdog</code>, <code>Restart</code>).<br />
-2. Использовать <code>LISTEN_FDS</code> для ускорения холодного старта и zero-downtime деплоя.<br />
-3. Правильно ограничивать ресурсы через cgroups, не ломая работу GC и netpoller.<br />
-4. Отлаживать падения через <code>journalctl</code> и <code>coredumpctl</code>.</p>
+<p>systemd — это не просто «менеджер сервисов», а фундамент операционной системы для управления процессами в production. Понимание его работы позволяет:</p>
+<ol>
+<li>Корректно настраивать жизненный цикл Go-приложения (<code>Type=notify</code>, <code>Watchdog</code>, <code>Restart</code>).</li>
+<li>Использовать <code>LISTEN_FDS</code> для ускорения холодного старта и zero-downtime деплоя.</li>
+<li>Правильно ограничивать ресурсы через cgroups, не ломая работу GC и netpoller.</li>
+<li>Отлаживать падения через <code>journalctl</code> и <code>coredumpctl</code>.</li>
+</ol>
 <p>В следующей статье мы разберем, как Go-приложения взаимодействуют друг с другом и с другими процессами в системе, перейдя к <strong><a href="31-mezhprotsessnoe-vzaimodeystvie-ipc.html" class="wikilink">31. Межпроцессное взаимодействие. IPC</a></strong>.</p>
           </div>
 

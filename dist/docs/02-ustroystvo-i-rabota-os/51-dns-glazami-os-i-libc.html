@@ -575,12 +575,14 @@ func main() {
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Почему скомпилированное Go-приложение при развертывании в минималистичном контейнере на базе Alpine Linux иногда падает с ошибками DNS-резолвинга, в то время как в Debian или Ubuntu работает безупречно?</p>
-<p><strong>Ответ:</strong> <br />
-1. <strong>Особенности musl libc:</strong> Alpine Linux базируется на библиотеке <code>musl</code>, реализация резолвера в которой исторически имеет серьезные ограничения: <code>musl</code> не поддерживает многие расширенные опции <code>ndots</code>, требует строго определенного порядка строк в <code>/etc/resolv.conf</code> и по-другому обрабатывает ошибки переполнения UDP.<br />
-2. <strong>Проблема dynamic linking:</strong> Если Go-бинарник был собран с флагом <code>CGO_ENABLED=1</code>, рантайм использует резолвер <code>netcgo</code> и вызывает системную функцию <code>getaddrinfo()</code> из библиотеки <code>musl</code>, натыкаясь на все ее баги.<br />
-3. <strong>Решение проблемы:</strong> Собирать бинарники со статической линковкой и полным отключением CGO:<br />
+<p><strong>Ответ:</strong> </p>
+<ol>
+<li><strong>Особенности musl libc:</strong> Alpine Linux базируется на библиотеке <code>musl</code>, реализация резолвера в которой исторически имеет серьезные ограничения: <code>musl</code> не поддерживает многие расширенные опции <code>ndots</code>, требует строго определенного порядка строк в <code>/etc/resolv.conf</code> и по-другому обрабатывает ошибки переполнения UDP.</li>
+<li><strong>Проблема dynamic linking:</strong> Если Go-бинарник был собран с флагом <code>CGO_ENABLED=1</code>, рантайм использует резолвер <code>netcgo</code> и вызывает системную функцию <code>getaddrinfo()</code> из библиотеки <code>musl</code>, натыкаясь на все ее баги.</li>
+<li><strong>Решение проблемы:</strong> Собирать бинарники со статической линковкой и полным отключением CGO:<br />
 <code>CGO_ENABLED=0 GOOS=linux go build -o app .</code><br />
-   В этом режиме Go использует собственный резолвер <code>netgo</code>, который парсит <code>/etc/resolv.conf</code> строго и устойчив к специфике локальных дистрибутивов.</p>
+    В этом режиме Go использует собственный резолвер <code>netgo</code>, который парсит <code>/etc/resolv.conf</code> строго и устойчив к специфике локальных дистрибутивов.</li>
+</ol>
   </div>
 </aside>
 
@@ -633,10 +635,12 @@ sequenceDiagram
   </header>
   <div class="callout-body">
     <p>Классическая ловушка для Go-микросервисов в облачной инфраструктуре Kubernetes — опция <strong><code>ndots:5</code></strong> в файле <code>/etc/resolv.conf</code> пода.  </p>
-<p>По умолчанию Kubernetes выставляет <code>options ndots:5</code>. Это означает: если доменное имя содержит <strong>меньше 5 точек</strong>, резолвер обязан сначала принудительно дописать к нему локальные суффиксы поиска:<br />
-1. <code>my-svc.default.svc.cluster.local</code><br />
-2. <code>my-svc.svc.cluster.local</code><br />
-3. <code>my-svc.cluster.local</code></p>
+<p>По умолчанию Kubernetes выставляет <code>options ndots:5</code>. Это означает: если доменное имя содержит <strong>меньше 5 точек</strong>, резолвер обязан сначала принудительно дописать к нему локальные суффиксы поиска:</p>
+<ol>
+<li><code>my-svc.default.svc.cluster.local</code></li>
+<li><code>my-svc.svc.cluster.local</code></li>
+<li><code>my-svc.cluster.local</code></li>
+</ol>
 <p>Если ваше Go-приложение обращается к внешнему адресу вроде <code>api.stripe.com</code> (2 точки), резолвер выполнит <strong>3 холостых сетевых запроса</strong> к CoreDNS, получит три ответа <code>NXDOMAIN</code>, и лишь на 4-й попытке сделает запрос к реальному домену!<br />
 Нагрузка на CoreDNS возрастает в 4 раза, а latency каждого сетевого соединения вырастает на десятки миллисекунд.<br />
 <strong>Решение:</strong> Добавляйте точку в конец внешних доменов (<code>api.stripe.com.</code> — Fully Qualified Domain Name, FQDN) либо понижайте <code>ndots</code> в манифесте пода до 1–2.</p>

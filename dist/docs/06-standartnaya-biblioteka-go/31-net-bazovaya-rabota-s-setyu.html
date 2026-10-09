@@ -317,12 +317,14 @@
 
 <h2 id="under-the-hood-netpoller-g-m-p-i-asinkhronnost-bez-kolbekov">Under the hood: netpoller, G-M-P и асинхронность без колбэков</h2>
 <p>Классический блокирующий socket API (<code>read</code>, <code>write</code>, <code>accept</code>) останавливает выполнение потока ОС до готовности данных или завершения записи. В Go сокеты создаются в неблокирующем режиме (<code>O_NONBLOCK</code> на Linux, <code>ioctlsocket</code> на Windows). </p>
-<p>Механика работы при вызове <code>conn.Read()</code>:<br />
-1. Вызывается syscall <code>read()</code>. Если данные есть в сетевом буфере ядра, они копируются в буфер приложения мгновенно.<br />
-2. Если данных нет, <code>read()</code> возвращает ошибку <code>EAGAIN</code>/<code>EWOULDBLOCK</code>.<br />
-3. Рантайм Go не блокирует системный тред. Он регистрирует файловый дескриптор сокета в <strong>сетевом поллере</strong> (<code>epoll</code> на Linux, <code>kqueue</code> на macOS/BSD, <code>IOCP</code> на Windows).<br />
-4. Горутина переводится в состояние <code>Gwaiting</code> и паркуется с помощью вызова <code>gopark</code>. Системный тред <code>M</code> освобождается для выполнения других горутин из локальной очереди <code>P</code>.<br />
-5. Когда в ядре ОС появляется событие <code>EPOLLIN</code>, фоновый поток поллера (или <code>sysmon</code>) будит горутину, переводя её в состояние <code>Grunnable</code>.</p>
+<p>Механика работы при вызове <code>conn.Read()</code>:</p>
+<ol>
+<li>Вызывается syscall <code>read()</code>. Если данные есть в сетевом буфере ядра, они копируются в буфер приложения мгновенно.</li>
+<li>Если данных нет, <code>read()</code> возвращает ошибку <code>EAGAIN</code>/<code>EWOULDBLOCK</code>.</li>
+<li>Рантайм Go не блокирует системный тред. Он регистрирует файловый дескриптор сокета в <strong>сетевом поллере</strong> (<code>epoll</code> на Linux, <code>kqueue</code> на macOS/BSD, <code>IOCP</code> на Windows).</li>
+<li>Горутина переводится в состояние <code>Gwaiting</code> и паркуется с помощью вызова <code>gopark</code>. Системный тред <code>M</code> освобождается для выполнения других горутин из локальной очереди <code>P</code>.</li>
+<li>Когда в ядре ОС появляется событие <code>EPOLLIN</code>, фоновый поток поллера (или <code>sysmon</code>) будит горутину, переводя её в состояние <code>Grunnable</code>.</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -443,10 +445,12 @@ if ok {
 
 <p>По умолчанию Go ориентирован на минимальную сетевую задержку, отправляя данные сразу после вызова <code>Write</code>.</p>
 <h3 id="tsena-sozdaniya-soketa">Цена создания сокета</h3>
-<p><code>net.Dial</code> выполняет:<br />
-1. <code>socket()</code> — создание FD (syscall)<br />
-2. <code>setsockopt()</code> — настройка неблокирующего режима, буферов, таймаутов (syscall)<br />
-3. <code>connect()</code> — TCP handshake (syscall)</p>
+<p><code>net.Dial</code> выполняет:</p>
+<ol>
+<li><code>socket()</code> — создание FD (syscall)</li>
+<li><code>setsockopt()</code> — настройка неблокирующего режима, буферов, таймаутов (syscall)</li>
+<li><code>connect()</code> — TCP handshake (syscall)</li>
+</ol>
 <p>При высокой нагрузке (десятки подключений в секунду к внешним API) это создает заметный overhead. Используйте пулы соединений (<code>http.Transport</code>, <code>pgxpool</code>), чтобы переиспользовать установленные сокеты.</p>
 <h2 id="3-idiomatichnye-patterny-accept-loop-i-konkurentnye-zapisi">3. Идиоматичные паттерны: Accept loop и конкурентные записи</h2>
 <h3 id="pravilnyy-accept-loop">Правильный Accept loop</h3>

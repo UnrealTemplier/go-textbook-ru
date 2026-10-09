@@ -429,11 +429,13 @@ flowchart TD
 <p>Оружие против каскадного коллапса: строгое лимитирование частоты вызовов (<a href="../../17-bezopasnost-appsec-v-go/05-bezopasnost-api/2-rate-limiting.html" class="wikilink">2. Rate limiting</a>), механизм противодавления (<span class="wikilink-unresolved" title="Заметка в разработке">6. Backpressure</span>), адаптивные тайм-ауты и размыкание цепей на границах сервисов.</p>
 <h3 id="3-degradatsiya-proizvoditelnosti">3. Деградация производительности</h3>
 <p>Ошибок 5xx в логах нет, все проверки liveness отдают HTTP 200, но 99-й перцентиль (p99 latency) медленно и неумолимо ползет в стратосферу — от 15 мс до 4 секунд. </p>
-<p>В мире Go корни такой деградации почти всегда скрыты под капотом рантайма:<br />
-- GC-паузы и принудительное переключение рабочих горутин в режим содействия сборщику мусора (<code>mark assist</code>) при взрывном темпе аллокаций (<a href="../../16-profilirovanie-otladka-i-proizvodit/05-garbage-collector/6-gc-pause-i-latency.html" class="wikilink">6. GC pause и latency</a>, <a href="../../16-profilirovanie-otladka-i-proizvodit/05-garbage-collector/9-kogda-gc-stanovitsya-bottleneck.html" class="wikilink">9. Когда GC становится bottleneck</a>);<br />
-- Ожесточенная конкуренция за блокировки на общих мьютексах (<a href="../../16-profilirovanie-otladka-i-proizvodit/06-konkurentnost/7-contention-i-lock-profiling.html" class="wikilink">7. Contention и lock profiling</a>);<br />
-- Межъядерная инвалидация кэш-линий процессора из-за ложного разделения памяти (<a href="../../16-profilirovanie-otladka-i-proizvodit/06-konkurentnost/8-false-sharing.html" class="wikilink">8. False sharing</a>);<br />
-- Частые миграции горутин между потоками планировщика OS при несбалансированном воровстве работы (<a href="../../16-profilirovanie-otladka-i-proizvodit/06-konkurentnost/3-work-stealing.html" class="wikilink">3. Work stealing</a>).</p>
+<p>В мире Go корни такой деградации почти всегда скрыты под капотом рантайма:</p>
+<ul>
+<li>GC-паузы и принудительное переключение рабочих горутин в режим содействия сборщику мусора (<code>mark assist</code>) при взрывном темпе аллокаций (<a href="../../16-profilirovanie-otladka-i-proizvodit/05-garbage-collector/6-gc-pause-i-latency.html" class="wikilink">6. GC pause и latency</a>, <a href="../../16-profilirovanie-otladka-i-proizvodit/05-garbage-collector/9-kogda-gc-stanovitsya-bottleneck.html" class="wikilink">9. Когда GC становится bottleneck</a>);</li>
+<li>Ожесточенная конкуренция за блокировки на общих мьютексах (<a href="../../16-profilirovanie-otladka-i-proizvodit/06-konkurentnost/7-contention-i-lock-profiling.html" class="wikilink">7. Contention и lock profiling</a>);</li>
+<li>Межъядерная инвалидация кэш-линий процессора из-за ложного разделения памяти (<a href="../../16-profilirovanie-otladka-i-proizvodit/06-konkurentnost/8-false-sharing.html" class="wikilink">8. False sharing</a>);</li>
+<li>Частые миграции горутин между потоками планировщика OS при несбалансированном воровстве работы (<a href="../../16-profilirovanie-otladka-i-proizvodit/06-konkurentnost/3-work-stealing.html" class="wikilink">3. Work stealing</a>).</li>
+</ul>
 <h3 id="4-utechki-resursov">4. Утечки ресурсов</h3>
 <p>Коварство утечек в том, что система может выглядеть абсолютно здоровой часами или неделями. Медленно текущая память (<a href="../../16-profilirovanie-otladka-i-proizvodit/04-memory-profiling/6-utechki-pamyati.html" class="wikilink">6. Утечки памяти</a>), незакрытые тела HTTP-ответов (<code>resp.Body</code>), зависшие горутины (<a href="../../16-profilirovanie-otladka-i-proizvodit/06-konkurentnost/2-goroutines-pod-kapotom.html" class="wikilink">2. Goroutines под капотом</a>) или утекающие файловые сокеты (<code>TIME_WAIT</code> / <code>CLOSE_WAIT</code>). Ресурс плавно исчерпывается до физического предела, после чего происходит внезапный и катастрофический отказ всего узла.</p>
 <h3 id="5-gonki-dannykh">5. Гонки данных</h3>
@@ -478,30 +480,38 @@ flowchart LR
 
 <h3 id="1-obnaruzhenie">1. Обнаружение</h3>
 <p>Если об инциденте вам сообщил пользователь в техподдержку или клиент в соцсетях — ваша система мониторинга провалилась. Настоящий инцидент обязан регистрироваться автоматикой за секунды до того, как его масштабы ощутит большинство клиентов.</p>
-<p>Фундамент раннего обнаружения строится на трёх китах:<br />
-- <strong>Метрики RED</strong> (Rate, Errors, Duration) на уровне API каждого сервиса. Рост доли 5xx-ответов выше 1% или всплеск p99 latency выше допустимого SLA — немедленный триггер алерта.<br />
-- <strong>Метрики USE</strong> (Utilization, Saturation, Errors) на уровне инфраструктуры и ОС: троттлинг ядер процессора (CFS throttling), насыщение памяти узла, исчерпание пулов соединений.<br />
-- <strong>Бюджет ошибок (Error Budget)</strong> на базе <a href="../../16-profilirovanie-otladka-i-proizvodit/10-highload/9-slo-i-sla.html" class="wikilink">9. SLO и SLA</a>. Сгорание 20% месячного бюджета ошибок за 1 час сигнализирует об опасном тренде (Warning), сгорание 50% за 15 минут — немедленный экстренный вызов дежурных (Critical/Page).<br />
-- <strong>Синтетические проверки (Blackbox Probing)</strong> — легковесные независимые зонды из внешних сетей, эмулирующие ключевой путь пользователя (авторизация, добавление в корзину, оформление заказа).</p>
-<p>Специфические метрики рантайма Go, на которые дежурный инженер смотрит в первую очередь:<br />
-- <code>go_goroutines</code> — резкий рост графика вверх указывает на дедлок, зависание сетевых I/O вызовов или утечку горутин;<br />
-- <code>go_memstats_gc_cpu_fraction</code> — если рантайм тратит больше 15% процессорного времени на сборку мусора (<code>go_memstats_gc_cpu_fraction &gt; 0.15</code>), сервис захлебывается в аллокациях;<br />
-- <code>go_gc_duration_seconds</code> (p99) — превышение порога в 10–15 мс свидетельствует о тяжелых STW-паузах или огромном количестве сканируемых указателей;<br />
-- <code>go_memstats_heap_inuse_bytes</code> — объем активной кучи Go;<br />
-- Контеншн на мьютексах через mutex profile (<a href="../../16-profilirovanie-otladka-i-proizvodit/08-runtime-i-instrumenty/6-mutex-profile.html" class="wikilink">6. mutex profile</a>) — собирается автоматически при деградации задержек.</p>
+<p>Фундамент раннего обнаружения строится на трёх китах:</p>
+<ul>
+<li><strong>Метрики RED</strong> (Rate, Errors, Duration) на уровне API каждого сервиса. Рост доли 5xx-ответов выше 1% или всплеск p99 latency выше допустимого SLA — немедленный триггер алерта.</li>
+<li><strong>Метрики USE</strong> (Utilization, Saturation, Errors) на уровне инфраструктуры и ОС: троттлинг ядер процессора (CFS throttling), насыщение памяти узла, исчерпание пулов соединений.</li>
+<li><strong>Бюджет ошибок (Error Budget)</strong> на базе <a href="../../16-profilirovanie-otladka-i-proizvodit/10-highload/9-slo-i-sla.html" class="wikilink">9. SLO и SLA</a>. Сгорание 20% месячного бюджета ошибок за 1 час сигнализирует об опасном тренде (Warning), сгорание 50% за 15 минут — немедленный экстренный вызов дежурных (Critical/Page).</li>
+<li><strong>Синтетические проверки (Blackbox Probing)</strong> — легковесные независимые зонды из внешних сетей, эмулирующие ключевой путь пользователя (авторизация, добавление в корзину, оформление заказа).</li>
+</ul>
+<p>Специфические метрики рантайма Go, на которые дежурный инженер смотрит в первую очередь:</p>
+<ul>
+<li><code>go_goroutines</code> — резкий рост графика вверх указывает на дедлок, зависание сетевых I/O вызовов или утечку горутин;</li>
+<li><code>go_memstats_gc_cpu_fraction</code> — если рантайм тратит больше 15% процессорного времени на сборку мусора (<code>go_memstats_gc_cpu_fraction &gt; 0.15</code>), сервис захлебывается в аллокациях;</li>
+<li><code>go_gc_duration_seconds</code> (p99) — превышение порога в 10–15 мс свидетельствует о тяжелых STW-паузах или огромном количестве сканируемых указателей;</li>
+<li><code>go_memstats_heap_inuse_bytes</code> — объем активной кучи Go;</li>
+<li>Контеншн на мьютексах через mutex profile (<a href="../../16-profilirovanie-otladka-i-proizvodit/08-runtime-i-instrumenty/6-mutex-profile.html" class="wikilink">6. mutex profile</a>) — собирается автоматически при деградации задержек.</li>
+</ul>
 <h3 id="2-reagirovanie-ostanovka-krovotecheniya">2. Реагирование — остановка кровотечения</h3>
 <p>Главное правило дежурного инженера: <strong>во время аварии ваша цель — не понять досконально причину и не написать красивый патч, а остановить кровотечение и вернуть сервис пользователям</strong>.</p>
-<p>Иерархия спасательных действий (по степени убывания приоритета):<br />
-1. <strong>Откатить недавний релиз.</strong> 80% инцидентов вызваны свежими деплоями или сменой конфигураций. Если 10 минут назад выкатили версию v2.4.1 — немедленно откатывайтесь на стабильную v2.4.0.<br />
-2. <strong>Переключить трафик (Failover).</strong> Увести DNS/балансировщик на резервный кластер или в соседний дата-центр.<br />
-3. <strong>Горизонтальное или вертикальное масштабирование.</strong> Экстренно накинуть реплик pod'ов или поднять лимиты памяти, чтобы выиграть драгоценное время у OOM Killer.<br />
-4. <strong>Включить деградацию (Graceful Degradation).</strong> Отключить ресурсоемкие второстепенные фичи (блок персонализированных рекомендаций, расчет бонусных баллов, выгрузку тяжелых отчетов), отдавать закешированные ответы.</p>
-<p>Архитектурные паттерны, заложенные заранее, спасают систему от катастрофы:<br />
-- <strong>Graceful Shutdown</strong> (<a href="../../09-bekend-na-go-praktika-razrabotki/10-graceful-shutdown.html" class="wikilink">10. Graceful shutdown</a>) — позволяет аккуратно дообслужить текущие inflight-запросы при перезапуске контейнеров;<br />
-- <strong>Circuit Breaker</strong> (<a href="../05-nadezhnost/1-circuit-breaker.html" class="wikilink">1. Circuit breaker</a>) — изолирует упавшую зависимость и не дает ей парализовать весь бэкенд;<br />
-- <strong>Rate Limiting</strong> (<a href="../../17-bezopasnost-appsec-v-go/05-bezopasnost-api/2-rate-limiting.html" class="wikilink">2. Rate limiting</a>) — срезает пиковые верхушки цунами трафика;<br />
-- <strong>Backpressure</strong> (<span class="wikilink-unresolved" title="Заметка в разработке">6. Backpressure</span>) — быстро сбрасывает избыточные запросы с кодом 503/429, защищая внутренние очереди от переполнения;<br />
-- <strong>Idempotency</strong> (<a href="../../09-bekend-na-go-praktika-razrabotki/28-idempotency.html" class="wikilink">28. Idempotency</a>) — гарантирует безопасность повторных клиентских запросов после ликвидации сбоя.</p>
+<p>Иерархия спасательных действий (по степени убывания приоритета):</p>
+<ol>
+<li><strong>Откатить недавний релиз.</strong> 80% инцидентов вызваны свежими деплоями или сменой конфигураций. Если 10 минут назад выкатили версию v2.4.1 — немедленно откатывайтесь на стабильную v2.4.0.</li>
+<li><strong>Переключить трафик (Failover).</strong> Увести DNS/балансировщик на резервный кластер или в соседний дата-центр.</li>
+<li><strong>Горизонтальное или вертикальное масштабирование.</strong> Экстренно накинуть реплик pod'ов или поднять лимиты памяти, чтобы выиграть драгоценное время у OOM Killer.</li>
+<li><strong>Включить деградацию (Graceful Degradation).</strong> Отключить ресурсоемкие второстепенные фичи (блок персонализированных рекомендаций, расчет бонусных баллов, выгрузку тяжелых отчетов), отдавать закешированные ответы.</li>
+</ol>
+<p>Архитектурные паттерны, заложенные заранее, спасают систему от катастрофы:</p>
+<ul>
+<li><strong>Graceful Shutdown</strong> (<a href="../../09-bekend-na-go-praktika-razrabotki/10-graceful-shutdown.html" class="wikilink">10. Graceful shutdown</a>) — позволяет аккуратно дообслужить текущие inflight-запросы при перезапуске контейнеров;</li>
+<li><strong>Circuit Breaker</strong> (<a href="../05-nadezhnost/1-circuit-breaker.html" class="wikilink">1. Circuit breaker</a>) — изолирует упавшую зависимость и не дает ей парализовать весь бэкенд;</li>
+<li><strong>Rate Limiting</strong> (<a href="../../17-bezopasnost-appsec-v-go/05-bezopasnost-api/2-rate-limiting.html" class="wikilink">2. Rate limiting</a>) — срезает пиковые верхушки цунами трафика;</li>
+<li><strong>Backpressure</strong> (<span class="wikilink-unresolved" title="Заметка в разработке">6. Backpressure</span>) — быстро сбрасывает избыточные запросы с кодом 503/429, защищая внутренние очереди от переполнения;</li>
+<li><strong>Idempotency</strong> (<a href="../../09-bekend-na-go-praktika-razrabotki/28-idempotency.html" class="wikilink">28. Idempotency</a>) — гарантирует безопасность повторных клиентских запросов после ликвидации сбоя.</li>
+</ul>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -510,48 +520,60 @@ flowchart LR
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Ваш высоконагруженный Go-сервис в Kubernetes начинает падать по OOM каждые 20 минут. Ваши действия в первые 5 минут после срабатывания критического алерта?<br />
-<strong>Ответ:</strong><br />
-1. Немедленно подниму memory limit для подов в Deployment (если ноды позволяют) либо увеличу число реплик вдвое, чтобы размазать аллокации и отдалить момент краша, выиграв время.<br />
-2. Если сервис деплоился в последние часы — инициирую быстрый откат (rollout undo).<br />
-3. На одном из живых экземпляров сниму дамп профиля кучи через <code>curl -s http://localhost:6060/debug/pprof/heap &gt; heap.pprof</code> для последующего расследования.<br />
-4. Оповещу команду и бизнес в инцидент-канале о статусе инцидента и принимаемых мерах.</p>
+<strong>Ответ:</strong>  </p>
+<ol>
+<li>Немедленно подниму memory limit для подов в Deployment (если ноды позволяют) либо увеличу число реплик вдвое, чтобы размазать аллокации и отдалить момент краша, выиграв время.  </li>
+<li>Если сервис деплоился в последние часы — инициирую быстрый откат (rollout undo).  </li>
+<li>На одном из живых экземпляров сниму дамп профиля кучи через <code>curl -s http://localhost:6060/debug/pprof/heap &gt; heap.pprof</code> для последующего расследования.  </li>
+<li>Оповещу команду и бизнес в инцидент-канале о статусе инцидента и принимаемых мерах.</li>
+</ol>
   </div>
 </aside>
 
 
 <h3 id="3-analiz-pervoprichiny-root-cause-analysis-rca">3. Анализ первопричины (Root Cause Analysis, RCA)</h3>
 <p>Когда сервис спасен, графики вернулись в зеленую зону и клиенты спокойны, начинается этап расследования. Ключевой принцип взрослой инженерии: <strong>мы ищем не «виновного стрелочника», а системные изъяны архитектуры и процессов, позволившие сбою случиться</strong>.</p>
-<p>Арсенал Go для проведения RCA:<br />
-- <strong>pprof</strong> (<a href="../../16-profilirovanie-otladka-i-proizvodit/03-cpu-profiling/1-pprof-vvedenie.html" class="wikilink">1. pprof. Введение</a>) — посмертный анализ CPU, heap и goroutine дампов;<br />
-- <strong>Execution tracer</strong> (<a href="../../16-profilirovanie-otladka-i-proizvodit/08-runtime-i-instrumenty/3-execution-tracer.html" class="wikilink">3. execution tracer</a>) — незаменим, когда latency росла из-за задержек планировщика, миграций между ядрами или длительных пауз GC;<br />
-- <strong>Mutex/Block профили</strong> (<a href="../../16-profilirovanie-otladka-i-proizvodit/08-runtime-i-instrumenty/6-mutex-profile.html" class="wikilink">6. mutex profile</a>, <a href="../../16-profilirovanie-otladka-i-proizvodit/08-runtime-i-instrumenty/5-block-profile.html" class="wikilink">5. block profile</a>) — для выявления узких мест синхронизации и contention;<br />
-- <strong>Логи с Correlation ID</strong> (<a href="7-correlation-id.html" class="wikilink">7. Correlation ID</a>) — восстановление сквозной причинно-следственной цепочки событий между десятками микросервисов;<br />
-- <strong>Распределенная трассировка</strong> (<span class="wikilink-unresolved" title="Заметка в разработке">2. OpenTelemetry tracing</span>) — визуализация спанов и точная локализация сервиса-виновника.</p>
-<p>Методология <strong>«Пять почему»</strong> (Five Whys) помогает докопаться до фундаментальных причин:<br />
-1. <em>Почему упал сервис?</em> — Ядро Linux прислало сигнал SIGKILL из-за OOMKill.<br />
-2. <em>Почему случился OOM?</em> — Потребление кучи Go превысило 2 ГБ при установленном лимите контейнера 512 МБ.<br />
-3. <em>Почему куча разрослась до 2 ГБ?</em> — Новый in-memory кэш сессий не имел eviction policy и максимального лимита записей.<br />
-4. <em>Почему проблему не перехватили до падения сервиса?</em> — В Prometheus отсутствовал предупреждающий алерт на рост утилизации памяти контейнером.<br />
-5. <em>Почему не было алерта?</em> — Метрика <code>go_memstats_heap_inuse_bytes</code> не была включена в базовый мониторинг сервиса, а деплой не проходил нагрузочное тестирование на утечки памяти.</p>
+<p>Арсенал Go для проведения RCA:</p>
+<ul>
+<li><strong>pprof</strong> (<a href="../../16-profilirovanie-otladka-i-proizvodit/03-cpu-profiling/1-pprof-vvedenie.html" class="wikilink">1. pprof. Введение</a>) — посмертный анализ CPU, heap и goroutine дампов;</li>
+<li><strong>Execution tracer</strong> (<a href="../../16-profilirovanie-otladka-i-proizvodit/08-runtime-i-instrumenty/3-execution-tracer.html" class="wikilink">3. execution tracer</a>) — незаменим, когда latency росла из-за задержек планировщика, миграций между ядрами или длительных пауз GC;</li>
+<li><strong>Mutex/Block профили</strong> (<a href="../../16-profilirovanie-otladka-i-proizvodit/08-runtime-i-instrumenty/6-mutex-profile.html" class="wikilink">6. mutex profile</a>, <a href="../../16-profilirovanie-otladka-i-proizvodit/08-runtime-i-instrumenty/5-block-profile.html" class="wikilink">5. block profile</a>) — для выявления узких мест синхронизации и contention;</li>
+<li><strong>Логи с Correlation ID</strong> (<a href="7-correlation-id.html" class="wikilink">7. Correlation ID</a>) — восстановление сквозной причинно-следственной цепочки событий между десятками микросервисов;</li>
+<li><strong>Распределенная трассировка</strong> (<span class="wikilink-unresolved" title="Заметка в разработке">2. OpenTelemetry tracing</span>) — визуализация спанов и точная локализация сервиса-виновника.</li>
+</ul>
+<p>Методология <strong>«Пять почему»</strong> (Five Whys) помогает докопаться до фундаментальных причин:</p>
+<ol>
+<li><em>Почему упал сервис?</em> — Ядро Linux прислало сигнал SIGKILL из-за OOMKill.</li>
+<li><em>Почему случился OOM?</em> — Потребление кучи Go превысило 2 ГБ при установленном лимите контейнера 512 МБ.</li>
+<li><em>Почему куча разрослась до 2 ГБ?</em> — Новый in-memory кэш сессий не имел eviction policy и максимального лимита записей.</li>
+<li><em>Почему проблему не перехватили до падения сервиса?</em> — В Prometheus отсутствовал предупреждающий алерт на рост утилизации памяти контейнером.</li>
+<li><em>Почему не было алерта?</em> — Метрика <code>go_memstats_heap_inuse_bytes</code> не была включена в базовый мониторинг сервиса, а деплой не проходил нагрузочное тестирование на утечки памяти.</li>
+</ol>
 <p>Обратите внимание: на пятом шаге мы вышли вовсе не на «программист Петя забыл про LRU», а на системные дефекты — отсутствие лимитов, дыры в мониторинге и пробелы в нагрузочном пайплайне CI/CD.</p>
 <h3 id="4-ustranenie">4. Устранение</h3>
-<p>Истинное устранение инцидента делится на две принципиальные фазы:<br />
-- <strong>Hotfix (Оперативное исправление):</strong> минимальный, максимально безопасный патч, устраняющий непосредственный триггер сбоя (например, добавление ограничения размера карты или буфера в канал).<br />
-- <strong>Долгосрочное системное устранение:</strong> предотвращение целого класса подобных проблем в будущем:<br />
-  - Кодовые правки (рефакторинг конкурентных структур, отмена контекстов <code>context.Context</code>);<br />
-  - Инфраструктурные доработки (настройка автомасштабирования HPA, резервирование мощностей);<br />
-  - Конфигурация рантайма (настройка <a href="../../16-profilirovanie-otladka-i-proizvodit/05-garbage-collector/8-gomemlimit.html" class="wikilink">8. GOMEMLIMIT</a>, тюнинг <a href="../../16-profilirovanie-otladka-i-proizvodit/05-garbage-collector/7-gogc-i-tuning.html" class="wikilink">7. GOGC и tuning</a>);<br />
-  - Процессные улучшения (добавление стресс-тестов в CI/CD, внедрение linters).</p>
+<p>Истинное устранение инцидента делится на две принципиальные фазы:</p>
+<ul>
+<li><strong>Hotfix (Оперативное исправление):</strong> минимальный, максимально безопасный патч, устраняющий непосредственный триггер сбоя (например, добавление ограничения размера карты или буфера в канал).</li>
+<li><strong>Долгосрочное системное устранение:</strong> предотвращение целого класса подобных проблем в будущем:<ul>
+<li>Кодовые правки (рефакторинг конкурентных структур, отмена контекстов <code>context.Context</code>);</li>
+<li>Инфраструктурные доработки (настройка автомасштабирования HPA, резервирование мощностей);</li>
+<li>Конфигурация рантайма (настройка <a href="../../16-profilirovanie-otladka-i-proizvodit/05-garbage-collector/8-gomemlimit.html" class="wikilink">8. GOMEMLIMIT</a>, тюнинг <a href="../../16-profilirovanie-otladka-i-proizvodit/05-garbage-collector/7-gogc-i-tuning.html" class="wikilink">7. GOGC и tuning</a>);</li>
+<li>Процессные улучшения (добавление стресс-тестов в CI/CD, внедрение linters).</li>
+</ul>
+</li>
+</ul>
 <h3 id="5-postmortem">5. Постмортем</h3>
 <p><strong>Постмортем</strong> (postmortem, post-incident review) — это письменный, строго структурированный документ, превращающий болезненный сбой в бесценный актив компании.</p>
 <p>Главная заповедь — <strong>Blameless Culture</strong> (культура отсутствия порицания). Если инженеры знают, что за признание ошибки последует выговор или штраф, инциденты будут замалчиваться, скрываться, а системные уязвимости останутся гнить внутри платформы до грандиозной катастрофы. Люди ошибаются всегда; надежная инженерная система должна быть спроектирована так, чтобы отдельная ошибка человека не могла обрушить весь бизнес.</p>
-<p>Структура канонического постмортема:<br />
-- <strong>Заголовок и статус:</strong> дата, severity, затронутые сервисы, имена инцидент-командира (Incident Commander) и автора документа.<br />
-- <strong>Влияние на бизнес (Impact):</strong> сколько пользователей пострадало, сколько транзакций завершилось ошибкой, процент нарушенного SLO.<br />
-- <strong>Подробная хронология (Timeline):</strong> точное поминутное восстановление событий в UTC (когда возникло, когда сработал алерт, когда начали откат, когда сервис ожил).<br />
-- <strong>Корневая причина (Root Cause):</strong> техническое объяснение физики отказа на уровне кода, рантайма и инфраструктуры.<br />
-- <strong>Что сработало хорошо / Что сработало плохо:</strong> аудит действий команды во время пожара.<br />
-- <strong>Список задач на исправление (Action Items):</strong> конкретные, проверяемые задачи с назначенными ответственными лицами и жесткими дедлайнами.</p>
+<p>Структура канонического постмортема:</p>
+<ul>
+<li><strong>Заголовок и статус:</strong> дата, severity, затронутые сервисы, имена инцидент-командира (Incident Commander) и автора документа.</li>
+<li><strong>Влияние на бизнес (Impact):</strong> сколько пользователей пострадало, сколько транзакций завершилось ошибкой, процент нарушенного SLO.</li>
+<li><strong>Подробная хронология (Timeline):</strong> точное поминутное восстановление событий в UTC (когда возникло, когда сработал алерт, когда начали откат, когда сервис ожил).</li>
+<li><strong>Корневая причина (Root Cause):</strong> техническое объяснение физики отказа на уровне кода, рантайма и инфраструктуры.</li>
+<li><strong>Что сработало хорошо / Что сработало плохо:</strong> аудит действий команды во время пожара.</li>
+<li><strong>Список задач на исправление (Action Items):</strong> конкретные, проверяемые задачи с назначенными ответственными лицами и жесткими дедлайнами.</li>
+</ul>
 <p>Пример готового постмортема:</p>
 
 <div class="code-block" data-lang="markdown">
@@ -688,9 +710,11 @@ flowchart LR
 Высокий темп аллокаций короткоживущих объектов (например, активная десериализация огромных JSON-пейлоадов через стандартный <code>encoding/json</code> на каждый чих) в сочетании со стандартным значением <code>GOGC=100</code>. Куча стремительно удваивается, сборщик мусора запускается каждые 500 миллисекунд. Когда темп выделения памяти превышает возможности фонового GC, рантайм Go принудительно переводит горутины, выделяющие память, в режим содействия сборщику (<code>mark assist</code>). Пользовательские запросы буквально замирают, ожидая, пока их поток разметит объекты в памяти.</p>
 <p><strong>Быстрое исправление:</strong><br />
 Временно поднять переменную окружения <code>GOGC</code> до <code>200</code> или <code>300</code> (если на сервере есть запас оперативной памяти), либо выставить <code>GOMEMLIMIT</code>, чтобы рантайм перестал паниковать и оптимизировал межцикловые интервалы.</p>
-<p><strong>Долгосрочное системное исправление:</strong><br />
-1. Внедрить пул объектов <code>sync.Pool</code> (<a href="../../16-profilirovanie-otladka-i-proizvodit/09-prakticheskie-optimizatsii/2-sync-pool.html" class="wikilink">2. sync Pool</a>) для повторного использования буферов сериализации и парсинга, сведя аллокации в горячем пути к нулю.<br />
-2. Заменить стандартный рефлексивный пакет <code>encoding/json</code> на высокопроизводительные кодогенерированные или SIMD-ускоренные библиотеки (например, <code>sonic</code> или <code>easyjson</code>).</p>
+<p><strong>Долгосрочное системное исправление:</strong></p>
+<ol>
+<li>Внедрить пул объектов <code>sync.Pool</code> (<a href="../../16-profilirovanie-otladka-i-proizvodit/09-prakticheskie-optimizatsii/2-sync-pool.html" class="wikilink">2. sync Pool</a>) для повторного использования буферов сериализации и парсинга, сведя аллокации в горячем пути к нулю.</li>
+<li>Заменить стандартный рефлексивный пакет <code>encoding/json</code> на высокопроизводительные кодогенерированные или SIMD-ускоренные библиотеки (например, <code>sonic</code> или <code>easyjson</code>).</li>
+</ol>
 <p>Подробный разбор механики марк-ассиста приведен в <a href="../../16-profilirovanie-otladka-i-proizvodit/05-garbage-collector/9-kogda-gc-stanovitsya-bottleneck.html" class="wikilink">9. Когда GC становится bottleneck</a>.</p>
 <h3 id="intsident-3-false-sharing-v-schyotchike">Инцидент 3: False sharing в счётчике</h3>
 <p><strong>Симптомы:</strong> Вы переносите сервис с 4-ядерного сервера на мощный 64-ядерный узел, ожидая 16-кратного прироста пропускной способности, но throughput падает! Профайлер CPU показывает, что ядра процессора сжигают 80% времени на элементарных атомарных инструкциях (<code>LOCK CMPXCHG</code> / <code>atomic.AddUint64</code>).</p>
@@ -758,10 +782,12 @@ flowchart LR
 Сервис принимал входящие сетевые соединения неограниченно, запуская по горутине на каждый входящий запрос без проверки лимитов одновременной обработки. В результате тысячи горутин дрались за процессорные кванты времени, раздувая хвостовую задержку всех запросов без исключения.</p>
 <p><strong>Быстрое исправление:</strong><br />
 Внедрить локальный семафор (буферизованный канал на $N$ токенов) на входе в хэндлер. Если все токены заняты — немедленно отвечать клиенту статусом <code>503 Service Unavailable</code>, не доводя процесс до коллапса.</p>
-<p><strong>Долгосрочное системное исправление:</strong><br />
-- Настроить распределенный <a href="../../17-bezopasnost-appsec-v-go/05-bezopasnost-api/2-rate-limiting.html" class="wikilink">2. Rate limiting</a> на уровне API Gateway;<br />
-- Ограничить агрессивность повторных попыток (<span class="wikilink-unresolved" title="Заметка в разработке">4. Retries</span>) с помощью экспоненциальной задержки (Exponential Backoff) и обязательного джиттера (Jitter);<br />
-- Развернуть защитные экраны <a href="../05-nadezhnost/1-circuit-breaker.html" class="wikilink">1. Circuit breaker</a>, мгновенно отсекающие поток запросов к деградирующему сервису.</p>
+<p><strong>Долгосрочное системное исправление:</strong></p>
+<ul>
+<li>Настроить распределенный <a href="../../17-bezopasnost-appsec-v-go/05-bezopasnost-api/2-rate-limiting.html" class="wikilink">2. Rate limiting</a> на уровне API Gateway;</li>
+<li>Ограничить агрессивность повторных попыток (<span class="wikilink-unresolved" title="Заметка в разработке">4. Retries</span>) с помощью экспоненциальной задержки (Exponential Backoff) и обязательного джиттера (Jitter);</li>
+<li>Развернуть защитные экраны <a href="../05-nadezhnost/1-circuit-breaker.html" class="wikilink">1. Circuit breaker</a>, мгновенно отсекающие поток запросов к деградирующему сервису.</li>
+</ul>
 <hr />
 <h2 id="mechanical-sympathy-kak-os-i-zhelezo-sozdayut-intsidenty">Mechanical Sympathy: как ОС и железо создают инциденты</h2>
 <p>Далеко не каждый инцидент можно диагностировать, глядя исключительно в код на Go. Фундаментальный принцип «механического сочувствия» гласит: высоконагруженный софт не висит в воздухе, он работает поверх ядра операционной системы и кремниевых транзисторов.</p>
@@ -792,9 +818,11 @@ flowchart LR
 
 <p>Если у вас в Go переменная <code>GOMAXPROCS</code> выставлена равной физическому числу ядер хоста (например, 32), рантайм запускает 32 потока OS. Под нагрузкой эти 32 потока могут сжечь 200-миллисекундную квоту за 10–15 миллисекунд реального времени! Оставшиеся 85 миллисекунд контейнер будет принудительно заморожен ядром ОС (CPU Throttling).</p>
 <p>В Go-профилях вы увидите загадочные задержки без нагрузки на CPU. В мониторинге симптом ловится метрикой <code>container_cpu_cfs_throttled_seconds_total</code>.</p>
-<p><strong>Решение:</strong><br />
-- Использовать библиотеку <code>uber-go/automaxprocs</code>, которая автоматически выставляет значение <code>GOMAXPROCS</code> в соответствии с cgroups квотой контейнера;<br />
-- Избегать заниженных CPU limits, отдавая предпочтение только CPU requests.</p>
+<p><strong>Решение:</strong></p>
+<ul>
+<li>Использовать библиотеку <code>uber-go/automaxprocs</code>, которая автоматически выставляет значение <code>GOMAXPROCS</code> в соответствии с cgroups квотой контейнера;</li>
+<li>Избегать заниженных CPU limits, отдавая предпочтение только CPU requests.</li>
+</ul>
 <h3 id="2-oom-killer-i-memory-cgroups">2. OOM Killer и Memory Cgroups</h3>
 <p>Исторически рантайм Go не имел встроенного понимания ограничений памяти cgroups. Он ориентировался только на <code>GOGC</code>, рассчитывая следующий порог сборки как удвоение живой кучи. Если живая куча составляла 300 МБ, Go планировал следующий GC на 600 МБ. Но если лимит контейнера в Kubernetes составлял 512 МБ, процесс гарантированно уничтожался ядром ОС через Out-Of-Memory Killer (<code>SIGKILL</code>) задолго до того, как Go собирался запустить сборщик мусора.</p>
 <p><strong>Решение:</strong><br />

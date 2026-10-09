@@ -393,14 +393,16 @@ flowchart LR
 <p>Браузер строго разделяет все кросс-доменные запросы на две фундаментальные категории:</p>
 <ol>
 <li><strong>Простые запросы (Simple Requests):</strong><br />
-   Запросы с методами <code>GET</code>, <code>HEAD</code> или <code>POST</code>, у которых заголовки ограничены стандартными безопасными полями (<code>Accept</code>, <code>Accept-Language</code>, <code>Content-Language</code>), а заголовок <code>Content-Type</code> принимает только три значения:<br />
-   - <code>text/plain</code><br />
-   - <code>multipart/form-data</code><br />
-   - <code>application/x-www-form-urlencoded</code><br />
-   Такие запросы браузер отправляет на сервер сразу, без предупреждения. Если в ответе сервера отсутствует заголовок <code>Access-Control-Allow-Origin</code> со значением вызывающего домена, браузер выбрасывает ошибку в консоль и скрывает ответ от скрипта.</li>
+    Запросы с методами <code>GET</code>, <code>HEAD</code> или <code>POST</code>, у которых заголовки ограничены стандартными безопасными полями (<code>Accept</code>, <code>Accept-Language</code>, <code>Content-Language</code>), а заголовок <code>Content-Type</code> принимает только три значения:<ul>
+<li><code>text/plain</code></li>
+<li><code>multipart/form-data</code></li>
+<li><code>application/x-www-form-urlencoded</code><br />
+    Такие запросы браузер отправляет на сервер сразу, без предупреждения. Если в ответе сервера отсутствует заголовок <code>Access-Control-Allow-Origin</code> со значением вызывающего домена, браузер выбрасывает ошибку в консоль и скрывает ответ от скрипта.</li>
+</ul>
+</li>
 <li><strong>Предварительные запросы (Preflight Requests):</strong><br />
-   Если запрос использует методы <code>PUT</code>, <code>DELETE</code>, <code>PATCH</code>, кастомные заголовки (например, <code>Authorization</code>, <code>X-Request-ID</code>) или заголовок <code>Content-Type: application/json</code>, браузер <strong>не имеет права отправлять его сразу</strong>.<br />
-   Сначала браузер отправляет легковесный зондирующий запрос с методом <code>OPTIONS</code>. Сервер должен ответить, перечислив разрешенные методы (<code>Access-Control-Allow-Methods</code>) и заголовки (<code>Access-Control-Allow-Headers</code>). Только получив одобрение, браузер отправляет основной payload.</li>
+    Если запрос использует методы <code>PUT</code>, <code>DELETE</code>, <code>PATCH</code>, кастомные заголовки (например, <code>Authorization</code>, <code>X-Request-ID</code>) или заголовок <code>Content-Type: application/json</code>, браузер <strong>не имеет права отправлять его сразу</strong>.<br />
+    Сначала браузер отправляет легковесный зондирующий запрос с методом <code>OPTIONS</code>. Сервер должен ответить, перечислив разрешенные методы (<code>Access-Control-Allow-Methods</code>) и заголовки (<code>Access-Control-Allow-Headers</code>). Только получив одобрение, браузер отправляет основной payload.</li>
 </ol>
 <hr />
 <h3 id="idiomatichnaya-realizatsiya-v-go">Идиоматичная реализация в Go</h3>
@@ -470,11 +472,11 @@ func CORSMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 <p>Реализация CORS на бэкенде имеет ощутимую цену в терминах ресурсов процессора и сетевого стека:</p>
 <ol>
 <li><strong>Задержка сети (Latency Penalty):</strong><br />
-   Каждый Preflight-запрос <code>OPTIONS</code> добавляет полный сетевой Round-Trip Time (RTT) к вызову API. В эпоху HTTP/1.1 это парализовало загрузку SPA, так как браузер держал лимит в 6 одновременных TCP-соединений на домен. В протоколах HTTP/2 и HTTP/3 благодаря мультиплексированию фреймов в едином TCP/QUIC-соединении ситуация улучшилась, но задержка RTT на мобильных сетях (50–150 мс) никуда не исчезает. Директива <code>Access-Control-Max-Age: 3600</code> заставляет браузер кэшировать результат preflight на 1 час, снижая трафик.</li>
+    Каждый Preflight-запрос <code>OPTIONS</code> добавляет полный сетевой Round-Trip Time (RTT) к вызову API. В эпоху HTTP/1.1 это парализовало загрузку SPA, так как браузер держал лимит в 6 одновременных TCP-соединений на домен. В протоколах HTTP/2 и HTTP/3 благодаря мультиплексированию фреймов в едином TCP/QUIC-соединении ситуация улучшилась, но задержка RTT на мобильных сетях (50–150 мс) никуда не исчезает. Директива <code>Access-Control-Max-Age: 3600</code> заставляет браузер кэшировать результат preflight на 1 час, снижая трафик.</li>
 <li><strong>Парсинг заголовков и аллокации:</strong><br />
-   Вызов <code>r.Header.Get("Origin")</code> в Go выполняет канонизацию строки ключа через <code>textproto.CanonicalMIMEHeaderKey</code> и поиск в хэш-мапе <code>http.Header</code> (<code>map[string][]string</code>). При 50 000 RPS постоянный доступ к мапе создает микроскопическое, но измеримое давление на кэш-линии CPU.</li>
+    Вызов <code>r.Header.Get("Origin")</code> в Go выполняет канонизацию строки ключа через <code>textproto.CanonicalMIMEHeaderKey</code> и поиск в хэш-мапе <code>http.Header</code> (<code>map[string][]string</code>). При 50 000 RPS постоянный доступ к мапе создает микроскопическое, но измеримое давление на кэш-линии CPU.</li>
 <li><strong>Разгрузка Go-сервера на уровне Ingress:</strong><br />
-   Поскольку запрос <code>OPTIONS</code> не несет бизнес-логики, в высоконагруженных архитектурах обработку <code>OPTIONS</code> полностью делегируют обратному прокси или балансировщику (Nginx, HAProxy, Envoy). Прокси возвращает статус 204 с CORS-заголовками прямо из памяти веб-сервера, не передавая холостой запрос в Go-приложение и экономя горутины и аллокации <code>http.Request</code>.</li>
+    Поскольку запрос <code>OPTIONS</code> не несет бизнес-логики, в высоконагруженных архитектурах обработку <code>OPTIONS</code> полностью делегируют обратному прокси или балансировщику (Nginx, HAProxy, Envoy). Прокси возвращает статус 204 с CORS-заголовками прямо из памяти веб-сервера, не передавая холостой запрос в Go-приложение и экономя горутины и аллокации <code>http.Request</code>.</li>
 </ol>
 <hr />
 
@@ -498,15 +500,15 @@ func CORSMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 <h3 id="lovushki-i-uyazvimosti-gotchas">Ловушки и уязвимости (Gotchas)</h3>
 <ol>
 <li><strong>Невалидированное отражение Origin (Null / Insecure Echo):</strong><br />
-   Грубейшая ошибка начинающих разработчиков — автоматическое копирование входящего <code>Origin</code> в ответ:<br />
+    Грубейшая ошибка начинающих разработчиков — автоматическое копирование входящего <code>Origin</code> в ответ:<br />
 <code>go
    // ❌ КАТАСТРОФИЧЕСКИ ОПАСНО
    w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("Origin"))</code><br />
-   В такой конфигурации любой фишинговый сайт <code>evil.com</code> может делать AJAX-запросы к вашему API, читать конфиденциальные ответы и воровать данные пользователей. Всегда проверяйте домен по строгому белому списку (Allowlist).</li>
+    В такой конфигурации любой фишинговый сайт <code>evil.com</code> может делать AJAX-запросы к вашему API, читать конфиденциальные ответы и воровать данные пользователей. Всегда проверяйте домен по строгому белому списку (Allowlist).</li>
 <li><strong>Ловушка кэширования браузером:</strong><br />
-   Если вы изменили конфигурацию разрешенных заголовков или методов на сервере, браузер разработчика может продолжать падать с ошибками из-за старого кэша <code>Access-Control-Max-Age</code>. Для чистой отладки сетевых контрактов всегда используйте утилиту <code>curl -v</code> — она не сохраняет состояние и показывает сырые HTTP-заголовки ответа.</li>
+    Если вы изменили конфигурацию разрешенных заголовков или методов на сервере, браузер разработчика может продолжать падать с ошибками из-за старого кэша <code>Access-Control-Max-Age</code>. Для чистой отладки сетевых контрактов всегда используйте утилиту <code>curl -v</code> — она не сохраняет состояние и показывает сырые HTTP-заголовки ответа.</li>
 <li><strong>Wildcards в заголовках:</strong><br />
-   Хотя современные браузеры (начиная с Chrome 76+) поддерживают маску <code>Access-Control-Allow-Headers: *</code> для Preflight-запросов, в продакшене рекомендуется явно декларировать список разрешенных заголовков (<code>Authorization, Content-Type, X-Request-ID</code>) для обратной совместимости со старыми корпоративными клиентами.</li>
+    Хотя современные браузеры (начиная с Chrome 76+) поддерживают маску <code>Access-Control-Allow-Headers: *</code> для Preflight-запросов, в продакшене рекомендуется явно декларировать список разрешенных заголовков (<code>Authorization, Content-Type, X-Request-ID</code>) для обратной совместимости со старыми корпоративными клиентами.</li>
 </ol>
 <hr />
 

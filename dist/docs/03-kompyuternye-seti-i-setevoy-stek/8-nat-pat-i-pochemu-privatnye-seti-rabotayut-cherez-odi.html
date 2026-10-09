@@ -382,10 +382,12 @@ sequenceDiagram
 <li><strong>Инициация сессии:</strong> Приватный узел отправляет пакет: <code>SrcIP:SrcPort</code> = <code>192.168.1.10:5000</code>, а <code>DstIP:DstPort</code> = <code>10.99.0.1:80</code>.</li>
 <li><strong>Перехват пакета ядром NAT:</strong> Пакет попадает на маршрутизатор через правило маршрутизации шлюза по умолчанию (<a href="6-marshrutizatsiya-tablitsa-marshrutov-shlyuzy-i-defaul.html" class="wikilink">6. Маршрутизация. Таблица маршрутов, шлюзы и default route</a>).</li>
 <li><strong>Поиск в таблице состояний (Connection Tracking Table):</strong> Ядро проверяет системную таблицу <code>conntrack</code>. Если это новый поток, шлюз выделяет свободный порт из своего внешнего диапазона — например, <code>12345</code>.</li>
-<li><strong>Трансляция и мутация заголовков:</strong> Ядро Linux прямо в структуре <code>sk_buff</code> перезаписывает поля IP и TCP:<br />
-   - <code>SrcIP</code> подменяется на публичный <code>203.0.113.5</code>;<br />
-   - <code>SrcPort</code> подменяется на выделенный <code>12345</code>.<br />
-   - <strong>Mechanical Sympathy:</strong> Поскольку заголовки изменились, ядро обязано заново пересчитать контрольные суммы IPv4 Header Checksum и TCP Checksum! Современные сетевые адаптеры с поддержкой Hardware Checksum Offloading делают это аппаратно на кремниевом чипе.</li>
+<li><strong>Трансляция и мутация заголовков:</strong> Ядро Linux прямо в структуре <code>sk_buff</code> перезаписывает поля IP и TCP:<ul>
+<li><code>SrcIP</code> подменяется на публичный <code>203.0.113.5</code>;</li>
+<li><code>SrcPort</code> подменяется на выделенный <code>12345</code>.</li>
+<li><strong>Mechanical Sympathy:</strong> Поскольку заголовки изменились, ядро обязано заново пересчитать контрольные суммы IPv4 Header Checksum и TCP Checksum! Современные сетевые адаптеры с поддержкой Hardware Checksum Offloading делают это аппаратно на кремниевом чипе.</li>
+</ul>
+</li>
 <li><strong>Сохранение маппинга:</strong> В памяти ядра фиксируется двунаправленная связь:<br />
 <code>192.168.1.10:5000</code> $\longleftrightarrow$ <code>203.0.113.5:12345</code> $\longleftrightarrow$ <code>10.99.0.1:80</code>.</li>
 <li><strong>Ответ внешнего сервера:</strong> Внешний сервер получает пакет и отвечает на адрес источника: <code>DstIP</code> = <code>203.0.113.5</code>, <code>DstPort</code> = <code>12345</code>.</li>
@@ -440,10 +442,12 @@ flowchart LR
 
 <hr />
 <h2 id="vliyanie-na-go-razrabotchika-i-bekend-arkhitekturu">Влияние на Go-разработчика и бэкенд-архитектуру</h2>
-<p>В эпоху классических монолитных серверов с выделенными «белыми» IP-адресами разработчик мог не думать о трансляции адресов. Но в микросервисной архитектуре, облачных сервисах и контейнерах Kubernetes (<a href="41-kubernetes-networking-cni-pod-network-service-ingres.html" class="wikilink">41. Kubernetes Networking. CNI, Pod Network, Service, Ingress</a>) весь трафик бэкенда проходит через несколько слоев NAT:<br />
-* Виртуальные интерфейсы контейнеров (veth) транслируются через iptables/nftables на ноде;<br />
-* Исходящий интернет-трафик кластера выходит через корпоративный Egress NAT Gateway;<br />
-* Входящий трафик направляется через Ingress Controller и балансировщики L4/L7.</p>
+<p>В эпоху классических монолитных серверов с выделенными «белыми» IP-адресами разработчик мог не думать о трансляции адресов. Но в микросервисной архитектуре, облачных сервисах и контейнерах Kubernetes (<a href="41-kubernetes-networking-cni-pod-network-service-ingres.html" class="wikilink">41. Kubernetes Networking. CNI, Pod Network, Service, Ingress</a>) весь трафик бэкенда проходит через несколько слоев NAT:</p>
+<ul>
+<li>Виртуальные интерфейсы контейнеров (veth) транслируются через iptables/nftables на ноде;</li>
+<li>Исходящий интернет-трафик кластера выходит через корпоративный Egress NAT Gateway;</li>
+<li>Входящий трафик направляется через Ingress Controller и балансировщики L4/L7.</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -720,10 +724,12 @@ flowchart TD
 При аппаратной или программной перезагрузке NAT-маршрутизатора его таблица <code>conntrack</code> в оперативной памяти полностью стирается.<br />
 При этом в операционных системах клиента и сервера сокеты продолжают находиться в статусе <strong><code>ESTABLISHED</code></strong>! Ни один из узлов не отправлял управляющие флаги <code>FIN</code> или <code>RST</code>.  </p>
 <p>Когда Go-приложение попытается отправить очередной пакет с данными в существующий сокет <code>net.Conn</code>, NAT-шлюз не найдет соответствия в чистой таблице и просто отбросит пакет, либо сервер вернет флаг <code>RST</code> в ответ на неожиданный номер последовательности <code>ACK</code>. Если же сокет простаивает без передачи данных, клиент может сутками ждать ответа, заблокировав горутину.  </p>
-<p><strong>Методы защиты в коде на Go:</strong><br />
-1. Настройка <strong>TCP KeepAlive</strong>: Go уже включает его по умолчанию (15 с простоя), а <code>net.Dialer{KeepAlive: ...}</code> задаёт период простоя до первой пробы; значение нужно держать меньше таймаута NAT (<a href="12-tcp-retransmission-keep-alive-nagle-i-delayed-ack.html" class="wikilink">12. TCP Retransmission, Keep Alive, Nagle и Delayed ACK</a>). Ядро периодически отправляет пустые контрольные зонды, предотвращая удаление записи из NAT-таблицы по таймауту неактивности и быстро детектируя разрыв соединения.<br />
-2. Реализация прикладных проверок пульса (<strong>Application-Level Heartbeats / Ping-Pong</strong>) в протоколах WebSocket, gRPC и SSE (<a href="25-websocket-sse-i-dolgozhivushchie-soedineniya.html" class="wikilink">25. WebSocket, SSE и долгоживущие соединения</a>).<br />
-3. Рантайм Go не восстанавливает разорванные TCP-сокета самостоятельно. В прикладном коде всегда должна быть заложена логика автоматического переподключения (Reconnect Loop с Exponential Backoff).</p>
+<p><strong>Методы защиты в коде на Go:</strong></p>
+<ol>
+<li>Настройка <strong>TCP KeepAlive</strong>: Go уже включает его по умолчанию (15 с простоя), а <code>net.Dialer{KeepAlive: ...}</code> задаёт период простоя до первой пробы; значение нужно держать меньше таймаута NAT (<a href="12-tcp-retransmission-keep-alive-nagle-i-delayed-ack.html" class="wikilink">12. TCP Retransmission, Keep Alive, Nagle и Delayed ACK</a>). Ядро периодически отправляет пустые контрольные зонды, предотвращая удаление записи из NAT-таблицы по таймауту неактивности и быстро детектируя разрыв соединения.</li>
+<li>Реализация прикладных проверок пульса (<strong>Application-Level Heartbeats / Ping-Pong</strong>) в протоколах WebSocket, gRPC и SSE (<a href="25-websocket-sse-i-dolgozhivushchie-soedineniya.html" class="wikilink">25. WebSocket, SSE и долгоживущие соединения</a>).</li>
+<li>Рантайм Go не восстанавливает разорванные TCP-сокета самостоятельно. В прикладном коде всегда должна быть заложена логика автоматического переподключения (Reconnect Loop с Exponential Backoff).</li>
+</ol>
   </div>
 </aside>
 

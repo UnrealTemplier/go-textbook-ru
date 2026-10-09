@@ -482,13 +482,15 @@ classDiagram
 <p>Workflow — это детерминированная функция-дирижер. Она задает логику и правила перехода между фазами бизнес-процесса: циклы, ветвления <code>if/else</code>, реакцию на таймеры и внешние сигналы.</p>
 <p><strong>Главное правило: Код Workflow обязан быть на 100% детерминированным.</strong><br />
 Если передать в функцию Workflow те же аргументы и скормить ей тот же журнал событий из истории, она обязана выполнить ровно ту же последовательность шагов и остановиться в той же точке.</p>
-<p>Из-за этого в теле Workflow <strong>СТРОГО ЗАПРЕЩЕНО</strong>:<br />
-- Выполнять любой сетевой I/O (обращаться по HTTP, вызывать сторонние микросервисы, слать SQL-запросы).<br />
-- Читать файлы с локального диска или опрашивать переменные окружения, способные измениться во времени.<br />
-- Использовать системное время через <code>time.Now()</code> (при воспроизведении истории время будет разным!).<br />
-- Генерировать псевдослучайные числа (<code>rand</code> / <code>crypto/rand</code>).<br />
-- Использовать стандартные горутины <code>go func()</code> (планировщик Go недетерминирован и переключает контексты в непредсказуемом порядке).<br />
-- Итерироваться по структуре <code>map</code> с помощью цикла <code>range</code> (в Go порядок обхода ключей в мапе намеренно рандомизируется при каждом запуске программы!).</p>
+<p>Из-за этого в теле Workflow <strong>СТРОГО ЗАПРЕЩЕНО</strong>:</p>
+<ul>
+<li>Выполнять любой сетевой I/O (обращаться по HTTP, вызывать сторонние микросервисы, слать SQL-запросы).</li>
+<li>Читать файлы с локального диска или опрашивать переменные окружения, способные измениться во времени.</li>
+<li>Использовать системное время через <code>time.Now()</code> (при воспроизведении истории время будет разным!).</li>
+<li>Генерировать псевдослучайные числа (<code>rand</code> / <code>crypto/rand</code>).</li>
+<li>Использовать стандартные горутины <code>go func()</code> (планировщик Go недетерминирован и переключает контексты в непредсказуемом порядке).</li>
+<li>Итерироваться по структуре <code>map</code> с помощью цикла <code>range</code> (в Go порядок обхода ключей в мапе намеренно рандомизируется при каждом запуске программы!).</li>
+</ul>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -497,10 +499,12 @@ classDiagram
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Если в коде Workflow запрещено использовать <code>go func()</code>, <code>time.Sleep()</code> и <code>time.Now()</code>, как организовать конкурентное выполнение задач, паузы на месяц или замер интервалов?</p>
-<p><strong>Ответ:</strong> Temporal Go SDK предоставляет детерминированные рантайм-примитивы:<br />
-- Вместо стандартного <code>time.Sleep</code> вызывается <code>workflow.Sleep(ctx, duration)</code>.<br />
-- Вместо системного <code>time.Now()</code> вызывается <code>workflow.Now(ctx)</code>.<br />
-- Вместо нативных горутин используется <code>workflow.Go(ctx, func)</code> (или сигнатура с контекстом <code>func(ctx workflow.Context)</code>).</p>
+<p><strong>Ответ:</strong> Temporal Go SDK предоставляет детерминированные рантайм-примитивы:</p>
+<ul>
+<li>Вместо стандартного <code>time.Sleep</code> вызывается <code>workflow.Sleep(ctx, duration)</code>.</li>
+<li>Вместо системного <code>time.Now()</code> вызывается <code>workflow.Now(ctx)</code>.</li>
+<li>Вместо нативных горутин используется <code>workflow.Go(ctx, func)</code> (или сигнатура с контекстом <code>func(ctx workflow.Context)</code>).</li>
+</ul>
 <p>Под капотом эти методы не блокируют потоки ОС и не запускают неуправляемые горутины. SDK переводит выполнение на собственную кооперативную подсистему сопрограмм (корутин), перехватывает команды, регистрирует их в журнале событий и отдает управление движку.</p>
   </div>
 </aside>
@@ -566,16 +570,18 @@ sequenceDiagram
 </figure>
 
 
-<p>Детальный разбор шагов:<br />
-1. <strong>Workflow Worker:</strong> Вызов <code>workflow.ExecuteActivity</code> не делает прямой вызов по сети к сервису email. Вместо этого воркер приостанавливает корутину Workflow и формирует команду <code>ScheduleActivityTaskCommand</code>.<br />
-2. <strong>gRPC:</strong> Команда отправляется на Frontend Service в теле ответа <code>RespondWorkflowTaskCompleted</code>.<br />
-3. <strong>History Service &amp; DB:</strong> Сервер открывает транзакцию в БД, записывает событие <code>ActivityTaskScheduled</code> и фиксирует ее на диске (<code>fsync</code>).<br />
-4. <strong>Matching Service:</strong> Задача помещается в память Matching Service в указанную очередь (<code>Task Queue</code>).<br />
-5. <strong>Activity Worker:</strong> Свободный Activity-воркер забирает задачу по висящему gRPC-запросу <code>PollActivityTaskQueue</code>.<br />
-6. <strong>Выполнение:</strong> Воркер вызывает функцию <code>SendEmail</code>, совершая реальный сетевой вызов к внешнему почтовому сервису.<br />
-7. <strong>Завершение:</strong> Воркер отправляет результат в кластер через gRPC-вызов <code>RespondActivityTaskCompleted</code>.<br />
-8. <strong>Фиксация результата:</strong> History Service открывает транзакцию и записывает в журнал событие <code>ActivityTaskCompleted</code>.<br />
-9. <strong>Пробуждение:</strong> Matching Service создает новую задачу <code>WorkflowTask</code> для воркера оркестрации, который просыпается и передает распакованный результат выполнения в переменную Go.</p>
+<p>Детальный разбор шагов:</p>
+<ol>
+<li><strong>Workflow Worker:</strong> Вызов <code>workflow.ExecuteActivity</code> не делает прямой вызов по сети к сервису email. Вместо этого воркер приостанавливает корутину Workflow и формирует команду <code>ScheduleActivityTaskCommand</code>.</li>
+<li><strong>gRPC:</strong> Команда отправляется на Frontend Service в теле ответа <code>RespondWorkflowTaskCompleted</code>.</li>
+<li><strong>History Service &amp; DB:</strong> Сервер открывает транзакцию в БД, записывает событие <code>ActivityTaskScheduled</code> и фиксирует ее на диске (<code>fsync</code>).</li>
+<li><strong>Matching Service:</strong> Задача помещается в память Matching Service в указанную очередь (<code>Task Queue</code>).</li>
+<li><strong>Activity Worker:</strong> Свободный Activity-воркер забирает задачу по висящему gRPC-запросу <code>PollActivityTaskQueue</code>.</li>
+<li><strong>Выполнение:</strong> Воркер вызывает функцию <code>SendEmail</code>, совершая реальный сетевой вызов к внешнему почтовому сервису.</li>
+<li><strong>Завершение:</strong> Воркер отправляет результат в кластер через gRPC-вызов <code>RespondActivityTaskCompleted</code>.</li>
+<li><strong>Фиксация результата:</strong> History Service открывает транзакцию и записывает в журнал событие <code>ActivityTaskCompleted</code>.</li>
+<li><strong>Пробуждение:</strong> Matching Service создает новую задачу <code>WorkflowTask</code> для воркера оркестрации, который просыпается и передает распакованный результат выполнения в переменную Go.</li>
+</ol>
 <p><em>Один вызов Activity генерирует минимум 4 сетевых gRPC-раундтрипа и 2 дисковые транзакции в СУБД кластера.</em> Именно поэтому проектировать системы на Temporal нужно крупными блоками бизнес-логики, избегая превращения мелких примитивных выражений в отдельные Activity.</p>
 <hr />
 <h2 id="idiomatichnyy-primer-na-go">Идиоматичный пример на Go</h2>
@@ -732,10 +738,12 @@ func RunWorker() error {
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Что произойдет, если база данных Temporal Server (PostgreSQL/Cassandra) переполнится или станет временно недоступна во время выполнения активного бизнес-процесса?</p>
-<p><strong>Ответ:</strong><br />
-1. Воркеры не упадут в панику. Их попытки отправить <code>RespondWorkflowTaskCompleted</code> или <code>RespondActivityTaskCompleted</code> будут завершаться ошибками gRPC <code>UNAVAILABLE</code>, после чего SDK воркеров начнет автоматически повторять попытки отправки с экспоненциальным backoff.<br />
-2. Сами исполняемые Activity продолжат работать (если они уже были получены воркером), а результаты будут безопасно удерживаться воркером в памяти до восстановления связи с кластером.<br />
-3. Как только СУБД кластера вернется в строй, все накопленные подтверждения будут зафиксированы в History Service без потери данных и без дублирования бизнес-логики.</p>
+<p><strong>Ответ:</strong></p>
+<ol>
+<li>Воркеры не упадут в панику. Их попытки отправить <code>RespondWorkflowTaskCompleted</code> или <code>RespondActivityTaskCompleted</code> будут завершаться ошибками gRPC <code>UNAVAILABLE</code>, после чего SDK воркеров начнет автоматически повторять попытки отправки с экспоненциальным backoff.</li>
+<li>Сами исполняемые Activity продолжат работать (если они уже были получены воркером), а результаты будут безопасно удерживаться воркером в памяти до восстановления связи с кластером.</li>
+<li>Как только СУБД кластера вернется в строй, все накопленные подтверждения будут зафиксированы в History Service без потери данных и без дублирования бизнес-логики.</li>
+</ol>
   </div>
 </aside>
 

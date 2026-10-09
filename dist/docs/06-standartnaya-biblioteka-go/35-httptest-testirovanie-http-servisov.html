@@ -310,9 +310,11 @@
     <span class="callout-title">Под капотом</span>
   </header>
   <div class="callout-body">
-    <p><code>httptest</code> работает на двух уровнях абстракции:<br />
-1. <strong>In-memory тестирование</strong> (<code>httptest.ResponseRecorder</code>): полностью обходит сетевой стек. Обработчик вызывается как обычная функция. Ноль системных вызовов.<br />
-2. <strong>Loopback-тестирование</strong> (<code>httptest.NewServer</code>): поднимает реальный <code>net.Listener</code> на случайном порте <code>127.0.0.1</code>. Трафик проходит через TCP/IP стек ОС, но не выходит за пределы хоста. Это позволяет тестировать реальных HTTP-клиентов, включая редиректы и куки.</p>
+    <p><code>httptest</code> работает на двух уровнях абстракции:</p>
+<ol>
+<li><strong>In-memory тестирование</strong> (<code>httptest.ResponseRecorder</code>): полностью обходит сетевой стек. Обработчик вызывается как обычная функция. Ноль системных вызовов.</li>
+<li><strong>Loopback-тестирование</strong> (<code>httptest.NewServer</code>): поднимает реальный <code>net.Listener</code> на случайном порте <code>127.0.0.1</code>. Трафик проходит через TCP/IP стек ОС, но не выходит за пределы хоста. Это позволяет тестировать реальных HTTP-клиентов, включая редиректы и куки.</li>
+</ol>
   </div>
 </aside>
 
@@ -340,10 +342,12 @@
 
 <p>При вызове <code>handler.ServeHTTP(w, r)</code> код напрямую пишет в <code>w</code>. <code>ResponseRecorder</code> перехватывает вызовы <code>WriteHeader</code>, <code>Write</code> и <code>Flush</code>, синхронизируя состояние через внутренние мьютексы. Это делает её потокобезопасной, но требует аккуратности при чтении результатов.</p>
 <h3 id="newserver-sluchaynye-porty-i-avtomaticheskaya-ochistka">NewServer: Случайные порты и автоматическая очистка</h3>
-<p>Когда требуется протестировать клиентский код с реальным <code>http.Client</code>, одного рекордера недостаточно. Функция <code>httptest.NewServer(handler)</code> решает задачу изящно:<br />
-1. Создание <code>net.Listener</code> на адресе <code>127.0.0.1:0</code>. Ядро ОС автоматически назначает свободный эфемерный порт.<br />
-2. Запуск <code>http.Server</code> в фоновой горутине.<br />
-3. Возврат структуры <code>*httptest.Server</code> с полем <code>URL</code>, содержащим точный адрес <code>http://127.0.0.1:&lt;порт&gt;</code>.</p>
+<p>Когда требуется протестировать клиентский код с реальным <code>http.Client</code>, одного рекордера недостаточно. Функция <code>httptest.NewServer(handler)</code> решает задачу изящно:</p>
+<ol>
+<li>Создание <code>net.Listener</code> на адресе <code>127.0.0.1:0</code>. Ядро ОС автоматически назначает свободный эфемерный порт.</li>
+<li>Запуск <code>http.Server</code> в фоновой горутине.</li>
+<li>Возврат структуры <code>*httptest.Server</code> с полем <code>URL</code>, содержащим точный адрес <code>http://127.0.0.1:&lt;порт&gt;</code>.</li>
+</ol>
 <p>При завершении теста вызов <code>server.Close()</code> немедленно закрывает <code>Listener</code>, обрывает активные соединения и освобождает порт. Это предотвращает <code>address already in use</code> ошибки в CI/CD пайплайнах.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -402,9 +406,11 @@ flowchart TD
 <li><strong>Аллокации буфера</strong>: <code>httptest.NewRequest</code> и <code>NewRecorder</code> выделяют память на стеке или в куче в зависимости от размера тела. При тестировании загрузки больших файлов (<code>&gt;1MB</code>) <code>bytes.Buffer</code> внутри <code>Recorder</code> будет реаллоцироваться. Для проверки <code>Content-Length</code> или заголовков без чтения тела используйте <code>rr.Body</code> лениво или мокайте <code>io.Writer</code>.</li>
 <li><strong>Cache Locality</strong>: Поскольку <code>Recorder</code> и тестовый код находятся в одном адресном пространстве, данные остаются горячими в L1/L2 кэше CPU. Тесты с <code>NewServer</code> проходят через loopback-интерфейс <code>lo</code>, что добавляет накладные расходы на копирование пакетов между ядрами и контекстные переключения в планировщике сетевого стека.</li>
 </ol>
-<p><strong>Правило выбора:</strong><br />
-* Используйте <code>ResponseRecorder</code> для тестирования <strong>логики хендлера</strong> (валидация, маршрутизация, бизнес-правила).<br />
-* Используйте <code>NewServer</code> для тестирования <strong>клиентского кода</strong>, редиректов, работы с куки и интеграции с <code>http.Client</code>.</p>
+<p><strong>Правило выбора:</strong></p>
+<ul>
+<li>Используйте <code>ResponseRecorder</code> для тестирования <strong>логики хендлера</strong> (валидация, маршрутизация, бизнес-правила).</li>
+<li>Используйте <code>NewServer</code> для тестирования <strong>клиентского кода</strong>, редиректов, работы с куки и интеграции с <code>http.Client</code>.</li>
+</ul>
 <h2 id="idiomy-i-patterny-dlya-production-testov">Идиомы и паттерны для Production-тестов</h2>
 <h3 id="1-testirovanie-khendlera-cherez-recorder">1. Тестирование хендлера через Recorder</h3>
 <p>Классический юнит-тест эндпоинта без сетевых вызовов:</p>

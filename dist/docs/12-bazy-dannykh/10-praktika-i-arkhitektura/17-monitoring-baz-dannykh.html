@@ -442,10 +442,12 @@
 <p>Мониторинг — это органы чувств и диагностическая карта нашей системы. Он трансформирует непредсказуемый «черный ящик» в прозрачную, детерминированную механическую конструкцию.</p>
 <p>В отличие от всеобъемлющей концепции Observability (<a href="19-observability-bd.html" class="wikilink">19. Observability БД</a>), которая включает в себя распределенную трассировку и структурные логи, мониторинг фокусируется на непрерывном измерении <strong>метрик</strong> — числовых временных рядов (Time Series). Они позволяют строить наглядные дашборды, заблаговременно предсказывать насыщение дисков и памяти, а главное — предупреждать инженера о деградации задолго до того, как пострадают реальные пользователи.</p>
 <p>Для Go-разработчика, чей сервис тесно связан с хранилищем через стандартный пакет <code>database/sql</code> (<a href="1-rabota-s-bd-v-go-database-sql.html" class="wikilink">1. Работа с БД в Go. database/sql</a>), драйвер <code>pgx</code> или клиент <code>go-redis</code>, мониторинг обязан быть двусторонним. Мы должны видеть картину как со стороны сервера СУБД (дисковый ввод-вывод, разделяемая память, блокировки), так и со стороны клиентского приложения (состояние пула соединений, задержки сетевых вызовов, очереди ожидания горутин).</p>
-<p>В этой главе мы разберем:<br />
-- <strong>Что</strong> именно измерять в реляционных, in-memory и распределенных колоночных СУБД с точки зрения методологий USE и RED.<br />
-- <strong>Как</strong> Go-драйверы собирают и отдают внутреннюю статистику пулов.<br />
-- <strong>Почему</strong> некорректно организованный мониторинг способен положить высоконагруженную базу данных быстрее, чем реальные клиентские запросы.</p>
+<p>В этой главе мы разберем:</p>
+<ul>
+<li><strong>Что</strong> именно измерять в реляционных, in-memory и распределенных колоночных СУБД с точки зрения методологий USE и RED.</li>
+<li><strong>Как</strong> Go-драйверы собирают и отдают внутреннюю статистику пулов.</li>
+<li><strong>Почему</strong> некорректно организованный мониторинг способен положить высоконагруженную базу данных быстрее, чем реальные клиентские запросы.</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -498,16 +500,20 @@ flowchart TD
 <p>В инженерной практике выработались два фундаментальных и взаимодополняющих подхода к измерению здоровья информационных систем:</p>
 <ol>
 <li>
-<p><strong>USE (Utilization, Saturation, Errors)</strong> — подход Брендана Грегга, оценивающий систему со стороны <strong>ресурсов</strong> (сервера СУБД и аппаратного обеспечения):<br />
-   - <strong>Utilization (Утилизация):</strong> процент времени или емкости, в течение которого ресурс был занят полезной работой (загрузка ядер CPU, процент занятости диска, заполнение пула памяти).<br />
-   - <strong>Saturation (Насыщение):</strong> объем отложенной работы, скопившейся в очередях, когда ресурс исчерпан (очередь к диску <code>await</code>, длина очереди процессов ОС, количество запросов, ожидающих освобождения локов).<br />
-   - <strong>Errors (Ошибки):</strong> количество аппаратных или системных сбоев (ошибки контроллера, разрывы сетевых пакетов, исчерпание дескрипторов).</p>
+<p><strong>USE (Utilization, Saturation, Errors)</strong> — подход Брендана Грегга, оценивающий систему со стороны <strong>ресурсов</strong> (сервера СУБД и аппаратного обеспечения):</p>
+<ul>
+<li><strong>Utilization (Утилизация):</strong> процент времени или емкости, в течение которого ресурс был занят полезной работой (загрузка ядер CPU, процент занятости диска, заполнение пула памяти).</li>
+<li><strong>Saturation (Насыщение):</strong> объем отложенной работы, скопившейся в очередях, когда ресурс исчерпан (очередь к диску <code>await</code>, длина очереди процессов ОС, количество запросов, ожидающих освобождения локов).</li>
+<li><strong>Errors (Ошибки):</strong> количество аппаратных или системных сбоев (ошибки контроллера, разрывы сетевых пакетов, исчерпание дескрипторов).</li>
+</ul>
 </li>
 <li>
-<p><strong>RED (Rate, Errors, Duration)</strong> — подход Тома Уилки, ориентированный на пользовательский опыт со стороны <strong>сервиса</strong> (клиентского приложения):<br />
-   - <strong>Rate (Частота):</strong> количество входящих или исходящих запросов в секунду (QPS / TPS).<br />
-   - <strong>Errors (Ошибки):</strong> количество или процент неуспешных операций (HTTP 5xx, SQL connection refused, transaction deadlock).<br />
-   - <strong>Duration (Длительность):</strong> распределение задержек выполнения запросов (Latency: медиана p50, строгие перцентили p95, p99, p99.9).</p>
+<p><strong>RED (Rate, Errors, Duration)</strong> — подход Тома Уилки, ориентированный на пользовательский опыт со стороны <strong>сервиса</strong> (клиентского приложения):</p>
+<ul>
+<li><strong>Rate (Частота):</strong> количество входящих или исходящих запросов в секунду (QPS / TPS).</li>
+<li><strong>Errors (Ошибки):</strong> количество или процент неуспешных операций (HTTP 5xx, SQL connection refused, transaction deadlock).</li>
+<li><strong>Duration (Длительность):</strong> распределение задержек выполнения запросов (Latency: медиана p50, строгие перцентили p95, p99, p99.9).</li>
+</ul>
 </li>
 </ol>
 <p>Обе группы метрик неразделимы. Если вы фиксируете резкий рост задержек (Duration) в Go-сервисе, но не отслеживаете насыщение дисковой подсистемы (Saturation) на СУБД, вы потратите часы на бессмысленный рефакторинг Go-кода, не заметив, что дисковый массив SSD исчерпал лимит IOPS и захлебнулся в очередях записи. Напротив, видя ошибки на стороне приложения, но не сопоставляя их со счетчиком <code>too many connections</code> в СУБД, вы никогда не поймете истинную причину отказа.</p>
@@ -582,10 +588,12 @@ flowchart TD
 </code></pre>
 </div>
 
-<p>Критические индикаторы деградации пула:<br />
-- <strong><code>WaitCount &gt; 0</code> и непрерывно растет:</strong> пул соединений полностью исчерпан! Горутины встают в очередь и блокируются. Это прямая причина деградации p99 latency вашего HTTP/gRPC API.<br />
-- <strong><code>WaitDuration</code> стремительно увеличивается:</strong> время ожидания свободного коннекта начинает превышать сетевое время исполнения самого SQL-запроса. База данных либо не справляется с потоком транзакций, либо размер пула <code>SetMaxOpenConns</code> сконфигурирован слишком консервативно.<br />
-- <strong><code>OpenConnections</code> постоянно держится около <code>MaxOpenConnections</code>:</strong> сервис балансирует на грани исчерпания пула при малейшем колебании входящего трафика.</p>
+<p>Критические индикаторы деградации пула:</p>
+<ul>
+<li><strong><code>WaitCount &gt; 0</code> и непрерывно растет:</strong> пул соединений полностью исчерпан! Горутины встают в очередь и блокируются. Это прямая причина деградации p99 latency вашего HTTP/gRPC API.</li>
+<li><strong><code>WaitDuration</code> стремительно увеличивается:</strong> время ожидания свободного коннекта начинает превышать сетевое время исполнения самого SQL-запроса. База данных либо не справляется с потоком транзакций, либо размер пула <code>SetMaxOpenConns</code> сконфигурирован слишком консервативно.</li>
+<li><strong><code>OpenConnections</code> постоянно держится около <code>MaxOpenConnections</code>:</strong> сервис балансирует на грани исчерпания пула при малейшем колебании входящего трафика.</li>
+</ul>
 <p>Эти метрики необходимо экспортировать в Prometheus. Самый простой путь — через встроенный пакет <code>expvar</code> или официальный SDK <code>client_golang</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -760,20 +768,24 @@ flowchart LR
 <p>Однако вызов команды <code>INFO</code> без параметров или опрос секции <code>INFO MEMORY</code> при многогигабайтной базе данных заставляет движок обращаться к функции <code>zmalloc_get_memory_size</code> и собирать статистику фрагментации у аллокатора <code>jemalloc</code>. На гигантских базах данных вызов <code>INFO ALL</code> каждую секунду от десятков независимых систем мониторинга создает паразитную нагрузку на единственный поток выполнения Redis. <br />
 Рекомендация: в конфигурации скрейперов опрашивайте только целевые секции: <code>INFO STATS</code>, <code>INFO MEMORY</code>, <code>INFO CLIENTS</code>.</p>
 <h3 id="instrumenty-s-otkrytym-kodom-exporters">Инструменты с открытым кодом: exporters</h3>
-<p>В современной инфраструктурной парадигме мониторинг баз данных опирается на проверенные временем экспортеры экосистемы Prometheus:<br />
-- <strong><code>postgres_exporter</code></strong> — подключается к СУБД как выделенный технический пользователь, с заданным интервалом вычитывает <code>pg_stat_database</code>, <code>pg_stat_activity</code>, <code>pg_stat_statements</code> и экспортирует метрики по протоколу HTTP.<br />
-- <strong><code>redis_exporter</code></strong> — выполняет периодический опрос <code>INFO</code>, <code>CLUSTER INFO</code>, <code>SLOWLOG</code> и метрик ключей.<br />
-- <strong><code>mongodb_exporter</code></strong> — опрашивает <code>serverStatus</code>, <code>replSetGetStatus</code> и внутреннюю телеметрию движка WiredTiger.<br />
-- <strong><code>cassandra_exporter</code></strong> — подключается через JMX к JVM-процессу Cassandra, собирая метрики очередей и уплотнения таблиц.</p>
+<p>В современной инфраструктурной парадигме мониторинг баз данных опирается на проверенные временем экспортеры экосистемы Prometheus:</p>
+<ul>
+<li><strong><code>postgres_exporter</code></strong> — подключается к СУБД как выделенный технический пользователь, с заданным интервалом вычитывает <code>pg_stat_database</code>, <code>pg_stat_activity</code>, <code>pg_stat_statements</code> и экспортирует метрики по протоколу HTTP.</li>
+<li><strong><code>redis_exporter</code></strong> — выполняет периодический опрос <code>INFO</code>, <code>CLUSTER INFO</code>, <code>SLOWLOG</code> и метрик ключей.</li>
+<li><strong><code>mongodb_exporter</code></strong> — опрашивает <code>serverStatus</code>, <code>replSetGetStatus</code> и внутреннюю телеметрию движка WiredTiger.</li>
+<li><strong><code>cassandra_exporter</code></strong> — подключается через JMX к JVM-процессу Cassandra, собирая метрики очередей и уплотнения таблиц.</li>
+</ul>
 <p>Вынесение мониторинга в отдельный процесс изолирует приложение от логики сбора инфраструктурных метрик. Однако для метрик пула соединений клиентской стороны Go-сервиса идеальным дополнением служат встроенные библиотеки, например <code>pgxprometheus</code> для драйвера <code>pgxpool</code>.</p>
 <hr />
 <h2 id="mechanical-sympathy-monitoring-i-zhelezo">Mechanical Sympathy: мониторинг и железо</h2>
 <p>С точки зрения операционной системы и кремния, мониторинг — это не абстрактное «наблюдение», а реальный процесс, конкурирующий за системные ресурсы хоста.</p>
-<p>Представим, что мы опрашиваем <code>pg_stat_activity</code> или размер таблиц каждые 2 секунды. На уровне ОС Linux происходит следующая цепочка событий:<br />
-1. Сетевой сокет мониторинга сигнализирует о событии готовности через <code>epoll_wait</code>.<br />
-2. Ядро ОС передает управление процессу СУБД через переключение контекста (<code>context switch</code>), что сбрасывает часть инструкций и данных из процессорного кэша L1/L2.<br />
-3. Процесс выполняет системные вызовы <code>read()</code> и <code>write()</code> для обмена пакетами с экспортером.<br />
-4. Процессор тратит циклы на парсинг SQL-текста запроса мониторинга, проверку прав в системном каталоге и сериализацию ответа.</p>
+<p>Представим, что мы опрашиваем <code>pg_stat_activity</code> или размер таблиц каждые 2 секунды. На уровне ОС Linux происходит следующая цепочка событий:</p>
+<ol>
+<li>Сетевой сокет мониторинга сигнализирует о событии готовности через <code>epoll_wait</code>.</li>
+<li>Ядро ОС передает управление процессу СУБД через переключение контекста (<code>context switch</code>), что сбрасывает часть инструкций и данных из процессорного кэша L1/L2.</li>
+<li>Процесс выполняет системные вызовы <code>read()</code> и <code>write()</code> для обмена пакетами с экспортером.</li>
+<li>Процессор тратит циклы на парсинг SQL-текста запроса мониторинга, проверку прав в системном каталоге и сериализацию ответа.</li>
+</ol>
 <p>При грамотно настроенном интервале (например, раз в 15–30 секунд) накладные расходы составляют ничтожные доли процента CPU (&lt; 0.1%). Но если неопытная команда настраивает опрос десятка сложных системных представлений с интервалом в 200–500 мс от пяти разных инстансов мониторинга, СУБД начинает тратить до 10–15% времени всех ядер исключительно на обслуживание телеметрии!</p>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
@@ -835,30 +847,38 @@ flowchart TD
 </figure>
 
 
-<p>Стандартный продакшен-стек:<br />
-- <strong>Сбор метрик:</strong> postgres_exporter, redis_exporter, либо напрямую из Go-сервиса через <code>promhttp</code>.<br />
-- <strong>Хранение:</strong> Prometheus или VictoriaMetrics.<br />
-- <strong>Визуализация:</strong> Grafana с готовыми дашбордами (например, "PostgreSQL Overview", "Redis Dashboard for Prometheus").</p>
+<p>Стандартный продакшен-стек:</p>
+<ul>
+<li><strong>Сбор метрик:</strong> postgres_exporter, redis_exporter, либо напрямую из Go-сервиса через <code>promhttp</code>.</li>
+<li><strong>Хранение:</strong> Prometheus или VictoriaMetrics.</li>
+<li><strong>Визуализация:</strong> Grafana с готовыми дашбордами (например, "PostgreSQL Overview", "Redis Dashboard for Prometheus").</li>
+</ul>
 <h3 id="tipovoy-dashboard-dlya-postgresql">Типовой dashboard для PostgreSQL</h3>
-<p>Профессиональный дашборд PostgreSQL в Grafana обязательно структурируется по следующим панелям:<br />
-- <strong>Transactions &amp; Throughput:</strong> График <code>xact_commit</code> и <code>xact_rollback</code> в разрезе баз данных (выявление всплеска откатов).<br />
-- <strong>Latency Distribution:</strong> Перцентили задержек выполнения запросов p50, p95, p99 на основе <code>pg_stat_statements</code>.<br />
-- <strong>Cache Hit Ratio:</strong> Доля попадания в буферный кэш (<code>blks_hit / (blks_hit + blks_read)</code>). Любое падение ниже 99% подсвечивается желтым/красным индикатором.<br />
-- <strong>Write Activity &amp; WAL:</strong> Объем генерации WAL (<code>pg_wal_lsn_diff</code>), частота вызовов Checkpoint (по расписанию против экстренных по заполнению <code>max_wal_size</code>).<br />
-- <strong>Connections Saturation:</strong> Соотношение <code>active + idle in transaction</code> к системному пределу <code>max_connections</code>.<br />
-- <strong>Locks &amp; Deadlocks:</strong> Количество сессий в состоянии блокировки (<code>pg_locks</code>), счетчик произошедших взаимных блокировок (<code>deadlocks</code>).</p>
+<p>Профессиональный дашборд PostgreSQL в Grafana обязательно структурируется по следующим панелям:</p>
+<ul>
+<li><strong>Transactions &amp; Throughput:</strong> График <code>xact_commit</code> и <code>xact_rollback</code> в разрезе баз данных (выявление всплеска откатов).</li>
+<li><strong>Latency Distribution:</strong> Перцентили задержек выполнения запросов p50, p95, p99 на основе <code>pg_stat_statements</code>.</li>
+<li><strong>Cache Hit Ratio:</strong> Доля попадания в буферный кэш (<code>blks_hit / (blks_hit + blks_read)</code>). Любое падение ниже 99% подсвечивается желтым/красным индикатором.</li>
+<li><strong>Write Activity &amp; WAL:</strong> Объем генерации WAL (<code>pg_wal_lsn_diff</code>), частота вызовов Checkpoint (по расписанию против экстренных по заполнению <code>max_wal_size</code>).</li>
+<li><strong>Connections Saturation:</strong> Соотношение <code>active + idle in transaction</code> к системному пределу <code>max_connections</code>.</li>
+<li><strong>Locks &amp; Deadlocks:</strong> Количество сессий в состоянии блокировки (<code>pg_locks</code>), счетчик произошедших взаимных блокировок (<code>deadlocks</code>).</li>
+</ul>
 <h3 id="tipovoy-dashboard-dlya-redis">Типовой dashboard для Redis</h3>
-<p>Дашборд оперативного кэша фокусируется на емкости и задержках:<br />
-- <strong>Efficiency:</strong> Соотношение <code>keyspace_hits</code> к <code>keyspace_misses</code> (Hit Rate в процентах).<br />
-- <strong>Memory &amp; Fragmentation:</strong> Абсолютное потребление памяти <code>used_memory</code>, предел <code>maxmemory</code>, график коэффициента фрагментации <code>mem_fragmentation_ratio</code>.<br />
-- <strong>Evictions &amp; Expired:</strong> График вытеснения ключей <code>evicted_keys</code> в секунду (сигнал о дефиците ОЗУ).<br />
-- <strong>Clients &amp; Connections:</strong> Количество активных клиентов <code>connected_clients</code> и заблокированных горутин/клиентов <code>blocked_clients</code>.<br />
-- <strong>Operations Throughput &amp; Latency:</strong> Количество операций в секунду по типам команд (GET, SET, ZADD), время выполнения команд из секции <code>commandstats</code>.</p>
+<p>Дашборд оперативного кэша фокусируется на емкости и задержках:</p>
+<ul>
+<li><strong>Efficiency:</strong> Соотношение <code>keyspace_hits</code> к <code>keyspace_misses</code> (Hit Rate в процентах).</li>
+<li><strong>Memory &amp; Fragmentation:</strong> Абсолютное потребление памяти <code>used_memory</code>, предел <code>maxmemory</code>, график коэффициента фрагментации <code>mem_fragmentation_ratio</code>.</li>
+<li><strong>Evictions &amp; Expired:</strong> График вытеснения ключей <code>evicted_keys</code> в секунду (сигнал о дефиците ОЗУ).</li>
+<li><strong>Clients &amp; Connections:</strong> Количество активных клиентов <code>connected_clients</code> и заблокированных горутин/клиентов <code>blocked_clients</code>.</li>
+<li><strong>Operations Throughput &amp; Latency:</strong> Количество операций в секунду по типам команд (GET, SET, ZADD), время выполнения команд из секции <code>commandstats</code>.</li>
+</ul>
 <h3 id="klientskaya-panel-go-servisa">Клиентская панель Go-сервиса</h3>
-<p>На дашборде самого Go-приложения рядом с графиками RPS и HTTP Latency обязательно размещаются метрики пула:<br />
-- <code>go_sql_stats_*</code> (wait count, in use, idle, open connections).<br />
-- <code>redis_conn_*</code> (hits, misses, timeouts).<br />
-- Латенси со стороны клиента: гистограммы длительности вызовов <code>db.ExecContext</code>, <code>db.QueryContext</code>.</p>
+<p>На дашборде самого Go-приложения рядом с графиками RPS и HTTP Latency обязательно размещаются метрики пула:</p>
+<ul>
+<li><code>go_sql_stats_*</code> (wait count, in use, idle, open connections).</li>
+<li><code>redis_conn_*</code> (hits, misses, timeouts).</li>
+<li>Латенси со стороны клиента: гистограммы длительности вызовов <code>db.ExecContext</code>, <code>db.QueryContext</code>.</li>
+</ul>
 <p>Сведение клиентских и серверных графиков на одном временном отрезке позволяет за секунды локализовать корень проблемы: если сетевая задержка в Go выросла, а база данных рапортует о минимальной нагрузке — проблема кроется в сетевом оборудовании или нехватке соединений в локальном пуле приложения.</p>
 <hr />
 <h2 id="lovushki-i-voprosy-s-sobesedovaniy">Ловушки и вопросы с собеседований</h2>
@@ -870,17 +890,21 @@ flowchart TD
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> В часы пик P99 latency базы данных PostgreSQL подскочила с комфортных 10 мс до катастрофических 500 мс. При этом метрики TPS (Transactions Per Second) и загрузка CPU на сервере базы данных остались абсолютно неизменными. В чем может быть скрытая причина такого поведения и как ее диагностировать?</p>
-<p><strong>Ответ:</strong> Это классический паттерн скрытого насыщения (Saturation) без роста утилизации (Utilization). Возможные первопричины:<br />
-1. <strong>Зависание сессий в статусе <code>idle in transaction</code>:</strong> Одно из клиентских приложений открыло транзакцию и «заснуло» (например, пошло в сторонний HTTP API, удерживая открытую транзакцию). Это блокирует механизм очистки мусора VACUUM и удерживает эксклюзивные блокировки строк/таблиц. Запросы других клиентов выстраиваются в очередь ожидания.<br />
-2. <strong>Исчерпание пула соединений на стороне Go-клиента:</strong> Если лимит <code>SetMaxOpenConns</code> исчерпан, горутины тратят 490 мс на ожидание освобождения коннекта в очереди внутри Go-рантайма (<code>WaitCount</code> растет), тогда как сам запрос исполняется базой за прежние 10 мс.<br />
-3. <strong>Деградация плана выполнения единичного запроса:</strong> Из-за изменения объема данных планировщик переключился с <code>Index Scan</code> на <code>Seq Scan</code> для редкого, но тяжелого запроса (<a href="../04-indeksy-i-proizvoditelnost/10-plan-vypolneniya-zaprosa-explain.html" class="wikilink">10. План выполнения запроса. EXPLAIN</a>). Так как запрос выполняется редко, общий TPS и средняя загрузка CPU не изменились, но его выполнение тормозит транзакции, создавая всплеск P99.<br />
-4. <strong>Дисковые микропаузы на контрольных точках (Checkpoint / fsync spikes):</strong> При сбросе грязных буферов на диск подсистема хранения исчерпывает лимит IOPS, из-за чего системные вызовы <code>fsync</code> для фиксации WAL кратковременно блокируются ядром Linux.<br />
-5. <strong>Конфликты защелок (latch contention) или фоновый Autovacuum:</strong> Фоновый процесс чистки блокирует страницы или разделяемые буферы, вызывая микропаузы.</p>
-<p><strong>План диагностики:</strong><br />
-1. Проверить в Go-сервисе метрику <code>go_sql_db_wait_duration_seconds_total</code> (исключить клиентский пул).<br />
-2. Проверить <code>pg_stat_activity</code> на наличие waiting сессий (<code>wait_event_type != NULL</code>).<br />
-3. Сравнить <code>blk_read_time</code> (время чтения блоков с диска), включить <code>pg_stat_statements</code> для детального анализа времени исполнения отдельных запросов.<br />
-4. Проверить метрики дисковой подсистемы хоста: <code>iowait</code>, <code>await</code> и утилизацию дисковых очередей через <code>iostat</code>.</p>
+<p><strong>Ответ:</strong> Это классический паттерн скрытого насыщения (Saturation) без роста утилизации (Utilization). Возможные первопричины:</p>
+<ol>
+<li><strong>Зависание сессий в статусе <code>idle in transaction</code>:</strong> Одно из клиентских приложений открыло транзакцию и «заснуло» (например, пошло в сторонний HTTP API, удерживая открытую транзакцию). Это блокирует механизм очистки мусора VACUUM и удерживает эксклюзивные блокировки строк/таблиц. Запросы других клиентов выстраиваются в очередь ожидания.</li>
+<li><strong>Исчерпание пула соединений на стороне Go-клиента:</strong> Если лимит <code>SetMaxOpenConns</code> исчерпан, горутины тратят 490 мс на ожидание освобождения коннекта в очереди внутри Go-рантайма (<code>WaitCount</code> растет), тогда как сам запрос исполняется базой за прежние 10 мс.</li>
+<li><strong>Деградация плана выполнения единичного запроса:</strong> Из-за изменения объема данных планировщик переключился с <code>Index Scan</code> на <code>Seq Scan</code> для редкого, но тяжелого запроса (<a href="../04-indeksy-i-proizvoditelnost/10-plan-vypolneniya-zaprosa-explain.html" class="wikilink">10. План выполнения запроса. EXPLAIN</a>). Так как запрос выполняется редко, общий TPS и средняя загрузка CPU не изменились, но его выполнение тормозит транзакции, создавая всплеск P99.</li>
+<li><strong>Дисковые микропаузы на контрольных точках (Checkpoint / fsync spikes):</strong> При сбросе грязных буферов на диск подсистема хранения исчерпывает лимит IOPS, из-за чего системные вызовы <code>fsync</code> для фиксации WAL кратковременно блокируются ядром Linux.</li>
+<li><strong>Конфликты защелок (latch contention) или фоновый Autovacuum:</strong> Фоновый процесс чистки блокирует страницы или разделяемые буферы, вызывая микропаузы.</li>
+</ol>
+<p><strong>План диагностики:</strong></p>
+<ol>
+<li>Проверить в Go-сервисе метрику <code>go_sql_db_wait_duration_seconds_total</code> (исключить клиентский пул).</li>
+<li>Проверить <code>pg_stat_activity</code> на наличие waiting сессий (<code>wait_event_type != NULL</code>).</li>
+<li>Сравнить <code>blk_read_time</code> (время чтения блоков с диска), включить <code>pg_stat_statements</code> для детального анализа времени исполнения отдельных запросов.</li>
+<li>Проверить метрики дисковой подсистемы хоста: <code>iowait</code>, <code>await</code> и утилизацию дисковых очередей через <code>iostat</code>.</li>
+</ol>
   </div>
 </aside>
 
@@ -905,10 +929,12 @@ flowchart TD
 <hr />
 <h2 id="itog">Итог</h2>
 <p>Мониторинг баз данных — это не разовая задача по установке стандартного дашборда в Grafana, а фундамент инженерной культуры надежности (Site Reliability Engineering). </p>
-<p>Профессиональный подход к мониторингу базируется на трех китах:<br />
-1. <strong>Симбиоз USE и RED:</strong> Серверные метрики показывают аппаратное насыщение узлов СУБД, клиентские метрики отражают реальный пользовательский опыт.<br />
-2. <strong>Прозрачность пулов Go:</strong> Интроспекция структур <code>database/sql.Stats</code>, <code>pgxpool.Stat</code> и <code>go-redis.PoolStats</code> позволяет контролировать задержки на уровне планировщика горутин задолго до сетевого стека.<br />
-3. <strong>Механическое сочувствие (Mechanical Sympathy):</strong> Понимание того, как устроены <code>pg_stat_activity</code>, <code>pg_stat_statements</code> и разделяемая память СУБД, гарантирует, что сам процесс сбора метрик останется абсолютно прозрачным и не создаст деградации производительности.</p>
+<p>Профессиональный подход к мониторингу базируется на трех китах:</p>
+<ol>
+<li><strong>Симбиоз USE и RED:</strong> Серверные метрики показывают аппаратное насыщение узлов СУБД, клиентские метрики отражают реальный пользовательский опыт.</li>
+<li><strong>Прозрачность пулов Go:</strong> Интроспекция структур <code>database/sql.Stats</code>, <code>pgxpool.Stat</code> и <code>go-redis.PoolStats</code> позволяет контролировать задержки на уровне планировщика горутин задолго до сетевого стека.</li>
+<li><strong>Механическое сочувствие (Mechanical Sympathy):</strong> Понимание того, как устроены <code>pg_stat_activity</code>, <code>pg_stat_statements</code> и разделяемая память СУБД, гарантирует, что сам процесс сбора метрик останется абсолютно прозрачным и не создаст деградации производительности.</li>
+</ol>
 <p>Следующий логический шаг на пути к глубокой наблюдаемости — детальный анализ и отлов аномальных запросов с помощью журналов медленных операций, который мы разберем в следующей статье: <a href="18-slow-query-log.html" class="wikilink">18. Slow query log</a>.</p>
           </div>
 

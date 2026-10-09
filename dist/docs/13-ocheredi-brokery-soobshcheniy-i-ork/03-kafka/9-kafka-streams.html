@@ -372,16 +372,20 @@
 <p>Исторически потоковая обработка больших данных (Stream Processing) ассоциировалась с громоздкими распределенными кластерами: Apache Storm, Apache Spark Streaming, Apache Flink. Развертывание таких систем требовало выделенного кластера, отдельных узлов-мастеров (Master/JobManager), пулов воркеров (TaskManagers), интеграции с YARN или Kubernetes, а также отдельной команды инженеров по эксплуатации.</p>
 <p><strong>Kafka Streams</strong> предложила радикально иную, прорывную парадигму: <strong>потоковая обработка как обычный микросервис, а не тяжеловесный джоб в кластере</strong>.</p>
 <p>Kafka Streams — это клиентская библиотека (первоначально реализованная для Java, но породившая аналоги во всех языках, включая Go), которая превращает ваше стандартное приложение в масштабируемый, отказоустойчивый потоковый процессор. </p>
-<p>Ключевые свойства архитектуры:<br />
-- <strong>Никаких дополнительных кластеров:</strong> Приложение запускается как обычный контейнер в Kubernetes или процесс на виртуальной машине.<br />
-- <strong>Инфраструктура Kafka как координатор:</strong> Масштабирование, обнаружение сбоев, шардирование задач и эластичность строятся на базе стандартного протокола <strong>Consumer Group</strong> (<a href="4-consumer-groups.html" class="wikilink">4. Consumer groups</a>).<br />
-- <strong>Встроенное шардированное состояние (Embedded State Store):</strong> Приложение хранит промежуточные агрегаты не во внешней базе данных, а локально на NVMe-диске (по умолчанию в embedded движке RocksDB), реплицируя изменения в компактные changelog-топики Kafka.</p>
+<p>Ключевые свойства архитектуры:</p>
+<ul>
+<li><strong>Никаких дополнительных кластеров:</strong> Приложение запускается как обычный контейнер в Kubernetes или процесс на виртуальной машине.</li>
+<li><strong>Инфраструктура Kafka как координатор:</strong> Масштабирование, обнаружение сбоев, шардирование задач и эластичность строятся на базе стандартного протокола <strong>Consumer Group</strong> (<a href="4-consumer-groups.html" class="wikilink">4. Consumer groups</a>).</li>
+<li><strong>Встроенное шардированное состояние (Embedded State Store):</strong> Приложение хранит промежуточные агрегаты не во внешней базе данных, а локально на NVMe-диске (по умолчанию в embedded движке RocksDB), реплицируя изменения в компактные changelog-топики Kafka.</li>
+</ul>
 <p>С точки зрения Go-разработчика, понимание Kafka Streams необходимо не столько для написания кода на Java, сколько для усвоения фундаментальных паттернов потоковой обработки (Stream-Table Duality, Windowing, Local State Stores, Interactive Queries), которые ежедневно применяются при проектировании распределенных систем на Go.</p>
 <hr />
 <h2 id="osnovnye-abstraktsii-graf-protsessorov">Основные абстракции: граф процессоров</h2>
-<p>Kafka Streams моделирует вычисления в виде <strong>топологии процессоров (Processor Topology)</strong> — направленного ациклического графа (DAG), где:<br />
-- <strong>Узлы (Nodes):</strong> Процессоры потока (Stream Processors) — чистые функции трансформации, фильтрации или агрегации.<br />
-- <strong>Рёбра (Edges):</strong> Непрерывные потоки событий (Streams), связывающие процессоры между собой.</p>
+<p>Kafka Streams моделирует вычисления в виде <strong>топологии процессоров (Processor Topology)</strong> — направленного ациклического графа (DAG), где:</p>
+<ul>
+<li><strong>Узлы (Nodes):</strong> Процессоры потока (Stream Processors) — чистые функции трансформации, фильтрации или агрегации.</li>
+<li><strong>Рёбра (Edges):</strong> Непрерывные потоки событий (Streams), связывающие процессоры между собой.</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -480,10 +484,12 @@ flowchart TD
 <ul>
 <li><strong>Агрегация (<code>aggregate</code>, <code>count</code>, <code>reduce</code>):</strong> Накопление сумм, счетчиков, средних значений по каждому ключу.</li>
 <li><strong>Оконные вычисления (<code>windowedBy</code>):</strong> Группировка событий по временным интервалам (например, число запросов от пользователя за последние 60 секунд).</li>
-<li><strong>Потоковые соединения (<code>join</code>):</strong></li>
+<li><strong>Потоковые соединения (<code>join</code>):</strong><ul>
 <li><code>KStream-KStream Join</code> — соединение двух потоков событий в пределах скользящего временного окна (например, соединение клика по рекламе с последующей покупкой в течение 30 минут).</li>
 <li><code>KStream-KTable Join</code> — обогащение входящего потока событий актуальным состоянием сущности из таблицы (например, обогащение заказа текущим адресом пользователя).</li>
 <li><code>KStream-GlobalKTable Join</code> — обогащение потока глобальным справочником без ограничений по партиционированию.</li>
+</ul>
+</li>
 </ul>
 <hr />
 <h2 id="okna-kak-pridat-vremeni-strukturu">Окна: как придать времени структуру</h2>
@@ -606,12 +612,14 @@ flowchart TD
 <hr />
 <h2 id="exactly-once-semantika">Exactly-once семантика</h2>
 <p>Kafka Streams реализует полноценную семантику <strong>Exactly-Once Processing (EOS)</strong> внутри замкнутого цикла Kafka $\to$ Обработка $\to$ Kafka.</p>
-<p>Это достигается благодаря двухфазному коммиту транзакций Kafka (<a href="6-exactly-once-v-kafka.html" class="wikilink">6. Exactly once в Kafka</a>):<br />
-1. Процессор начинает транзакцию.<br />
-2. Промежуточные результаты пишутся в выходной топик.<br />
-3. Изменения локального состояния отправляются в changelog-топик.<br />
-4. Смещения входящего топика фиксируются через вызов <code>sendOffsetsToTransaction</code>.<br />
-5. Координатор фиксирует транзакцию: данные на выходе, смещения на входе и локальное состояние фиксируются <strong>строго атомарно</strong>.</p>
+<p>Это достигается благодаря двухфазному коммиту транзакций Kafka (<a href="6-exactly-once-v-kafka.html" class="wikilink">6. Exactly once в Kafka</a>):</p>
+<ol>
+<li>Процессор начинает транзакцию.</li>
+<li>Промежуточные результаты пишутся в выходной топик.</li>
+<li>Изменения локального состояния отправляются в changelog-топик.</li>
+<li>Смещения входящего топика фиксируются через вызов <code>sendOffsetsToTransaction</code>.</li>
+<li>Координатор фиксирует транзакцию: данные на выходе, смещения на входе и локальное состояние фиксируются <strong>строго атомарно</strong>.</li>
+</ol>
 <p>Если в процессе падает контейнер — незавершенная транзакция прерывается (aborted), а состояние RocksDB откатывается к точке последней зафиксированной контрольной точки (checkpoint).</p>
 <hr />
 <h2 id="interaktivnye-zaprosy-interactive-queries">Интерактивные запросы (Interactive Queries)</h2>
@@ -658,17 +666,21 @@ flowchart TD
 <h2 id="go-i-potokovaya-obrabotka-alternativy-kafka-streams">Go и потоковая обработка: альтернативы Kafka Streams</h2>
 <p>В экосистеме Go нет официальной библиотеки от команды Kafka, но сообщество разработало мощные архитектурные решения:</p>
 <h3 id="1-goka-biblioteka-vdokhnovlyonnaya-kafka-streams">1. Goka — библиотека, вдохновлённая Kafka Streams</h3>
-<p><a href="https://github.com/lovoo/goka">Goka</a> — зрелая библиотека от инженеров Lovoo, повторяющая философию Kafka Streams на чистом Go:<br />
-- Абстракция <code>Emitter</code>, <code>Processor</code>, <code>View</code>;<br />
-- Локальное шардированное состояние на движках <strong>Badger</strong> (LSM-хранилище на Go) или LevelDB;<br />
-- Автоматическая репликация в changelog-топики и восстановление состояния при ребалансировках;<br />
-- Потокобезопасные представления (Views) для интерактивных запросов.</p>
+<p><a href="https://github.com/lovoo/goka">Goka</a> — зрелая библиотека от инженеров Lovoo, повторяющая философию Kafka Streams на чистом Go:</p>
+<ul>
+<li>Абстракция <code>Emitter</code>, <code>Processor</code>, <code>View</code>;</li>
+<li>Локальное шардированное состояние на движках <strong>Badger</strong> (LSM-хранилище на Go) или LevelDB;</li>
+<li>Автоматическая репликация в changelog-топики и восстановление состояния при ребалансировках;</li>
+<li>Потокобезопасные представления (Views) для интерактивных запросов.</li>
+</ul>
 <h3 id="2-ruchnaya-realizatsiya-s-franz-go">2. Ручная реализация с franz-go</h3>
-<p>Можно построить потоковый процессор, используя <code>kgo.Client</code>, горутины и собственное локальное хранилище (например, Badger, Bolt или Pebble):<br />
-- Горутины консьюмера вычитывают батчи через <code>PollFetches</code>.<br />
-- Обработчик выполняет быстрые <code>Get/Put</code> в локальный Pebble Store.<br />
-- Изменения состояния пакуются в батчи и отправляются в changelog-топик через транзакционный продюсер <code>cl.BeginTransaction()</code>.<br />
-- Ребалансировки отслеживаются через коллбеки <code>OnPartitionsRevoked</code> (сброс WAL Pebble) и <code>OnPartitionsAssigned</code> (прогрев из changelog).</p>
+<p>Можно построить потоковый процессор, используя <code>kgo.Client</code>, горутины и собственное локальное хранилище (например, Badger, Bolt или Pebble):</p>
+<ul>
+<li>Горутины консьюмера вычитывают батчи через <code>PollFetches</code>.</li>
+<li>Обработчик выполняет быстрые <code>Get/Put</code> в локальный Pebble Store.</li>
+<li>Изменения состояния пакуются в батчи и отправляются в changelog-топик через транзакционный продюсер <code>cl.BeginTransaction()</code>.</li>
+<li>Ребалансировки отслеживаются через коллбеки <code>OnPartitionsRevoked</code> (сброс WAL Pebble) и <code>OnPartitionsAssigned</code> (прогрев из changelog).</li>
+</ul>
 <h3 id="3-ispolzovanie-vneshnikh-freymvorkov">3. Использование внешних фреймворков</h3>
 <p>Для особо масштабных потоковых топологий с экстремально сложными соединениями десятков потоков может быть оправдано использование Apache Flink или Spark Streaming, вызываемых из Go через API, но это уводит от простоты и легковесности микросервисной архитектуры.</p>
 <hr />

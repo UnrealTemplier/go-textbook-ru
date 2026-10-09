@@ -324,14 +324,18 @@
 <h2 id="chto-takoe-faylovyy-deskriptor-fd-pod-kapotom">Что такое файловый дескриптор (FD) «под капотом»</h2>
 <p>Файловый дескриптор (File Descriptor, FD) — это <strong>не указатель на файл</strong> и не структура данных. Это <strong>маленькое целое число</strong> (обычно <code>int32</code>), которое служит индексом в таблице открытых файлов текущего процесса.</p>
 <p>Представьте номерок в гардеробе театра: сам по себе пластиковый жетон с цифрой <code>42</code> не греет вас в мороз. Но когда вы отдаете номерок гардеробщику (ядру ОС), он заглядывает в ячейку #42 гардеробной стойки (таблицу дескрипторов процесса), находит вешалку (структуру файла в ядре) и выдает ваше пальто (данные с диска или из сети).</p>
-<p>По умолчанию каждому процессу при рождении достаются три стандартных номерка:<br />
-- <code>0</code> — <code>stdin</code> (стандартный ввод);<br />
-- <code>1</code> — <code>stdout</code> (стандартный вывод);<br />
-- <code>2</code> — <code>stderr</code> (стандартный поток ошибок).</p>
-<p>Когда вы вызываете системный вызов <code>open()</code> или <code>socket()</code>, ядро:<br />
-1. Выделяет структуру <code>struct file</code> (описание файла) в ядре.<br />
-2. Ищет свободный индекс в таблице <code>struct files_struct</code> текущего процесса (обычно начиная с наименьшего свободного номера).<br />
-3. Возвращает этот индекс в пользовательское пространство.</p>
+<p>По умолчанию каждому процессу при рождении достаются три стандартных номерка:</p>
+<ul>
+<li><code>0</code> — <code>stdin</code> (стандартный ввод);</li>
+<li><code>1</code> — <code>stdout</code> (стандартный вывод);</li>
+<li><code>2</code> — <code>stderr</code> (стандартный поток ошибок).</li>
+</ul>
+<p>Когда вы вызываете системный вызов <code>open()</code> или <code>socket()</code>, ядро:</p>
+<ol>
+<li>Выделяет структуру <code>struct file</code> (описание файла) в ядре.</li>
+<li>Ищет свободный индекс в таблице <code>struct files_struct</code> текущего процесса (обычно начиная с наименьшего свободного номера).</li>
+<li>Возвращает этот индекс в пользовательское пространство.</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -365,10 +369,12 @@ flowchart TD
 <hr />
 <h2 id="vfs-magiya-unifikatsii-resursov">VFS: Магия унификации ресурсов</h2>
 <p>Чтобы абстракция «всё есть файл» работала, ядро использует <strong>VFS (Virtual File System)</strong> — слой виртуальной файловой системы. VFS предоставляет единый интерфейс <code>read</code>, <code>write</code>, <code>close</code>, <code>lseek</code> для любых ресурсов.</p>
-<p>В ядре Linux каждый открытый ресурс описывается тремя уровнями:<br />
-1. <strong>FD (индекс в таблице процесса)</strong> — локальный для процесса.<br />
-2. <strong>File Description (<code>struct file</code>)</strong> — глобальный объект ядра, содержит текущую позицию чтения/записи (<code>f_pos</code>), флаги (<code>O_APPEND</code>, <code>O_NONBLOCK</code>), права доступа.<br />
-3. <strong>Inode (<code>struct inode</code>)</strong> — метаданные на диске (для обычных файлов) или структура драйвера (для сокетов/пайпов).</p>
+<p>В ядре Linux каждый открытый ресурс описывается тремя уровнями:</p>
+<ol>
+<li><strong>FD (индекс в таблице процесса)</strong> — локальный для процесса.</li>
+<li><strong>File Description (<code>struct file</code>)</strong> — глобальный объект ядра, содержит текущую позицию чтения/записи (<code>f_pos</code>), флаги (<code>O_APPEND</code>, <code>O_NONBLOCK</code>), права доступа.</li>
+<li><strong>Inode (<code>struct inode</code>)</strong> — метаданные на диске (для обычных файлов) или структура драйвера (для сокетов/пайпов).</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -461,10 +467,12 @@ func handleRawFD() error {
 </div>
 
 <h3 id="2-ocloexec-i-predotvrashchenie-utechek">2. <code>O_CLOEXEC</code> и предотвращение утечек</h3>
-<p>При вызове <code>exec.Command</code> или <code>fork()</code> дочерний процесс наследует таблицу FD родителя. Если вы открыли сокет или файл без флага <code>O_CLOEXEC</code>, он автоматически откроется в дочернем процессе, что может привести к:<br />
-- Утечке ресурсов (child держит дескриптор открытым после <code>exec</code>).<br />
-- Конфликтам (несколько процессов пишут в один сокет/лог).<br />
-- Нарушению безопасности (child получает доступ к приватным ресурсам).</p>
+<p>При вызове <code>exec.Command</code> или <code>fork()</code> дочерний процесс наследует таблицу FD родителя. Если вы открыли сокет или файл без флага <code>O_CLOEXEC</code>, он автоматически откроется в дочернем процессе, что может привести к:</p>
+<ul>
+<li>Утечке ресурсов (child держит дескриптор открытым после <code>exec</code>).</li>
+<li>Конфликтам (несколько процессов пишут в один сокет/лог).</li>
+<li>Нарушению безопасности (child получает доступ к приватным ресурсам).</li>
+</ul>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
@@ -515,11 +523,13 @@ func openWithCloexec(path string) (*os.File, error) {
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Что произойдет, если Go-программа упадет с <code>panic</code> и не вызовет <code>defer file.Close()</code>?<br />
-<strong>Ответ:</strong> В Unix при завершении процесса (любым способом, включая <code>panic</code> и <code>SIGKILL</code>) ядро автоматически закрывает все дескрипторы процесса. Однако в production это <strong>недопустимая практика</strong>. Утечка FD приводит к:<br />
-1. Исчерпанию лимита <code>ulimit -n</code> (процесс перестанет открывать новые файлы/сокет).<br />
-2. Невозможности корректного <code>graceful shutdown</code>.<br />
-3. Непредсказуемому поведению при <code>fork</code> или использовании <code>exec.Command</code>.<br />
-Go не гарантирует вызов <code>defer</code> при <code>SIGKILL</code> или аппаратных сбоях, поэтому явное <code>Close()</code> — обязательный паттерн.</p>
+<strong>Ответ:</strong> В Unix при завершении процесса (любым способом, включая <code>panic</code> и <code>SIGKILL</code>) ядро автоматически закрывает все дескрипторы процесса. Однако в production это <strong>недопустимая практика</strong>. Утечка FD приводит к:</p>
+<ol>
+<li>Исчерпанию лимита <code>ulimit -n</code> (процесс перестанет открывать новые файлы/сокет).</li>
+<li>Невозможности корректного <code>graceful shutdown</code>.</li>
+<li>Непредсказуемому поведению при <code>fork</code> или использовании <code>exec.Command</code>.<br />
+    Go не гарантирует вызов <code>defer</code> при <code>SIGKILL</code> или аппаратных сбоях, поэтому явное <code>Close()</code> — обязательный паттерн.</li>
+</ol>
   </div>
 </aside>
 

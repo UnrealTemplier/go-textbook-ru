@@ -479,18 +479,26 @@ flowchart TD
 <h3 id="shag-1-analiz-metrik-gde-imenno-zaderzhka">Шаг 1. Анализ метрик — где именно задержка?</h3>
 <p>Расследование всегда начинается с верхнеуровневой телеметрии в Prometheus и дашбордов Grafana по методологии RED (Rate, Errors, Duration):</p>
 <ul>
-<li><strong>Какая именно квантиль деградировала?</strong></li>
+<li><strong>Какая именно квантиль деградировала?</strong><ul>
 <li>Если вырос только $p99$, а медиана $p50$ осталась неизменной (например, 5 мс против 600 мс) — ищите редкие выбросы: фазы Stop-The-World в GC, эпизодический lock contention, переподключение пула соединений БД, троттлинг cgroups или длинные полезные нагрузки.</li>
 <li>Если синхронно выросли и $p50$, и $p99$ — деградация системная: процессор физически перегружен, закончились потоки/дескрипторы, либо downstream-зависимость (БД) замедлилась для всех.</li>
-<li><strong>На каком сегменте конвейера растет задержка?</strong></li>
+</ul>
+</li>
+<li><strong>На каком сегменте конвейера растет задержка?</strong><ul>
 <li>Изучите гистограммы времени отдельных стадий: <code>read_request_body</code>, <code>auth_validation</code>, <code>db_query</code>, <code>json_serialization</code>.</li>
-<li><strong>Корреляция с системными метриками Go и ядра:</strong></li>
+</ul>
+</li>
+<li><strong>Корреляция с системными метриками Go и ядра:</strong><ul>
 <li><code>go_gc_duration_seconds</code> — длительность фаз сборщика мусора.</li>
 <li><code>go_memstats_heap_inuse_bytes</code> — динамика заполнения кучи.</li>
 <li><code>go_goroutines</code> — аномальный рост числа горутин свидетельствует об их зависании.</li>
 <li><code>container_cpu_cfs_throttled_seconds_total</code> (а также метрики <code>container_cpu_throttling</code>) — скрытый убийца в Kubernetes: принудительное замораживание контейнера ядром Linux из-за исчерпания CPU-квоты.</li>
-<li><strong>Локальная или сетевая проблема?</strong></li>
+</ul>
+</li>
+<li><strong>Локальная или сетевая проблема?</strong><ul>
 <li>Если задержка возросла одновременно у нескольких независимых сервисов, причина почти наверняка лежит в инфраструктуре: общая сеть (<a href="../07-io-i-sistemnyy-uroven/3-network-latency.html" class="wikilink">3. Network latency</a>), сетевая карта (NIC drop) или общая перегруженная СУБД.</li>
+</ul>
+</li>
 </ul>
 
 <div class="code-block" data-lang="bash">
@@ -535,15 +543,19 @@ go tool pprof http://localhost:6060/debug/pprof/mutex
 </div>
 
 <ul>
-<li><strong>CPU profile:</strong> ищем характерные сигнатуры:</li>
+<li><strong>CPU profile:</strong> ищем характерные сигнатуры:<ul>
 <li>Если в верхних строках <code>runtime.mallocgc</code> или <code>runtime.gcAssistAlloc</code> — процессор сжигает такты на раздачу памяти и помощь сборщику мусора (<a href="../05-garbage-collector/9-kogda-gc-stanovitsya-bottleneck.html" class="wikilink">9. Когда GC становится bottleneck</a>).</li>
 <li>Если в топе <code>sync.(*Mutex).Lock</code> или <code>sync.(*RWMutex).RLock</code> — потоки выжигают такты в спинлоках или блокируются в futex (<a href="../06-konkurentnost/7-contention-i-lock-profiling.html" class="wikilink">7. Contention и lock profiling</a>).</li>
 <li>Если доминирует <code>runtime.netpollblock</code> — приложение ожидает сетевого ввода-вывода от клиентов или внешних API (<a href="../07-io-i-sistemnyy-uroven/4-epoll-kqueue-i-netpoller.html" class="wikilink">4. epoll, kqueue и netpoller</a>).</li>
+</ul>
+</li>
 <li><strong>Heap profile:</strong> анализируем <code>alloc_space</code> (суммарный объем выделенной памяти) и <code>inuse_space</code> (живая память). Если <code>alloc_space</code> растет на гигабайты за секунды при стабильном <code>inuse_space</code>, сервис генерирует шквал короткоживущих объектов, заставляя GC циклически пожирать процессорное время.</li>
-<li><strong>Goroutine profile:</strong> ищем массовые скопления горутин со статусами:</li>
+<li><strong>Goroutine profile:</strong> ищем массовые скопления горутин со статусами:<ul>
 <li><code>[chan receive]</code> / <code>[chan send]</code> — перегрузка внутренних очередей или утечка фоновых воркеров.</li>
 <li><code>[sync.Mutex.Lock]</code> — конкуренция за общую память.</li>
 <li><code>[runnable]</code> — катастрофический признак: горутины готовы исполняться, но операционная система или планировщик Go не дают им процессорного времени (голодание).</li>
+</ul>
+</li>
 </ul>
 
 <aside class="callout callout-note" aria-label="Заметка">
@@ -593,37 +605,49 @@ Proc 3: [ Syscall: epoll_wait ] ────────────────
 </code></pre>
 </div>
 
-<p>Что мгновенно проявляется на временной шкале трассировщика:<br />
-1. <strong>Фазы Stop-The-World (STW):</strong> Отображаются как сплошные вертикальные полосы, блокирующие исполнение на всех логических процессорах P. Выделив полосу курсором, можно мгновенно узнать точную длительность остановки мира (например, 3.2 мс).<br />
-2. <strong>Mark Assist:</strong> Если пользовательская горутина вместо выполнения бизнес-логики подсвечена статусом <code>MARK ASSIST</code>, значит, она превысила выделенный лимит аллокаций и рантайм принудил ее маркировать объекты кучи в наказание за расточительность.<br />
-3. <strong>Длительные блокировки на мьютексах и каналах:</strong> Трассировщик показывает отрезки ожидания (<code>Waiting</code>) и связывает стрелкой событие разблокировки: видно, какая именно горутина освободила мьютекс или отправила сообщение в канал.<br />
-4. <strong>Миграции горутин между P:</strong> Если чувствительная к задержкам горутина постоянно перепрыгивает с одного P на другой, она непрерывно сбрасывает аппаратный L1/L2 кэш процессора (<a href="../03-cpu-profiling/8-cache-friendliness.html" class="wikilink">8. Cache friendliness</a>).</p>
+<p>Что мгновенно проявляется на временной шкале трассировщика:</p>
+<ol>
+<li><strong>Фазы Stop-The-World (STW):</strong> Отображаются как сплошные вертикальные полосы, блокирующие исполнение на всех логических процессорах P. Выделив полосу курсором, можно мгновенно узнать точную длительность остановки мира (например, 3.2 мс).</li>
+<li><strong>Mark Assist:</strong> Если пользовательская горутина вместо выполнения бизнес-логики подсвечена статусом <code>MARK ASSIST</code>, значит, она превысила выделенный лимит аллокаций и рантайм принудил ее маркировать объекты кучи в наказание за расточительность.</li>
+<li><strong>Длительные блокировки на мьютексах и каналах:</strong> Трассировщик показывает отрезки ожидания (<code>Waiting</code>) и связывает стрелкой событие разблокировки: видно, какая именно горутина освободила мьютекс или отправила сообщение в канал.</li>
+<li><strong>Миграции горутин между P:</strong> Если чувствительная к задержкам горутина постоянно перепрыгивает с одного P на другой, она непрерывно сбрасывает аппаратный L1/L2 кэш процессора (<a href="../03-cpu-profiling/8-cache-friendliness.html" class="wikilink">8. Cache friendliness</a>).</li>
+</ol>
 <hr />
 <h3 id="shag-4-korrelyatsiya-soedinenie-tochek">Шаг 4. Корреляция — соединение точек</h3>
 <p>На четвертом этапе данные агрегированных профилей, временной шкалы и распределенных логов объединяются:</p>
 <ul>
-<li><strong>Сценарий 1: GC-индуцированные задержки.</strong></li>
+<li><strong>Сценарий 1: GC-индуцированные задержки.</strong><ul>
 <li><em>Симптомы:</em> В CPU-профиле доминирует <code>gcAssistAlloc</code>, в Execution Trace видны частые полосы <code>MARK ASSIST</code> прямо в контексте HTTP-обработчиков.</li>
 <li><em>Первопричина:</em> Интенсивная генерация мусора в куче.</li>
 <li><em>Лечение:</em> Устранение аллокаций через предварительное выделение слайсов (<a href="../09-prakticheskie-optimizatsii/1-umenshenie-allokatsiy.html" class="wikilink">1. Уменьшение аллокаций</a>) и переиспользование объектов через <code>sync.Pool</code> (<a href="../09-prakticheskie-optimizatsii/2-sync-pool.html" class="wikilink">2. sync Pool</a>).</li>
-<li><strong>Сценарий 2: Мьютексный затор (Lock Contention).</strong></li>
+</ul>
+</li>
+<li><strong>Сценарий 2: Мьютексный затор (Lock Contention).</strong><ul>
 <li><em>Симптомы:</em> Goroutine profile показывает тысячи горутин в <code>[sync.Mutex.Lock]</code>, mutex profile (<a href="../08-runtime-i-instrumenty/6-mutex-profile.html" class="wikilink">6. mutex profile</a>) и block profile (<a href="../08-runtime-i-instrumenty/5-block-profile.html" class="wikilink">5. block profile</a>) указывают на конкретный метод (например, <code>updateCache</code>).</li>
 <li><em>Первопричина:</em> Выполнение долгого I/O или тяжелых вычислений внутри критической секции мьютекса.</li>
 <li><em>Лечение:</em> Сокращение критической секции, переход на шардированные структуры (<code>ShardedMap</code>) или lock-free атомики.</li>
-<li><strong>Сценарий 3: Зависание в Runnable (CPU Throttling в Kubernetes).</strong></li>
+</ul>
+</li>
+<li><strong>Сценарий 3: Зависание в Runnable (CPU Throttling в Kubernetes).</strong><ul>
 <li><em>Симптомы:</em> Трассировщик фиксирует, что горутины проводят десятки миллисекунд в статусе <code>Runnable</code> при свободных или заблокированных P. При этом CPU-профиль приложения полупустой.</li>
 <li><em>Первопричина:</em> Ядро Linux обрубает процессорное время контейнеру по механизму CFS (Completely Fair Scheduler) из-за жестких CPU limits (<code>resources.limits.cpu</code>).</li>
 <li><em>Лечение:</em> Увеличение CPU limits, снятие limits с оставлением requests, либо тюнинг <code>cfs_quota_us</code> / <code>cfs_period_us</code>.</li>
-<li><strong>Сквозные цепочки с Correlation ID:</strong></li>
+</ul>
+</li>
+<li><strong>Сквозные цепочки с Correlation ID:</strong><ul>
 <li>По логам с единым Correlation ID (<a href="../../14-raspredelennye-sistemy-na-go/08-praktika/7-correlation-id.html" class="wikilink">7. Correlation ID</a>) вычисляется конкретный аномальный запрос. По OpenTelemetry Trace ID мы сопоставляем микросекунды в коде Go с таймлайном сетевых запросов к БД или внешним микросервисам.</li>
+</ul>
+</li>
 </ul>
 <hr />
 <h3 id="shag-5-gipoteza-ispravlenie-verifikatsiya">Шаг 5. Гипотеза, исправление, верификация</h3>
-<p>Научный подход исключает правки наугад:<br />
-1. <strong>Формулировка гипотезы:</strong> «Рост $p99$ задержки до 400 мс вызван режимом Mark Assist при сериализации аналитических отчетов из-за создания временных <code>[]byte</code> буферов».<br />
-2. <strong>Проверка гипотезы:</strong> Профиль памяти подтверждает 1.8 ГБ аллокаций в функции отчетов.<br />
-3. <strong>Локальное исправление:</strong> Внедрение кольцевого буфера или пула байтовых срезов <code>sync.Pool</code>.<br />
-4. <strong>Верификация под нагрузкой:</strong> Запуск нагрузочного генератора (<a href="../10-highload/1-load-testing.html" class="wikilink">1. Load testing</a>) с профилированием до и после рефакторинга. Контроль возвращения $p99$ в границы SLA.</p>
+<p>Научный подход исключает правки наугад:</p>
+<ol>
+<li><strong>Формулировка гипотезы:</strong> «Рост $p99$ задержки до 400 мс вызван режимом Mark Assist при сериализации аналитических отчетов из-за создания временных <code>[]byte</code> буферов».</li>
+<li><strong>Проверка гипотезы:</strong> Профиль памяти подтверждает 1.8 ГБ аллокаций в функции отчетов.</li>
+<li><strong>Локальное исправление:</strong> Внедрение кольцевого буфера или пула байтовых срезов <code>sync.Pool</code>.</li>
+<li><strong>Верификация под нагрузкой:</strong> Запуск нагрузочного генератора (<a href="../10-highload/1-load-testing.html" class="wikilink">1. Load testing</a>) с профилированием до и после рефакторинга. Контроль возвращения $p99$ в границы SLA.</li>
+</ol>
 <hr />
 <h2 id="klyuchevye-istochniki-zaderzhek-v-go">Ключевые источники задержек в Go</h2>
 <p>В таблице систематизированы наиболее частые причины проседания времени отклика в продакшене:</p>
@@ -715,9 +739,11 @@ func processPayment(ctx context.Context) {
 </code></pre>
 </div>
 
-<p>Когда вы откроете такой файл через <code>go tool trace</code>, в интерфейсе появится специализированная панель <strong>User-defined Tasks</strong>:<br />
-* Вы можете кликнуть на конкретную транзакцию <code>handleOrder</code>.<br />
-* Браузер отобразит полную диаграмму Ганта (Gantt chart) для данного запроса: сколько микросекунд ушло на регион <code>validatePayment</code>, где именно запрос был прерван сборщиком мусора, и сколько времени он ожидал ответа сокета.</p>
+<p>Когда вы откроете такой файл через <code>go tool trace</code>, в интерфейсе появится специализированная панель <strong>User-defined Tasks</strong>:</p>
+<ul>
+<li>Вы можете кликнуть на конкретную транзакцию <code>handleOrder</code>.</li>
+<li>Браузер отобразит полную диаграмму Ганта (Gantt chart) для данного запроса: сколько микросекунд ушло на регион <code>validatePayment</code>, где именно запрос был прерван сборщиком мусора, и сколько времени он ожидал ответа сокета.</li>
+</ul>
 
 <aside class="callout callout-interview" aria-label="Вопрос с собеседования">
   <header class="callout-header">
@@ -793,23 +819,23 @@ func processPayment(ctx context.Context) {
 <p>Бывают инциденты, когда очевидных всплесков в метриках нет, а редкие клиенты продолжают жаловаться на зависания. В таких ситуациях помогают продвинутые эвристики:</p>
 <ul>
 <li><strong>Дифференциальные профили (Differential Profiling):</strong><br />
-  Сохраните CPU-профиль в период нормальной работы сервиса и сравните его с профилем во время инцидента с помощью флага <code>-diff_base</code>:<br />
+    Сохраните CPU-профиль в период нормальной работы сервиса и сравните его с профилем во время инцидента с помощью флага <code>-diff_base</code>:<br />
 <code>bash
   go tool pprof -diff_base=normal_cpu.pb.gz incident_cpu.pb.gz</code><br />
-  Это визуализирует исключительно <strong>дельту</strong>: функции, которые стали потреблять аномально больше времени или появились в стеке впервые (<a href="../02-benchmarking/8-sravnenie-versiy-koda.html" class="wikilink">8. Сравнение версий кода</a>).</li>
+    Это визуализирует исключительно <strong>дельту</strong>: функции, которые стали потреблять аномально больше времени или появились в стеке впервые (<a href="../02-benchmarking/8-sravnenie-versiy-koda.html" class="wikilink">8. Сравнение версий кода</a>).</li>
 <li><strong>Точечное логирование задержек по Correlation ID:</strong><br />
-  Внедрите замер времени контрольных участков:<br />
+    Внедрите замер времени контрольных участков:<br />
 <code>go
   start := time.Now()
   // ... подозрительный блок ...
   if elapsed := time.Since(start); elapsed &gt; 50*time.Millisecond {
       logger.Warn("slow operation detected", "elapsed", elapsed, "trace_id", traceID)
   }</code><br />
-  В момент деградации можно динамически понизить уровень логирования для конкретного Correlation ID и собрать детальный хронометраж каждого шага.</li>
+    В момент деградации можно динамически понизить уровень логирования для конкретного Correlation ID и собрать детальный хронометраж каждого шага.</li>
 <li><strong>Детерминированное воспроизведение нагрузки:</strong><br />
-  Если аномалия проявляется лишь на 0.05% запросов, используйте инструменты дублирования сетевого трафика с продакшена (например, <code>GoReplay</code> / <code>gor/m replay</code>). Запись и воспроизведение реального трафика на тестовом стенде с включенным execution trace позволяет воспроизвести гонку или краевой случай без риска для живых пользователей.</li>
+    Если аномалия проявляется лишь на 0.05% запросов, используйте инструменты дублирования сетевого трафика с продакшена (например, <code>GoReplay</code> / <code>gor/m replay</code>). Запись и воспроизведение реального трафика на тестовом стенде с включенным execution trace позволяет воспроизвести гонку или краевой случай без риска для живых пользователей.</li>
 <li><strong>Изоляция внешних сетевых зависимостей:</strong><br />
-  Замените сетевые вызовы к внешним сервисам или СУБД на локальные in-memory заглушки (mock). Если задержка воспроизводится на заглушках — проблема строго внутри процесса Go; если исчезает — фокус поиска смещается на сеть и внешние базы данных.</li>
+    Замените сетевые вызовы к внешним сервисам или СУБД на локальные in-memory заглушки (mock). Если задержка воспроизводится на заглушках — проблема строго внутри процесса Go; если исчезает — фокус поиска смещается на сеть и внешние базы данных.</li>
 </ul>
 <hr />
 
@@ -821,10 +847,12 @@ func processPayment(ctx context.Context) {
   <div class="callout-body">
     <p><strong>Вопрос:</strong> «На проде подскочил p99 latency HTTP-сервиса с 20 мс до 1.5 секунд. При этом CPU utilisation всего 15%, а память стабильна. С чего вы начнете расследование и какие инструменты примените?»<br />
 <strong>Ответ кандидата Senior-уровня:</strong><br />
-«Низкий CPU при высоком latency прямо указывает на то, что потоки не выполняют полезную работу, а проводят время в <strong>ожидании (блокировках)</strong>.<br />
-1. Сначала проверю метрику <code>container_cpu_cfs_throttled_seconds_total</code> — если контейнер задушен квотой cgroups, CPU будет низким, но горутины будут простаивать в <code>Runnable</code>.<br />
-2. Сниму <code>goroutine profile</code> (<code>debug=2</code>) и <code>block/mutex profile</code>. Это покажет, заблокированы ли сотни горутин на <code>sync.Mutex</code>, ожидании каналов или на сетевых вызовах базы данных (<code>runtime.netpollblock</code>).<br />
-3. Сниму 5-секундный <code>execution trace</code> (<code>curl /debug/pprof/trace?seconds=5</code>). На временной шкале сразу станет видно распределение: если горутины висят в <code>Waiting</code> на системных вызовах — узкое место в I/O или downstream-сервисе; если в <code>Runnable</code> — планировщик Go или ядро ОС не дают квантов времени; если видны паузы STW или <code>MARK ASSIST</code> — проблема в сборщике мусора из-за пикового темпа временных аллокаций».</p>
+«Низкий CPU при высоком latency прямо указывает на то, что потоки не выполняют полезную работу, а проводят время в <strong>ожидании (блокировках)</strong>.</p>
+<ol>
+<li>Сначала проверю метрику <code>container_cpu_cfs_throttled_seconds_total</code> — если контейнер задушен квотой cgroups, CPU будет низким, но горутины будут простаивать в <code>Runnable</code>.</li>
+<li>Сниму <code>goroutine profile</code> (<code>debug=2</code>) и <code>block/mutex profile</code>. Это покажет, заблокированы ли сотни горутин на <code>sync.Mutex</code>, ожидании каналов или на сетевых вызовах базы данных (<code>runtime.netpollblock</code>).</li>
+<li>Сниму 5-секундный <code>execution trace</code> (<code>curl /debug/pprof/trace?seconds=5</code>). На временной шкале сразу станет видно распределение: если горутины висят в <code>Waiting</code> на системных вызовах — узкое место в I/O или downstream-сервисе; если в <code>Runnable</code> — планировщик Go или ядро ОС не дают квантов времени; если видны паузы STW или <code>MARK ASSIST</code> — проблема в сборщике мусора из-за пикового темпа временных аллокаций».</li>
+</ol>
   </div>
 </aside>
 

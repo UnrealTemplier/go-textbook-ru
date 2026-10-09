@@ -360,10 +360,12 @@ flowchart TD
 <h2 id="quic-arkhitektura-poverkh-udp">QUIC: Архитектура поверх UDP</h2>
 <p>Единственным способом обойти окостенение интернета было спрятать всю сложную транспортную логику внутрь простого и везде проходимого протокола — <strong>UDP</strong> (подробно разобранного в статье <a href="14-udp-kogda-nenadezhnyy-transport-luchshe-tcp.html" class="wikilink">14. UDP. Когда ненадежный транспорт лучше TCP</a>).</p>
 <p><strong>QUIC (Quick UDP Internet Connections)</strong> — это протокол уровня 4, разработанный Google и стандартизированный как IETF RFC 9000. Его главная философская идея: перенести мультиплексирование, контроль перегрузок и шифрование в <strong>user-space</strong>, убрав ядро ОС из критического пути.</p>
-<p>QUIC работает поверх <code>UDP</code> (см. <a href="14-udp-kogda-nenadezhnyy-transport-luchshe-tcp.html" class="wikilink">14. UDP. Когда ненадежный транспорт лучше TCP</a>). Это позволяет:<br />
-1. Обходить HoL-блокировку на транспортном уровне: каждый HTTP-запрос — независимый <code>stream</code> внутри QUIC-соединения.<br />
-2. Интегрировать TLS 1.3 напрямую в протокол (вместо отдельного handshake поверх TCP).<br />
-3. Реализовать контроль перегрузок и loss recovery в приложении, обходя ограничения ядра.</p>
+<p>QUIC работает поверх <code>UDP</code> (см. <a href="14-udp-kogda-nenadezhnyy-transport-luchshe-tcp.html" class="wikilink">14. UDP. Когда ненадежный транспорт лучше TCP</a>). Это позволяет:</p>
+<ol>
+<li>Обходить HoL-блокировку на транспортном уровне: каждый HTTP-запрос — независимый <code>stream</code> внутри QUIC-соединения.</li>
+<li>Интегрировать TLS 1.3 напрямую в протокол (вместо отдельного handshake поверх TCP).</li>
+<li>Реализовать контроль перегрузок и loss recovery в приложении, обходя ограничения ядра.</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -402,10 +404,12 @@ flowchart TD
 <h2 id="pod-kapotom-kak-go-realizuet-quic">Под капотом: Как Go реализует QUIC</h2>
 <p>В стандартной библиотеке Go (<code>net/http</code>) нативная поддержка HTTP/3 «из коробки» отсутствует (в <code>crypto/tls</code> предоставлены лишь низкоуровневые хуки для QUIC). Стандартом де-факто в экосистеме Go является библиотека <code>github.com/quic-go/quic-go</code> и пакет <code>github.com/quic-go/quic-go/http3</code>.</p>
 <h3 id="1-user-space-vs-kernel-space">1. User-Space vs Kernel-Space</h3>
-<p>В отличие от TCP, где ядро управляет буферами, окнами и таймерами, <code>quic-go</code> реализует весь стек в user-space:<br />
-- <strong>Loss Recovery</strong>: Алгоритм отслеживает последовательные номера пакетов. При потере определяется, какой пакет не дошел, и инициируется ретрансмиссия без блокировки остальных потоков.<br />
-- <strong>Congestion Control</strong>: Алгоритмы контроля перегрузки (по умолчанию в <code>quic-go</code> — NewReno-совместимый режим с Cubic-вариантом; BBR в <code>quic-go</code> нет) реализованы прямо в Go. Нет вызовов <code>setsockopt</code> для ядра. Алгоритм работает на уровне Go-планировщика, что дает предсказуемость в Kubernetes-нодах.<br />
-- <strong>Connection Migration</strong>: QUIC использует <code>Connection ID</code> (до 20 байт в QUIC v1; на практике часто 64 бита). При смене IP (Wi-Fi ↔ 5G) соединение не рвется, так как ядро не привязывает сокет к конкретному IP, а <code>quic-go</code> маппит новые UDP-пакеты на существующий <code>Connection ID</code>.</p>
+<p>В отличие от TCP, где ядро управляет буферами, окнами и таймерами, <code>quic-go</code> реализует весь стек в user-space:</p>
+<ul>
+<li><strong>Loss Recovery</strong>: Алгоритм отслеживает последовательные номера пакетов. При потере определяется, какой пакет не дошел, и инициируется ретрансмиссия без блокировки остальных потоков.</li>
+<li><strong>Congestion Control</strong>: Алгоритмы контроля перегрузки (по умолчанию в <code>quic-go</code> — NewReno-совместимый режим с Cubic-вариантом; BBR в <code>quic-go</code> нет) реализованы прямо в Go. Нет вызовов <code>setsockopt</code> для ядра. Алгоритм работает на уровне Go-планировщика, что дает предсказуемость в Kubernetes-нодах.</li>
+<li><strong>Connection Migration</strong>: QUIC использует <code>Connection ID</code> (до 20 байт в QUIC v1; на практике часто 64 бита). При смене IP (Wi-Fi ↔ 5G) соединение не рвется, так как ядро не привязывает сокет к конкретному IP, а <code>quic-go</code> маппит новые UDP-пакеты на существующий <code>Connection ID</code>.</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -439,9 +443,11 @@ sequenceDiagram
 
 
 <h3 id="2-memory-scheduler-sympathy">2. Memory &amp; Scheduler Sympathy</h3>
-<p><code>quic-go</code> интенсивно работает с памятью. Каждый UDP-пакет парсится, распаковывается TLS, маршрутизируется по <code>StreamID</code>. Без оптимизаций это породит тысячи аллокаций на запрос.<br />
-- Используется <code>sync.Pool</code> для буферов <code>[]byte</code> и заголовков пакетов. Escape-анализ показывает, что при высокой нагрузке (10k+ RPS) буферы уходят в кучу, но пул снижает давление на GC на 60-70%.<br />
-- Планировщик Go (<code>runtime.scheduler</code>) маппит goroutines, обрабатывающие streams, на OS threads (M-P-G). <code>netpoller</code> (epoll на Linux, kqueue на macOS/BSD) асинхронно опрашивает UDP-сокеты. Нет блокирующих syscalls <code>read</code>/<code>write</code>, только <code>recvfrom</code>/<code>sendto</code> с флагом <code>MSG_DONTWAIT</code> или <code>epoll_wait</code>.</p>
+<p><code>quic-go</code> интенсивно работает с памятью. Каждый UDP-пакет парсится, распаковывается TLS, маршрутизируется по <code>StreamID</code>. Без оптимизаций это породит тысячи аллокаций на запрос.</p>
+<ul>
+<li>Используется <code>sync.Pool</code> для буферов <code>[]byte</code> и заголовков пакетов. Escape-анализ показывает, что при высокой нагрузке (10k+ RPS) буферы уходят в кучу, но пул снижает давление на GC на 60-70%.</li>
+<li>Планировщик Go (<code>runtime.scheduler</code>) маппит goroutines, обрабатывающие streams, на OS threads (M-P-G). <code>netpoller</code> (epoll на Linux, kqueue на macOS/BSD) асинхронно опрашивает UDP-сокеты. Нет блокирующих syscalls <code>read</code>/<code>write</code>, только <code>recvfrom</code>/<code>sendto</code> с флагом <code>MSG_DONTWAIT</code> или <code>epoll_wait</code>.</li>
+</ul>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -458,10 +464,12 @@ sequenceDiagram
 <hr />
 <h2 id="klyuchevye-mekhanizmy-i-optimizatsii">Ключевые механизмы и оптимизации</h2>
 <h3 id="1-bystroe-ustanovlenie-soedineniya-0-rtt-1-rtt">1. Быстрое установление соединения (0-RTT / 1-RTT)</h3>
-<p>В классическом стеке TCP + TLS 1.2 клиенту требовалось от 2 до 3 RTT (Round-Trip Time), прежде чем отправить первый байт полезных данных HTTP:<br />
-1. <code>SYN</code> ↔ <code>SYN-ACK</code> (1 RTT TCP).<br />
-2. <code>ClientHello</code> ↔ <code>ServerHello</code> (1 RTT TLS).<br />
-3. Обмен ключами и сертификатами (еще 1 RTT TLS 1.2).</p>
+<p>В классическом стеке TCP + TLS 1.2 клиенту требовалось от 2 до 3 RTT (Round-Trip Time), прежде чем отправить первый байт полезных данных HTTP:</p>
+<ol>
+<li><code>SYN</code> ↔ <code>SYN-ACK</code> (1 RTT TCP).</li>
+<li><code>ClientHello</code> ↔ <code>ServerHello</code> (1 RTT TLS).</li>
+<li>Обмен ключами и сертификатами (еще 1 RTT TLS 1.2).</li>
+</ol>
 <p>TLS 1.3 уже сократил handshake до 1-RTT. QUIC объединил рукопожатие транспортного уровня и TLS 1.3 в один шаг: за <strong>1-RTT</strong> устанавливается и криптографическая сессия, и транспортный канал.</p>
 <p>Более того, QUIC добавляет возможность <strong>0-RTT</strong> (early data). Клиент сохраняет session tickets и ключи. При повторном подключении он может отправить данные вместе с первым пакетом <code>ClientHello</code>. Сервер может принять и обработать их ещё до завершения handshake — именно поэтому защита от replay остаётся на прикладном уровне (см. ниже).</p>
 
@@ -575,31 +583,35 @@ func main() {
 <ol>
 <li>
 <p><strong>Когда HTTP/3 НЕ нужен?</strong><br />
-   В локальных сетях (LAN) с гигабитными свитчами и низким RTT (&lt;1ms) оверхед на UDP-парсинг и user-space congestion control может сделать HTTP/3 медленнее TCP. TCP-стек ядра Linux (<code>tcp_fastopen</code>, <code>tcp_bbr</code>) уже оптимизирован для LAN.</p>
+    В локальных сетях (LAN) с гигабитными свитчами и низким RTT (&lt;1ms) оверхед на UDP-парсинг и user-space congestion control может сделать HTTP/3 медленнее TCP. TCP-стек ядра Linux (<code>tcp_fastopen</code>, <code>tcp_bbr</code>) уже оптимизирован для LAN.</p>
 </li>
 <li>
 <p><strong>Профилирование UDP vs TCP</strong><br />
-   Стандартные <code>pprof</code> профили показывают goroutines и память, но не видят потерь пакетов. Для отладки QUIC используйте <code>quic-go</code> internal metrics или <code>net/http/httptrace</code> с кастомным <code>DialContext</code>. В production мониторьте <code>packets_sent</code>, <code>packets_lost</code>, <code>rtt</code> через Prometheus (<code>http3_server_round_trip_duration_seconds</code>).</p>
+    Стандартные <code>pprof</code> профили показывают goroutines и память, но не видят потерь пакетов. Для отладки QUIC используйте <code>quic-go</code> internal metrics или <code>net/http/httptrace</code> с кастомным <code>DialContext</code>. В production мониторьте <code>packets_sent</code>, <code>packets_lost</code>, <code>rtt</code> через Prometheus (<code>http3_server_round_trip_duration_seconds</code>).</p>
 </li>
 <li>
 <p><strong>Сравнение с PHP/Java/C#</strong><br />
-   В традиционных стеках HTTP/3 часто требует сторонних бинарников (Caddy, Nginx + module) или тяжелых JNI-оберток. Go выигрывает за счет:<br />
-   - Нативного <code>netpoller</code> для UDP.<br />
-   - Zero-GC-подходов в <code>quic-go</code> (пулы буферов).<br />
-   - Возможности встраивать HTTP/3 прямо в binary без внешних прокси.</p>
+    В традиционных стеках HTTP/3 часто требует сторонних бинарников (Caddy, Nginx + module) или тяжелых JNI-оберток. Go выигрывает за счет:</p>
+<ul>
+<li>Нативного <code>netpoller</code> для UDP.</li>
+<li>Zero-GC-подходов в <code>quic-go</code> (пулы буферов).</li>
+<li>Возможности встраивать HTTP/3 прямо в binary без внешних прокси.</li>
+</ul>
 </li>
 <li>
 <p><strong>Gotcha: MTU и Path MTU Discovery</strong><br />
-   QUIC чувствителен к MTU. Если пакет превышает PMTU (Path Maximum Transmission Unit), он фрагментируется или отбрасывается. В Go это требует включения <code>IP_PMTUDISC_DO</code> на сокет. Без этого возможны silent drops и деградация производительности до уровня TCP.</p>
+    QUIC чувствителен к MTU. Если пакет превышает PMTU (Path Maximum Transmission Unit), он фрагментируется или отбрасывается. В Go это требует включения <code>IP_PMTUDISC_DO</code> на сокет. Без этого возможны silent drops и деградация производительности до уровня TCP.</p>
 </li>
 </ol>
 <hr />
 <h2 id="itog">Итог</h2>
-<p>HTTP/3 переносит мультиплексирование и контроль перегрузок из ядра ОС в user-space, решая фундаментальную проблему HoL-блокировки TCP. Для Go-разработчика это означает:<br />
-- Использование <code>github.com/quic-go/quic-go/http3</code> (в стандартной библиотеке и <code>golang.org/x/net/http3</code> готового HTTP/3 пока нет).<br />
-- Понимание работы <code>netpoller</code> с UDP и <code>sync.Pool</code> для пакетов.<br />
-- Учет рисков 0-RTT replay-атак и необходимости PMTU discovery.<br />
-- Преимущество перед традиционными бэкенд-стеками в контейнеризованных средах.</p>
+<p>HTTP/3 переносит мультиплексирование и контроль перегрузок из ядра ОС в user-space, решая фундаментальную проблему HoL-блокировки TCP. Для Go-разработчика это означает:</p>
+<ul>
+<li>Использование <code>github.com/quic-go/quic-go/http3</code> (в стандартной библиотеке и <code>golang.org/x/net/http3</code> готового HTTP/3 пока нет).</li>
+<li>Понимание работы <code>netpoller</code> с UDP и <code>sync.Pool</code> для пакетов.</li>
+<li>Учет рисков 0-RTT replay-атак и необходимости PMTU discovery.</li>
+<li>Преимущество перед традиционными бэкенд-стеками в контейнеризованных средах.</li>
+</ul>
 <p>В следующей статье мы опустимся еще глубже в протокол и разберем внутреннее устройство пакетов QUIC, алгоритмы loss recovery и маппинг stream'ов: <a href="24-deep-dive-v-quic-pakety-stream-loss-recovery.html" class="wikilink">24. Deep Dive в QUIC. Пакеты, Stream, Loss Recovery</a>.</p>
           </div>
 

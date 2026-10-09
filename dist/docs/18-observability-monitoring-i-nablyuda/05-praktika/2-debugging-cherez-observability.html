@@ -352,15 +352,19 @@ flowchart TD
 <h2 id="stsenariy-1-anomalnaya-latency-zaderzhka">Сценарий 1: Аномальная Latency (Задержка)</h2>
 <p><strong>Ситуация:</strong> Grafana показывает, что P99 latency эндпоинта <code>/checkout</code> выросло с 100мс до 3 секунд.</p>
 <h3 id="shag-1-metriki-detection">Шаг 1: Метрики (Detection)</h3>
-<p>Смотрим на график. CPU высокое или нормальное?<br />
-*   <strong>CPU High:</strong> Возможно, "тяжелый" алгоритм или цикл.<br />
-*   <strong>CPU Low:</strong> Приложение спит. Вероятно, ожидание I/O (БД, внешний API), блокировка мьютекса или GC pause.</p>
+<p>Смотрим на график. CPU высокое или нормальное?</p>
+<ul>
+<li><strong>CPU High:</strong> Возможно, "тяжелый" алгоритм или цикл.</li>
+<li><strong>CPU Low:</strong> Приложение спит. Вероятно, ожидание I/O (БД, внешний API), блокировка мьютекса или GC pause.</li>
+</ul>
 <h3 id="shag-2-treysing-localization">Шаг 2: Трейсинг (Localization)</h3>
 <p>Открываем Jaeger/Tempo. Ищем трейсы с большой длительностью.<br />
-В дереве спанов находим "виновника":<br />
-*   Спан <code>http.call /payment-service</code> занял 2.8 секунды.<br />
-*   Это внутренний вызов. Раскрываем его.<br />
-*   Внутри видим спан <code>db.query INSERT INTO orders</code>, который висел 2.5 секунды.</p>
+В дереве спанов находим "виновника":</p>
+<ul>
+<li>Спан <code>http.call /payment-service</code> занял 2.8 секунды.</li>
+<li>Это внутренний вызов. Раскрываем его.</li>
+<li>Внутри видим спан <code>db.query INSERT INTO orders</code>, который висел 2.5 секунды.</li>
+</ul>
 
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
@@ -375,11 +379,13 @@ flowchart TD
 
 <h3 id="shag-3-profilirovanie-root-cause">Шаг 3: Профилирование (Root Cause)</h3>
 <p>Допустим, метрика показывает высокое потребление CPU, а трейс не показывает узких мест I/O. Значит, проблема в коде ("горячий цикл").</p>
-<p>В Go мы подключаем <code>net/http/pprof</code>.<br />
-1.  Находим под, который тормозит.<br />
-2.  Выполняем <code>kubectl port-forward pod/checkout-xxx 6060</code>.<br />
-3.  Открываем в браузере <code>http://localhost:6060/debug/pprof/profile?seconds=30</code>.<br />
-4.  Скачиваем профиль CPU.</p>
+<p>В Go мы подключаем <code>net/http/pprof</code>.</p>
+<ol>
+<li>Находим под, который тормозит.</li>
+<li>Выполняем <code>kubectl port-forward pod/checkout-xxx 6060</code>.</li>
+<li>Открываем в браузере <code>http://localhost:6060/debug/pprof/profile?seconds=30</code>.</li>
+<li>Скачиваем профиль CPU.</li>
+</ol>
 <p>Анализ профиля (через <code>go tool pprof</code>):</p>
 
 <div class="code-block" data-lang="bash">
@@ -502,16 +508,20 @@ go tool trace trace.out
 </code></pre>
 </div>
 
-<p>Открывается браузер.<br />
-*   Видим, что планировщик не переключает горутины (одна горутина захватила P на долгое время без прерываний).<br />
-*   Или видим, что горутины создаются, но очередь runnable растет, а работающих (Running) нет — Deadlock.</p>
+<p>Открывается браузер.</p>
+<ul>
+<li>Видим, что планировщик не переключает горутины (одна горутина захватила P на долгое время без прерываний).</li>
+<li>Или видим, что горутины создаются, но очередь runnable растет, а работающих (Running) нет — Deadlock.</li>
+</ul>
 <hr />
 <h2 id="itog">Итог</h2>
-<p>Debugging в Go — это чтение "сигналов" системы.<br />
-1.  <strong>Метрики</strong> говорят, <em>какая</em> часть системы страдает.<br />
-2.  <strong>Трейсинг</strong> показывает, <em>где</em> именно в логике запроса проблема.<br />
-3.  <strong>Pprof</strong> дает снимок внутреннего состояния (CPU, Memory, Goroutines).<br />
-4.  <strong>Логи</strong> предоставляют текст ошибки.</p>
+<p>Debugging в Go — это чтение "сигналов" системы.</p>
+<ol>
+<li><strong>Метрики</strong> говорят, <em>какая</em> часть системы страдает.</li>
+<li><strong>Трейсинг</strong> показывает, <em>где</em> именно в логике запроса проблема.</li>
+<li><strong>Pprof</strong> дает снимок внутреннего состояния (CPU, Memory, Goroutines).</li>
+<li><strong>Логи</strong> предоставляют текст ошибки.</li>
+</ol>
 <p>В следующей статье мы обсудим, как автоматизировать реакцию на эти сигналы через Алертинг: <a href="3-alerting-i-alerty.html" class="wikilink">3. Alerting и алерты</a>.</p>
           </div>
 

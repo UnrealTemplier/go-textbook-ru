@@ -451,10 +451,12 @@ flowchart LR
 <h2 id="zakon-littla-most-mezhdu-latency-i-throughput">Закон Литтла — мост между Latency и Throughput</h2>
 <p>Каким математическим законом связаны задержка, пропускная способность и конкурентность? Этот мост описывается классической теоремой теории массового обслуживания — <strong>Законом Литтла (Little’s Law)</strong>:</p>
 <p>$$L = \lambda \times W$$</p>
-<p>где:<br />
-- $L$ (Queue Length / In-Flight Requests) — среднее число запросов, одновременно находящихся внутри системы (уровень конкурентности — concurrency);<br />
-- $\lambda$ (Arrival Rate / Throughput) — средняя интенсивность входящего потока (количество обработанных запросов в секунду);<br />
-- $W$ (Wait Time / Latency) — среднее время пребывания одного запроса в системе (полная задержка).</p>
+<p>где:</p>
+<ul>
+<li>$L$ (Queue Length / In-Flight Requests) — среднее число запросов, одновременно находящихся внутри системы (уровень конкурентности — concurrency);</li>
+<li>$\lambda$ (Arrival Rate / Throughput) — средняя интенсивность входящего потока (количество обработанных запросов в секунду);</li>
+<li>$W$ (Wait Time / Latency) — среднее время пребывания одного запроса в системе (полная задержка).</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -561,22 +563,24 @@ flowchart TD
 <p>Подробнее эта математика раскрывается в статьях <a href="6-metriki-p50-p95-p99.html" class="wikilink">6. Метрики. p50, p95, p99</a> и <a href="7-tail-latency-i-pochemu-ona-vazhna.html" class="wikilink">7. Tail latency и почему она важна</a>.</p>
 <p>В Go-коде задержка одиночной операции замеряется стандартным <code>time.Since(start)</code>, а распределение задержек внутри конвейера анализируется через бенчмарки пакета <code>testing.B</code> и инструмент трассировки <code>go tool trace</code>.</p>
 <h3 id="throughput">Throughput</h3>
-<p>Пропускная способность измеряется в операциях в секунду:<br />
-- RPS (Requests Per Second) для веб-серверов и API Gateway;<br />
-- IOPS (I/O Operations Per Second) для баз данных и дисковых подсистем;<br />
-- сообщений в секунду для брокеров Apache Kafka и NATS.</p>
+<p>Пропускная способность измеряется в операциях в секунду:</p>
+<ul>
+<li>RPS (Requests Per Second) для веб-серверов и API Gateway;</li>
+<li>IOPS (I/O Operations Per Second) для баз данных и дисковых подсистем;</li>
+<li>сообщений в секунду для брокеров Apache Kafka и NATS.</li>
+</ul>
 <p>Throughput калибруется инструментами генерации открытой нагрузки (<a href="../10-highload/1-load-testing.html" class="wikilink">1. Load testing</a>), микробенчмарками (<a href="../02-benchmarking/2-benchmarking-v-go.html" class="wikilink">2. Benchmarking в Go</a>) и телеметрией Prometheus (<a href="../10-highload/8-observability-i-performance.html" class="wikilink">8. Observability и performance</a>).</p>
 <hr />
 <h2 id="mechanical-sympathy-chto-pod-kapotom-vliyaet-na-latency-i-throughput">Mechanical Sympathy: что под капотом влияет на Latency и Throughput</h2>
 <ol>
 <li><strong>Системные вызовы и смена колец защиты (Syscalls):</strong><br />
-   Каждый переход процессора из пространства пользователя (Ring 3) в пространство ядра (Ring 0) через инструкцию <code>SYSCALL</code> обходится в сотни наносекунд аппаратного оверхеда. Множество мелких вызовов <code>write()</code> раздувают latency каждого запроса и сжигают такты CPU. Буферизация и сброс данных крупными блоками увеличивают суммарный throughput ценой незначительного роста задержки на сборку пакета.</li>
+    Каждый переход процессора из пространства пользователя (Ring 3) в пространство ядра (Ring 0) через инструкцию <code>SYSCALL</code> обходится в сотни наносекунд аппаратного оверхеда. Множество мелких вызовов <code>write()</code> раздувают latency каждого запроса и сжигают такты CPU. Буферизация и сброс данных крупными блоками увеличивают суммарный throughput ценой незначительного роста задержки на сборку пакета.</li>
 <li><strong>Планировщик Go и модель G-M-P:</strong><br />
-   Когда тысячи горутин жадно делят вычислительные мощности (см. <a href="../06-konkurentnost/1-scheduler-go-g-m-p-model.html" class="wikilink">1. Scheduler Go. G-M-P модель</a>), планировщик тратит такты на переключение контекстов и распределение работы (Work Stealing). Если искусственно задать <code>GOMAXPROCS</code> выше реального числа физических ядер CPU, планировщик ОС начнёт вытеснять системные потоки <code>M</code>, порождая промахи кэша L1i/L1d и взрывной рост задержки.</li>
+    Когда тысячи горутин жадно делят вычислительные мощности (см. <a href="../06-konkurentnost/1-scheduler-go-g-m-p-model.html" class="wikilink">1. Scheduler Go. G-M-P модель</a>), планировщик тратит такты на переключение контекстов и распределение работы (Work Stealing). Если искусственно задать <code>GOMAXPROCS</code> выше реального числа физических ядер CPU, планировщик ОС начнёт вытеснять системные потоки <code>M</code>, порождая промахи кэша L1i/L1d и взрывной рост задержки.</li>
 <li><strong>Сборщик мусора (Garbage Collector):</strong><br />
-   Конкурентный трёхцветный GC в Go минимизирует паузы полной остановки мира (см. <a href="../05-garbage-collector/6-gc-pause-i-latency.html" class="wikilink">6. GC pause и latency</a>). Однако во время фазы активной маркировки рантайм выделяет до 25% ресурсов CPU на работу маркёров (Mark Assist), отбирая их у горутин приложения. Это напрямую срезает пиковый throughput и увеличивает задержку запросов, интенсивно аллоцирующих память в куче.</li>
+    Конкурентный трёхцветный GC в Go минимизирует паузы полной остановки мира (см. <a href="../05-garbage-collector/6-gc-pause-i-latency.html" class="wikilink">6. GC pause и latency</a>). Однако во время фазы активной маркировки рантайм выделяет до 25% ресурсов CPU на работу маркёров (Mark Assist), отбирая их у горутин приложения. Это напрямую срезает пиковый throughput и увеличивает задержку запросов, интенсивно аллоцирующих память в куче.</li>
 <li><strong>Когерентность кэшей и False Sharing:</strong><br />
-   Когда горутины на соседних физических ядрах одновременно модифицируют независимые переменные, расположенные в пределах одной 64-байтной кэш-линии процессора (<a href="../06-konkurentnost/8-false-sharing.html" class="wikilink">8. False sharing</a>), протокол когерентности MESI непрерывно инвалидирует кэши L1/L2. Задержка операций возрастает в десятки раз, а суммарный throughput деградирует.</li>
+    Когда горутины на соседних физических ядрах одновременно модифицируют независимые переменные, расположенные в пределах одной 64-байтной кэш-линии процессора (<a href="../06-konkurentnost/8-false-sharing.html" class="wikilink">8. False sharing</a>), протокол когерентности MESI непрерывно инвалидирует кэши L1/L2. Задержка операций возрастает в десятки раз, а суммарный throughput деградирует.</li>
 </ol>
 <hr />
 <h2 id="gorutiny-konveyery-i-sootnoshenie-latencythroughput">Горутины, конвейеры и соотношение Latency/Throughput</h2>

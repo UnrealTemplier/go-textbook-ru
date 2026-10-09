@@ -313,16 +313,20 @@
 <h2 id="1-pod-atomarnaya-chastitsa-kubernetes-i-konteyner-pause">1. Pod: Атомарная частица Kubernetes и контейнер Pause</h2>
 <p>В Docker базовой единицей изоляции выступает отдельный контейнер. В Kubernetes минимальной неделимой единицей планирования и развертывания является <strong>Pod (Под)</strong>.</p>
 <p>Под — это не контейнер, а <strong>группа из одного или нескольких тесно связанных контейнеров</strong>, помещенных в единую изолированную среду (<strong>Sandbox</strong>). </p>
-<p>Все контейнеры внутри одного Пода:<br />
-1. <strong>Разделяют общий Network Namespace:</strong> У них один общий IP-адрес, единый диапазон сетевых портов и общий сетевой стек. Контейнеры внутри пода обращаются друг к другу через интерфейс локальной петли <strong><code>localhost</code></strong>.<br />
-2. <strong>Разделяют общий IPC Namespace:</strong> Могут взаимодействовать через высокоскоростную разделяемую память (POSIX Shared Memory, семафоры).<br />
-3. <strong>Могут монтировать общие тома (Volumes):</strong> Например, один контейнер генерирует файлы, а sidecar-контейнер передает их в S3.</p>
+<p>Все контейнеры внутри одного Пода:</p>
+<ol>
+<li><strong>Разделяют общий Network Namespace:</strong> У них один общий IP-адрес, единый диапазон сетевых портов и общий сетевой стек. Контейнеры внутри пода обращаются друг к другу через интерфейс локальной петли <strong><code>localhost</code></strong>.</li>
+<li><strong>Разделяют общий IPC Namespace:</strong> Могут взаимодействовать через высокоскоростную разделяемую память (POSIX Shared Memory, семафоры).</li>
+<li><strong>Могут монтировать общие тома (Volumes):</strong> Например, один контейнер генерирует файлы, а sidecar-контейнер передает их в S3.</li>
+</ol>
 <h3 id="pod-kapotom-rol-sluzhebnogo-konteynera-pause">Под капотом: Роль служебного контейнера Pause</h3>
 <p>Каким образом Kubernetes гарантирует, что при аварийном падении вашего Go-бинарника сетевой IP-адрес пода не исчезнет, а открытые сетевые сокеты и правила маршрутизации останутся в сохранности?</p>
-<p>Когда Kubelet создает Pod, он первым делом запускает скрытый инфраструктурный контейнер — <strong><code>pause</code></strong> (sandbox container):<br />
-* Бинарник <code>pause</code> написан на Си и скомпилирован статически; он весит считанные килобайты.<br />
-* Вся его задача — вызвать системный вызов <code>pause()</code>, который навсегда усыпляет процесс в ожидании сигналов ОС.<br />
-* Контейнер <code>pause</code> создает и удерживает пространства имен <strong>Network</strong> и <strong>IPC</strong>.</p>
+<p>Когда Kubelet создает Pod, он первым делом запускает скрытый инфраструктурный контейнер — <strong><code>pause</code></strong> (sandbox container):</p>
+<ul>
+<li>Бинарник <code>pause</code> написан на Си и скомпилирован статически; он весит считанные килобайты.</li>
+<li>Вся его задача — вызвать системный вызов <code>pause()</code>, который навсегда усыпляет процесс в ожидании сигналов ОС.</li>
+<li>Контейнер <code>pause</code> создает и удерживает пространства имен <strong>Network</strong> и <strong>IPC</strong>.</li>
+</ul>
 <p>Когда стартует ваш основной Go-контейнер и вспомогательные контейнеры (Sidecars, например Envoy-прокси в Service Mesh или сборщик логов Fluentbit), они запускаются с директивой объединения пространств имен (<code>--net=container:pause</code>). Если ваш Go-сервер рухнет с паникой и Kubelet начнет перезапуск, сетевой интерфейс пода ни на микросекунду не отключится, потому что его надежно удерживает спящий процесс <code>pause</code>!</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -386,11 +390,13 @@ flowchart TD
 <hr />
 <h2 id="2-deployment-upravlenie-zhiznennym-tsiklom-i-replikatsiey">2. Deployment: Управление жизненным циклом и репликацией</h2>
 <p>В продакшен-средах «голые» поды напрямую практически никогда не создаются вручную. Если физический сервер перезагрузится, одиночный Pod погибнет навсегда.</p>
-<p>Управление жизненным циклом делегируется контроллеру <strong><code>Deployment</code></strong>:<br />
-1. Deployment описывает желаемое состояние: версию образа, стратегию выкатки и количество реплик.<br />
-2. Deployment создает и контролирует дочерний объект — <strong><code>ReplicaSet</code></strong>.<br />
-3. ReplicaSet гарантирует, что в кластере в любой момент времени запущено ровно <code>replicas</code> одинаковых подов.<br />
-4. При обновлении тега образа Deployment создает <strong>второй ReplicaSet</strong>, постепенно наращивая в нем число подов и синхронно уменьшая реплики в старом ReplicaSet (<strong>Rolling Update</strong>).</p>
+<p>Управление жизненным циклом делегируется контроллеру <strong><code>Deployment</code></strong>:</p>
+<ol>
+<li>Deployment описывает желаемое состояние: версию образа, стратегию выкатки и количество реплик.</li>
+<li>Deployment создает и контролирует дочерний объект — <strong><code>ReplicaSet</code></strong>.</li>
+<li>ReplicaSet гарантирует, что в кластере в любой момент времени запущено ровно <code>replicas</code> одинаковых подов.</li>
+<li>При обновлении тега образа Deployment создает <strong>второй ReplicaSet</strong>, постепенно наращивая в нем число подов и синхронно уменьшая реплики в старом ReplicaSet (<strong>Rolling Update</strong>).</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -488,17 +494,21 @@ resp, err := http.Get(&quot;http://billing-service:8080/api/charge&quot;)
 </div>
 
 <h3 id="headless-service-clusterip-none">Headless Service (clusterIP: None)</h3>
-<p>Если указать в манифесте <code>clusterIP: None</code>, сервис переходит в режим <strong>Headless (Безголовый)</strong>:<br />
-* K8s не выделяет виртуальный ClusterIP и не создает правила проксирования.<br />
-* DNS-сервер CoreDNS при запросе к такому сервису возвращает <strong>список реальных IP-адресов всех запущенных подов (A-записи)</strong>.</p>
+<p>Если указать в манифесте <code>clusterIP: None</code>, сервис переходит в режим <strong>Headless (Безголовый)</strong>:</p>
+<ul>
+<li>K8s не выделяет виртуальный ClusterIP и не создает правила проксирования.</li>
+<li>DNS-сервер CoreDNS при запросе к такому сервису возвращает <strong>список реальных IP-адресов всех запущенных подов (A-записи)</strong>.</li>
+</ul>
 <p>Это критически важно для развертывания распределенных Stateful-систем на Go (кластеры Raft, CockroachDB, Kafka, Cassandra), где узлам необходимо напрямую общаться с конкретными пирами, а не балансироваться случайным образом.</p>
 <hr />
 <h2 id="5-samaya-strashnaya-gonka-anatomiya-zero-downtime-graceful-shutdown">5. Самая страшная гонка: Анатомия Zero-Downtime Graceful Shutdown</h2>
 <p>Пожалуй, самая распространенная эксплуатационная ошибка, приводящая к появлению ошибок <code>502 Bad Gateway</code> и <code>Connection Refused</code> во время деплоя, — это неправильно реализованный <strong>Graceful Shutdown</strong> в Go.</p>
 <h3 id="v-chem-sut-raspredelennoy-gonki-race-condition">В чем суть распределенной гонки (Race Condition)?</h3>
-<p>Когда Kubernetes обновляет Deployment, для старого пода происходят два независимых асинхронных процесса:<br />
-1. <strong>Процесс остановки пода:</strong> Kubelet отправляет главному процессу контейнера сигнал <strong><code>SIGTERM</code></strong>.<br />
-2. <strong>Процесс обновления сети:</strong> API Server регистрирует удаление пода и рассылает события всем <code>kube-proxy</code> на всех воркер-нодах кластера для удаления IP-адреса пода из цепочек <code>iptables</code>/<code>IPVS</code>.</p>
+<p>Когда Kubernetes обновляет Deployment, для старого пода происходят два независимых асинхронных процесса:</p>
+<ol>
+<li><strong>Процесс остановки пода:</strong> Kubelet отправляет главному процессу контейнера сигнал <strong><code>SIGTERM</code></strong>.</li>
+<li><strong>Процесс обновления сети:</strong> API Server регистрирует удаление пода и рассылает события всем <code>kube-proxy</code> на всех воркер-нодах кластера для удаления IP-адреса пода из цепочек <code>iptables</code>/<code>IPVS</code>.</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">

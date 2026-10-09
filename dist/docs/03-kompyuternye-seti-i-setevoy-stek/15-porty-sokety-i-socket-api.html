@@ -307,10 +307,12 @@
 <h3 id="chto-takoe-port">Что такое порт?</h3>
 <p>Сетевой кабель или Wi-Fi антенна доставляют пакеты на конкретную физическую сетевую карту с определенным MAC- и IP-адресом. Но на компьютере одновременно работают десятки программ: браузер, база данных PostgreSQL, демон SSH, мессенджер и ваш собственный Go-сервис. Как ядро операционной системы понимает, какому именно процессу предназначен входящий пакет?</p>
 <p><strong>Порт</strong> — это 16-битное логическое число (от <code>0</code> до <code>65535</code>), которое идентифицирует конкретное приложение или службу внутри одного IP-узла. Порт не существует в физической сети; он является исключительно механизмом мультиплексирования на уровне хоста.</p>
-<p>Все 65 536 портов разделены IANA на три стандартизированные категории:<br />
-*   <strong>Well-known ports (0–1023):</strong> Системные порты. Исторически требуют привилегий суперпользователя <code>root</code> (или Linux-capability <code>CAP_NET_BIND_SERVICE</code>) для биндинга. Это защищает систему от перехвата привилегированных служб обычными непривилегированными процессами: HTTP (<code>80</code>), HTTPS (<code>443</code>), SSH (<code>22</code>), DNS (<code>53</code>).<br />
-*   <strong>Registered ports (1024–49151):</strong> Зарегистрированные порты. Назначаются IANA для конкретных общеизвестных протоколов и баз данных: PostgreSQL (<code>5432</code>), Redis (<code>6379</code>), MySQL (<code>3306</code>), gRPC/HTTP-серверы (<code>8080</code>, <code>8443</code>). Не требуют прав root.<br />
-*   <strong>Ephemeral ports (по IANA/RFC 6335 — 49152–65535; в Linux по умолчанию — 32768–60999, см. <code>net.ipv4.ip_local_port_range</code>):</strong> Эфемерные (динамические) порты. Выделяются ядром ОС автоматически для исходящих клиентских соединений, когда ваша программа делает исходящий вызов <code>net.Dial</code> к внешнему API или базе данных.</p>
+<p>Все 65 536 портов разделены IANA на три стандартизированные категории:</p>
+<ul>
+<li><strong>Well-known ports (0–1023):</strong> Системные порты. Исторически требуют привилегий суперпользователя <code>root</code> (или Linux-capability <code>CAP_NET_BIND_SERVICE</code>) для биндинга. Это защищает систему от перехвата привилегированных служб обычными непривилегированными процессами: HTTP (<code>80</code>), HTTPS (<code>443</code>), SSH (<code>22</code>), DNS (<code>53</code>).</li>
+<li><strong>Registered ports (1024–49151):</strong> Зарегистрированные порты. Назначаются IANA для конкретных общеизвестных протоколов и баз данных: PostgreSQL (<code>5432</code>), Redis (<code>6379</code>), MySQL (<code>3306</code>), gRPC/HTTP-серверы (<code>8080</code>, <code>8443</code>). Не требуют прав root.</li>
+<li><strong>Ephemeral ports (по IANA/RFC 6335 — 49152–65535; в Linux по умолчанию — 32768–60999, см. <code>net.ipv4.ip_local_port_range</code>):</strong> Эфемерные (динамические) порты. Выделяются ядром ОС автоматически для исходящих клиентских соединений, когда ваша программа делает исходящий вызов <code>net.Dial</code> к внешнему API или базе данных.</li>
+</ul>
 <p>В Go порт указывается строкой в вызове <code>net.Listen(":8080")</code> (или <code>net.Listen("tcp", ":8080")</code>). Язык автоматически обрабатывает как IPv4, так и IPv6 (<strong><code>dual-stack</code></strong>), создавая сокет с поддержкой обоих протоколов (через флаг ядра <code>IPV6_V6ONLY=0</code>), если ядро это поддерживает.</p>
 <hr />
 <h3 id="chto-takoe-soket">Что такое сокет?</h3>
@@ -621,9 +623,11 @@ ln, err := lc.Listen(context.Background(), &quot;tcp&quot;, &quot;:8080&quot;)
 </ul>
 <hr />
 <h3 id="5-read-write-close">5. <code>read()</code> / <code>write()</code> / <code>close()</code></h3>
-<p>Передача данных осуществляется через системные вызовы <code>read(2)</code> и <code>write(2)</code> (или <code>recv</code>/<code>send</code>):<br />
-- Запись (<code>write</code>) помещает байты в системный кольцевой буфер отправки ядра сокета.<br />
-- Чтение (<code>read</code>) извлекает байты из буфера приема ядра.</p>
+<p>Передача данных осуществляется через системные вызовы <code>read(2)</code> и <code>write(2)</code> (или <code>recv</code>/<code>send</code>):</p>
+<ul>
+<li>Запись (<code>write</code>) помещает байты в системный кольцевой буфер отправки ядра сокета.</li>
+<li>Чтение (<code>read</code>) извлекает байты из буфера приема ядра.</li>
+</ul>
 <p>Системный вызов <strong><code>close()</code></strong> на сокете инициирует корректное завершение соединения (Four-Way Handshake) с отправкой пакета <code>FIN</code>. <br />
 Однако <code>close()</code> закрывает сокет в обоих направлениях. Если вам нужно закрыть отправку данных, но продолжить чтение ответа от сервера (Half-Close), в Unix используется системный вызов <strong><code>shutdown(sockfd, SHUT_WR)</code></strong>. В Go для этого используется метод <code>conn.(*net.TCPConn).CloseWrite()</code>.</p>
 <hr />
@@ -685,20 +689,24 @@ flowchart TD
 <ol>
 <li><strong><code>struct file</code></strong>: Поскольку сокет проецируется на файловый дескриптор, ядро создает объект файла VFS. Его поле <code>private_data</code> содержит указатель на сетевой сокет.</li>
 <li><strong><code>struct socket</code></strong>: Абстракция интерфейса BSD Socket. Содержит указатель <strong><code>struct file *file</code></strong> и указатель на транспортный сокет <strong><code>struct sock *sk</code></strong>.</li>
-<li><strong><code>struct sock</code></strong>: Фундаментальное ядро сетевого стека Linux. Именно здесь живут:<br />
-   - <strong><code>sk_receive_queue</code></strong> и <strong><code>sk_send_queue</code></strong>: Двусвязные очереди сетевых пакетов <strong><code>sk_buff</code></strong> в памяти ядра.<br />
-   - Окна передачи и приема: окно отправки <strong><code>snd_wnd</code></strong> и окно приема <strong><code>rcv_wnd</code></strong>.<br />
-   - Сетевые таймеры: повторной передачи (<strong><code>RTO</code></strong>), проверки доступности (<em>keepalive</em>) и ожидания закрытия.</li>
+<li><strong><code>struct sock</code></strong>: Фундаментальное ядро сетевого стека Linux. Именно здесь живут:<ul>
+<li><strong><code>sk_receive_queue</code></strong> и <strong><code>sk_send_queue</code></strong>: Двусвязные очереди сетевых пакетов <strong><code>sk_buff</code></strong> в памяти ядра.</li>
+<li>Окна передачи и приема: окно отправки <strong><code>snd_wnd</code></strong> и окно приема <strong><code>rcv_wnd</code></strong>.</li>
+<li>Сетевые таймеры: повторной передачи (<strong><code>RTO</code></strong>), проверки доступности (<em>keepalive</em>) и ожидания закрытия.</li>
+</ul>
+</li>
 <li><strong>Копирование данных в памяти:</strong><br />
-   При вызове <code>read()</code> или <code>write()</code> ядро осуществляет копирование памяти между адресным пространством ядра и пользовательским буфером процесса с помощью функций <strong><code>copy_to_user</code></strong> и <strong><code>copy_from_user</code></strong>. Это требует переключения контекста процессора из User Space (Ring 3) в Kernel Space (Ring 0) и обратно.</li>
+    При вызове <code>read()</code> или <code>write()</code> ядро осуществляет копирование памяти между адресным пространством ядра и пользовательским буфером процесса с помощью функций <strong><code>copy_to_user</code></strong> и <strong><code>copy_from_user</code></strong>. Это требует переключения контекста процессора из User Space (Ring 3) в Kernel Space (Ring 0) и обратно.</li>
 </ol>
 <hr />
 <h2 id="go-i-socket-api-abstraktsiya-i-netpoller">Go и Socket API: Абстракция и Netpoller</h2>
 <p>Традиционные серверы на C или Java (до эры Project Loom) выделяли один системный поток ОС (<em>pthread</em>) на каждое входящее соединение. При 10 000 соединений это приводило к коллапсу: 10 000 потоков съедали гигабайты памяти на свои стеки (по 1–8 МБ каждый), а планировщик ядра захлебывался в непрерывных переключениях контекста потоков.</p>
-<p>В Go сетевая архитектура спроектирована абсолютно иначе. Go использует <strong>Netpoller</strong> — неблокирующий реактор событий ввода-вывода, интегрированный непосредственно в планировщик рантайма Go (M:N Scheduler). В зависимости от операционной системы Netpoller опирается на:<br />
-- <strong><code>epoll</code></strong> в Linux;<br />
-- <strong><code>kqueue</code></strong> в BSD и macOS;<br />
-- <strong><code>IOCP</code></strong> (<em>I/O Completion Ports</em>) в Windows.</p>
+<p>В Go сетевая архитектура спроектирована абсолютно иначе. Go использует <strong>Netpoller</strong> — неблокирующий реактор событий ввода-вывода, интегрированный непосредственно в планировщик рантайма Go (M:N Scheduler). В зависимости от операционной системы Netpoller опирается на:</p>
+<ul>
+<li><strong><code>epoll</code></strong> в Linux;</li>
+<li><strong><code>kqueue</code></strong> в BSD и macOS;</li>
+<li><strong><code>IOCP</code></strong> (<em>I/O Completion Ports</em>) в Windows.</li>
+</ul>
 <hr />
 <h3 id="kak-go-obrabatyvaet-tysyachi-soedineniy">Как Go обрабатывает тысячи соединений?</h3>
 <p>Механика работы Netpoller в Go выглядит следующим образом:</p>
@@ -711,10 +719,12 @@ flowchart TD
 <li>Поток рантайма Go, который опрашивает поллер (<code>netpoll</code> вызывают планировщик в <code>findRunnable</code>, <code>sysmon</code> и поток <code>M</code> без работы; выделенного фонового потока нет) через <strong><code>epoll_pwait</code></strong>, получает уведомление о готовности дескриптора (<strong><code>EPOLLIN</code></strong> или <strong><code>EPOLLOUT</code></strong>).</li>
 <li>Netpoller находит горутину, привязанную к этому дескриптору, переводит её в состояние готовности (<code>_Grunnable</code>) и возвращает в очередь планировщика. Горутина просыпается ровно в месте прерванного вызова <code>conn.Read()</code> с готовыми данными в буфере!</li>
 </ol>
-<p>Благодаря этой схеме один Go-сервер может легко удерживать <strong>сотни тысяч</strong> одновременных соединений:<br />
-- Начальный размер стека горутины составляет всего <strong>~2 КБ</strong> (против мегабайт у потоков ОС).<br />
-- Отсутствуют дорогостоящие системные переключения контекста потоков ОС.<br />
-- Для программиста код выглядит абсолютно синхронным, последовательным и читаемым!</p>
+<p>Благодаря этой схеме один Go-сервер может легко удерживать <strong>сотни тысяч</strong> одновременных соединений:</p>
+<ul>
+<li>Начальный размер стека горутины составляет всего <strong>~2 КБ</strong> (против мегабайт у потоков ОС).</li>
+<li>Отсутствуют дорогостоящие системные переключения контекста потоков ОС.</li>
+<li>Для программиста код выглядит абсолютно синхронным, последовательным и читаемым!</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -820,10 +830,12 @@ flowchart TD
   <div class="callout-body">
     <p><strong>Вопрос:</strong> «Что происходит при вызове <code>close()</code> на TCP-сокете, находящемся в активном состоянии <code>ESTABLISHED</code>? Как форсировать мгновенный сброс соединения без прохождения фазы TIME_WAIT?»<br />
 <strong>Ответ:</strong><br />
-«При обычном вызове <code>close()</code> ядро запускает процедуру Four-Way Handshake:<br />
-1. Отправитель посылает пакет <code>FIN</code> и переходит в состояние <code>FIN_WAIT_1</code>, а затем в <code>FIN_WAIT_2</code>.<br />
-2. Приемник отправляет <code>ACK</code>, переходит в <code>CLOSE_WAIT</code>, а после завершения локальных операций шлет свой <code>FIN</code>.<br />
-3. Инициатор закрытия отвечает <code>ACK</code> и зависает в состоянии <strong><code>TIME_WAIT</code></strong> на время $2\text{MSL}$ (обычно 60 секунд), чтобы гарантировать доставку запоздавших пакетов и защитить следующие соединения с этим же 5-tuple.</p>
+«При обычном вызове <code>close()</code> ядро запускает процедуру Four-Way Handshake:</p>
+<ol>
+<li>Отправитель посылает пакет <code>FIN</code> и переходит в состояние <code>FIN_WAIT_1</code>, а затем в <code>FIN_WAIT_2</code>.</li>
+<li>Приемник отправляет <code>ACK</code>, переходит в <code>CLOSE_WAIT</code>, а после завершения локальных операций шлет свой <code>FIN</code>.</li>
+<li>Инициатор закрытия отвечает <code>ACK</code> и зависает в состоянии <strong><code>TIME_WAIT</code></strong> на время $2\text{MSL}$ (обычно 60 секунд), чтобы гарантировать доставку запоздавших пакетов и защитить следующие соединения с этим же 5-tuple.</li>
+</ol>
 <p>Однако, если мы хотим сбросить соединение мгновенно (например, при аварийной перезагрузке или атаке Slowloris), используется опция сокета <strong><code>SO_LINGER</code></strong> со структурой, где время ожидания равно нулю:</p>
 
 <div class="code-block" data-lang="go">

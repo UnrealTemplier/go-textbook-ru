@@ -514,9 +514,11 @@ flowchart LR
 
 
 <p><strong>Flow Control (Управление потоком):</strong><br />
-QUIC использует оконный контроль на двух независимых уровнях:<br />
-1. <strong>Connection-level</strong>: общий лимит на входящий трафик для всего соединения в целом (фрейм <code>MAX_DATA</code>).<br />
-2. <strong>Stream-level</strong>: лимит на конкретный поток (фрейм <code>MAX_STREAM_DATA</code>).</p>
+QUIC использует оконный контроль на двух независимых уровнях:</p>
+<ol>
+<li><strong>Connection-level</strong>: общий лимит на входящий трафик для всего соединения в целом (фрейм <code>MAX_DATA</code>).</li>
+<li><strong>Stream-level</strong>: лимит на конкретный поток (фрейм <code>MAX_STREAM_DATA</code>).</li>
+</ol>
 <p>Если <code>MAX_DATA</code> или <code>MAX_STREAM_DATA</code> исчерпаны, отправитель должен ждать увеличения лимита фреймами <code>MAX_DATA</code> / <code>MAX_STREAM_DATA</code> (<code>WINDOW_UPDATE</code> — это HTTP/2; в QUIC ещё есть <code>MAX_STREAMS</code>). Это предотвращает OOM на стороне получателя и позволяет тонко настраивать приоритеты (например, притормозить загрузку изображений, пока грузится JS).</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -563,11 +565,13 @@ flowchart TD
 <hr />
 <h3 id="3-loss-recovery-i-congestion-control-pod-kapotom">3. Loss Recovery и Congestion Control под капотом</h3>
 <p>В TCP loss recovery встроен в ядро Linux. В QUIC он реализован в userspace (в пакете <code>quic-go</code>). Это даёт гибкость, но снимает аппаратное ускорение (TSO, GRO, checksum offload).</p>
-<p><strong>Ключевые механизмы:</strong><br />
-* <strong>ACK-фреймы</strong>: Отправляются с задержкой (<code>AckDelay</code>), кодируют диапазон потерянных пакетов и ECN-маркеры. QUIC использует <code>ACK Frequency</code> и <code>ACK Delay</code> для снижения overhead. Вместо единичных подтверждений фрейм <code>ACK</code> передает список диапазонов (ACK Ranges), компактно описывая, какие именно пакеты были получены.<br />
-* <strong>PTO (Probe Timeout)</strong>: Вместо TCP RTO (Retransmission Timeout), QUIC использует PTO: <code>smoothed_rtt + max(4 * rttvar, kGranularity) + max_ack_delay</code> (RFC 9002 §6.2.1). Если PTO истекает, отправитель шлёт <code>PING</code> или пустой пакет, чтобы подтвердить живость пути. Это не считается потерей пакета и предотвращает преждевременный сброс окна перегрузки.<br />
-* <strong>ECN (Explicit Congestion Notification)</strong>: QUIC читает ECN-кодпоинты (ECT(0), ECT(1), CE) из IP-заголовка и возвращает счётчики отправителю во фрейме <code>ACK_ECN</code> (поле «ECN-Echo» — это флаг TCP). Если на пути пакеты помечены как CE, QUIC немедленно снижает окно перегрузки, не дожидаясь потери пакета.<br />
-* <strong>Congestion Control</strong>: По умолчанию RFC 9002 описывает NewReno; <code>quic-go</code> использует Cubic/Reno-подобный алгоритм, а BBR в нём не реализован. BBR (как алгоритм) строит модель пропускной способности и задержки пути, не полагаясь на потерю пакетов как на сигнал перегрузки.</p>
+<p><strong>Ключевые механизмы:</strong></p>
+<ul>
+<li><strong>ACK-фреймы</strong>: Отправляются с задержкой (<code>AckDelay</code>), кодируют диапазон потерянных пакетов и ECN-маркеры. QUIC использует <code>ACK Frequency</code> и <code>ACK Delay</code> для снижения overhead. Вместо единичных подтверждений фрейм <code>ACK</code> передает список диапазонов (ACK Ranges), компактно описывая, какие именно пакеты были получены.</li>
+<li><strong>PTO (Probe Timeout)</strong>: Вместо TCP RTO (Retransmission Timeout), QUIC использует PTO: <code>smoothed_rtt + max(4 * rttvar, kGranularity) + max_ack_delay</code> (RFC 9002 §6.2.1). Если PTO истекает, отправитель шлёт <code>PING</code> или пустой пакет, чтобы подтвердить живость пути. Это не считается потерей пакета и предотвращает преждевременный сброс окна перегрузки.</li>
+<li><strong>ECN (Explicit Congestion Notification)</strong>: QUIC читает ECN-кодпоинты (ECT(0), ECT(1), CE) из IP-заголовка и возвращает счётчики отправителю во фрейме <code>ACK_ECN</code> (поле «ECN-Echo» — это флаг TCP). Если на пути пакеты помечены как CE, QUIC немедленно снижает окно перегрузки, не дожидаясь потери пакета.</li>
+<li><strong>Congestion Control</strong>: По умолчанию RFC 9002 описывает NewReno; <code>quic-go</code> использует Cubic/Reno-подобный алгоритм, а BBR в нём не реализован. BBR (как алгоритм) строит модель пропускной способности и задержки пути, не полагаясь на потерю пакетов как на сигнал перегрузки.</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -616,11 +620,13 @@ stateDiagram-v2
   </header>
   <div class="callout-body">
     <p>Почему loss recovery в userspace важен для Go?<br />
-Ядро Linux оптимизировано под TCP. При использовании UDP+QUIC мы теряем:<br />
-- <strong>TSO/GRO</strong>: объединение пакетов на сетевой карте.<br />
-- <strong>TCP BBR</strong>: встроенный алгоритм, обученный на миллионах маршрутизаторов.<br />
-- <strong>TCP Fast Open</strong>: ускорение рукопожатия на уровне ядра.<br />
-Go-рантайм компенсирует это за счёт <code>netpoll</code> (epoll/kqueue) и асинхронного цикла чтения/записи, но CPU-циклы на сборку пакетов и криптографию ложатся на приложение.</p>
+Ядро Linux оптимизировано под TCP. При использовании UDP+QUIC мы теряем:</p>
+<ul>
+<li><strong>TSO/GRO</strong>: объединение пакетов на сетевой карте.</li>
+<li><strong>TCP BBR</strong>: встроенный алгоритм, обученный на миллионах маршрутизаторов.</li>
+<li><strong>TCP Fast Open</strong>: ускорение рукопожатия на уровне ядра.<br />
+    Go-рантайм компенсирует это за счёт <code>netpoll</code> (epoll/kqueue) и асинхронного цикла чтения/записи, но CPU-циклы на сборку пакетов и криптографию ложатся на приложение.</li>
+</ul>
   </div>
 </aside>
 
@@ -683,10 +689,12 @@ func (c *connection) readLoop(conn *net.UDPConn) error {
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Как Go рантайм влияет на производительность QUIC-сервера?<br />
-<strong>Ответ:</strong> Go использует work-stealing scheduler. При высокой нагрузке на QUIC-соединения возникает конкуренция за <code>sync.Pool</code> и мьютексы потоков. Escape analysis выталкивает буферы в кучу, увеличивая Gen0 GC. Для оптимизации:<br />
-1. Настройка <code>GOGC=50</code> или <code>GOMEMLIMIT</code> для предсказуемого сбора мусора.<br />
-2. Использование <code>netpoll</code> вместо блокирующих <code>Read()</code>/<code>Write()</code>.<br />
-3. Отключение <code>GODEBUG=asyncpreemptoff=1</code> только для критических путей, так как async preemption добавляет overhead на контекст.</p>
+<strong>Ответ:</strong> Go использует work-stealing scheduler. При высокой нагрузке на QUIC-соединения возникает конкуренция за <code>sync.Pool</code> и мьютексы потоков. Escape analysis выталкивает буферы в кучу, увеличивая Gen0 GC. Для оптимизации:</p>
+<ol>
+<li>Настройка <code>GOGC=50</code> или <code>GOMEMLIMIT</code> для предсказуемого сбора мусора.</li>
+<li>Использование <code>netpoll</code> вместо блокирующих <code>Read()</code>/<code>Write()</code>.</li>
+<li>Отключение <code>GODEBUG=asyncpreemptoff=1</code> только для критических путей, так как async preemption добавляет overhead на контекст.</li>
+</ol>
   </div>
 </aside>
 
@@ -748,11 +756,13 @@ func (c *connection) readLoop(conn *net.UDPConn) error {
     <span class="callout-title">Собеседование</span>
   </header>
   <div class="callout-body">
-    <p><strong>Типичные вопросы:</strong><br />
-1. <em>Почему QUIC может работать медленнее TCP на локальной сети с 10Gbps?</em> -&gt; Отсутствие аппаратного ускорения (TSO/GRO), overhead crypto (AES-GCM/ChaCha20), userspace context switches.<br />
-2. <em>Как Go обрабатывает потерю пакетов в QUIC?</em> -&gt; <code>ackHandler</code> отслеживает sent packets, <code>retransmissionBuffer</code> хранит копии. При PTO или ECN-CE отправитель снижает <code>congestionWindow</code> и вызывает <code>retransmitPacket</code>.<br />
-3. <em>В чём разница между 0-RTT и 1-RTT рукопожатием?</em> -&gt; 0-RTT использует Resumption TLS Session Ticket (PSK). Данные отправляются до завершения рукопожатия, но уязвимы к replay-атакам. 1-RTT ждёт подтверждения ключей.<br />
-4. <em>Как QUIC решает проблему "Thundering Herd" при восстановлении соединения?</em> -&gt; Connection ID позволяет клиенту восстановить контекст без полного TCP-повтора. Сервер маппит ID на <code>connectionState</code> в кэше.</p>
+    <p><strong>Типичные вопросы:</strong></p>
+<ol>
+<li><em>Почему QUIC может работать медленнее TCP на локальной сети с 10Gbps?</em> -&gt; Отсутствие аппаратного ускорения (TSO/GRO), overhead crypto (AES-GCM/ChaCha20), userspace context switches.</li>
+<li><em>Как Go обрабатывает потерю пакетов в QUIC?</em> -&gt; <code>ackHandler</code> отслеживает sent packets, <code>retransmissionBuffer</code> хранит копии. При PTO или ECN-CE отправитель снижает <code>congestionWindow</code> и вызывает <code>retransmitPacket</code>.</li>
+<li><em>В чём разница между 0-RTT и 1-RTT рукопожатием?</em> -&gt; 0-RTT использует Resumption TLS Session Ticket (PSK). Данные отправляются до завершения рукопожатия, но уязвимы к replay-атакам. 1-RTT ждёт подтверждения ключей.</li>
+<li><em>Как QUIC решает проблему "Thundering Herd" при восстановлении соединения?</em> -&gt; Connection ID позволяет клиенту восстановить контекст без полного TCP-повтора. Сервер маппит ID на <code>connectionState</code> в кэше.</li>
+</ol>
   </div>
 </aside>
 

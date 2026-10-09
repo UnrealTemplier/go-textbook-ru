@@ -405,9 +405,11 @@ flowchart TD
 <hr />
 <h2 id="sync-waitgroup-koordinatsiya-bez-kanalov">sync.WaitGroup: Координация без каналов</h2>
 <p><code>WaitGroup</code> решает задачу ожидания завершения группы параллельных горутин. Это не канал, а оптимизированный атомарный счетчик со встроенным системным семафором.</p>
-<p>Внутренняя структура использует поле <code>state1 [3]uint32</code> (или <code>uint64</code> на 64-битных системах), разделенное на две логические части:<br />
-1. <strong>Counter</strong>: Число активных работающих горутин (<code>Add(1)</code> -&gt; <code>counter++</code>).<br />
-2. <strong>Waiters</strong>: Число горутин, заблокированных в вызове <code>Wait()</code>.</p>
+<p>Внутренняя структура использует поле <code>state1 [3]uint32</code> (или <code>uint64</code> на 64-битных системах), разделенное на две логические части:</p>
+<ol>
+<li><strong>Counter</strong>: Число активных работающих горутин (<code>Add(1)</code> -&gt; <code>counter++</code>).</li>
+<li><strong>Waiters</strong>: Число горутин, заблокированных в вызове <code>Wait()</code>.</li>
+</ol>
 <p>Когда <code>Counter</code> падает до нуля, <code>WaitGroup</code> вызывает <code>runtime_Semrelease</code> ровно <code>Waiters</code> раз, одновременно пробуждая все ожидающие горутины.</p>
 
 <div class="code-block" data-lang="go">
@@ -457,11 +459,13 @@ flowchart TD
 <hr />
 <h2 id="sync-once-lenivaya-initsializatsiya-i-double-checked-locking">sync.Once: Ленивая инициализация и Double-Checked Locking</h2>
 <p><code>sync.Once</code> гарантирует однократное выполнение переданной функции <code>f</code>, сколько бы сотен параллельных горутин ни вызывали метод <code>Do(f)</code>. Используется для инициализации синглетонов, загрузки конфигурационных файлов, настройки кэшей.</p>
-<p>Реализация использует классический паттерн <strong>Double-Checked Locking</strong>:<br />
-1. Быстрая атомарная проверка флага <code>done == 0</code> без блокировок.<br />
-2. Если <code>done == 0</code>, происходит захват внутреннего мьютекса.<br />
-3. Повторная проверка <code>done</code> под защитой мьютекса (защита от гонки, пока горутина ждала освобождения).<br />
-4. Выполнение пользовательской функции, атомарная установка <code>done = 1</code>, освобождение мьютекса.</p>
+<p>Реализация использует классический паттерн <strong>Double-Checked Locking</strong>:</p>
+<ol>
+<li>Быстрая атомарная проверка флага <code>done == 0</code> без блокировок.</li>
+<li>Если <code>done == 0</code>, происходит захват внутреннего мьютекса.</li>
+<li>Повторная проверка <code>done</code> под защитой мьютекса (защита от гонки, пока горутина ждала освобождения).</li>
+<li>Выполнение пользовательской функции, атомарная установка <code>done = 1</code>, освобождение мьютекса.</li>
+</ol>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -483,10 +487,12 @@ func GetConfig() *Config {
 </code></pre>
 </div>
 
-<p>В Go 1.21+ появились удобные функции-обертки:<br />
-* <code>sync.OnceFunc(f)</code>: возвращает функцию, выполняющую <code>f</code> ровно один раз.<br />
-* <code>sync.OnceValue(f)</code>: возвращает функцию, вычисляющую значение и кэширующую результат.<br />
-* <code>sync.OnceValues(f)</code>: аналогично для функций, возвращающих пару <code>(value, error)</code>.</p>
+<p>В Go 1.21+ появились удобные функции-обертки:</p>
+<ul>
+<li><code>sync.OnceFunc(f)</code>: возвращает функцию, выполняющую <code>f</code> ровно один раз.</li>
+<li><code>sync.OnceValue(f)</code>: возвращает функцию, вычисляющую значение и кэширующую результат.</li>
+<li><code>sync.OnceValues(f)</code>: аналогично для функций, возвращающих пару <code>(value, error)</code>.</li>
+</ul>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
@@ -565,10 +571,12 @@ func GetConfig() *Config {
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Когда использовать <code>sync.Mutex</code>, а когда <code>chan</code>?<br />
-<strong>Ответ:</strong> <br />
-* <code>chan</code> — для <strong>передачи владения</strong> данными, координации потоков, реализации паттернов (worker pool, fan-in/out). Это «общение».<br />
-* <code>sync.Mutex</code> — для защиты <strong>разделяемого состояния</strong> (кэш, счетчик, ин-мемори карта), когда данные не передаются, а мутируются. Это «совместное использование».<br />
-Смешивание подходов (мьютекс + канал для одного ресурса) почти всегда ведет к багам.</p>
+<strong>Ответ:</strong> </p>
+<ul>
+<li><code>chan</code> — для <strong>передачи владения</strong> данными, координации потоков, реализации паттернов (worker pool, fan-in/out). Это «общение».</li>
+<li><code>sync.Mutex</code> — для защиты <strong>разделяемого состояния</strong> (кэш, счетчик, ин-мемори карта), когда данные не передаются, а мутируются. Это «совместное использование».<br />
+    Смешивание подходов (мьютекс + канал для одного ресурса) почти всегда ведет к багам.</li>
+</ul>
   </div>
 </aside>
 

@@ -505,10 +505,12 @@ func (uc *CreateOrderUseCase) Execute(ctx context.Context, input CreateOrderInpu
 </code></pre>
 </div>
 
-<p>В языке Go это выражается в строгом графе импортов пакетов:<br />
-- Пакет <code>entity</code> не импортирует ничего, кроме стандартной библиотеки Go.<br />
-- Пакет <code>usecase</code> импортирует <code>entity</code>, но категорически не знает о пакетах <code>postgres</code>, <code>http</code> или <code>gin</code>.<br />
-- Пакеты <code>adapter/postgres</code> и <code>adapter/http</code> импортируют <code>usecase</code> и <code>entity</code>, чтобы реализовать интерфейсы и конвертировать DTO.</p>
+<p>В языке Go это выражается в строгом графе импортов пакетов:</p>
+<ul>
+<li>Пакет <code>entity</code> не импортирует ничего, кроме стандартной библиотеки Go.</li>
+<li>Пакет <code>usecase</code> импортирует <code>entity</code>, но категорически не знает о пакетах <code>postgres</code>, <code>http</code> или <code>gin</code>.</li>
+<li>Пакеты <code>adapter/postgres</code> и <code>adapter/http</code> импортируют <code>usecase</code> и <code>entity</code>, чтобы реализовать интерфейсы и конвертировать DTO.</li>
+</ul>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -534,9 +536,11 @@ usecase.CreateOrderUseCase импортирует postgres.OrderRepository
   </header>
   <div class="callout-body">
     <p>Компилятор Go пресекает циклические импорты (import cycles not allowed) во время сборки. Однако он не может знать вашей архитектурной задумки: если <code>usecase</code> случайно импортирует адаптер <code>postgres</code>, код успешно скомпилируется, хотя Clean Architecture будет грубо нарушена!</p>
-<p>Чтобы архитектурные правила соблюдались автоматически в CI/CD, Go-сообщество применяет специализированные анализаторы:<br />
-1. <code>golangci-lint</code> с правилами <code>depguard</code> или специализированных тулов вроде <code>go-arch</code>. Они проверяют, что пакет <code>usecase</code> не импортирует <code>adapters/postgres</code>.<br />
-2. Специализированные утилиты архитектурного тестирования, такие как <code>go-arch</code> или архитектурные юнит-тесты, сканирующие AST проекта.</p>
+<p>Чтобы архитектурные правила соблюдались автоматически в CI/CD, Go-сообщество применяет специализированные анализаторы:</p>
+<ol>
+<li><code>golangci-lint</code> с правилами <code>depguard</code> или специализированных тулов вроде <code>go-arch</code>. Они проверяют, что пакет <code>usecase</code> не импортирует <code>adapters/postgres</code>.</li>
+<li>Специализированные утилиты архитектурного тестирования, такие как <code>go-arch</code> или архитектурные юнит-тесты, сканирующие AST проекта.</li>
+</ol>
   </div>
 </aside>
 
@@ -695,15 +699,21 @@ func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 <p>Элегантная архитектура не должна стоить дорого на уровне машинного железа. Как Clean Architecture соотносится с железом и рантаймом Go?</p>
 <ol>
 <li><strong>Интерфейсный оверхед</strong>: Динамическая диспетчеризация через таблицу методов (<code>itab</code>) предсказуема для конвейера CPU (предсказатель переходов быстро кэширует адрес метода).</li>
-<li><strong>Аллокации и Garbage Collector</strong>:<br />
-   Главный скрытый налог Clean Architecture — это копирование данных при переходе границ. Запрос сначала парсится в DTO адаптера (<code>HTTPRequestBody</code>), затем конвертируется в структуру юзкейса (<code>CreateOrderInput</code>), преобразуется в доменный <code>Order</code>, а в репозитории — в модель базы данных (<code>PostgresOrderRow</code>).</li>
+<li>
+<p><strong>Аллокации и Garbage Collector</strong>:<br />
+    Главный скрытый налог Clean Architecture — это копирование данных при переходе границ. Запрос сначала парсится в DTO адаптера (<code>HTTPRequestBody</code>), затем конвертируется в структуру юзкейса (<code>CreateOrderInput</code>), преобразуется в доменный <code>Order</code>, а в репозитории — в модель базы данных (<code>PostgresOrderRow</code>).</p>
+<p>В микросервисах со скромной нагрузкой (до сотен RPS) этот накладной расход незаметен. Но если ваш сервис обрабатывает 100 000 RPS, бесконечные аллокации временных структур в куче создадут чудовищное давление на сборщик мусора (GC).</p>
+</li>
+<li>
+<p><strong>Оптимизации горячих путей</strong>:<br />
+    В высоконагруженных узлах Go-инженеры снижают налог Clean Architecture следующими методами:</p>
+<ul>
+<li>Использование пулов объектов (<code>sync.Pool</code>) для переиспользования буферов DTO.</li>
+<li>Использование высокоскоростных кодогенераторов сериализации без рефлексии: <code>easyjson</code> для JSON или компактный бинарный <code>protobuf</code> для gRPC.</li>
+<li>Внимательное профилирование через <code>pprof</code> для выявления точек, где escape analysis выбрасывает структуры из стека в кучу.</li>
+</ul>
+</li>
 </ol>
-<p>В микросервисах со скромной нагрузкой (до сотен RPS) этот накладной расход незаметен. Но если ваш сервис обрабатывает 100 000 RPS, бесконечные аллокации временных структур в куче создадут чудовищное давление на сборщик мусора (GC).<br />
-3. <strong>Оптимизации горячих путей</strong>:<br />
-   В высоконагруженных узлах Go-инженеры снижают налог Clean Architecture следующими методами:<br />
-   - Использование пулов объектов (<code>sync.Pool</code>) для переиспользования буферов DTO.<br />
-   - Использование высокоскоростных кодогенераторов сериализации без рефлексии: <code>easyjson</code> для JSON или компактный бинарный <code>protobuf</code> для gRPC.<br />
-   - Внимательное профилирование через <code>pprof</code> для выявления точек, где escape analysis выбрасывает структуры из стека в кучу.</p>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
@@ -806,12 +816,16 @@ func (uc *CreateOrderUseCase) Execute(ctx context.Context, input CreateOrderInpu
 
 <hr />
 <h3 id="kogda-primenyat-clean-architecture">Когда применять Clean Architecture</h3>
-<p><strong>Оправдано:</strong><br />
-- Большие долгоживущие корпоративные системы (Fintech, E-commerce, Healthcare) с нетривиальными правилами учёта и валидации.<br />
-- Проекты, рассчитанные на параллельную работу нескольких команд, где интерфейсы служат строгими контрактами разграничения зон ответственности.<br />
-- Системы с обязательным требованием к высокому покрытию юнит-тестами без внешних стендов.</p>
-<p><strong>Не рекомендуется:</strong><br />
-- Микросервисы-прокси, интеграционные шлюзы или типичные CRUD-приложения. Для них чистая архитектура превращается в неоправданный налог на когнитивную нагрузку и скорость разработки.</p>
+<p><strong>Оправдано:</strong></p>
+<ul>
+<li>Большие долгоживущие корпоративные системы (Fintech, E-commerce, Healthcare) с нетривиальными правилами учёта и валидации.</li>
+<li>Проекты, рассчитанные на параллельную работу нескольких команд, где интерфейсы служат строгими контрактами разграничения зон ответственности.</li>
+<li>Системы с обязательным требованием к высокому покрытию юнит-тестами без внешних стендов.</li>
+</ul>
+<p><strong>Не рекомендуется:</strong></p>
+<ul>
+<li>Микросервисы-прокси, интеграционные шлюзы или типичные CRUD-приложения. Для них чистая архитектура превращается в неоправданный налог на когнитивную нагрузку и скорость разработки.</li>
+</ul>
 <hr />
 
 <aside class="callout callout-interview" aria-label="Собеседование">
@@ -823,11 +837,13 @@ func (uc *CreateOrderUseCase) Execute(ctx context.Context, input CreateOrderInpu
     <p><strong>Вопрос:</strong> Что такое Dependency Rule в Clean Architecture и какими практическими инструментами вы гарантируете его соблюдение в промышленном Go-репозитории?<br />
 <strong>Ответ:</strong> <br />
 Правило зависимостей (Dependency Rule) требует, чтобы любые зависимости исходного кода (импорты пакетов) были направлены исключительно внутрь кругов — от внешних механизмов (БД, веб) к абстрактным бизнес-правилам (Use Cases и Entities). Внутренние слои не имеют права ссылаться на внешние ни при каких условиях.<br />
-В Go-проекте соблюдение этого правила гарантируется:<br />
-1. <strong>Инверсией интерфейсов</strong>: интерфейсы репозиториев объявляются в пакете <code>usecase</code>, а реализуются во внешнем <code>adapter/postgres</code>.<br />
-2. <strong>Автоматизированными проверками в CI</strong>: использованием линтера <code>depguard</code> в составе <code>golangci-lint</code>, который прерывает сборку, если пакет <code>internal/usecase</code> импортирует что-либо из <code>internal/adapter/**</code>.<br />
-3. <strong>Архитектурным тестированием</strong>: тестами на базе <code>go-arch</code> или проверкой структуры AST.<br />
-4. <strong>Строгим Code Review</strong> архитектурных границ.</p>
+В Go-проекте соблюдение этого правила гарантируется:</p>
+<ol>
+<li><strong>Инверсией интерфейсов</strong>: интерфейсы репозиториев объявляются в пакете <code>usecase</code>, а реализуются во внешнем <code>adapter/postgres</code>.</li>
+<li><strong>Автоматизированными проверками в CI</strong>: использованием линтера <code>depguard</code> в составе <code>golangci-lint</code>, который прерывает сборку, если пакет <code>internal/usecase</code> импортирует что-либо из <code>internal/adapter/**</code>.</li>
+<li><strong>Архитектурным тестированием</strong>: тестами на базе <code>go-arch</code> или проверкой структуры AST.</li>
+<li><strong>Строгим Code Review</strong> архитектурных границ.</li>
+</ol>
   </div>
 </aside>
 

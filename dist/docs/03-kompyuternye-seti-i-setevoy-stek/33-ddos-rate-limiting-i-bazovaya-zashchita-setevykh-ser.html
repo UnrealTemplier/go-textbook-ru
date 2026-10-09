@@ -534,10 +534,12 @@ flowchart TD
 </figure>
 
 
-<p><strong>Ключевые проблемы:</strong><br />
-1. <strong>Сетевая задержка:</strong> Каждый вызов <code>rateLimit.Check()</code> добавляет RTT (round-trip time). При 1000 RPS это значит 1000 сетевых вызовов в секунду.<br />
-2. <strong>Атомарность:</strong> Чтение-модификация-запись в Redis должно быть атомарным. Используется Lua-скрипты (<code>EVAL</code>), которые выполняются в одном потоке Redis, исключая race conditions.<br />
-3. <strong>Синхронизация часов:</strong> Если инстансы используют локальное время для window-алгоритмов, границы окон рассинхронизируются. В Redis-решениях обычно используется время сервера или логика "last access + TTL".</p>
+<p><strong>Ключевые проблемы:</strong></p>
+<ol>
+<li><strong>Сетевая задержка:</strong> Каждый вызов <code>rateLimit.Check()</code> добавляет RTT (round-trip time). При 1000 RPS это значит 1000 сетевых вызовов в секунду.</li>
+<li><strong>Атомарность:</strong> Чтение-модификация-запись в Redis должно быть атомарным. Используется Lua-скрипты (<code>EVAL</code>), которые выполняются в одном потоке Redis, исключая race conditions.</li>
+<li><strong>Синхронизация часов:</strong> Если инстансы используют локальное время для window-алгоритмов, границы окон рассинхронизируются. В Redis-решениях обычно используется время сервера или логика "last access + TTL".</li>
+</ol>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -574,10 +576,12 @@ flowchart TD
 </code></pre>
 </div>
 
-<p><strong>Критические настройки:</strong><br />
-- <code>MaxConnsPerHost</code> и <code>MaxIdleConns</code>: Ограничивают количество соединений в пуле <code>http.Client</code> (для исходящих запросов).<br />
-- <code>http.MaxBytesReader</code>: Ограничивает тело запроса. Без этого атакующий может отправить 10 ГБ JSON, убив память сервиса.<br />
-- <code>tls.Config</code>: Отключение слабых шифров (<code>TLS_RSA_WITH_RC4_128_SHA</code>), принуждение к <code>TLS 1.3</code>, настройка <code>MinVersion</code>.</p>
+<p><strong>Критические настройки:</strong></p>
+<ul>
+<li><code>MaxConnsPerHost</code> и <code>MaxIdleConns</code>: Ограничивают количество соединений в пуле <code>http.Client</code> (для исходящих запросов).</li>
+<li><code>http.MaxBytesReader</code>: Ограничивает тело запроса. Без этого атакующий может отправить 10 ГБ JSON, убив память сервиса.</li>
+<li><code>tls.Config</code>: Отключение слабых шифров (<code>TLS_RSA_WITH_RC4_128_SHA</code>), принуждение к <code>TLS 1.3</code>, настройка <code>MinVersion</code>.</li>
+</ul>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -631,22 +635,26 @@ func protectedHandler(w http.ResponseWriter, r *http.Request) {
     <span class="callout-title">Собеседование</span>
   </header>
   <div class="callout-body">
-    <p><strong>Типичные вопросы Middle+/Senior:</strong><br />
-1. <em>Как отличить легитимный spike трафика от DDoS?</em> Анализ паттернов: DDoS часто имеет равномерную частоту, одинаковые User-Agent, отсутствие cookies/sessions, или атакует один endpoint. Легитимный трафик неравномерен.<br />
-2. <em>Почему <code>sync.Mutex</code> хуже <code>atomic</code> для rate limiter в hot path?</em> <code>Mutex</code> при конкуренции вызывает sleep/wakeup горутин (syscall <code>futex</code>). <code>atomic</code> работает через кэш-линии CPU (LLSC/LOCK CMPXCHG) и не вызывает переключение контекста, пока нет реальной коллизии.<br />
-3. <em>Как Go обрабатывает TIME_WAIT соединения?</em> См. <a href="39-time-wait-port-exhaustion-i-drugie-problemy-tcp-serv.html" class="wikilink">39. TIME_WAIT, Port Exhaustion и другие проблемы TCP-сервисов</a>. При атаке эфемерные порты исчерпываются, и новые исходящие подключения падают с <code>cannot assign requested address</code>. <code>SO_REUSEADDR</code>/<code>SO_REUSEPORT</code> тут не помогают: они действуют на <code>bind()</code> слушающего сокета. Решение — пулы соединений, расширение <code>ip_local_port_range</code>, несколько адресов источника (подробнее в статье 39).<br />
-4. <em>В чем разница между L4 и L7 балансировкой в контексте защиты?</em> L4 (iptables/IPVS) отбрасывает пакеты до их обработки Go, экономя CPU. L7 (nginx/envoy) парсит HTTP, проверяет заголовки и тело, но стоит дороже по latency.</p>
+    <p><strong>Типичные вопросы Middle+/Senior:</strong></p>
+<ol>
+<li><em>Как отличить легитимный spike трафика от DDoS?</em> Анализ паттернов: DDoS часто имеет равномерную частоту, одинаковые User-Agent, отсутствие cookies/sessions, или атакует один endpoint. Легитимный трафик неравномерен.</li>
+<li><em>Почему <code>sync.Mutex</code> хуже <code>atomic</code> для rate limiter в hot path?</em> <code>Mutex</code> при конкуренции вызывает sleep/wakeup горутин (syscall <code>futex</code>). <code>atomic</code> работает через кэш-линии CPU (LLSC/LOCK CMPXCHG) и не вызывает переключение контекста, пока нет реальной коллизии.</li>
+<li><em>Как Go обрабатывает TIME_WAIT соединения?</em> См. <a href="39-time-wait-port-exhaustion-i-drugie-problemy-tcp-serv.html" class="wikilink">39. TIME_WAIT, Port Exhaustion и другие проблемы TCP-сервисов</a>. При атаке эфемерные порты исчерпываются, и новые исходящие подключения падают с <code>cannot assign requested address</code>. <code>SO_REUSEADDR</code>/<code>SO_REUSEPORT</code> тут не помогают: они действуют на <code>bind()</code> слушающего сокета. Решение — пулы соединений, расширение <code>ip_local_port_range</code>, несколько адресов источника (подробнее в статье 39).</li>
+<li><em>В чем разница между L4 и L7 балансировкой в контексте защиты?</em> L4 (iptables/IPVS) отбрасывает пакеты до их обработки Go, экономя CPU. L7 (nginx/envoy) парсит HTTP, проверяет заголовки и тело, но стоит дороже по latency.</li>
+</ol>
   </div>
 </aside>
 
 
 <hr />
 <h2 id="itogi">Итоги</h2>
-<p>Защита сетевых сервисов в Go строится на принципах <strong>ограничения ресурсов на каждом уровне</strong>:<br />
-- <strong>OS/Network:</strong> SYN cookies, <code>somaxconn</code>, лимиты дескрипторов.<br />
-- <strong>Proxy/WAF:</strong> Фильтрация L3-L4, DDoS scrubbing, IP reputation.<br />
-- <strong>Go Runtime:</strong> <code>http.Server</code> таймауты, <code>MaxHeaderBytes</code>, <code>http.MaxBytesReader</code>, ограничение горутин через worker pools или <code>semaphore</code>.<br />
-- <strong>Application:</strong> Распределённый rate limiting (Redis + Lua), валидация входных данных, пулинг объектов для снижения GC pressure.</p>
+<p>Защита сетевых сервисов в Go строится на принципах <strong>ограничения ресурсов на каждом уровне</strong>:</p>
+<ul>
+<li><strong>OS/Network:</strong> SYN cookies, <code>somaxconn</code>, лимиты дескрипторов.</li>
+<li><strong>Proxy/WAF:</strong> Фильтрация L3-L4, DDoS scrubbing, IP reputation.</li>
+<li><strong>Go Runtime:</strong> <code>http.Server</code> таймауты, <code>MaxHeaderBytes</code>, <code>http.MaxBytesReader</code>, ограничение горутин через worker pools или <code>semaphore</code>.</li>
+<li><strong>Application:</strong> Распределённый rate limiting (Redis + Lua), валидация входных данных, пулинг объектов для снижения GC pressure.</li>
+</ul>
 <p>Go не защищает вас от атак автоматически. Его мощь в эффективности требует дисциплины в управлении ресурсами. Без явного ограничения соединений, размеров тел запросов и частоты вызовов, высокопроизводительный сервис станет мишенью №1 для исчерпания ресурсов.</p>
 <p>В следующей статье мы разберем инструменты, которые позволят вам видеть то, что скрывает Go: <a href="34-nablyudaemost-seti-tcpdump-wireshark-netstat-ss.html" class="wikilink">34. Наблюдаемость сети. tcpdump, Wireshark, netstat, ss</a>.</p>
           </div>

@@ -467,11 +467,13 @@ sequenceDiagram
 <h2 id="ltrace-trassirovka-bibliotechnykh-vyzovov">ltrace: Трассировка библиотечных вызовов</h2>
 <p><code>ltrace</code> перехватывает вызовы динамических библиотек (<code>libpthread</code>, <code>libc</code>, <code>libssl</code> и т.д.). Как и <code>strace</code>, он работает через <code>ptrace</code> (и требует тех же прав на трассировку процесса), но перехватывает не системные вызовы, а вызовы библиотечных функций.</p>
 <h3 id="printsip-raboty">Принцип работы</h3>
-<p><code>ltrace</code> не перехватывает системные вызовы, а ловит вход в библиотечные функции, используя <code>ptrace</code> и точки останова:<br />
-1. При старте процесса <code>ld.so</code> загружает нужные <code>.so</code> файлы.<br />
-2. <code>ltrace</code> через <code>ptrace</code> (<code>PTRACE_TRACEME</code> / <code>PTRACE_ATTACH</code>) берёт процесс под контроль.<br />
-3. Он находит в ELF-бинарнике таблицы импорта (<code>.rela.plt</code>) и ставит точки останова (<code>int 3</code>) на записи PLT.<br />
-4. Когда процесс натыкается на точку останова, ядро останавливает его и будит <code>ltrace</code>; тот логирует вызов, возвращает исходную инструкцию и продолжает процесс.</p>
+<p><code>ltrace</code> не перехватывает системные вызовы, а ловит вход в библиотечные функции, используя <code>ptrace</code> и точки останова:</p>
+<ol>
+<li>При старте процесса <code>ld.so</code> загружает нужные <code>.so</code> файлы.</li>
+<li><code>ltrace</code> через <code>ptrace</code> (<code>PTRACE_TRACEME</code> / <code>PTRACE_ATTACH</code>) берёт процесс под контроль.</li>
+<li>Он находит в ELF-бинарнике таблицы импорта (<code>.rela.plt</code>) и ставит точки останова (<code>int 3</code>) на записи PLT.</li>
+<li>Когда процесс натыкается на точку останова, ядро останавливает его и будит <code>ltrace</code>; тот логирует вызов, возвращает исходную инструкцию и продолжает процесс.</li>
+</ol>
 
 <div class="code-block" data-lang="bash">
   <header class="code-header">
@@ -518,10 +520,12 @@ flowchart LR
 
 
 <h3 id="pochemu-ltrace-pochti-bespolezen-v-go">Почему ltrace почти бесполезен в Go?</h3>
-<p>Go-компилятор по умолчанию создает статически линкованные бинарники (<code>-linkmode=external</code> или встроенные библиотеки). Это означает:<br />
-1. <strong>Нет динамических символов</strong>: <code>ld.so</code> не знает, какие функции нужно перехватывать.<br />
-2. <strong>CGO меняет правила</strong>: Если приложение использует CGO, <code>ltrace</code> может видеть вызовы C-библиотек, но не видит вызовы внутри Go-рантайма (<code>runtime.malloc</code>, <code>netpoll</code>, <code>epoll_pwait</code>).<br />
-3. <strong>Нет PLT</strong>: <code>ltrace</code> работает через <code>ptrace</code> и точки останова на записях PLT (механизм <code>LD_PRELOAD</code> он не использует). У статически собранного Go-бинарника PLT нет, а собственный аллокатор Go <code>malloc</code> из libc не вызывает.</p>
+<p>Go-компилятор по умолчанию создает статически линкованные бинарники (<code>-linkmode=external</code> или встроенные библиотеки). Это означает:</p>
+<ol>
+<li><strong>Нет динамических символов</strong>: <code>ld.so</code> не знает, какие функции нужно перехватывать.</li>
+<li><strong>CGO меняет правила</strong>: Если приложение использует CGO, <code>ltrace</code> может видеть вызовы C-библиотек, но не видит вызовы внутри Go-рантайма (<code>runtime.malloc</code>, <code>netpoll</code>, <code>epoll_pwait</code>).</li>
+<li><strong>Нет PLT</strong>: <code>ltrace</code> работает через <code>ptrace</code> и точки останова на записях PLT (механизм <code>LD_PRELOAD</code> он не использует). У статически собранного Go-бинарника PLT нет, а собственный аллокатор Go <code>malloc</code> из libc не вызывает.</li>
+</ol>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -589,10 +593,12 @@ flowchart LR
 
 <p>Покажет <code>connect</code>, <code>sendto</code>, <code>recvfrom</code>, <code>setsockopt</code>. Если видим <code>ECONNREFUSED</code> или <code>ETIMEDOUT</code> — проблема на уровне сети или <code>TIME_WAIT</code>/<code>CLOSE_WAIT</code> состояний (см. <a href="50-time-wait-close-wait-i-problemy-soketov.html" class="wikilink"><code>50. TIME_WAIT, CLOSE_WAIT и проблемы сокетов</code></a>).</p>
 <h3 id="4-alternativy-dlya-production">4. Альтернативы для production</h3>
-<p><code>strace</code> слишком тяжел для боевого продакшена. Вместо него используют:<br />
-- <code>perf trace</code> / <code>bpftrace</code> — перехват через eBPF, минимальный оверхед (~0.1–1%).<br />
-- <code>cat /proc/PID/syscall</code> — быстрый снимок текущего состояния без отладчика.<br />
-- <code>gdb -p PID -batch -ex "info goroutines"</code> — для Go-специфичной диагностики.</p>
+<p><code>strace</code> слишком тяжел для боевого продакшена. Вместо него используют:</p>
+<ul>
+<li><code>perf trace</code> / <code>bpftrace</code> — перехват через eBPF, минимальный оверхед (~0.1–1%).</li>
+<li><code>cat /proc/PID/syscall</code> — быстрый снимок текущего состояния без отладчика.</li>
+<li><code>gdb -p PID -batch -ex "info goroutines"</code> — для Go-специфичной диагностики.</li>
+</ul>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -608,11 +614,13 @@ flowchart LR
 
 <hr />
 <h2 id="itog">Итог</h2>
-<p><code>strace</code> и <code>ltrace</code> — это диагностические инструменты, которые показывают "честный" слой взаимодействия приложения с ОС. Для Go-разработчика важно помнить:<br />
-1. <code>strace</code> видит только ОС-потоки (M), а не горутины. Планирование горутин происходит в user-space и невидимо для трассировщика.<br />
-2. Оверхед <code>ptrace</code> делает <code>strace</code> инструментом для разработки и staging, а не для production-мониторинга.<br />
-3. <code>ltrace</code> бесполезен для чистого Go из-за статической линковки и собственного рантайма.<br />
-4. Комбинация <code>strace -T</code> + <code>pprof</code> + <code>netpoller</code> логирования дает полную картину: от системного уровня до Go-рантайма.</p>
+<p><code>strace</code> и <code>ltrace</code> — это диагностические инструменты, которые показывают "честный" слой взаимодействия приложения с ОС. Для Go-разработчика важно помнить:</p>
+<ol>
+<li><code>strace</code> видит только ОС-потоки (M), а не горутины. Планирование горутин происходит в user-space и невидимо для трассировщика.</li>
+<li>Оверхед <code>ptrace</code> делает <code>strace</code> инструментом для разработки и staging, а не для production-мониторинга.</li>
+<li><code>ltrace</code> бесполезен для чистого Go из-за статической линковки и собственного рантайма.</li>
+<li>Комбинация <code>strace -T</code> + <code>pprof</code> + <code>netpoller</code> логирования дает полную картину: от системного уровня до Go-рантайма.</li>
+</ol>
 <p>Мы разобрали, как наблюдать за процессом на уровне ядра. Но чтобы понять, <em>почему</em> процесс делает именно эти вызовы, нужно знать, как ОС управляет ресурсами, особенно файлами и дескрипторами. В следующей статье мы закроем фундаментальный концепт Linux: <a href="25-faylovye-deskriptory-vse-v-linux-yavlyaetsya-faylom.html" class="wikilink"><code>25. Файловые дескрипторы. Все в Linux является файлом</code></a>.</p>
           </div>
 

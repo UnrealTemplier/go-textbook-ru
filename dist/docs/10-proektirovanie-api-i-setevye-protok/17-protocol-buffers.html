@@ -355,20 +355,24 @@
 <h2 id="mechanical-sympathy-algoritm-varint-leb128">Mechanical Sympathy: Алгоритм Varint (LEB128)</h2>
 <p>Junior-разработчик может подумать: если поле имеет тип <code>int64</code>, значит, в сеть всегда отправляется 8 байт. В мире баз данных и структур C это так. Но Protobuf использует динамическое сжатие целых чисел — <strong>Varint (Variable-length integer)</strong>.</p>
 <p>Под капотом используется алгоритм кодирования LEB128 (Little Endian Base 128).<br />
-В каждом байте числа 7 бит используются для хранения самих данных (Payload), а 8-й бит (Most Significant Bit, MSB) работает как флаг продолжения:<br />
-* <code>MSB = 1</code>: "Это еще не конец, читай следующий байт".<br />
-* <code>MSB = 0</code>: "Это последний байт числа".</p>
+В каждом байте числа 7 бит используются для хранения самих данных (Payload), а 8-й бит (Most Significant Bit, MSB) работает как флаг продолжения:</p>
+<ul>
+<li><code>MSB = 1</code>: "Это еще не конец, читай следующий байт".</li>
+<li><code>MSB = 0</code>: "Это последний байт числа".</li>
+</ul>
 <p>Если вы отправляете число <code>1</code> в поле типа <code>int64</code>, Protobuf не будет слать 8 байт <code>00000000 ... 00000001</code>. Он отправит ровно <strong>1 байт</strong>: <code>00000001</code> (MSB равен нулю). <br />
 Если вы отправляете число <code>150</code>, оно займет <strong>2 байта</strong>. </p>
 <p><strong>Как формируется итоговый бинарный фрейм?</strong><br />
 Перед каждым значением идет так называемый "Ключ" (Key), который сообщает парсеру номер поля (Tag) и тип данных (Wire Type). <br />
 Формула вычисления ключа на уровне битовых операций:<br />
 <code>Key = Tag &lt;&lt; 3 BIT-OR WireType</code> (то есть <code>(Tag &lt;&lt; 3) | WireType</code>).</p>
-<p>Существует всего несколько Wire Types:<br />
-* <code>0</code>: Varint (для int32, int64, uint32, bool, enum)<br />
-* <code>1</code>: 64-bit (фиксированные 8 байт для fixed64, sfixed64, double)<br />
-* <code>2</code>: Length-delimited (строки, байты, вложенные сообщения — сначала идет длина Varint-ом, потом сами данные)<br />
-* <code>5</code>: 32-bit (фиксированные 4 байта)</p>
+<p>Существует всего несколько Wire Types:</p>
+<ul>
+<li><code>0</code>: Varint (для int32, int64, uint32, bool, enum)</li>
+<li><code>1</code>: 64-bit (фиксированные 8 байт для fixed64, sfixed64, double)</li>
+<li><code>2</code>: Length-delimited (строки, байты, вложенные сообщения — сначала идет длина Varint-ом, потом сами данные)</li>
+<li><code>5</code>: 32-bit (фиксированные 4 байта)</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -473,9 +477,11 @@ type User struct {
 <p><strong>Как это работает в сети:</strong><br />
 Если поле типа <code>int32 age = 3;</code> имеет значение <code>0</code> (Zero Value), Protobuf <strong>вообще не отправляет его в сеть</strong>. <br />
 Это великолепно экономит трафик, но создает фундаментальную проблему для бэкенд-разработки (особенно для PATCH запросов из <a href="4-resource-oriented-design.html" class="wikilink">4. Resource oriented design</a>).</p>
-<p>Если ваш Go-сервер получает структуру <code>User</code>, и поле <code>Age</code> равно <code>0</code>, вы не знаете:<br />
-1. Клиент явно прислал возраст <code>0</code>.<br />
-2. Клиент вообще не прислал это поле (оно обнулилось при инициализации структуры в Go).</p>
+<p>Если ваш Go-сервер получает структуру <code>User</code>, и поле <code>Age</code> равно <code>0</code>, вы не знаете:</p>
+<ol>
+<li>Клиент явно прислал возраст <code>0</code>.</li>
+<li>Клиент вообще не прислал это поле (оно обнулилось при инициализации структуры в Go).</li>
+</ol>
 <p><strong>Решение (начиная с proto 3.15):</strong><br />
 Google вернул ключевое слово <code>optional</code>.</p>
 

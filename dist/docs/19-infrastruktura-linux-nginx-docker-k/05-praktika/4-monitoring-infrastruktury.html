@@ -409,11 +409,13 @@ flowchart TD
 <hr />
 <h2 id="3-sloy-1-noda-node-exporter">3. Слой 1: Нода (Node Exporter)</h2>
 <p><strong>Node Exporter</strong> — это специализированный демон (DaemonSet в K8s), написанный на Go. Он ничего не знает о концепциях Kubernetes, подах или контейнерах. Его цель — раскрыть физическое состояние операционной системы Linux и аппаратного сервера.</p>
-<p>Node Exporter добывает метрики путем прямого парсинга псевдо-файловых систем ядра:<br />
-* <code>/proc/stat</code> — тики процессорного времени, прерывания (interrupts), переключения контекста (<strong>context switches</strong>).<br />
-* <code>/proc/meminfo</code> — детальная раскладка RAM: анонимная память, Swap, Page Cache, буферы и slabs ядра.<br />
-* <code>/sys/class/block/</code> — глубина дисковых очередей, время операций чтения/записи (IOPS, iostat).<br />
-* <code>/proc/net/dev</code> — сетевой трафик, отброшенные пакеты (drops), ошибки контроллера (errors).</p>
+<p>Node Exporter добывает метрики путем прямого парсинга псевдо-файловых систем ядра:</p>
+<ul>
+<li><code>/proc/stat</code> — тики процессорного времени, прерывания (interrupts), переключения контекста (<strong>context switches</strong>).</li>
+<li><code>/proc/meminfo</code> — детальная раскладка RAM: анонимная память, Swap, Page Cache, буферы и slabs ядра.</li>
+<li><code>/sys/class/block/</code> — глубина дисковых очередей, время операций чтения/записи (IOPS, iostat).</li>
+<li><code>/proc/net/dev</code> — сетевой трафик, отброшенные пакеты (drops), ошибки контроллера (errors).</li>
+</ul>
 
 <aside class="callout callout-info" aria-label="Под капотом: Context Switches и планировщик Go">
   <header class="callout-header">
@@ -428,9 +430,11 @@ flowchart TD
 
 
 <h3 id="mechanical-sympathy-analiz-iowait-i-steal">Mechanical Sympathy: Анализ iowait и steal</h3>
-<p>При исследовании метрик процессора опытный инженер смотрит глубже базовых процентов <code>user</code> и <code>system</code>:<br />
-* <strong><code>iowait</code>:</strong> Процент процессорного времени, в течение которого ядра бездействовали в ожидании ответа от медленных накопителей (SSD/HDD). Высокий <code>iowait</code> сигнализирует, что потоки Go-приложения заблокированы в ядре на блокирующих системных вызовах <code>read/write</code> (как мы выяснили в <a href="../01-linux/3-faylovaya-sistema-linux.html" class="wikilink">3. Файловая система Linux</a>), и рантайм вынужден создавать новые потоки <code>M</code>.<br />
-* <strong><code>steal</code>:</strong> Процент процессорных квантов времени, физически «украденных» гипервизором облачного провайдера в пользу других виртуальных машин. Если метрика <code>steal</code> превышает 3–5%, ваш сервис страдает от проблемы шумных соседей (<strong>Noisy Neighbors</strong>). Единственное решение — миграция виртуальной машины или аренда Dedicated/Bare-metal инстансов.</p>
+<p>При исследовании метрик процессора опытный инженер смотрит глубже базовых процентов <code>user</code> и <code>system</code>:</p>
+<ul>
+<li><strong><code>iowait</code>:</strong> Процент процессорного времени, в течение которого ядра бездействовали в ожидании ответа от медленных накопителей (SSD/HDD). Высокий <code>iowait</code> сигнализирует, что потоки Go-приложения заблокированы в ядре на блокирующих системных вызовах <code>read/write</code> (как мы выяснили в <a href="../01-linux/3-faylovaya-sistema-linux.html" class="wikilink">3. Файловая система Linux</a>), и рантайм вынужден создавать новые потоки <code>M</code>.</li>
+<li><strong><code>steal</code>:</strong> Процент процессорных квантов времени, физически «украденных» гипервизором облачного провайдера в пользу других виртуальных машин. Если метрика <code>steal</code> превышает 3–5%, ваш сервис страдает от проблемы шумных соседей (<strong>Noisy Neighbors</strong>). Единственное решение — миграция виртуальной машины или аренда Dedicated/Bare-metal инстансов.</li>
+</ul>
 <hr />
 <h2 id="4-sloy-2-konteyner-cadvisor">4. Слой 2: Контейнер (cAdvisor)</h2>
 <p>Откуда Kubernetes узнает, сколько памяти или процессора потребил конкретный Docker-контейнер? Он опрашивает контроллер <strong>cAdvisor (Container Advisor)</strong>, встроенный прямо в демон <code>kubelet</code>. cAdvisor также написан на Go и считывает сырые данные из виртуальной файловой системы Cgroups (<code>/sys/fs/cgroup</code>).</p>
@@ -482,11 +486,13 @@ flowchart LR
 
 <hr />
 <h2 id="5-sloy-3-obekty-kubernetes-kube-state-metrics">5. Слой 3: Объекты Kubernetes (Kube-state-metrics)</h2>
-<p>Демон <strong>Kube-state-metrics</strong> не измеряет байты и герцы. Он подключается к K8s API Server через библиотеку <code>client-go</code> и транслирует в метрики Prometheus само <strong>декларативное состояние объектов кластера</strong>:<br />
-* Запрошенное количество реплик Deployment против реально доступных (<code>kube_deployment_status_replicas_available</code>).<br />
-* Поды, застрявшие в циклах перезапусков (<code>CrashLoopBackOff</code> или <code>OOMKilled</code>).<br />
-* Дисковые тома PersistentVolumeClaim, зависшие в статусе <code>Pending</code>.<br />
-* Статус готовности нод кластера (<code>kube_node_status_condition</code>).</p>
+<p>Демон <strong>Kube-state-metrics</strong> не измеряет байты и герцы. Он подключается к K8s API Server через библиотеку <code>client-go</code> и транслирует в метрики Prometheus само <strong>декларативное состояние объектов кластера</strong>:</p>
+<ul>
+<li>Запрошенное количество реплик Deployment против реально доступных (<code>kube_deployment_status_replicas_available</code>).</li>
+<li>Поды, застрявшие в циклах перезапусков (<code>CrashLoopBackOff</code> или <code>OOMKilled</code>).</li>
+<li>Дисковые тома PersistentVolumeClaim, зависшие в статусе <code>Pending</code>.</li>
+<li>Статус готовности нод кластера (<code>kube_node_status_condition</code>).</li>
+</ul>
 
 <aside class="callout callout-interview" aria-label="Вопрос для собеседования: cAdvisor против Kube-state-metrics">
   <header class="callout-header">
@@ -495,9 +501,11 @@ flowchart LR
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> В чем принципиальная разница между метриками cAdvisor и Kube-state-metrics?<br />
-<strong>Ответ:</strong> <br />
-* <strong>cAdvisor отвечает на вопрос «КАК? (Ресурсы)»:</strong> Какова физическая утилизация контейнера? Сколько байт оперативной памяти занято? Сколько периодов CPU было задушено?<br />
-* <strong>Kube-state-metrics отвечает на вопрос «ЧТО? (Состояние)»:</strong> В каком статусе находится оркестрация? Находится ли Pod в статусе Ready? Сколько реплик запущено? Не упал ли под в <code>CrashLoopBackOff</code>?</p>
+<strong>Ответ:</strong> </p>
+<ul>
+<li><strong>cAdvisor отвечает на вопрос «КАК? (Ресурсы)»:</strong> Какова физическая утилизация контейнера? Сколько байт оперативной памяти занято? Сколько периодов CPU было задушено?</li>
+<li><strong>Kube-state-metrics отвечает на вопрос «ЧТО? (Состояние)»:</strong> В каком статусе находится оркестрация? Находится ли Pod в статусе Ready? Сколько реплик запущено? Не упал ли под в <code>CrashLoopBackOff</code>?</li>
+</ul>
 <p>В грамотном мониторинге вы настраиваете критические алерты (P1) на данные Kube-state-metrics (если под упал или не готов), а упреждающие алерты (P2/P3) — на данные cAdvisor (если сервису скоро перестанет хватать памяти).</p>
   </div>
 </aside>
@@ -559,10 +567,12 @@ func main() {
   <div class="callout-body">
     <p>Начинающие инженеры часто путают метрику приложения <code>go_memstats_heap_inuse_bytes</code> и метрику контейнера <code>container_memory_working_set_bytes</code>.</p>
 <p>Если Go-приложение рапортует об использовании 1 ГБ кучи, а cAdvisor показывает 1.6 ГБ, это не баг! <br />
-Разницу составляют:<br />
-* Системный стек горутин (по 2–8 КБ на каждую).<br />
-* Пул свободных страниц рантайма (Go не отдает освобожденную память ядру ОС мгновенно, а удерживает ее в <code>mcache</code>/<code>mcentral</code> для будущих аллокаций).<br />
-* Страничный кэш ядра (<strong>Page Cache</strong>) при операциях с файлами.</p>
+Разницу составляют:</p>
+<ul>
+<li>Системный стек горутин (по 2–8 КБ на каждую).</li>
+<li>Пул свободных страниц рантайма (Go не отдает освобожденную память ядру ОС мгновенно, а удерживает ее в <code>mcache</code>/<code>mcentral</code> для будущих аллокаций).</li>
+<li>Страничный кэш ядра (<strong>Page Cache</strong>) при операциях с файлами.</li>
+</ul>
 <p>Системный OOM Killer ядра Linux ориентируется именно на метрику <code>working_set_bytes</code> из cgroups. Поэтому для предотвращения падений анализируйте поведение обеих метрик совместно!</p>
   </div>
 </aside>

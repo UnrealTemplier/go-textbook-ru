@@ -434,15 +434,19 @@ mindmap
 <hr />
 <h2 id="pereosmyslenie-asinkhronnosti-ne-bystree-a-nadyozhnee">Переосмысление асинхронности: не быстрее, а надёжнее</h2>
 <p>Главное заблуждение начинающих инженеров звучит так: <em>«Наша система тормозит — давайте воткнем брокер сообщений, и она станет летать!»</em></p>
-<p>На физическом уровне асинхронность <strong>всегда медленнее</strong> прямого синхронного взаимодействия. Вместо одного сетевого прыжка <code>Client -&gt; Server</code> по TCP/gRPC мы совершаем минимум три операции с диском и сетью:<br />
-1. Продюсер упаковывает батч и отправляет его по сокету в брокер.<br />
-2. Брокер производит <code>fsync</code> на диск или реплицирует пакет кворуму узлов по сети.<br />
-3. Консьюмер опрашивает брокер, получает пакет и десериализует его.</p>
+<p>На физическом уровне асинхронность <strong>всегда медленнее</strong> прямого синхронного взаимодействия. Вместо одного сетевого прыжка <code>Client -&gt; Server</code> по TCP/gRPC мы совершаем минимум три операции с диском и сетью:</p>
+<ol>
+<li>Продюсер упаковывает батч и отправляет его по сокету в брокер.</li>
+<li>Брокер производит <code>fsync</code> на диск или реплицирует пакет кворуму узлов по сети.</li>
+<li>Консьюмер опрашивает брокер, получает пакет и десериализует его.</li>
+</ol>
 <p>Физическая задержка (Latency) от момента создания события до его фиксации возрастает с 2 миллисекунд до 50–500 миллисекунд. Кроме того, система теряет немедленную согласованность (Strong Consistency), переходя в режим <strong>Eventual Consistency</strong> (согласованность в конечном счете).</p>
 <p>В чем же тогда истинный смысл очередей, сформулированный в лекции <a href="../01-fundament-asinkhronnosti/2-sinkhronnoe-vs-asinkhronnoe-vzaimodeystvie.html" class="wikilink">2. Синхронное vs асинхронное взаимодействие</a>?</p>
-<p>Истинный смысл очередей — <strong>тотальная развязка во времени и пространстве (Temporal &amp; Spatial Decoupling)</strong>:<br />
-- <strong>Упругость к всплескам нагрузки (Load Leveling):</strong> Брокер работает как гигантский гравитационный аккумулятор. Когда на Черную Пятницу наплыв заказов подскакивает в 50 раз, база данных не ложится под лавиной коннектов — очередь плавно поглощает удар, а консьюмеры спокойно переваривают поток с постоянной максимальной скоростью.<br />
-- <strong>Изоляция сбоев (Fault Tolerance):</strong> Если биллинг или складской сервис упал на техобслуживание на 2 часа, витрина магазина продолжает принимать заказы. Ни один байт данных не будет потерян.</p>
+<p>Истинный смысл очередей — <strong>тотальная развязка во времени и пространстве (Temporal &amp; Spatial Decoupling)</strong>:</p>
+<ul>
+<li><strong>Упругость к всплескам нагрузки (Load Leveling):</strong> Брокер работает как гигантский гравитационный аккумулятор. Когда на Черную Пятницу наплыв заказов подскакивает в 50 раз, база данных не ложится под лавиной коннектов — очередь плавно поглощает удар, а консьюмеры спокойно переваривают поток с постоянной максимальной скоростью.</li>
+<li><strong>Изоляция сбоев (Fault Tolerance):</strong> Если биллинг или складской сервис упал на техобслуживание на 2 часа, витрина магазина продолжает принимать заказы. Ни один байт данных не будет потерян.</li>
+</ul>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Преждевременная асинхронизация">
   <header class="callout-header">
@@ -466,19 +470,25 @@ mindmap
 <li><strong>Transactional Exactly-Once:</strong> Достижимо только в замкнутых контурах (например, связка Kafka Streams / Flink через двухфазный коммит и маркеры <code>read_committed</code>, как показано в <a href="../03-kafka/6-exactly-once-v-kafka.html" class="wikilink">6. Exactly once в Kafka</a>). Как только результат обработки записывается во внешнюю базу данных или сторонний HTTP API, гарантия мгновенно деградирует до At-Least-Once.</li>
 </ul>
 <h3 id="poryadok-i-parallelizm-fundamentalnyy-konflikt">Порядок и параллелизм — фундаментальный конфликт</h3>
-<p>Глобальный строгий порядок сообщений и горизонтальное масштабирование системы взаимно исключают друг друга.<br />
-- Чтобы гарантировать строгий порядок во времени, в системе должен быть <strong>ровно один поток исполнения и одна очередь</strong>. Любая попытка параллельной вычитки несколькими горутинами неизбежно перемешает порядок завершения операций из-за квантования планировщика ОС.<br />
-- Компромисс современного инжиниринга — <strong>локальный порядок по ключу шардирования</strong> (<a href="../03-kafka/5-ordering-i-partitioning.html" class="wikilink">5. Ordering и partitioning</a>). Сообщения с одинаковым <code>customer_id</code> всегда попадают в одну и ту же партицию и обрабатываются строго последовательно, тогда как миллионы разных клиентов обрабатываются параллельно на сотнях ядер CPU.</p>
+<p>Глобальный строгий порядок сообщений и горизонтальное масштабирование системы взаимно исключают друг друга.</p>
+<ul>
+<li>Чтобы гарантировать строгий порядок во времени, в системе должен быть <strong>ровно один поток исполнения и одна очередь</strong>. Любая попытка параллельной вычитки несколькими горутинами неизбежно перемешает порядок завершения операций из-за квантования планировщика ОС.</li>
+<li>Компромисс современного инжиниринга — <strong>локальный порядок по ключу шардирования</strong> (<a href="../03-kafka/5-ordering-i-partitioning.html" class="wikilink">5. Ordering и partitioning</a>). Сообщения с одинаковым <code>customer_id</code> всегда попадают в одну и ту же партицию и обрабатываются строго последовательно, тогда как миллионы разных клиентов обрабатываются параллельно на сотнях ядер CPU.</li>
+</ul>
 <h3 id="upravlenie-nagruzkoy">Управление нагрузкой</h3>
-<p>Без защитных барьеров консьюмер мгновенно захлебнется входящим потоком.<br />
-- В Kafka используется <strong>Pull-модель</strong> (<a href="../03-kafka/3-producer-i-consumer.html" class="wikilink">3. Producer и consumer</a>): консьюмер сам запрашивает порцию данных у брокера только тогда, когда готов ее переварить. Это естественный, заложенный в архитектуру механизм Backpressure (<a href="../01-fundament-asinkhronnosti/6-backpressure-i-kontrol-nagruzki.html" class="wikilink">6. Backpressure и контроль нагрузки</a>).<br />
-- В push-системах (RabbitMQ) критически важно жестко настраивать параметр <strong>Prefetch QoS</strong> (<a href="../02-rabbitmq/5-prefetch-i-qos.html" class="wikilink">5. Prefetch и QoS</a>). Если оставить prefetch безлимитным, RabbitMQ сбросит миллион сообщений в сетевой сокет одного процесса Go, вызвав немедленный OOM Kill (Out Of Memory) рантайма.</p>
+<p>Без защитных барьеров консьюмер мгновенно захлебнется входящим потоком.</p>
+<ul>
+<li>В Kafka используется <strong>Pull-модель</strong> (<a href="../03-kafka/3-producer-i-consumer.html" class="wikilink">3. Producer и consumer</a>): консьюмер сам запрашивает порцию данных у брокера только тогда, когда готов ее переварить. Это естественный, заложенный в архитектуру механизм Backpressure (<a href="../01-fundament-asinkhronnosti/6-backpressure-i-kontrol-nagruzki.html" class="wikilink">6. Backpressure и контроль нагрузки</a>).</li>
+<li>В push-системах (RabbitMQ) критически важно жестко настраивать параметр <strong>Prefetch QoS</strong> (<a href="../02-rabbitmq/5-prefetch-i-qos.html" class="wikilink">5. Prefetch и QoS</a>). Если оставить prefetch безлимитным, RabbitMQ сбросит миллион сообщений в сетевой сокет одного процесса Go, вызвав немедленный OOM Kill (Out Of Memory) рантайма.</li>
+</ul>
 <h3 id="obrabotka-oshibok-i-ustoychivost">Обработка ошибок и устойчивость</h3>
-<p>В асинхронном мире сбои — это не исключение, а штатный режим функционирования:<br />
-- <a href="../01-fundament-asinkhronnosti/9-retry-strategii-i-exponential-backoff.html" class="wikilink">9. Retry стратегии и exponential backoff</a>: повторы с экспоненциальной паузой и случайным шумом (Jitter) предотвращают эффект «громоподобного стада» (Thundering Herd) на упавшую базу данных.<br />
-- <a href="../01-fundament-asinkhronnosti/8-dead-letter-queue.html" class="wikilink">8. Dead Letter Queue</a>: ядовитые сообщения отсекаются в специальный накопитель для ручного или автоматического анализа инженерами.<br />
-- <a href="4-idempotent-handlers.html" class="wikilink">4. Idempotent handlers</a>: уникальный ключ дедупликации защищает счета клиентов от двойного списания денег при повторных доставках.<br />
-- <a href="6-handling-poison-messages.html" class="wikilink">6. Handling poison messages</a>: непрерывный перехват паники через <code>defer recover()</code> защищает воркер-пул от фатального краша процесса ОС (<code>SIGABRT</code>).</p>
+<p>В асинхронном мире сбои — это не исключение, а штатный режим функционирования:</p>
+<ul>
+<li><a href="../01-fundament-asinkhronnosti/9-retry-strategii-i-exponential-backoff.html" class="wikilink">9. Retry стратегии и exponential backoff</a>: повторы с экспоненциальной паузой и случайным шумом (Jitter) предотвращают эффект «громоподобного стада» (Thundering Herd) на упавшую базу данных.</li>
+<li><a href="../01-fundament-asinkhronnosti/8-dead-letter-queue.html" class="wikilink">8. Dead Letter Queue</a>: ядовитые сообщения отсекаются в специальный накопитель для ручного или автоматического анализа инженерами.</li>
+<li><a href="4-idempotent-handlers.html" class="wikilink">4. Idempotent handlers</a>: уникальный ключ дедупликации защищает счета клиентов от двойного списания денег при повторных доставках.</li>
+<li><a href="6-handling-poison-messages.html" class="wikilink">6. Handling poison messages</a>: непрерывный перехват паники через <code>defer recover()</code> защищает воркер-пул от фатального краша процесса ОС (<code>SIGABRT</code>).</li>
+</ul>
 <hr />
 <h2 id="vybor-brokera-rabbitmq-kafka-ili-nats">Выбор брокера: RabbitMQ, Kafka или NATS</h2>
 <p>Один из ключевых вопросов на собеседованиях уровня Senior и Lead — осознанный выбор связующего звена. Серебряной пули нет: каждый инструмент спроектирован под свой класс задач и имеет свои компромиссы.</p>
@@ -651,34 +661,52 @@ flowchart LR
 <h2 id="praktika-v-go-chek-list-production-ready-konsyumera">Практика в Go: чек-лист production-ready консьюмера</h2>
 <p>Если перед вами стоит задача спроектировать или провести код-ревью боевого консьюмера для промышленного использования, используйте проверенный практический чек-лист подразделов <span class="wikilink-unresolved" title="Заметка в разработке">07. Практика</span> и <span class="wikilink-unresolved" title="Заметка в разработке">10. Distributed tracing в async систем</span>:</p>
 <ul>
-<li>[ ] <strong>1. Подключение и транспорт (<a href="1-rabota-s-ocheredyami-v-go.html" class="wikilink">1. Работа с очередями в Go</a>):</strong></li>
+<li>[ ] <strong>1. Подключение и транспорт (<a href="1-rabota-s-ocheredyami-v-go.html" class="wikilink">1. Работа с очередями в Go</a>):</strong><ul>
 <li>[ ] Реализован цикл автоматического переподключения (Reconnect Loop) с экспоненциальным backoff при обрыве TCP-сессии.</li>
 <li>[ ] Сериализация данных проверена на нативную поддержку схем (Protobuf / JSON / Avro).</li>
-<li>[ ] <strong>2. Graceful Shutdown (<a href="2-konsyumery-i-graceful-shutdown.html" class="wikilink">2. Консьюмеры и graceful shutdown</a>):</strong></li>
+</ul>
+</li>
+<li>[ ] <strong>2. Graceful Shutdown (<a href="2-konsyumery-i-graceful-shutdown.html" class="wikilink">2. Консьюмеры и graceful shutdown</a>):</strong><ul>
 <li>[ ] Сервис перехватывает системные сигналы <code>os.Interrupt</code>, <code>syscall.SIGTERM</code>.</li>
 <li>[ ] При получении сигнала консьюмер немедленно останавливает чтение новых сообщений (<code>ctx.Done()</code>).</li>
 <li>[ ] Горутины дорабатывают уже взятые в память сообщения и выполняют коммит смещений (ACK) до завершения процесса.</li>
-<li>[ ] <strong>3. Управление конкурентностью (<a href="3-parallelizm-obrabotki-soobshcheniy.html" class="wikilink">3. Параллелизм обработки сообщений</a>):</strong></li>
+</ul>
+</li>
+<li>[ ] <strong>3. Управление конкурентностью (<a href="3-parallelizm-obrabotki-soobshcheniy.html" class="wikilink">3. Параллелизм обработки сообщений</a>):</strong><ul>
 <li>[ ] Размер пула горутин ограничен емкостью очередей и лимитами зависимых баз данных.</li>
 <li>[ ] Сообщения с одинаковым бизнес-ключом маршрутизируются в одну горутину для сохранения очередности.</li>
-<li>[ ] <strong>4. Идемпотентность (<a href="4-idempotent-handlers.html" class="wikilink">4. Idempotent handlers</a>):</strong></li>
+</ul>
+</li>
+<li>[ ] <strong>4. Идемпотентность (<a href="4-idempotent-handlers.html" class="wikilink">4. Idempotent handlers</a>):</strong><ul>
 <li>[ ] Наличие уникального ключа события (<code>MessageID</code> / <code>EventID</code>).</li>
 <li>[ ] Проверка и фиксация ключа выполняются атомарно (в транзакции PostgreSQL <code>INSERT ... ON CONFLICT DO NOTHING</code> или Redis <code>SET NX EX</code>).</li>
-<li>[ ] <strong>5. Батчинг (<a href="5-batch-processing-soobshcheniy.html" class="wikilink">5. Batch processing сообщений</a>):</strong></li>
+</ul>
+</li>
+<li>[ ] <strong>5. Батчинг (<a href="5-batch-processing-soobshcheniy.html" class="wikilink">5. Batch processing сообщений</a>):</strong><ul>
 <li>[ ] Если воркер упирается в I/O диска СУБД, чтение и запись сгруппированы в батчи с двойным триггером сброса: по размеру пачки и по таймауту (<code>ticker.C</code>).</li>
-<li>[ ] <strong>6. Изоляция ядовитых пакетов (<a href="6-handling-poison-messages.html" class="wikilink">6. Handling poison messages</a>):</strong></li>
+</ul>
+</li>
+<li>[ ] <strong>6. Изоляция ядовитых пакетов (<a href="6-handling-poison-messages.html" class="wikilink">6. Handling poison messages</a>):</strong><ul>
 <li>[ ] Обработчик обернут в <code>defer recover()</code> с логированием полного стека паники.</li>
 <li>[ ] Предусмотрен маршрут отвода битых сообщений в Dead Letter Queue (<code>requeue=false</code>) без бесконечного зацикливания.</li>
-<li>[ ] <strong>7. Полноценное тестирование (<a href="7-testirovanie-async-sistem.html" class="wikilink">7. Тестирование async систем</a>):</strong></li>
+</ul>
+</li>
+<li>[ ] <strong>7. Полноценное тестирование (<a href="7-testirovanie-async-sistem.html" class="wikilink">7. Тестирование async систем</a>):</strong><ul>
 <li>[ ] Бизнес-логика покрыта быстрыми unit-тестами с моками интерфейсов и фаззингом входных структур.</li>
 <li>[ ] Сетевые контракты проверены интеграционными тестами с Docker через <code>testcontainers-go</code>.</li>
 <li>[ ] Тесты выполняются без состояний гонки под детектором <code>-race</code>.</li>
-<li>[ ] <strong>8. Сквозная наблюдаемость (<a href="8-observability-ocheredey.html" class="wikilink">8. Observability очередей</a>):</strong></li>
+</ul>
+</li>
+<li>[ ] <strong>8. Сквозная наблюдаемость (<a href="8-observability-ocheredey.html" class="wikilink">8. Observability очередей</a>):</strong><ul>
 <li>[ ] Заголовки <code>traceparent</code> OpenTelemetry извлекаются из брокера и связываются с локальными спанами.</li>
 <li>[ ] Логи выводятся через <code>log/slog</code> в формате JSON и автоматически включают атрибут <code>trace_id</code>.</li>
-<li>[ ] <strong>9. Инфраструктурный мониторинг (<a href="9-monitoring-lag-i-throughput.html" class="wikilink">9. Мониторинг lag и throughput</a>):</strong></li>
+</ul>
+</li>
+<li>[ ] <strong>9. Инфраструктурный мониторинг (<a href="9-monitoring-lag-i-throughput.html" class="wikilink">9. Мониторинг lag и throughput</a>):</strong><ul>
 <li>[ ] Настроены Prometheus-метрики Throughput, Duration и Time Lag.</li>
 <li>[ ] Алерты срабатывают на положительную производную роста лага и превышение бизнес-SLA, а не на абстрактный размер очереди.</li>
+</ul>
+</li>
 </ul>
 <hr />
 <h2 id="klyuchevoy-inzhenernyy-printsip-slozhnost-ne-ischezaet">Ключевой инженерный принцип: сложность не исчезает</h2>
@@ -690,9 +718,11 @@ flowchart LR
   </header>
   <div class="callout-body">
     <p>Закон Теслера (Larry Tesler) в инженерии программного обеспечения гласит: <em>«В любой сложной системе существует неустранимый фундаментальный объем сложности, который невозможно уничтожить — его можно лишь перемещать»</em>.</p>
-<p>Переходя от синхронных вызовов к очередям сообщений, мы <strong>не избавляемся от сложности</strong>. Мы перемещаем ее:<br />
-- Из слоя клиентского кода (где пользователь раньше ждал 5 секунд ответа сервера) — в слой инфраструктуры брокеров, согласования смещений, ребалансировок групп и репликации логов.<br />
-- Из плоскости простого локального дебаггинга в IDE — в плоскость распределенной трассировки OpenTelemetry, парсинга терабайтов JSON-логов и настройки детектора лагов в Grafana.</p>
+<p>Переходя от синхронных вызовов к очередям сообщений, мы <strong>не избавляемся от сложности</strong>. Мы перемещаем ее:</p>
+<ul>
+<li>Из слоя клиентского кода (где пользователь раньше ждал 5 секунд ответа сервера) — в слой инфраструктуры брокеров, согласования смещений, ребалансировок групп и репликации логов.</li>
+<li>Из плоскости простого локального дебаггинга в IDE — в плоскость распределенной трассировки OpenTelemetry, парсинга терабайтов JSON-логов и настройки детектора лагов в Grafana.</li>
+</ul>
 <p>Понимание этого закона предостерегает зрелого архитектора от безумного усложнения систем там, где бизнес-задача легко решается парой надежных синхронных эндпоинтов.</p>
   </div>
 </aside>
@@ -707,14 +737,18 @@ flowchart LR
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> Вам нужно спроектировать ядро системы обработки онлайн-заказов крупного маркетплейса. Как вы скомпонуете изученные компоненты?</p>
-<p><strong>Эталонный ответ:</strong><br />
-1. <strong>Ingress &amp; Orders API:</strong> Пользователь отправляет <code>POST /orders</code>. Сервер открывает транзакцию в PostgreSQL, сохраняет запись заказа в таблицу <code>orders</code> и одновременно пишет событие <code>OrderCreated</code> в локальную таблицу <code>outbox</code> (<strong>Transactional Outbox Pattern</strong>). Транзакция коммитится мгновенно, пользователю возвращается <code>201 Created</code> с <code>order_id</code>. Никакой сети брокера внутри HTTP-хэндлера.<br />
-2. <strong>Message Relay:</strong> Фоновый процесс на Go считывает события из <code>outbox</code> через логическую репликацию PostgreSQL (CDC / Debezium) и публикует их в топик <code>orders.created</code> <strong>Apache Kafka</strong>, используя <code>order_id</code> в качестве ключа партиционирования для сохранения строгого порядка.<br />
-3. <strong>Оркестрация саги (Temporal):</strong> Воркер слушает события и запускает распределенный workflow в Temporal. Оркестратор поочередно вызывает:<br />
-   - Activity резервирования остатков на складе (Warehouse Service).<br />
-   - Activity списания средств в платежном шлюзе (Payment Service).<br />
-4. <strong>Отказоустойчивость:</strong> Если платеж не прошел, Temporal запускает компенсационные действия — снимает резерв товара на складе и уведомляет пользователя.<br />
-5. <strong>Мониторинг:</strong> Все консьюмеры снабжены OTel-контекстом, метриками Prometheus и алертами на производную Consumer Lag.</p>
+<p><strong>Эталонный ответ:</strong></p>
+<ol>
+<li><strong>Ingress &amp; Orders API:</strong> Пользователь отправляет <code>POST /orders</code>. Сервер открывает транзакцию в PostgreSQL, сохраняет запись заказа в таблицу <code>orders</code> и одновременно пишет событие <code>OrderCreated</code> в локальную таблицу <code>outbox</code> (<strong>Transactional Outbox Pattern</strong>). Транзакция коммитится мгновенно, пользователю возвращается <code>201 Created</code> с <code>order_id</code>. Никакой сети брокера внутри HTTP-хэндлера.</li>
+<li><strong>Message Relay:</strong> Фоновый процесс на Go считывает события из <code>outbox</code> через логическую репликацию PostgreSQL (CDC / Debezium) и публикует их в топик <code>orders.created</code> <strong>Apache Kafka</strong>, используя <code>order_id</code> в качестве ключа партиционирования для сохранения строгого порядка.</li>
+<li><strong>Оркестрация саги (Temporal):</strong> Воркер слушает события и запускает распределенный workflow в Temporal. Оркестратор поочередно вызывает:<ul>
+<li>Activity резервирования остатков на складе (Warehouse Service).</li>
+<li>Activity списания средств в платежном шлюзе (Payment Service).</li>
+</ul>
+</li>
+<li><strong>Отказоустойчивость:</strong> Если платеж не прошел, Temporal запускает компенсационные действия — снимает резерв товара на складе и уведомляет пользователя.</li>
+<li><strong>Мониторинг:</strong> Все консьюмеры снабжены OTel-контекстом, метриками Prometheus и алертами на производную Consumer Lag.</li>
+</ol>
   </div>
 </aside>
 

@@ -507,12 +507,14 @@ func ClaimsFromContext(ctx context.Context) (*Claims, bool) {
 
 <h2 id="problema-otzyva-i-refresh-token-pattern">Проблема отзыва и Refresh Token Pattern</h2>
 <p>JWT stateless по дизайну. Сервер не хранит список активных токенов, поэтому мгновенно отозвать конкретный токен невозможно (до истечения <code>exp</code>). Это фундаментальный компромисс. Если учетная запись пользователя скомпрометирована или права отозваны, выданный JWT остается действительным вплоть до секунды, указанной в поле <code>exp</code>.</p>
-<p>Решение в production — дуальная архитектура Access и Refresh токенов:<br />
-1. Короткоживущие Access Token (<code>exp: 15m</code>), передаваемые клиентом в каждом запросе.<br />
-2. Долгоживущие Refresh Token (<code>exp: 30d</code>), хранящиеся в защищенной БД/Redis на стороне бэкенда.<br />
-3. При истечении Access Token клиент шлет Refresh Token на эндпоинт <code>/auth/refresh</code>.<br />
-4. Сервер проверяет Refresh Token, сверяет с БД, генерирует новую пару токенов.<br />
-5. При смене пароля или подозрении на взлом Refresh Token инвалидируется в БД (или помещается в blacklist).</p>
+<p>Решение в production — дуальная архитектура Access и Refresh токенов:</p>
+<ol>
+<li>Короткоживущие Access Token (<code>exp: 15m</code>), передаваемые клиентом в каждом запросе.</li>
+<li>Долгоживущие Refresh Token (<code>exp: 30d</code>), хранящиеся в защищенной БД/Redis на стороне бэкенда.</li>
+<li>При истечении Access Token клиент шлет Refresh Token на эндпоинт <code>/auth/refresh</code>.</li>
+<li>Сервер проверяет Refresh Token, сверяет с БД, генерирует новую пару токенов.</li>
+<li>При смене пароля или подозрении на взлом Refresh Token инвалидируется в БД (или помещается в blacklist).</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -547,14 +549,18 @@ flowchart TD
 
 
 <h2 id="proizvoditelnost-i-mechanical-sympathy">Производительность и Mechanical Sympathy</h2>
-<p>Парсинг JWT — операция с измеримой стоимостью:<br />
-- <code>jwt.ParseWithClaims</code> создает <code>map[string]interface{}</code> для header, аллоцирует <code>Claims</code>, парсит JSON payload (<code>json.Unmarshal</code>), проверяет время и подпись.<br />
-- На 100 000 RPS это генерирует ~5-8 аллокаций на запрос, попадающих в молодое поколение GC.<br />
-- Escape Analysis: <code>claims</code> и временные буферы уходят в кучу, так как возвращаются из функций парсинга или передаются через <code>interface{}</code>.</p>
-<p><strong>Оптимизация для Highload:</strong><br />
-1. Избегайте <code>json.Unmarshal</code> в hot-path, если claims известны на этапе компиляции. Используйте кастомный декодер или pre-allocated структуры.<br />
-2. Кешируйте публичные ключи для RS256/ES256 в памяти с <code>sync.RWMutex</code> или <code>atomic.Pointer</code>. Не загружайте JWKS-эндпоинт на каждый запрос.<br />
-3. Используйте <code>sync.Pool</code> для временных буферов Base64URL-декодирования, если пишете кастомный парсер.</p>
+<p>Парсинг JWT — операция с измеримой стоимостью:</p>
+<ul>
+<li><code>jwt.ParseWithClaims</code> создает <code>map[string]interface{}</code> для header, аллоцирует <code>Claims</code>, парсит JSON payload (<code>json.Unmarshal</code>), проверяет время и подпись.</li>
+<li>На 100 000 RPS это генерирует ~5-8 аллокаций на запрос, попадающих в молодое поколение GC.</li>
+<li>Escape Analysis: <code>claims</code> и временные буферы уходят в кучу, так как возвращаются из функций парсинга или передаются через <code>interface{}</code>.</li>
+</ul>
+<p><strong>Оптимизация для Highload:</strong></p>
+<ol>
+<li>Избегайте <code>json.Unmarshal</code> в hot-path, если claims известны на этапе компиляции. Используйте кастомный декодер или pre-allocated структуры.</li>
+<li>Кешируйте публичные ключи для RS256/ES256 в памяти с <code>sync.RWMutex</code> или <code>atomic.Pointer</code>. Не загружайте JWKS-эндпоинт на каждый запрос.</li>
+<li>Используйте <code>sync.Pool</code> для временных буферов Base64URL-декодирования, если пишете кастомный парсер.</li>
+</ol>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">

@@ -363,10 +363,12 @@ flowchart TD
   </header>
   <div class="callout-body">
     <p><strong>«Как правильно закрывать <code>resp.Body</code> при выполнении HTTP-запросов в Go?»</strong><br />
-<strong>Ответ:</strong><br />
-1. Проверять ошибку <code>err != nil</code> <strong>до</strong> вызова <code>resp.Body.Close()</code>, так как при сетевой ошибке <code>resp</code> равен <code>nil</code> (попытка вызвать <code>Close()</code> приведет к панике nil pointer dereference).<br />
-2. Если ответ не равен <code>nil</code>, обязательно вызвать <code>defer resp.Body.Close()</code>.<br />
-3. <strong>Критично для Highload:</strong> если тело ответа не читается полностью (например, при проверке статуса <code>resp.StatusCode == 200</code>), необходимо принудительно вычитать и сбросить остаток через <code>io.Copy(io.Discard, resp.Body)</code> перед закрытием. Если тело не вычитано до EOF, транспорт Go не может вернуть нижележащий TCP/TLS сокет в пул <code>Keep-Alive</code> соединений и разрывает TCP сессию, вызывая TIME_WAIT и шторм хэндшейков.</p>
+<strong>Ответ:</strong>  </p>
+<ol>
+<li>Проверять ошибку <code>err != nil</code> <strong>до</strong> вызова <code>resp.Body.Close()</code>, так как при сетевой ошибке <code>resp</code> равен <code>nil</code> (попытка вызвать <code>Close()</code> приведет к панике nil pointer dereference).  </li>
+<li>Если ответ не равен <code>nil</code>, обязательно вызвать <code>defer resp.Body.Close()</code>.  </li>
+<li><strong>Критично для Highload:</strong> если тело ответа не читается полностью (например, при проверке статуса <code>resp.StatusCode == 200</code>), необходимо принудительно вычитать и сбросить остаток через <code>io.Copy(io.Discard, resp.Body)</code> перед закрытием. Если тело не вычитано до EOF, транспорт Go не может вернуть нижележащий TCP/TLS сокет в пул <code>Keep-Alive</code> соединений и разрывает TCP сессию, вызывая TIME_WAIT и шторм хэндшейков.</li>
+</ol>
   </div>
 </aside>
 
@@ -1530,20 +1532,24 @@ case result := &lt;-doWork(ctx):
 <h3 id="kratkiy-otvet-24">Краткий ответ</h3>
 <p><code>sync</code> предоставляет примитивы синхронизации: <code>Mutex</code>, <code>RWMutex</code>, <code>WaitGroup</code>, <code>Cond</code>, <code>Once</code>, <code>Pool</code>, <code>Map</code>. Они реализуют блокировки, ожидание событий, одноразовое выполнение и конкурентные структуры. Внутренне используют атомарные операции и early-спиннинг перед парковкой в планировщике.</p>
 <h3 id="razvyornutyy-otvet-24">Развёрнутый ответ</h3>
-<p>Основные примитивы:<br />
-- <code>Mutex</code>: эксклюзивная блокировка, <code>Lock</code>/<code>Unlock</code>. Не реентерабельный.<br />
-- <code>RWMutex</code>: разделяемая/эксклюзивная. <code>RLock</code>/<code>RUnlock</code>, <code>Lock</code>.<br />
-- <code>WaitGroup</code>: ожидание группы горутин. <code>Add</code>, <code>Done</code>, <code>Wait</code>.<br />
-- <code>Once</code>: гарантирует однократное выполнение функции, даже при конкурентных вызовах.<br />
-- <code>Cond</code>: условная переменная на основе <code>Locker</code>, редкая необходимость.<br />
-- <code>Pool</code>: временный пул объектов для снижения аллокаций. Не подходит для долгосрочного кэширования.<br />
-- <code>Map</code>: конкурентная map, оптимизированная для стабильных ключей (в основном читаемых).</p>
+<p>Основные примитивы:</p>
+<ul>
+<li><code>Mutex</code>: эксклюзивная блокировка, <code>Lock</code>/<code>Unlock</code>. Не реентерабельный.</li>
+<li><code>RWMutex</code>: разделяемая/эксклюзивная. <code>RLock</code>/<code>RUnlock</code>, <code>Lock</code>.</li>
+<li><code>WaitGroup</code>: ожидание группы горутин. <code>Add</code>, <code>Done</code>, <code>Wait</code>.</li>
+<li><code>Once</code>: гарантирует однократное выполнение функции, даже при конкурентных вызовах.</li>
+<li><code>Cond</code>: условная переменная на основе <code>Locker</code>, редкая необходимость.</li>
+<li><code>Pool</code>: временный пул объектов для снижения аллокаций. Не подходит для долгосрочного кэширования.</li>
+<li><code>Map</code>: конкурентная map, оптимизированная для стабильных ключей (в основном читаемых).</li>
+</ul>
 <h3 id="pod-kapotom-internals-24">Под капотом (internals)</h3>
 <ul>
-<li><code>Mutex</code>:</li>
+<li><code>Mutex</code>:<ul>
 <li>Внутри состояние (state) — 32 бита: заблокирован, разбужен, голодание, количество ожидающих. При <code>Lock</code> использован fast path (атомарный CAS). При конкуренции горутина крутится (spin) несколько тактов, затем вызывает <code>runtime_SemacquireMutex</code>, которая паркует горутину в очередь ожидания.</li>
 <li><code>Unlock</code> атомарно снимает флаг, при наличии ожидающих вызывает <code>runtime_Semrelease</code>.</li>
 <li>«Голодающий» режим предотвращает бесконечное ожидание; после 1 мс переключается в режим голодания.</li>
+</ul>
+</li>
 <li><code>RWMutex</code>: аналогично, с разделением читающих/пишущих через атомарный счётчик.</li>
 <li><code>WaitGroup</code>: внутри <code>state1</code> — массив из трёх <code>uint32</code>: счётчик, количество ждущих, семафор. <code>Add</code> атомарно изменяет счётчик. <code>Wait</code> при ненулевом счётчике увеличивает ждущих и вызывает <code>semacquire</code>.</li>
 <li><code>Once</code>: флаг <code>done</code> (uint32) и мьютекс. Быстрый путь: атомарное чтение <code>done</code>. Если 0, захватывается мьютекс, двойная проверка, вызов <code>f</code>, установка <code>done=1</code>.</li>
@@ -1890,10 +1896,12 @@ for i := 0; i &lt; t.NumField(); i++ {
 <h3 id="kratkiy-otvet-32">Краткий ответ</h3>
 <p>Следует избегать <code>reflect</code>, когда критичны производительность, безопасность типов на этапе компиляции и читаемость. Он лишает статической проверки, затрудняет отладку и рефакторинг. Используйте только при обоснованной необходимости: универсальные библиотеки (JSON, ORM), где невозможно обойтись кодогенерацией.</p>
 <h3 id="razvyornutyy-otvet-32">Развёрнутый ответ</h3>
-<p>Красные флаги:<br />
-- Циклы с высокой частотой вызовов, где <code>reflect</code> вызывает значительные накладные расходы.<br />
-- Логика, которую можно выразить через интерфейсы или дженерики (Go 1.18+).<br />
-- Потребность в строгой типизации для предотвращения ошибок.</p>
+<p>Красные флаги:</p>
+<ul>
+<li>Циклы с высокой частотой вызовов, где <code>reflect</code> вызывает значительные накладные расходы.</li>
+<li>Логика, которую можно выразить через интерфейсы или дженерики (Go 1.18+).</li>
+<li>Потребность в строгой типизации для предотвращения ошибок.</li>
+</ul>
 <p>Примеры альтернатив: дженерики для обобщённых алгоритмов, интерфейсы для полиморфизма, кодогенерация (например, <code>go generate</code>, <code>stringer</code>) для перечислений.</p>
 <h3 id="pod-kapotom-internals-32">Под капотом (internals)</h3>
 <ul>
@@ -1920,11 +1928,13 @@ for i := 0; i &lt; t.NumField(); i++ {
 <h3 id="kratkiy-otvet-33">Краткий ответ</h3>
 <p>Пакет <code>unsafe</code> даёт обход системы типов Go: указатели произвольного преобразования (<code>unsafe.Pointer</code>), арифметику указателей (через <code>uintptr</code>), доступ к полям по смещению (<code>unsafe.Offsetof</code>), и создание макетов памяти. Компилятор не проверяет безопасность; некорректное использование приводит к порче памяти, нарушению сборщика мусора и неопределённому поведению.</p>
 <h3 id="razvyornutyy-otvet-33">Развёрнутый ответ</h3>
-<p>Ключевые элементы:<br />
-- <code>unsafe.Pointer</code> — обобщённый указатель, может быть конвертирован в любой указатель и обратно.<br />
-- <code>uintptr</code> — целое число для арифметики; не защищает от GC.<br />
-- <code>unsafe.Sizeof</code>, <code>unsafe.Offsetof</code>, <code>unsafe.Alignof</code> — получение информации о памяти.<br />
-- Допустимые паттерны (по документации): (1) конвертация <code>*T1</code> в <code>*T2</code> при одинаковом layout; (2) преобразование pointer в uintptr и обратно — только внутри одного выражения, иначе GC может переместить объект; (3) системные вызовы (через <code>syscall.Syscall</code>); (4) доступ к полям через <code>unsafe.Add</code>, <code>unsafe.Slice</code>.</p>
+<p>Ключевые элементы:</p>
+<ul>
+<li><code>unsafe.Pointer</code> — обобщённый указатель, может быть конвертирован в любой указатель и обратно.</li>
+<li><code>uintptr</code> — целое число для арифметики; не защищает от GC.</li>
+<li><code>unsafe.Sizeof</code>, <code>unsafe.Offsetof</code>, <code>unsafe.Alignof</code> — получение информации о памяти.</li>
+<li>Допустимые паттерны (по документации): (1) конвертация <code>*T1</code> в <code>*T2</code> при одинаковом layout; (2) преобразование pointer в uintptr и обратно — только внутри одного выражения, иначе GC может переместить объект; (3) системные вызовы (через <code>syscall.Syscall</code>); (4) доступ к полям через <code>unsafe.Add</code>, <code>unsafe.Slice</code>.</li>
+</ul>
 <h3 id="pod-kapotom-internals-33">Под капотом (internals)</h3>
 <ul>
 <li><code>unsafe.Pointer</code> — это любой Go-указатель, игнорирующий типизацию. В некоторых реализациях компилятора это просто <code>*void</code>.</li>
@@ -2009,11 +2019,13 @@ err := cmd.Run()
 </div>
 
 <p>Команда запускается через <code>cmd.Start()</code>, ожидается <code>cmd.Wait()</code>. <code>CombinedOutput</code> захватывает stdout+stderr. Для ограничения времени: <code>cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }</code>.</p>
-<p>Безопасность:<br />
-- <strong>Не передавать пользовательский ввод напрямую в оболочку</strong>: <code>Command("sh", "-c", "echo " + userInput)</code> — возможность инъекции. Всегда используйте <code>Command(name, arg...)</code> без оболочки.<br />
-- <strong>Не запускать команды с <code>sudo</code></strong> без крайней необходимости.<br />
-- <strong>Устанавливать <code>Path</code> к бинарнику явно</strong>, если важно.<br />
-- <strong>Очищать <code>Env</code> и добавлять только необходимое</strong>: <code>cmd.Env = append(os.Environ(), "FOO=bar")</code>.</p>
+<p>Безопасность:</p>
+<ul>
+<li><strong>Не передавать пользовательский ввод напрямую в оболочку</strong>: <code>Command("sh", "-c", "echo " + userInput)</code> — возможность инъекции. Всегда используйте <code>Command(name, arg...)</code> без оболочки.</li>
+<li><strong>Не запускать команды с <code>sudo</code></strong> без крайней необходимости.</li>
+<li><strong>Устанавливать <code>Path</code> к бинарнику явно</strong>, если важно.</li>
+<li><strong>Очищать <code>Env</code> и добавлять только необходимое</strong>: <code>cmd.Env = append(os.Environ(), "FOO=bar")</code>.</li>
+</ul>
 <h3 id="pod-kapotom-internals-35">Под капотом (internals)</h3>
 <ul>
 <li><code>Cmd.Start</code> создаёт процесс через <code>os.StartProcess</code>, который использует <code>syscall.ForkExec</code> (Unix) или <code>CreateProcess</code> (Windows). Файловые дескрипторы stdin/stdout/stderr дублируются через <code>syscall.Dup2</code>.</li>
@@ -2776,10 +2788,12 @@ data, _ := io.ReadAll(r)
 <hr />
 <h2 id="chto-takoe-encodingjsonv2-v-go-1-25">Что такое encoding/json/v2 в Go 1.25?</h2>
 <h3 id="kratkiy-otvet-3060-sekund">Краткий ответ (30–60 секунд)</h3>
-<p>Пакет <code>encoding/json/v2</code> (Go 1.25+) — это долгожданная фундаментальная переработка стандартного JSON-сериализатора, устранившая критические недостатки <code>v1</code>:<br />
-1. <strong>Производительность и потоковая обработка:</strong> модуль <code>jsontext</code> реализует потоковый zero-allocation токенизатор (SAX-модель), в 2–4 раза быстрее <code>v1</code>.<br />
-2. <strong>Строгая обработка дубликатов:</strong> наличие дублирующихся ключей в объекте теперь по умолчанию вызывает ошибку (в <code>v1</code> последнее значение молча затирало предыдущие, что приводило к уязвимостям безопасности).<br />
-3. <strong>Честный <code>omitzero</code>:</strong> новый тег <code>omitzero</code> пропускает любые нулевые значения (включая пустые структуры <code>time.Time{}</code> и кастомные типы с методом <code>IsZero() bool</code>), устраняя кривую семантику старого <code>omitempty</code>.</p>
+<p>Пакет <code>encoding/json/v2</code> (Go 1.25+) — это долгожданная фундаментальная переработка стандартного JSON-сериализатора, устранившая критические недостатки <code>v1</code>:</p>
+<ol>
+<li><strong>Производительность и потоковая обработка:</strong> модуль <code>jsontext</code> реализует потоковый zero-allocation токенизатор (SAX-модель), в 2–4 раза быстрее <code>v1</code>.</li>
+<li><strong>Строгая обработка дубликатов:</strong> наличие дублирующихся ключей в объекте теперь по умолчанию вызывает ошибку (в <code>v1</code> последнее значение молча затирало предыдущие, что приводило к уязвимостям безопасности).</li>
+<li><strong>Честный <code>omitzero</code>:</strong> новый тег <code>omitzero</code> пропускает любые нулевые значения (включая пустые структуры <code>time.Time{}</code> и кастомные типы с методом <code>IsZero() bool</code>), устраняя кривую семантику старого <code>omitempty</code>.</li>
+</ol>
 <h3 id="razvyornutyy-otvet-51">Развёрнутый ответ</h3>
 <p>Сравнительная таблица семантики v1 и v2:<br />
 | Возможность | <code>encoding/json</code> (v1) | <code>encoding/json/v2</code> (Go 1.25+) |<br />

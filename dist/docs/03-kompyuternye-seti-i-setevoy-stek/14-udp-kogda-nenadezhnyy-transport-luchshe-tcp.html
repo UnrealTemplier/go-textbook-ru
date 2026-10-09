@@ -330,26 +330,32 @@
 </code></pre>
 </div>
 
-<p>Заголовок UDP предельно аскетичен и занимает <strong>ровно 8 байт</strong>:<br />
-1. <strong>Source Port (16 бит):</strong> Порт отправителя (может быть 0, если ответ не требуется).<br />
-2. <strong>Destination Port (16 бит):</strong> Порт назначения.<br />
-3. <strong>Length (16 бит):</strong> Полная длина датаграммы (заголовок 8 байт + полезные данные). Минимальное значение — 8 байт.<br />
-4. <strong>Checksum (16 бит):</strong> Контрольная сумма для проверки целостности заголовка, псевдозаголовка IP и данных.</p>
+<p>Заголовок UDP предельно аскетичен и занимает <strong>ровно 8 байт</strong>:</p>
+<ol>
+<li><strong>Source Port (16 бит):</strong> Порт отправителя (может быть 0, если ответ не требуется).</li>
+<li><strong>Destination Port (16 бит):</strong> Порт назначения.</li>
+<li><strong>Length (16 бит):</strong> Полная длина датаграммы (заголовок 8 байт + полезные данные). Минимальное значение — 8 байт.</li>
+<li><strong>Checksum (16 бит):</strong> Контрольная сумма для проверки целостности заголовка, псевдозаголовка IP и данных.</li>
+</ol>
 <p>Для Go-разработчика переход от TCP к UDP — это не просто смена <code>SOCK_STREAM</code> на <code>SOCK_DGRAM</code> при вызове сетевого API. Это смена парадигмы: вы берете на себя ответственность за надежность, упорядочивание и восстановление потерь, взамен получая минимальную задержку, предсказуемое поведение и доступ к broadcast/multicast.</p>
 <hr />
 <h2 id="pod-kapotom-yadro-linux-i-datagrammy">Под капотом: Ядро Linux и датаграммы</h2>
 <p>Что происходит внутри ядра операционной системы, когда Go-приложение работает с UDP?</p>
 <p>В исходных кодах ядра Linux (<code>include/net/udp.h</code>) UDP-сокет описывается структурой <strong><code>struct udp_sock</code></strong> (расширяющей базовую <code>struct inet_sock</code> и <code>struct sock</code>). При создании сокета системным вызовом <code>socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)</code> ядро выделяет эту структуру памяти.</p>
-<p>Сравните это с монументальной машиной состояний TCP:<br />
-- В UDP <strong>нет</strong> очередей ретрансмиссии и ожидания <code>sk_write_queue</code> для handshakes.<br />
-- В UDP <strong>нет</strong> модулей контроля перегрузки <code>tcp_congestion_ops</code> для window management.<br />
-- В UDP <strong>нет</strong> понятия состояния <code>TCP_ESTABLISHED</code>, таймеров TIME_WAIT или FIN_WAIT.</p>
+<p>Сравните это с монументальной машиной состояний TCP:</p>
+<ul>
+<li>В UDP <strong>нет</strong> очередей ретрансмиссии и ожидания <code>sk_write_queue</code> для handshakes.</li>
+<li>В UDP <strong>нет</strong> модулей контроля перегрузки <code>tcp_congestion_ops</code> для window management.</li>
+<li>В UDP <strong>нет</strong> понятия состояния <code>TCP_ESTABLISHED</code>, таймеров TIME_WAIT или FIN_WAIT.</li>
+</ul>
 <h3 id="put-otpravki-dannykh-tx-path">Путь отправки данных (TX Path)</h3>
-<p>Когда ваша программа вызывает <code>conn.WriteTo(buf, addr)</code> или системный вызов <code>sendto(2)</code>:<br />
-1. Системный вызов <code>sys_write</code> / <code>sendto</code> передает буфер ядру в функцию <strong><code>udp_sendmsg</code></strong>.<br />
-2. Ядро проверяет размер сообщения и выделяет сетевой буфер <code>sk_buff</code>.<br />
-3. Функция <strong><code>ip_append_data</code></strong> формирует пакет, ядро навешивает 8-байтный UDP-заголовок (<code>src_port</code>, <code>dst_port</code>, <code>length</code>, <code>checksum</code>), рассчитывает контрольную сумму и прикрепляет IPv4/IPv6-заголовок.<br />
-4. Функция <strong><code>ip_send_skb</code></strong> отправляет пакет напрямую в очередь драйвера сетевой карты (<code>dev_queue_xmit</code>).</p>
+<p>Когда ваша программа вызывает <code>conn.WriteTo(buf, addr)</code> или системный вызов <code>sendto(2)</code>:</p>
+<ol>
+<li>Системный вызов <code>sys_write</code> / <code>sendto</code> передает буфер ядру в функцию <strong><code>udp_sendmsg</code></strong>.</li>
+<li>Ядро проверяет размер сообщения и выделяет сетевой буфер <code>sk_buff</code>.</li>
+<li>Функция <strong><code>ip_append_data</code></strong> формирует пакет, ядро навешивает 8-байтный UDP-заголовок (<code>src_port</code>, <code>dst_port</code>, <code>length</code>, <code>checksum</code>), рассчитывает контрольную сумму и прикрепляет IPv4/IPv6-заголовок.</li>
+<li>Функция <strong><code>ip_send_skb</code></strong> отправляет пакет напрямую в очередь драйвера сетевой карты (<code>dev_queue_xmit</code>).</li>
+</ol>
 <p>Нет никаких ACK, нет ожидания подтверждений, нет скользящего окна, нет таймеров повторной отправки. Пакет со скоростью света уходит в физическую среду. Если по пути промежуточный коммутатор переполнится — пакет будет выброшен без всяких колебаний.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -463,14 +469,18 @@ flowchart TD
 <h2 id="go-realizatsiya-net-udpconn-i-netpoll">Go-реализация: net.UDPConn и netpoll</h2>
 <p>В стандартной библиотеке Go работа с UDP инкапсулирована в тип <strong><code>net.UDPConn</code></strong>, у которого есть собственная реализация поверх общего внутреннего типа <code>conn</code> (он реализует интерфейсы <code>net.Conn</code> и <code>net.PacketConn</code>; типом <code>net.IPConn</code> не встраивается).</p>
 <h3 id="podklyuchennyy-i-nepodklyuchennyy-soket-dialudp">Подключенный и неподключенный сокет: DialUDP</h3>
-<p>В отличие от TCP-соединений, UDP-сокет по своей физической природе <strong>не имеет состояния подключения</strong>. Однако в Socket API и в Go существует два режима работы:<br />
-1. <strong>Неподключенный сокет (<code>net.ListenUDP</code>):</strong> Сервер слушает конкретный порт и готов принимать датаграммы от кого угодно, используя <code>ReadFromUDP</code>. Отвечать можно на любой адрес через <code>WriteToUDP</code>.<br />
-2. <strong>Подключенный сокет (<code>net.DialUDP</code> или <code>net.Dial("udp", addr)</code>):</strong> У <code>*net.UDPConn</code> нет метода <code>Connect</code>; «подключённый» сокет получают, создавая его через <code>net.DialUDP</code>, под капотом это системный вызов <code>connect(2)</code>. Приведет ли это к отправке сетевых пакетов? <strong>Нет, ни единого байта не уйдет в сеть!</strong> </p>
-<p>В ядре Linux вызов <code>connect(2)</code> для <code>SOCK_DGRAM</code> сокета выполняет сугубо локальные действия:<br />
-- Записывает адрес и порт удаленного хоста в поля структуры сокета <strong><code>sk-&gt;sk_daddr</code></strong> и <strong><code>sk-&gt;sk_dport</code></strong> (<code>sk_daddr</code> / <code>sk_dport</code>).<br />
-- Привязывает сокет к маршруту в таблице FIB (<em>Forwarding Information Base</em>), исключая повторные поиски шлюза при каждом пакете (ускоряет отправку на 10–15%).<br />
-- Позволяет приложению использовать обычные методы <strong><code>Write</code></strong> и <strong><code>Read</code></strong> вместо <code>WriteTo</code> и <code>ReadFrom</code>, так как ядро уже знает адрес назначения по умолчанию.<br />
-- <strong>Главный бонус:</strong> Ядро начинает доставлять вашему сокету асинхронные ошибки ICMP (например, <code>ICMP Port Unreachable</code>), которые для неподключенного сокета просто игнорируются! Если удаленный хост закрыл порт, вызов <code>Read()</code> на подключенном UDP-сокете вернет ошибку <code>connection refused</code>.</p>
+<p>В отличие от TCP-соединений, UDP-сокет по своей физической природе <strong>не имеет состояния подключения</strong>. Однако в Socket API и в Go существует два режима работы:</p>
+<ol>
+<li><strong>Неподключенный сокет (<code>net.ListenUDP</code>):</strong> Сервер слушает конкретный порт и готов принимать датаграммы от кого угодно, используя <code>ReadFromUDP</code>. Отвечать можно на любой адрес через <code>WriteToUDP</code>.</li>
+<li><strong>Подключенный сокет (<code>net.DialUDP</code> или <code>net.Dial("udp", addr)</code>):</strong> У <code>*net.UDPConn</code> нет метода <code>Connect</code>; «подключённый» сокет получают, создавая его через <code>net.DialUDP</code>, под капотом это системный вызов <code>connect(2)</code>. Приведет ли это к отправке сетевых пакетов? <strong>Нет, ни единого байта не уйдет в сеть!</strong> </li>
+</ol>
+<p>В ядре Linux вызов <code>connect(2)</code> для <code>SOCK_DGRAM</code> сокета выполняет сугубо локальные действия:</p>
+<ul>
+<li>Записывает адрес и порт удаленного хоста в поля структуры сокета <strong><code>sk-&gt;sk_daddr</code></strong> и <strong><code>sk-&gt;sk_dport</code></strong> (<code>sk_daddr</code> / <code>sk_dport</code>).</li>
+<li>Привязывает сокет к маршруту в таблице FIB (<em>Forwarding Information Base</em>), исключая повторные поиски шлюза при каждом пакете (ускоряет отправку на 10–15%).</li>
+<li>Позволяет приложению использовать обычные методы <strong><code>Write</code></strong> и <strong><code>Read</code></strong> вместо <code>WriteTo</code> и <code>ReadFrom</code>, так как ядро уже знает адрес назначения по умолчанию.</li>
+<li><strong>Главный бонус:</strong> Ядро начинает доставлять вашему сокету асинхронные ошибки ICMP (например, <code>ICMP Port Unreachable</code>), которые для неподключенного сокета просто игнорируются! Если удаленный хост закрыл порт, вызов <code>Read()</code> на подключенном UDP-сокете вернет ошибку <code>connection refused</code>.</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -513,9 +523,11 @@ flowchart TD
 
 
 <h3 id="vzaimodeystvie-s-netpoll">Взаимодействие с netpoll</h3>
-<p>Планировщик Go (<strong><code>netpoll</code></strong>) интегрирует UDP-сокеты с системным механизмом мультиплексирования <strong><code>epoll</code></strong> (Linux) или <strong><code>kqueue</code></strong> (BSD/macOS):<br />
-- Событие <strong><code>EPOLLIN</code></strong>: Сигнализирует о том, что в системном буфере сокета ядра (<strong><code>SO_RCVBUF</code></strong>) появилась хотя бы одна принятая датаграмма, готовая к вызову <code>ReadFromUDP</code>.<br />
-- Событие <strong><code>EPOLLOUT</code></strong>: Означает, что в исходящем буфере (<strong><code>SO_SNDBUF</code></strong>) или очереди сетевого интерфейса есть место для отправки. Если буфер переполнен экстремальным потоком исходящих сообщений, системный вызов ядра вернет <strong><code>EAGAIN</code></strong> или <strong><code>EWOULDBLOCK</code></strong>, и <code>netpoller</code> временно усыпит горутину до освобождения очереди.</p>
+<p>Планировщик Go (<strong><code>netpoll</code></strong>) интегрирует UDP-сокеты с системным механизмом мультиплексирования <strong><code>epoll</code></strong> (Linux) или <strong><code>kqueue</code></strong> (BSD/macOS):</p>
+<ul>
+<li>Событие <strong><code>EPOLLIN</code></strong>: Сигнализирует о том, что в системном буфере сокета ядра (<strong><code>SO_RCVBUF</code></strong>) появилась хотя бы одна принятая датаграмма, готовая к вызову <code>ReadFromUDP</code>.</li>
+<li>Событие <strong><code>EPOLLOUT</code></strong>: Означает, что в исходящем буфере (<strong><code>SO_SNDBUF</code></strong>) или очереди сетевого интерфейса есть место для отправки. Если буфер переполнен экстремальным потоком исходящих сообщений, системный вызов ядра вернет <strong><code>EAGAIN</code></strong> или <strong><code>EWOULDBLOCK</code></strong>, и <code>netpoller</code> временно усыпит горутину до освобождения очереди.</li>
+</ul>
 <h3 id="prakticheskiy-primer-vysokonagruzhennyy-udp-server-na-go">Практический пример: Высоконагруженный UDP-сервер на Go</h3>
 <p>Напишем эталонный пример UDP-сервера с настройкой буферов и правильной обработкой ошибок:</p>
 
@@ -657,14 +669,14 @@ func main() {
 <p>Казалось бы, зачем добровольно отказываться от надежности TCP? Существует четыре фундаментальных сценария, где UDP превосходит TCP на голову:</p>
 <ol>
 <li><strong>Критическая задержка и чувствительность к времени (Real-Time Systems):</strong><br />
-   Отсутствие трехстороннего рукопожатия (3-way handshake) и контроля перегрузки устраняет стартовую паузу. Для создания тысяч коротких взаимодействий в секунду вызов <code>net.Dial</code> для UDP в Go отрабатывает моментально.<br />
-   Более того, в видеостриминге, голосовой связи (VoIP, SIP) и сетевых играх устаревший кадр не имеет никакой ценности. Если пакет с координатами игрока на 12-м кадре потерялся, незачем тормозить весь рендеринг и ждать его повторной отправки (Head-of-Line Blocking в TCP) — к моменту прихода запоздалого пакета игра уже отрисовывает 15-й кадр!</li>
+    Отсутствие трехстороннего рукопожатия (3-way handshake) и контроля перегрузки устраняет стартовую паузу. Для создания тысяч коротких взаимодействий в секунду вызов <code>net.Dial</code> для UDP в Go отрабатывает моментально.<br />
+    Более того, в видеостриминге, голосовой связи (VoIP, SIP) и сетевых играх устаревший кадр не имеет никакой ценности. Если пакет с координатами игрока на 12-м кадре потерялся, незачем тормозить весь рендеринг и ждать его повторной отправки (Head-of-Line Blocking в TCP) — к моменту прихода запоздалого пакета игра уже отрисовывает 15-й кадр!</li>
 <li><strong>Групповая рассылка (Broadcast и Multicast):</strong><br />
-   TCP физически не способен работать более чем с двумя узлами (он строго Point-to-Point). UDP поддерживает широковещательную рассылку в локальной сети на адрес <code>255.255.255.255</code> (<strong>Broadcast</strong>) и многоадресную рассылку группе подписчиков в диапазоне <code>224.0.0.0/4</code> (<strong>Multicast</strong>). Это основа протоколов Service Discovery (mDNS, SSDP), протоколов маршрутизации и биржевых финансовых фидов рыночных данных (Market Data Feeds).</li>
+    TCP физически не способен работать более чем с двумя узлами (он строго Point-to-Point). UDP поддерживает широковещательную рассылку в локальной сети на адрес <code>255.255.255.255</code> (<strong>Broadcast</strong>) и многоадресную рассылку группе подписчиков в диапазоне <code>224.0.0.0/4</code> (<strong>Multicast</strong>). Это основа протоколов Service Discovery (mDNS, SSDP), протоколов маршрутизации и биржевых финансовых фидов рыночных данных (Market Data Feeds).</li>
 <li><strong>Короткие запросы вида «Вопрос — Ответ» (Idempotent Transactions):</strong><br />
-   Для отправки одного небольшого запроса и получения ответа (DNS, NTP, DHCP) открывать TCP-соединение — непозволительная роскошь: три пакета на handshake, два пакета на данные, четыре пакета на закрытие (итого 9 пакетов ради 1 полезного запроса!). UDP справляется ровно за 2 пакета: один запрос туда, один ответ обратно.</li>
+    Для отправки одного небольшого запроса и получения ответа (DNS, NTP, DHCP) открывать TCP-соединение — непозволительная роскошь: три пакета на handshake, два пакета на данные, четыре пакета на закрытие (итого 9 пакетов ради 1 полезного запроса!). UDP справляется ровно за 2 пакета: один запрос туда, один ответ обратно.</li>
 <li><strong>Построение специализированных протоколов нового поколения:</strong><br />
-   Такие протоколы, как <strong>QUIC</strong> (основа <strong>HTTP/3</strong>), <strong>DTLS</strong> (Datagram TLS), <strong>WireGuard</strong> и протоколы телеметрии (StatsD, Prometheus push-gateway) намеренно выбирают UDP в качестве транспортного фундамента. Они реализуют собственные механизмы шифрования, мультиплексирования потоков и восстановления потерь в пользовательском пространстве (<em>Userspace</em>), избегая окостенения стека ядра (<em>OS Ossification</em>).</li>
+    Такие протоколы, как <strong>QUIC</strong> (основа <strong>HTTP/3</strong>), <strong>DTLS</strong> (Datagram TLS), <strong>WireGuard</strong> и протоколы телеметрии (StatsD, Prometheus push-gateway) намеренно выбирают UDP в качестве транспортного фундамента. Они реализуют собственные механизмы шифрования, мультиплексирования потоков и восстановления потерь в пользовательском пространстве (<em>Userspace</em>), избегая окостенения стека ядра (<em>OS Ossification</em>).</li>
 </ol>
 <hr />
 
@@ -677,9 +689,11 @@ func main() {
     <h3>1. Переполнение буфера и «тихая смерть» пакетов</h3>
 <p>Если ваше Go-приложение на мгновение заблокировалось (например, долгая пауза Stop-the-World сборщика мусора или занятость пула воркеров) и не успело вызвать <code>ReadFrom</code>, системный буфер приема ядра <strong><code>SO_RCVBUF</code></strong> мгновенно переполнится.  </p>
 <p>В отличие от TCP, который в такой ситуации шлет нулевое окно (<code>rwnd = 0</code>) и принудительно останавливает отправителя, UDP <strong>молча выбрасывает вновь прибывшие пакеты в мусорную корзину</strong>. Ваша программа не получит ни ошибки, ни предупреждения!  </p>
-<p><strong>Как защититься:</strong><br />
-- Всегда увеличивайте буфер сокета через <code>conn.SetReadBuffer(size)</code> (например, <code>conn.SetReadBuffer(4 * 1024 * 1024)</code>) до начала первого вызова чтения.<br />
-- Мониторьте системные счетчики дропов пакетов в Linux через <code>netstat -su</code> (строка <code>receive buffer errors</code>) или <code>nstat</code> (счётчик <code>UdpRcvbufErrors</code>); команда <code>ss -u -a</code> показывает очереди сокетов, но не этот счётчик.</p>
+<p><strong>Как защититься:</strong></p>
+<ul>
+<li>Всегда увеличивайте буфер сокета через <code>conn.SetReadBuffer(size)</code> (например, <code>conn.SetReadBuffer(4 * 1024 * 1024)</code>) до начала первого вызова чтения.</li>
+<li>Мониторьте системные счетчики дропов пакетов в Linux через <code>netstat -su</code> (строка <code>receive buffer errors</code>) или <code>nstat</code> (счётчик <code>UdpRcvbufErrors</code>); команда <code>ss -u -a</code> показывает очереди сокетов, но не этот счётчик.</li>
+</ul>
 <h3>2. Размер MTU, флаг DF и фрагментация</h3>
 <p>UDP не фрагментирует данные прикладного уровня самостоятельно. Если размер вашей датаграммы превышает <strong>Path MTU</strong> (максимальный размер нефрагментируемого блока на пути следования), ядро будет вынуждено фрагментировать IP-пакет на уровне L3.  </p>
 <p>Если хотя бы один фрагмент из десяти потеряется в пути — весь IP-пакет будет отброшен приемником целиком! Более того, если в IP-заголовке установлен флаг <strong><code>DF</code></strong> (<em>Don't Fragment</em>), маршрутизатор с меньшим MTU просто уничтожит датаграмму и вернет сообщение ICMP <strong><code>Fragmentation needed</code></strong>.  </p>
@@ -701,19 +715,23 @@ $$\text{Payload}</em>{\text{IPv6}} \le 1500\text{ (MTU)} - 40\text{ (IP)} - 8\te
   <div class="callout-body">
     <p><strong>Вопрос:</strong> «UDP не гарантирует доставку и порядок. Как спроектировать надежный протокол поверх UDP?»<br />
 <strong>Ожидаемый ответ:</strong><br />
-«Чтобы построить надежность поверх UDP (по аналогии с тем, как это сделано в <strong>QUIC</strong> или <strong>DTLS</strong>), в заголовок прикладного уровня внедряются следующие компоненты:<br />
-1. <strong>Порядковые номера (Sequence Numbers):</strong> Для обнаружения дубликатов и восстановления правильного порядка сообщений на приемнике.<br />
-2. <strong>Подтверждения (ACK или NACK):</strong> Приемник сообщает отправителю об успешном получении пакетов (ACK) либо запрашивает конкретные утерянные пакеты (<strong>NACK</strong> — <em>Negative ACK</em>, что очень эффективно в реальном времени).<br />
-3. <strong>Таймауты и ретрансмиссия:</strong> Отправитель взводит таймер для каждого неподтвержденного пакета и переотправляет его при истечении времени.<br />
-4. <strong>Скользящее окно (Sliding Window) и Congestion Control:</strong> Чтобы не завалить сеть пакетами, реализуется механизм управления скоростью (например, адаптация BBR или Cubic в userspace).  </p>
+«Чтобы построить надежность поверх UDP (по аналогии с тем, как это сделано в <strong>QUIC</strong> или <strong>DTLS</strong>), в заголовок прикладного уровня внедряются следующие компоненты:</p>
+<ol>
+<li><strong>Порядковые номера (Sequence Numbers):</strong> Для обнаружения дубликатов и восстановления правильного порядка сообщений на приемнике.</li>
+<li><strong>Подтверждения (ACK или NACK):</strong> Приемник сообщает отправителю об успешном получении пакетов (ACK) либо запрашивает конкретные утерянные пакеты (<strong>NACK</strong> — <em>Negative ACK</em>, что очень эффективно в реальном времени).</li>
+<li><strong>Таймауты и ретрансмиссия:</strong> Отправитель взводит таймер для каждого неподтвержденного пакета и переотправляет его при истечении времени.</li>
+<li><strong>Скользящее окно (Sliding Window) и Congestion Control:</strong> Чтобы не завалить сеть пакетами, реализуется механизм управления скоростью (например, адаптация BBR или Cubic в userspace).  </li>
+</ol>
 <p>Ключевая прелесть построения надежности поверх UDP заключается в том, что мы берем только те гарантии, которые действительно нужны нашей задаче, избавляясь от жесткой блокировки очереди (Head-of-Line Blocking) TCP.»</p>
 <p><strong>Вопрос:</strong> «В чем фундаментальная разница между «подключённым» UDP-сокетом (<code>net.DialUDP</code>, системный <code>connect(2)</code>) и обычным TCP-соединением?»<br />
 <strong>Ожидаемый ответ:</strong><br />
-«Вызов <code>connect(2)</code> на UDP-сокете не инициирует сетевого трафика и не выполняет handshake. На уровне ядра Linux он лишь заполняет поля адреса назначения в структуре сокета (<code>sk_daddr</code> и <code>sk_dport</code>). Это переводит сокет в статус <em>connected</em>:<br />
-- Позволяет использовать системные вызовы <code>read(2)</code> / <code>write(2)</code> (в Go методы <code>Read()</code> и <code>Write()</code>) без передачи адреса в каждом пакете.<br />
-- Ядро фильтрует входящие датаграммы, отбрасывая пакеты от любых других хостов, кроме подключенного.<br />
-- Ядро кэширует маршрут в FIB, снижая накладные расходы CPU на отправку.<br />
-- Ядро передает сокету ошибки ICMP (например, <code>Port Unreachable</code>), генерируя системную ошибку <code>ECONNREFUSED</code>. В неподключенном UDP-сокете такие ICMP-сообщения молча игнорируются.»</p>
+«Вызов <code>connect(2)</code> на UDP-сокете не инициирует сетевого трафика и не выполняет handshake. На уровне ядра Linux он лишь заполняет поля адреса назначения в структуре сокета (<code>sk_daddr</code> и <code>sk_dport</code>). Это переводит сокет в статус <em>connected</em>:</p>
+<ul>
+<li>Позволяет использовать системные вызовы <code>read(2)</code> / <code>write(2)</code> (в Go методы <code>Read()</code> и <code>Write()</code>) без передачи адреса в каждом пакете.</li>
+<li>Ядро фильтрует входящие датаграммы, отбрасывая пакеты от любых других хостов, кроме подключенного.</li>
+<li>Ядро кэширует маршрут в FIB, снижая накладные расходы CPU на отправку.</li>
+<li>Ядро передает сокету ошибки ICMP (например, <code>Port Unreachable</code>), генерируя системную ошибку <code>ECONNREFUSED</code>. В неподключенном UDP-сокете такие ICMP-сообщения молча игнорируются.»</li>
+</ul>
   </div>
 </aside>
 

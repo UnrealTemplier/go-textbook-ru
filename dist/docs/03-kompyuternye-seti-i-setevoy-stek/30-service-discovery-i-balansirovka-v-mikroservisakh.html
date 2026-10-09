@@ -388,16 +388,20 @@ flowchart LR
 
 <ol>
 <li>
-<p><strong>Client-Side Discovery</strong>: Клиент сам опрашивает реестр (Consul, etcd, Kubernetes DNS) и выбирает бэкенд.<br />
-   * <em>Плюсы</em>: Полный контроль над алгоритмом, отсутствие единой точки отказа в маршрутизации, возможность кастомных стратегий (consistent hashing, locality-aware routing).<br />
-   * <em>Минусы</em>: Клиент должен знать протокол и уметь обрабатывать ошибки, усложняется код, дублирование логики между сервисами.<br />
-   * <em>В Go</em>: Прямой вызов <code>consul</code> или <code>etcd</code> API, кастомный <code>RoundTripper</code>, использование <code>net.Dialer</code> с кастомным <code>DialContext</code>.</p>
+<p><strong>Client-Side Discovery</strong>: Клиент сам опрашивает реестр (Consul, etcd, Kubernetes DNS) и выбирает бэкенд.</p>
+<ul>
+<li><em>Плюсы</em>: Полный контроль над алгоритмом, отсутствие единой точки отказа в маршрутизации, возможность кастомных стратегий (consistent hashing, locality-aware routing).</li>
+<li><em>Минусы</em>: Клиент должен знать протокол и уметь обрабатывать ошибки, усложняется код, дублирование логики между сервисами.</li>
+<li><em>В Go</em>: Прямой вызов <code>consul</code> или <code>etcd</code> API, кастомный <code>RoundTripper</code>, использование <code>net.Dialer</code> с кастомным <code>DialContext</code>.</li>
+</ul>
 </li>
 <li>
-<p><strong>Server-Side Discovery</strong>: Клиент обращается к виртуальному адресу (VIP), а балансировщик (L4/L7) маршрутизирует трафик.<br />
-   * <em>Плюсы</em>: Прозрачность для клиента, централизованное управление, легкое внедрение mTLS и rate limiting.<br />
-   * <em>Минусы</em>: Дополнительный сетевой hop, latency overhead, сложность отладки.<br />
-   * <em>В Go</em>: Работа через <a href="27-proksi-reverse-proxy-i-api-gateway.html" class="wikilink"><code>27. Прокси, Reverse Proxy и API Gateway</code></a> (Envoy, HAProxy, K8s Ingress). Клиент общается с <code>localhost:8080</code> (sidecar) или внешним VIP.</p>
+<p><strong>Server-Side Discovery</strong>: Клиент обращается к виртуальному адресу (VIP), а балансировщик (L4/L7) маршрутизирует трафик.</p>
+<ul>
+<li><em>Плюсы</em>: Прозрачность для клиента, централизованное управление, легкое внедрение mTLS и rate limiting.</li>
+<li><em>Минусы</em>: Дополнительный сетевой hop, latency overhead, сложность отладки.</li>
+<li><em>В Go</em>: Работа через <a href="27-proksi-reverse-proxy-i-api-gateway.html" class="wikilink"><code>27. Прокси, Reverse Proxy и API Gateway</code></a> (Envoy, HAProxy, K8s Ingress). Клиент общается с <code>localhost:8080</code> (sidecar) или внешним VIP.</li>
+</ul>
 </li>
 </ol>
 
@@ -456,11 +460,13 @@ func NewResolver() *net.Resolver {
 <hr />
 <h2 id="balansirovka-nagruzki-algoritmy-i-realizatsiya">Балансировка нагрузки: алгоритмы и реализация</h2>
 <p>В Go нет встроенного LB-модуля для списка бэкендов. Мы реализуем его через <code>net/http.RoundTripper</code> или кастомный <code>DialContext</code>.</p>
-<p>Основные алгоритмы:<br />
-* <strong>Round Robin</strong>: Простой, но уязвим к <code>cache stampede</code> и неравномерной загрузке.<br />
-* <strong>Least Connections</strong>: Требует метрик состояния, сложно реализовать в stateless-среде без sidecar.<br />
-* <strong>Consistent Hashing</strong>: Сохраняет аффинность сессий, критично для кэшей и очередей.<br />
-* <strong>Random + Weighted</strong>: Наивный, но эффективный при большом количестве инстансов (закон больших чисел).</p>
+<p>Основные алгоритмы:</p>
+<ul>
+<li><strong>Round Robin</strong>: Простой, но уязвим к <code>cache stampede</code> и неравномерной загрузке.</li>
+<li><strong>Least Connections</strong>: Требует метрик состояния, сложно реализовать в stateless-среде без sidecar.</li>
+<li><strong>Consistent Hashing</strong>: Сохраняет аффинность сессий, критично для кэшей и очередей.</li>
+<li><strong>Random + Weighted</strong>: Наивный, но эффективный при большом количестве инстансов (закон больших чисел).</li>
+</ul>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -633,19 +639,23 @@ sequenceDiagram
   </header>
   <div class="callout-body">
     <p><strong>DNS TTL vs пул соединений</strong>: DNS-имя резолвится только при установке нового соединения. Пока pooled-соединение живо, смена DNS-записи (даже с TTL 10 с) на него не влияет, а <code>IdleConnTimeout</code> (90 с у <code>DefaultTransport</code>) закрывает лишь простаивающие соединения. При деплое старые соединения могут вести на уже удалённый pod и давать ошибки <code>connection refused</code>/<code>broken pipe</code>.<br />
-<strong>Решение</strong>: <br />
-1. Не полагаться на соотношение <code>IdleConnTimeout</code> и DNS TTL: управляйте жизнью соединений явно (graceful shutdown с <code>Connection: close</code>/GOAWAY на сервере, клиентская балансировка).<br />
-2. Использовать <code>Transport.DialContext</code> с кастомным resolver, который форсирует re-resolution при <code>err == ErrConnectionClosed</code>.<br />
-3. В Kubernetes для клиентской балансировки использовать <code>Headless Service</code> (DNS отдаёт IP подов). Поле <code>publishNotReadyAddresses: true</code> для этого не нужно: оно публикует <em>неготовые</em> адреса (обычно нужно для peer discovery у StatefulSet) и как совет по балансировке вредно.</p>
+<strong>Решение</strong>: </p>
+<ol>
+<li>Не полагаться на соотношение <code>IdleConnTimeout</code> и DNS TTL: управляйте жизнью соединений явно (graceful shutdown с <code>Connection: close</code>/GOAWAY на сервере, клиентская балансировка).</li>
+<li>Использовать <code>Transport.DialContext</code> с кастомным resolver, который форсирует re-resolution при <code>err == ErrConnectionClosed</code>.</li>
+<li>В Kubernetes для клиентской балансировки использовать <code>Headless Service</code> (DNS отдаёт IP подов). Поле <code>publishNotReadyAddresses: true</code> для этого не нужно: оно публикует <em>неготовые</em> адреса (обычно нужно для peer discovery у StatefulSet) и как совет по балансировке вредно.</li>
+</ol>
   </div>
 </aside>
 
 
-<p>Механика работы <code>Transport</code>:<br />
-1. При запросе ищется свободный <code>net.Conn</code> в пуле (<code>idleConn</code>).<br />
-2. Если нет — создается новое через <code>DialContext</code>.<br />
-3. Соединение регистрируется в <code>netpoll</code> для асинхронного чтения/записи.<br />
-4. При <code>IdleConnTimeout</code> или <code>MaxIdleConns</code> соединение закрывается через <code>conn.Close()</code>, что освобождает FD и кэш-линии.</p>
+<p>Механика работы <code>Transport</code>:</p>
+<ol>
+<li>При запросе ищется свободный <code>net.Conn</code> в пуле (<code>idleConn</code>).</li>
+<li>Если нет — создается новое через <code>DialContext</code>.</li>
+<li>Соединение регистрируется в <code>netpoll</code> для асинхронного чтения/записи.</li>
+<li>При <code>IdleConnTimeout</code> или <code>MaxIdleConns</code> соединение закрывается через <code>conn.Close()</code>, что освобождает FD и кэш-линии.</li>
+</ol>
 <hr />
 <h2 id="itog">Итог</h2>
 <ol>

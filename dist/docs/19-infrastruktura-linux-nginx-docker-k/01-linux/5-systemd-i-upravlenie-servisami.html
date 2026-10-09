@@ -442,11 +442,13 @@ WantedBy=multi-user.target
 <hr />
 <h2 id="3-typenotify-idealnyy-graceful-startup-bez-poteri-zaprosov">3. Type=notify: Идеальный Graceful Startup без потери запросов</h2>
 <p>По умолчанию Systemd использует <code>Type=simple</code>. В этом режиме Systemd считает сервис готовым сразу после того, как родительский процесс выполнил системные вызовы <code>fork()</code> и <code>exec()</code>.</p>
-<p>Однако реальному Go-бэкенду требуется время на прогрев:<br />
-* Чтение и валидация конфигурации.<br />
-* Инициализация пула соединений с PostgreSQL или Redis.<br />
-* Применение миграций схемы данных.<br />
-* Прогрев внутренних in-memory кэшей.</p>
+<p>Однако реальному Go-бэкенду требуется время на прогрев:</p>
+<ul>
+<li>Чтение и валидация конфигурации.</li>
+<li>Инициализация пула соединений с PostgreSQL или Redis.</li>
+<li>Применение миграций схемы данных.</li>
+<li>Прогрев внутренних in-memory кэшей.</li>
+</ul>
 <p>Если балансировщик нагрузки (nginx, HAProxy) или зависимые сервисы начнут направлять трафик сразу после перехода сервиса в статус <code>active (running)</code>, клиенты получат пачку ошибок <code>502 Bad Gateway</code> или <code>Connection Refused</code>.</p>
 <p>Решение — <code>Type=notify</code>. При таком подходе Systemd переводит юнит в активный статус <strong>только после явного уведомления от самого Go-приложения</strong>. Связь осуществляется через UNIX-сокет датаграмм, путь к которому Systemd передает в переменной окружения <code>NOTIFY_SOCKET</code> (или <code>NotificationSocket=/run/myapp-notify.sock</code>).</p>
 <p>Для взаимодействия с Systemd используется официальная библиотека от создателей Systemd (RedHat) — <code>github.com/coreos/go-systemd/v22/daemon</code>:</p>
@@ -530,11 +532,13 @@ func main() {
 <h2 id="4-systemd-socket-activation-nulevoy-prostoy-zero-downtime">4. Systemd Socket Activation: Нулевой простой (Zero-downtime)</h2>
 <p>Одна из самых мощных концепций Unix, восходящая к классическому демону <code>inetd</code>, — <strong>активация по сокету (Socket Activation)</strong>.</p>
 <p>В стандартной модели приложение само вызывает <code>socket()</code>, <code>bind()</code> и <code>listen()</code>. В модели Socket Activation сетевой сокет открывает сам <strong>Systemd</strong> (PID 1) на этапе загрузки операционной системы. </p>
-<p>Когда внешний клиент инициирует TCP-соединение (отправляет пакет <code>TCP SYN</code>):<br />
-1. Ядро Linux помещает входящее соединение в очередь ожидания сокета (<code>SYN backlog</code>), удерживаемого Systemd.<br />
-2. Systemd мгновенно запускает Go-бинарник.<br />
-3. Systemd передает открытый файловый дескриптор сокета новому процессу по наследству через переменные окружения <code>LISTEN_PID</code> и <code>LISTEN_FDS</code>.<br />
-4. Go-рантайм через пакет <code>net</code> оборачивает полученный файловый дескриптор в <code>net.Listener</code> и начинает обработку запросов.</p>
+<p>Когда внешний клиент инициирует TCP-соединение (отправляет пакет <code>TCP SYN</code>):</p>
+<ol>
+<li>Ядро Linux помещает входящее соединение в очередь ожидания сокета (<code>SYN backlog</code>), удерживаемого Systemd.</li>
+<li>Systemd мгновенно запускает Go-бинарник.</li>
+<li>Systemd передает открытый файловый дескриптор сокета новому процессу по наследству через переменные окружения <code>LISTEN_PID</code> и <code>LISTEN_FDS</code>.</li>
+<li>Go-рантайм через пакет <code>net</code> оборачивает полученный файловый дескриптор в <code>net.Listener</code> и начинает обработку запросов.</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">

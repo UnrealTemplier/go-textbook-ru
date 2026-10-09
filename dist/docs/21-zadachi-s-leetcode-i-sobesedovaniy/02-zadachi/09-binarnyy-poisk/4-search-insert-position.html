@@ -659,10 +659,12 @@
 <hr />
 <h2 id="arkhitektura-invariant-lower-bound-protiv-exact-match">Архитектура: Инвариант Lower Bound против Exact Match</h2>
 <p>В классическом поиске точного совпадения (Exact Match) мы использовали закрытый интервал <code>[0, len(nums)-1]</code> и три ветки: <code>&lt; target</code>, <code>&gt; target</code> и <code>== target</code>. При совпадении мы немедленно завершали работу (<code>return mid</code>).</p>
-<p>В поиске позиции вставки (Lower Bound) архитектура меняется:<br />
-1. <strong>Мы ищем первый индекс $i$, для которого <code>nums[i] &gt;= target</code>:</strong> Если точный элемент найден, мы не имеем права выходить досрочно, если массив может содержать дубликаты — вставка обязана происходить перед первым дубликатом (требование стабильности порядка).<br />
-2. <strong>Полуинтервал <code>[0, len(nums))</code>:</strong> Верхняя граница <code>right</code> инициализируется значением <code>len(nums)</code>, а не <code>len(nums) - 1</code>. Если <code>target</code> больше любого элемента в срезе, его законная позиция для вставки — в самый конец, то есть на индекс <code>len(nums)</code>.<br />
-3. <strong>Безусловная сходимость:</strong> Условие цикла <code>left &lt; right</code> гарантирует, что полуинтервал схлопывается в единственную точку <code>left == right</code>, которая и является искомой позицией.</p>
+<p>В поиске позиции вставки (Lower Bound) архитектура меняется:</p>
+<ol>
+<li><strong>Мы ищем первый индекс $i$, для которого <code>nums[i] &gt;= target</code>:</strong> Если точный элемент найден, мы не имеем права выходить досрочно, если массив может содержать дубликаты — вставка обязана происходить перед первым дубликатом (требование стабильности порядка).</li>
+<li><strong>Полуинтервал <code>[0, len(nums))</code>:</strong> Верхняя граница <code>right</code> инициализируется значением <code>len(nums)</code>, а не <code>len(nums) - 1</code>. Если <code>target</code> больше любого элемента в срезе, его законная позиция для вставки — в самый конец, то есть на индекс <code>len(nums)</code>.</li>
+<li><strong>Безусловная сходимость:</strong> Условие цикла <code>left &lt; right</code> гарантирует, что полуинтервал схлопывается в единственную точку <code>left == right</code>, которая и является искомой позицией.</li>
+</ol>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -744,14 +746,18 @@ func searchInsert(nums []int, target int) int {
 <hr />
 <h2 id="vzglyad-pod-kapot-mechanical-sympathy">Взгляд под капот: Mechanical Sympathy</h2>
 <h3 id="1-predskazuemost-vetvleniy-branch-prediction">1. Предсказуемость ветвлений (Branch Prediction)</h3>
-<p>В цикле <code>for left &lt; right</code> содержится всего <strong>одно бинарное условие</strong> (<code>if ... else ...</code>), в отличие от классического поиска с тремя исходами (<code>&lt;</code>, <code>&gt;</code>, <code>==</code>).<br />
-- Для аппаратного блока Branch Predictor в процессорах AMD Zen или Intel Core предсказание исхода двух ветвей на монотонных данных требует минимальных ресурсов.<br />
-- Поскольку цикл не содержит досрочного выхода <code>return mid</code>, число итераций детерминировано и составляет строго $\lceil \log_2 (N+1) \rceil$. Это позволяет суперскалярному конвейеру процессора непрерывно спекулятивно вычислять инструкции без сбросов конвейера (Pipeline Flushes).</p>
+<p>В цикле <code>for left &lt; right</code> содержится всего <strong>одно бинарное условие</strong> (<code>if ... else ...</code>), в отличие от классического поиска с тремя исходами (<code>&lt;</code>, <code>&gt;</code>, <code>==</code>).</p>
+<ul>
+<li>Для аппаратного блока Branch Predictor в процессорах AMD Zen или Intel Core предсказание исхода двух ветвей на монотонных данных требует минимальных ресурсов.</li>
+<li>Поскольку цикл не содержит досрочного выхода <code>return mid</code>, число итераций детерминировано и составляет строго $\lceil \log_2 (N+1) \rceil$. Это позволяет суперскалярному конвейеру процессора непрерывно спекулятивно вычислять инструкции без сбросов конвейера (Pipeline Flushes).</li>
+</ul>
 <h3 id="2-dokazannaya-bezopasnost-bounds-check-bce">2. Доказанная безопасность Bounds Check (BCE)</h3>
-<p>Возникает резонный вопрос: если <code>right = len(nums)</code>, не вызовет ли обращение <code>nums[mid]</code> панику рантайма <code>runtime.panicIndex</code>?<br />
-- Формула <code>mid := int(uint(left + right) &gt;&gt; 1)</code> математически производит округление вниз.<br />
-- Даже в худшем сценарии, когда <code>left = len(nums) - 1</code> и <code>right = len(nums)</code>, их полусумма дает <code>mid = len(nums) - 1</code>.<br />
-- Значение <code>mid</code> <strong>строго меньше</strong> <code>len(nums)</code> на любой итерации цикла. Компилятор Go (<code>cmd/compile</code>) при включенной оптимизации доказывает данный инвариант и устраняет машинные инструкции проверки выхода за границы (<code>CMPQ</code> + <code>JAE runtime.panicIndexOutBounds</code>).</p>
+<p>Возникает резонный вопрос: если <code>right = len(nums)</code>, не вызовет ли обращение <code>nums[mid]</code> панику рантайма <code>runtime.panicIndex</code>?</p>
+<ul>
+<li>Формула <code>mid := int(uint(left + right) &gt;&gt; 1)</code> математически производит округление вниз.</li>
+<li>Даже в худшем сценарии, когда <code>left = len(nums) - 1</code> и <code>right = len(nums)</code>, их полусумма дает <code>mid = len(nums) - 1</code>.</li>
+<li>Значение <code>mid</code> <strong>строго меньше</strong> <code>len(nums)</code> на любой итерации цикла. Компилятор Go (<code>cmd/compile</code>) при включенной оптимизации доказывает данный инвариант и устраняет машинные инструкции проверки выхода за границы (<code>CMPQ</code> + <code>JAE runtime.panicIndexOutBounds</code>).</li>
+</ul>
 <hr />
 <h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
 
@@ -828,10 +834,12 @@ return left // Почему именно left, а не right или mid?
 
 <hr />
 <h2 id="rezyume">Резюме</h2>
-<p><strong>Search Insert Position</strong> демонстрирует мощь полуинтервального подхода <code>[left, right)</code>:<br />
-- <code>right = len(nums)</code> естественным образом включает индекс вставки за пределы массива.<br />
-- <code>nums[mid] &gt;= target</code> сжимает правую границу без потери кандидата.<br />
-- Никаких скрытых аллокаций памяти — вычисления целиком происходят в регистрах процессора.</p>
+<p><strong>Search Insert Position</strong> демонстрирует мощь полуинтервального подхода <code>[left, right)</code>:</p>
+<ul>
+<li><code>right = len(nums)</code> естественным образом включает индекс вставки за пределы массива.</li>
+<li><code>nums[mid] &gt;= target</code> сжимает правую границу без потери кандидата.</li>
+<li>Никаких скрытых аллокаций памяти — вычисления целиком происходят в регистрах процессора.</li>
+</ul>
 <p>В следующей задаче мы абстрагируемся от физического массива в оперативной памяти и применим Lower Bound к динамическому интерфейсу поиска дефектов: <a href="5-first-bad-version.html" class="wikilink">5. First Bad Version</a>.</p>
           </div>
 

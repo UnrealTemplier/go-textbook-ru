@@ -587,9 +587,11 @@ func main() {
   </header>
   <div class="callout-body">
     <p><strong>Вопрос:</strong> В чем фундаментальная разница между системными параметрами <code>somaxconn</code> и <code>tcp_max_syn_backlog</code>?</p>
-<p><strong>Ответ:</strong> <br />
-1. <code>net.ipv4.tcp_max_syn_backlog</code> — это лимит для <strong>SYN Queue</strong> (очереди полуоткрытых соединений, ожидающих завершения трехэтапного рукопожатия, статус <code>SYN_RECV</code>).<br />
-2. <code>net.core.somaxconn</code> — это общесистемный лимит для <strong>Accept Queue</strong> (очереди полностью установленных соединений в статусе <code>ESTABLISHED</code>, которые ожидают, пока приложение заберет их через системный вызов <code>accept()</code>).</p>
+<p><strong>Ответ:</strong> </p>
+<ol>
+<li><code>net.ipv4.tcp_max_syn_backlog</code> — это лимит для <strong>SYN Queue</strong> (очереди полуоткрытых соединений, ожидающих завершения трехэтапного рукопожатия, статус <code>SYN_RECV</code>).</li>
+<li><code>net.core.somaxconn</code> — это общесистемный лимит для <strong>Accept Queue</strong> (очереди полностью установленных соединений в статусе <code>ESTABLISHED</code>, которые ожидают, пока приложение заберет их через системный вызов <code>accept()</code>).</li>
+</ol>
 <p>При классической DDoS-атаке типа SYN-flood первой переполняется именно SYN Queue. Если же на сервер обрушился легитимный шквал пользователей (Flash Mob), а приложение заблокировалось (например, завис сборщик мусора Go или медленно отвечает база данных), то SYN-рукопожатия завершаются успешно, но мгновенно переполняется Accept Queue. Грамотная настройка высоконагруженного сервера требует согласованного увеличения обоих параметров!</p>
   </div>
 </aside>
@@ -628,17 +630,21 @@ sysctl -w net.ipv4.tcp_abort_on_overflow=0
 <h3 id="monitoring-ocheredey-v-realnom-vremeni">Мониторинг очередей в реальном времени:</h3>
 <ol>
 <li><strong>Команда <code>ss -lnt</code> (Socket Statistics):</strong><br />
-   Для слушающих сокетов (<code>State = LISTEN</code>) колонки утилиты <code>ss</code> меняют свое значение:<br />
-   - <code>Send-Q</code> — максимальный разрешенный размер Accept Queue (значение <code>backlog</code>).<br />
-   - <code>Recv-Q</code> — текущее количество соединений, находящихся в Accept Queue прямо сейчас.<br />
+    Для слушающих сокетов (<code>State = LISTEN</code>) колонки утилиты <code>ss</code> меняют свое значение:<ul>
+<li><code>Send-Q</code> — максимальный разрешенный размер Accept Queue (значение <code>backlog</code>).</li>
+<li><code>Recv-Q</code> — текущее количество соединений, находящихся в Accept Queue прямо сейчас.<br />
 <em>Если вы видите, что <code>Recv-Q</code> приближается к <code>Send-Q</code> — ваш Go-сервер захлебывается и не успевает вызывать <code>accept()</code>!</em></li>
+</ul>
+</li>
 <li><strong>Команда <code>netstat -s | grep -i listen</code> (или <code>netstat -s | grep listen</code>):</strong><br />
-   Показывает кумулятивные ядерные счетчики переполнений:<br />
-   - <code>listen drops</code> — количество сброшенных соединений.<br />
-   - <code>listen overflows</code> — количество переполнений Accept Queue.<br />
+    Показывает кумулятивные ядерные счетчики переполнений:<ul>
+<li><code>listen drops</code> — количество сброшенных соединений.</li>
+<li><code>listen overflows</code> — количество переполнений Accept Queue.<br />
 <em>Если счетчик <code>listen overflows &gt; 0</code> постоянно растет — ваша инфраструктура теряет живых клиентов!</em></li>
+</ul>
+</li>
 <li><strong>Трассировка через <code>perf</code>:</strong><br />
-   Команда <code>perf trace -e accept,connect</code> позволяет измерить точную задержку между моментом завершения рукопожатия в ядре и вызовом <code>accept()</code> в рантайме Go.</li>
+    Команда <code>perf trace -e accept,connect</code> позволяет измерить точную задержку между моментом завершения рукопожатия в ядре и вызовом <code>accept()</code> в рантайме Go.</li>
 </ol>
 
 <aside class="callout callout-info" aria-label="Под капотом: Почему Go не выставляет somaxconn=65535 автоматически?">

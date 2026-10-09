@@ -827,26 +827,26 @@ func cacheActor(requests &lt;-chan Request) {
 <p>Если архитектурный выбор сделан с ошибкой, профилировщики Go мгновенно подсвечивают проблему:</p>
 <ul>
 <li><strong>Выбран Mutex, но система тормозит:</strong><br />
-  Снимите профиль мьютексов (<a href="../08-runtime-i-instrumenty/6-mutex-profile.html" class="wikilink">6. mutex profile</a>):<br />
+    Снимите профиль мьютексов (<a href="../08-runtime-i-instrumenty/6-mutex-profile.html" class="wikilink">6. mutex profile</a>):<br />
 <code>bash
   go test -mutexprofile=mutex.out</code><br />
-  Если граф вызовов показывает, что горутины проводят в ожидании замка секунды суммарного времени — критическая секция перегружена. Решения: сократить время под замком, перейти на шардирование мап (Sharded Map) или применить <code>sync.RWMutex</code>.</li>
+    Если граф вызовов показывает, что горутины проводят в ожидании замка секунды суммарного времени — критическая секция перегружена. Решения: сократить время под замком, перейти на шардирование мап (Sharded Map) или применить <code>sync.RWMutex</code>.</li>
 <li><strong>Выбран Channel, но throughput деградирует:</strong><br />
-  Снимите профиль блокировок (<code>block profile</code>, <a href="../08-runtime-i-instrumenty/5-block-profile.html" class="wikilink">5. block profile</a>):<br />
+    Снимите профиль блокировок (<code>block profile</code>, <a href="../08-runtime-i-instrumenty/5-block-profile.html" class="wikilink">5. block profile</a>):<br />
 <code>bash
   go test -blockprofile=block.out</code><br />
-  Если в топе находятся функции <code>runtime.chansend</code> и <code>runtime.chanrecv</code>, горутины массово простаивают в ожидании партнеров.</li>
+    Если в топе находятся функции <code>runtime.chansend</code> и <code>runtime.chanrecv</code>, горутины массово простаивают в ожидании партнеров.</li>
 <li><strong>Трассировка планировщика:</strong><br />
-  Команда <code>GODEBUG=schedtrace=1000</code> покажет скопление тысяч горутин в статусе <code>_Gwaiting</code>. Запустите <code>go tool trace</code> (<a href="../08-runtime-i-instrumenty/3-execution-tracer.html" class="wikilink">3. execution tracer</a>), чтобы визуализировать цепочки зависимостей между каналами.</li>
+    Команда <code>GODEBUG=schedtrace=1000</code> покажет скопление тысяч горутин в статусе <code>_Gwaiting</code>. Запустите <code>go tool trace</code> (<a href="../08-runtime-i-instrumenty/3-execution-tracer.html" class="wikilink">3. execution tracer</a>), чтобы визуализировать цепочки зависимостей между каналами.</li>
 </ul>
 <hr />
 <h2 id="mechanical-sympathy-mutex-channel-i-zhelezo">Mechanical Sympathy: Mutex, Channel и «железо»</h2>
 <p>С точки зрения кремниевой архитектуры процессора разница между этими двумя инструментами фундаментальна:</p>
 <ol>
 <li><strong>Физика Mutex:</strong><br />
-   Поле <code>state</code> занимает всего 4 байта памяти. Конкуренция за мьютекс вызывает перемещение 64-байтовой строки кэша между ядрами (<strong>Cache Line Bouncing</strong>). Линия переходит в статус <code>Modified</code> по протоколу MESI на одном ядре, инвалидируя кэш на всех остальных ядрах. Если критическая секция коротка, данные остаются в кэше L1d, обеспечивая колоссальную скорость вычислений. Однако, если рядом с <code>sync.Mutex</code> в той же строке кэша лежат часто изменяемые поля структуры, возникает деструктивный эффект <strong>False Sharing</strong> (<a href="8-false-sharing.html" class="wikilink">8. False sharing</a>).</li>
+    Поле <code>state</code> занимает всего 4 байта памяти. Конкуренция за мьютекс вызывает перемещение 64-байтовой строки кэша между ядрами (<strong>Cache Line Bouncing</strong>). Линия переходит в статус <code>Modified</code> по протоколу MESI на одном ядре, инвалидируя кэш на всех остальных ядрах. Если критическая секция коротка, данные остаются в кэше L1d, обеспечивая колоссальную скорость вычислений. Однако, если рядом с <code>sync.Mutex</code> в той же строке кэша лежат часто изменяемые поля структуры, возникает деструктивный эффект <strong>False Sharing</strong> (<a href="8-false-sharing.html" class="wikilink">8. False sharing</a>).</li>
 <li><strong>Физика Channel:</strong><br />
-   Канал <code>hchan</code> занимает около 96 байт в куче (плюс буфер). Это сразу несколько кэш-линий. При отправке данных ядро процессора неизбежно выполняет копирование памяти: сначала в кольцевой буфер канала, затем из буфера в стек получателя. Это создает дополнительный трафик на шине памяти, но имеет скрытое достоинство: данные принудительно доставляются в локальный стек получателя, прогревая его кэш перед стартом обработки.</li>
+    Канал <code>hchan</code> занимает около 96 байт в куче (плюс буфер). Это сразу несколько кэш-линий. При отправке данных ядро процессора неизбежно выполняет копирование памяти: сначала в кольцевой буфер канала, затем из буфера в стек получателя. Это создает дополнительный трафик на шине памяти, но имеет скрытое достоинство: данные принудительно доставляются в локальный стек получателя, прогревая его кэш перед стартом обработки.</li>
 </ol>
 <hr />
 <h2 id="itog-prakticheskoe-rukovodstvo">Итог: практическое руководство</h2>

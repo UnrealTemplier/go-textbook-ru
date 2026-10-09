@@ -435,9 +435,11 @@ flowchart TD
 </figure>
 
 
-<p>Delve функционирует через стандартный системный интерфейс ядра:<br />
-* В <strong>Linux</strong> он использует системный вызов <code>ptrace</code> (<code>PTRACE_ATTACH</code>, <code>PTRACE_PEEKDATA</code>, <code>PTRACE_POKEDATA</code>).<br />
-* В <strong>macOS</strong> он взаимодействует через системный API <code>proc_*</code> и Mach-порты ядра.</p>
+<p>Delve функционирует через стандартный системный интерфейс ядра:</p>
+<ul>
+<li>В <strong>Linux</strong> он использует системный вызов <code>ptrace</code> (<code>PTRACE_ATTACH</code>, <code>PTRACE_PEEKDATA</code>, <code>PTRACE_POKEDATA</code>).</li>
+<li>В <strong>macOS</strong> он взаимодействует через системный API <code>proc_*</code> и Mach-порты ядра.</li>
+</ul>
 <p>Отладчик перехватывает сигналы ядра, останавливает выполнение инструкций процессора, считывает память процесса и сопоставляет машинные адреса с исходным кодом, используя стандартную отладочную информацию <strong>DWARF</strong> (версий 4 и 5). Компилятор Go автоматически встраивает DWARF-таблицы в результирующий бинарный файл, если сборка не производилась с флагами усечения отладочных символов <code>-ldflags="-s -w"</code>.</p>
 <h3 id="fundamentalnye-sledstviya-arkhitektury">Фундаментальные следствия архитектуры:</h3>
 <ol>
@@ -615,9 +617,11 @@ dlv debug --headless --listen=:2345 --api-version=2 ./main.go
 </code></pre>
 </div>
 
-<p>К запущенному отладочному серверу можно подключиться снаружи:<br />
-1. Из терминала другой машины: <code>dlv connect localhost:2345</code>.<br />
-2. Из графической среды IDE (VSCode или GoLand), настроив профиль удаленной отладки (Remote Debug).</p>
+<p>К запущенному отладочному серверу можно подключиться снаружи:</p>
+<ol>
+<li>Из терминала другой машины: <code>dlv connect localhost:2345</code>.</li>
+<li>Из графической среды IDE (VSCode или GoLand), настроив профиль удаленной отладки (Remote Debug).</li>
+</ol>
 <p>В Kubernetes этот подход реализуется через проброс портов:</p>
 
 <div class="code-block" data-lang="bash">
@@ -723,32 +727,42 @@ flowchart LR
 <hr />
 <h2 id="tipichnye-stsenarii-ispolzovaniya-delve">Типичные сценарии использования Delve</h2>
 <h3 id="1-rassledovanie-paniki">1. Расследование паники</h3>
-<p>Программа спорадически падает с сообщением <code>panic: runtime error: invalid memory address or nil pointer dereference</code>. Стек указывает на функцию <code>processData</code>. <br />
-* Запускаем Delve, ставим брейкпоинт: <code>break processData</code>.<br />
-* Воспроизводим запрос, шагаем по строкам (<code>next</code>).<br />
-* Инспектируем указатели через <code>p order.Customer</code> и проверяем кэш.<br />
-* Находим, что <code>config.Cache</code> равен <code>nil</code> при определенных условиях ветвления.</p>
+<p>Программа спорадически падает с сообщением <code>panic: runtime error: invalid memory address or nil pointer dereference</code>. Стек указывает на функцию <code>processData</code>. </p>
+<ul>
+<li>Запускаем Delve, ставим брейкпоинт: <code>break processData</code>.</li>
+<li>Воспроизводим запрос, шагаем по строкам (<code>next</code>).</li>
+<li>Инспектируем указатели через <code>p order.Customer</code> и проверяем кэш.</li>
+<li>Находим, что <code>config.Cache</code> равен <code>nil</code> при определенных условиях ветвления.</li>
+</ul>
 <h3 id="2-dedlok-gorutin">2. Дедлок горутин</h3>
-<p>Тесты зависают без завершения. <br />
-* Запускаем тесты под отладчиком: <code>dlv test</code>.<br />
-* В момент зависания нажимаем комбинацию <code>Ctrl+C</code>, перехватывая управление в REPL.<br />
-* Команда <code>goroutines</code> показывает, что горутина 7 застряла в ожидании канала <code>ch1</code>, а горутина 9 — в ожидании <code>ch2</code>.<br />
-* Переключаясь между <code>goroutine 7</code> и <code>goroutine 9</code>, анализируем их стеки вызовов (<code>stack</code>) и находим место, где порядок блокировок был нарушен.</p>
+<p>Тесты зависают без завершения. </p>
+<ul>
+<li>Запускаем тесты под отладчиком: <code>dlv test</code>.</li>
+<li>В момент зависания нажимаем комбинацию <code>Ctrl+C</code>, перехватывая управление в REPL.</li>
+<li>Команда <code>goroutines</code> показывает, что горутина 7 застряла в ожидании канала <code>ch1</code>, а горутина 9 — в ожидании <code>ch2</code>.</li>
+<li>Переключаясь между <code>goroutine 7</code> и <code>goroutine 9</code>, анализируем их стеки вызовов (<code>stack</code>) и находим место, где порядок блокировок был нарушен.</li>
+</ul>
 <h3 id="3-pochemu-vozvrashchaetsya-ne-to-znachenie">3. Почему возвращается не то значение</h3>
-<p>Функция иногда возвращает пустую строку или некорректное значение.<br />
-* Устанавливаем точку останова: <code>break getValue</code>.<br />
-* Навешиваем условие: <code>condition 1 len(result) == 0</code>.<br />
-* Когда брейкпоинт срабатывает, проходим по стеку (<code>stack</code>), смотрим, откуда пришел вызов с пустым результатом.</p>
+<p>Функция иногда возвращает пустую строку или некорректное значение.</p>
+<ul>
+<li>Устанавливаем точку останова: <code>break getValue</code>.</li>
+<li>Навешиваем условие: <code>condition 1 len(result) == 0</code>.</li>
+<li>Когда брейкпоинт срабатывает, проходим по стеку (<code>stack</code>), смотрим, откуда пришел вызов с пустым результатом.</li>
+</ul>
 <h3 id="4-analiz-core-dumpa">4. Анализ core dump'а</h3>
-<p>Ночью упал production-сервер. Core dump сохранен.<br />
-* Открываем <code>dlv core ./my_binary core.dump</code>.<br />
-* Переключаемся на упавшую горутину, видим панику из-за <code>send on closed channel</code>.<br />
-* Стек показывает, что канал был закрыт в блоке <code>defer</code>, но горутина-отправитель еще работала. Находим гонку по управлению жизненным циклом канала.</p>
+<p>Ночью упал production-сервер. Core dump сохранен.</p>
+<ul>
+<li>Открываем <code>dlv core ./my_binary core.dump</code>.</li>
+<li>Переключаемся на упавшую горутину, видим панику из-за <code>send on closed channel</code>.</li>
+<li>Стек показывает, что канал был закрыт в блоке <code>defer</code>, но горутина-отправитель еще работала. Находим гонку по управлению жизненным циклом канала.</li>
+</ul>
 <hr />
 <h2 id="integratsiya-s-sovremennymi-ide-i-cicd">Интеграция с современными IDE и CI/CD</h2>
-<p>Хотя консольный интерфейс Delve самодостаточен, современные редакторы предоставляют удобные графические оболочки:<br />
-* <strong>VSCode:</strong> Официальный плагин Go интегрирует Delve «из коробки». Точки останова выставляются кликом мыши, запуск отладки по клавише <code>F5</code>. Конфигурация <code>.vscode/launch.json</code> позволяет легко настроить удаленную отладку через headless port.<br />
-* <strong>GoLand (JetBrains):</strong> Глубокая интеграция с визуализацией дерева горутин, поддержкой условных брейкпоинтов и инспекцией структур в реальном времени.</p>
+<p>Хотя консольный интерфейс Delve самодостаточен, современные редакторы предоставляют удобные графические оболочки:</p>
+<ul>
+<li><strong>VSCode:</strong> Официальный плагин Go интегрирует Delve «из коробки». Точки останова выставляются кликом мыши, запуск отладки по клавише <code>F5</code>. Конфигурация <code>.vscode/launch.json</code> позволяет легко настроить удаленную отладку через headless port.</li>
+<li><strong>GoLand (JetBrains):</strong> Глубокая интеграция с визуализацией дерева горутин, поддержкой условных брейкпоинтов и инспекцией структур в реальном времени.</li>
+</ul>
 <p>В CI/CD Delve иногда используют для скриптовой автоматической диагностики нестабильных тестов (Flaky tests):</p>
 
 <div class="code-block" data-lang="bash">

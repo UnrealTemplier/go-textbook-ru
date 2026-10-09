@@ -474,10 +474,12 @@ flowchart LR
 </figure>
 
 
-<p>Правила работы Log Manager:<br />
-1. <strong>Неприкосновенность активного сегмента:</strong> Активный сегмент, в который в текущий момент поступают записи от продюсеров, <strong>никогда не удаляется</strong>, даже если его размер превышает <code>retention.bytes</code> или сообщения внутри него устарели по времени!<br />
-2. <strong>Проверка временных меток:</strong> Log Manager находит максимальный timestamp среди всех записей сегмента (хранящийся в заголовке <code>.timeindex</code>). Если <code>now - max_segment_timestamp &gt; retention.ms</code>, весь сегмент помечается кандидатом на удаление.<br />
-3. <strong>Системный вызов <code>unlink(2)</code>:</strong> Удаление закрытого сегмента — это тривиальный системный вызов ядра операционной системы <code>unlink(2)</code> (в Java — <code>File.delete()</code>), удаляющий тройку файлов: <code>.log</code>, <code>.index</code> и <code>.timeindex</code>. </p>
+<p>Правила работы Log Manager:</p>
+<ol>
+<li><strong>Неприкосновенность активного сегмента:</strong> Активный сегмент, в который в текущий момент поступают записи от продюсеров, <strong>никогда не удаляется</strong>, даже если его размер превышает <code>retention.bytes</code> или сообщения внутри него устарели по времени!</li>
+<li><strong>Проверка временных меток:</strong> Log Manager находит максимальный timestamp среди всех записей сегмента (хранящийся в заголовке <code>.timeindex</code>). Если <code>now - max_segment_timestamp &gt; retention.ms</code>, весь сегмент помечается кандидатом на удаление.</li>
+<li><strong>Системный вызов <code>unlink(2)</code>:</strong> Удаление закрытого сегмента — это тривиальный системный вызов ядра операционной системы <code>unlink(2)</code> (в Java — <code>File.delete()</code>), удаляющий тройку файлов: <code>.log</code>, <code>.index</code> и <code>.timeindex</code>. </li>
+</ol>
 
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
@@ -505,9 +507,11 @@ flowchart LR
 <hr />
 <h3 id="kak-rabotaet-log-cleaner-pod-kapotom">Как работает Log Cleaner под капотом</h3>
 <p>За процесс компактификации отвечает выделенный пул фоновых потоков брокера — <strong>Log Cleaner</strong>. </p>
-<p>Физическая партиция делится на две логические зоны:<br />
-- <strong>Чистая часть (Clean/Tail):</strong> Сегменты, которые уже прошли уплотнение. Здесь каждый ключ встречается ровно один раз.<br />
-- <strong>Грязная часть (Dirty/Head):</strong> Сегменты, в которые дописывались новые данные, и где присутствуют повторные записи одних и тех же ключей.</p>
+<p>Физическая партиция делится на две логические зоны:</p>
+<ul>
+<li><strong>Чистая часть (Clean/Tail):</strong> Сегменты, которые уже прошли уплотнение. Здесь каждый ключ встречается ровно один раз.</li>
+<li><strong>Грязная часть (Dirty/Head):</strong> Сегменты, в которые дописывались новые данные, и где присутствуют повторные записи одних и тех же ключей.</li>
+</ul>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -551,8 +555,8 @@ flowchart LR
 <p>Алгоритм работы Log Cleaner:</p>
 <ol>
 <li><strong>Выбор кандидата:</strong> Log Cleaner вычисляет соотношение «грязных» данных к общему размеру закрытых сегментов партиции:<br />
-   $$\text{Dirty Ratio} = \frac{\text{Bytes in Dirty Segments}}{\text{Bytes in Clean Segments} + \text{Bytes in Dirty Segments}}$$<br />
-   Очистка запускается только тогда, когда $\text{Dirty Ratio} \ge \textbf{min.cleanable.dirty.ratio}$ (по умолчанию 0.5, то есть 50% грязных данных). Если грязных данных мало, брокер откладывает работу, чтобы не расходовать драгоценные циклы дискового ввода-вывода на переписывание почти чистого лога.</li>
+    $$\text{Dirty Ratio} = \frac{\text{Bytes in Dirty Segments}}{\text{Bytes in Clean Segments} + \text{Bytes in Dirty Segments}}$$<br />
+    Очистка запускается только тогда, когда $\text{Dirty Ratio} \ge \textbf{min.cleanable.dirty.ratio}$ (по умолчанию 0.5, то есть 50% грязных данных). Если грязных данных мало, брокер откладывает работу, чтобы не расходовать драгоценные циклы дискового ввода-вывода на переписывание почти чистого лога.</li>
 <li><strong>Построение Offset Map (SkimpyOffsetMap):</strong> Log Cleaner строит в оперативной памяти компактную хэш-таблицу (используя 128-битный хэш ключа Murmur3 и 64-битный offset). Карта сохраняет отображение: $\text{Key Hash} \to \text{Highest Offset}$.</li>
 <li><strong>Линейное слияние (Deduplication Merge):</strong> Поток Log Cleaner последовательно читает записи из грязных сегментов. Если offset записи совпадает со значением в <code>Offset Map</code> — запись копируется в новый чистый сегмент. Если offset меньше — запись признается устаревшим дубликатом и <strong>пропускается</strong> (не попадает в новый файл).</li>
 <li><strong>Атомарная подмена сегмента:</strong> Новый компактный сегмент завершается, индексы пересчитываются, старые сегменты удаляются через <code>unlink(2)</code>, а ссылка на чистый сегмент атомарно обновляется.</li>
