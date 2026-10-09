@@ -423,10 +423,10 @@ flowchart TD
 
 <h3 id="1-chastichnye-otkazy">1. Частичные отказы</h3>
 <p>Один pod микросервиса был уничтожен ядром Linux из-за превышения cgroup memory limit (OOM Killer). Или транзиентный сплит в SDN изолировал один экземпляр кэша. Или пул соединений к PostgreSQL исчерпал дескрипторы.</p>
-<p>Здоровая распределенная архитектура обязана трактовать частичные отказы как штатный режим работы. Оставшиеся узлы подхватывают трафик через динамический Service Discovery, вызовы защищаются повторными попытками (<span class="wikilink-unresolved" title="Заметка в разработке">4. Retries</span>) с джиттером и размыкателями цепи (<a href="../05-nadezhnost/1-circuit-breaker.html" class="wikilink">1. Circuit breaker</a>).</p>
+<p>Здоровая распределенная архитектура обязана трактовать частичные отказы как штатный режим работы. Оставшиеся узлы подхватывают трафик через динамический Service Discovery, вызовы защищаются повторными попытками (<a href="../05-nadezhnost/2-retry-i-backoff.html" class="wikilink">2. Retry и backoff</a>) с джиттером и размыкателями цепи (<a href="../05-nadezhnost/1-circuit-breaker.html" class="wikilink">1. Circuit breaker</a>).</p>
 <h3 id="2-kaskadnye-sboi">2. Каскадные сбои</h3>
 <p>Самый опасный сценарий — так называемый <em>эффект домино</em> или <em>snowball effect</em>. Сервис A начинает отвечать чуть медленнее обычного (например, 250 мс вместо 10 мс). Вызывающий сервис B исчерпывает свои локальные тайм-ауты и начинает яростно слать неконтролируемые Retries. Нагрузка на сервис A мгновенно утраивается, он окончательно захлебывается, и пул горутин сервиса B забивается зависшими сетевыми ожиданиями. Следом складываются сервисы C и D.</p>
-<p>Оружие против каскадного коллапса: строгое лимитирование частоты вызовов (<a href="../../17-bezopasnost-appsec-v-go/05-bezopasnost-api/2-rate-limiting.html" class="wikilink">2. Rate limiting</a>), механизм противодавления (<span class="wikilink-unresolved" title="Заметка в разработке">6. Backpressure</span>), адаптивные тайм-ауты и размыкание цепей на границах сервисов.</p>
+<p>Оружие против каскадного коллапса: строгое лимитирование частоты вызовов (<a href="../06-set/6-rate-limiting.html" class="wikilink">6. Rate limiting</a>), механизм противодавления (<a href="../../11-arkhitektura-i-system-design/43-backpressure-i-kontrol-nagruzki.html" class="wikilink">43. Backpressure и контроль нагрузки</a>), адаптивные тайм-ауты и размыкание цепей на границах сервисов.</p>
 <h3 id="3-degradatsiya-proizvoditelnosti">3. Деградация производительности</h3>
 <p>Ошибок 5xx в логах нет, все проверки liveness отдают HTTP 200, но 99-й перцентиль (p99 latency) медленно и неумолимо ползет в стратосферу — от 15 мс до 4 секунд. </p>
 <p>В мире Go корни такой деградации почти всегда скрыты под капотом рантайма:</p>
@@ -508,8 +508,8 @@ flowchart LR
 <ul>
 <li><strong>Graceful Shutdown</strong> (<a href="../../09-bekend-na-go-praktika-razrabotki/10-graceful-shutdown.html" class="wikilink">10. Graceful shutdown</a>) — позволяет аккуратно дообслужить текущие inflight-запросы при перезапуске контейнеров;</li>
 <li><strong>Circuit Breaker</strong> (<a href="../05-nadezhnost/1-circuit-breaker.html" class="wikilink">1. Circuit breaker</a>) — изолирует упавшую зависимость и не дает ей парализовать весь бэкенд;</li>
-<li><strong>Rate Limiting</strong> (<a href="../../17-bezopasnost-appsec-v-go/05-bezopasnost-api/2-rate-limiting.html" class="wikilink">2. Rate limiting</a>) — срезает пиковые верхушки цунами трафика;</li>
-<li><strong>Backpressure</strong> (<span class="wikilink-unresolved" title="Заметка в разработке">6. Backpressure</span>) — быстро сбрасывает избыточные запросы с кодом 503/429, защищая внутренние очереди от переполнения;</li>
+<li><strong>Rate Limiting</strong> (<a href="../06-set/6-rate-limiting.html" class="wikilink">6. Rate limiting</a>) — срезает пиковые верхушки цунами трафика;</li>
+<li><strong>Backpressure</strong> (<a href="../../11-arkhitektura-i-system-design/43-backpressure-i-kontrol-nagruzki.html" class="wikilink">43. Backpressure и контроль нагрузки</a>) — быстро сбрасывает избыточные запросы с кодом 503/429, защищая внутренние очереди от переполнения;</li>
 <li><strong>Idempotency</strong> (<a href="../../09-bekend-na-go-praktika-razrabotki/28-idempotency.html" class="wikilink">28. Idempotency</a>) — гарантирует безопасность повторных клиентских запросов после ликвидации сбоя.</li>
 </ul>
 
@@ -539,7 +539,7 @@ flowchart LR
 <li><strong>Execution tracer</strong> (<a href="../../16-profilirovanie-otladka-i-proizvodit/08-runtime-i-instrumenty/3-execution-tracer.html" class="wikilink">3. execution tracer</a>) — незаменим, когда latency росла из-за задержек планировщика, миграций между ядрами или длительных пауз GC;</li>
 <li><strong>Mutex/Block профили</strong> (<a href="../../16-profilirovanie-otladka-i-proizvodit/08-runtime-i-instrumenty/6-mutex-profile.html" class="wikilink">6. mutex profile</a>, <a href="../../16-profilirovanie-otladka-i-proizvodit/08-runtime-i-instrumenty/5-block-profile.html" class="wikilink">5. block profile</a>) — для выявления узких мест синхронизации и contention;</li>
 <li><strong>Логи с Correlation ID</strong> (<a href="7-correlation-id.html" class="wikilink">7. Correlation ID</a>) — восстановление сквозной причинно-следственной цепочки событий между десятками микросервисов;</li>
-<li><strong>Распределенная трассировка</strong> (<span class="wikilink-unresolved" title="Заметка в разработке">2. OpenTelemetry tracing</span>) — визуализация спанов и точная локализация сервиса-виновника.</li>
+<li><strong>Распределенная трассировка</strong> (<a href="6-distributed-tracing.html" class="wikilink">6. Distributed tracing</a>) — визуализация спанов и точная локализация сервиса-виновника.</li>
 </ul>
 <p>Методология <strong>«Пять почему»</strong> (Five Whys) помогает докопаться до фундаментальных причин:</p>
 <ol>
@@ -784,8 +784,8 @@ flowchart LR
 Внедрить локальный семафор (буферизованный канал на $N$ токенов) на входе в хэндлер. Если все токены заняты — немедленно отвечать клиенту статусом <code>503 Service Unavailable</code>, не доводя процесс до коллапса.</p>
 <p><strong>Долгосрочное системное исправление:</strong></p>
 <ul>
-<li>Настроить распределенный <a href="../../17-bezopasnost-appsec-v-go/05-bezopasnost-api/2-rate-limiting.html" class="wikilink">2. Rate limiting</a> на уровне API Gateway;</li>
-<li>Ограничить агрессивность повторных попыток (<span class="wikilink-unresolved" title="Заметка в разработке">4. Retries</span>) с помощью экспоненциальной задержки (Exponential Backoff) и обязательного джиттера (Jitter);</li>
+<li>Настроить распределенный <a href="../06-set/6-rate-limiting.html" class="wikilink">6. Rate limiting</a> на уровне API Gateway;</li>
+<li>Ограничить агрессивность повторных попыток (<a href="../05-nadezhnost/2-retry-i-backoff.html" class="wikilink">2. Retry и backoff</a>) с помощью экспоненциальной задержки (Exponential Backoff) и обязательного джиттера (Jitter);</li>
 <li>Развернуть защитные экраны <a href="../05-nadezhnost/1-circuit-breaker.html" class="wikilink">1. Circuit breaker</a>, мгновенно отсекающие поток запросов к деградирующему сервису.</li>
 </ul>
 <hr />

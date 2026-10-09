@@ -608,10 +608,10 @@ func (c *ShardedCache[K, V]) Get(key K) (V, bool) {
 
 <hr />
 <h2 id="4-mekhanicheskaya-simpatiya-i-upravlenie-pamyatyu">4. Механическая симпатия и управление памятью</h2>
-<p>Проектирование кэша без оглядки на <span class="wikilink-unresolved" title="Заметка в разработке">сборщика мусора</span> и архитектуру кэшей процессора приводит к деградации сервиса при длительном аптайме.</p>
+<p>Проектирование кэша без оглядки на <a href="../../07-glubokiy-go-vnutrennee-ustroystvo/24-sborshchik-musora-go-obshchaya-arkhitektura.html" class="wikilink">сборщика мусора</a> и архитектуру кэшей процессора приводит к деградации сервиса при длительном аптайме.</p>
 <h3 id="davlenie-na-gc-i-allokatsii">Давление на GC и аллокации</h3>
 <p>Каждый вызов <code>cache.Set</code> аллоцирует запись. При высоком темпе обновления (churn rate) сборщик мусора тратит колоссальные ресурсы на фазу mark-and-sweep.<br />
-<strong>Оптимизация:</strong> Применяйте <code>[[16. Профилирование, отладка и производительность|sync.Pool]]</code> для повторного использования контейнеров и буферов. При операциях вытеснения (<code>Evict</code>) или устаревания (<code>Expire</code>) не бросайте объект на растерзание GC, а возвращайте его в пул: <code>cache.pool.Put(item)</code>. Это минимизирует системные вызовы <code>mallocgc</code> и удерживает паузы STW около нуля.</p>
+<strong>Оптимизация:</strong> Применяйте <a href="../../07-glubokiy-go-vnutrennee-ustroystvo/23-sync-pool-pod-kapotom.html" class="wikilink"><code>sync.Pool</code></a> для повторного использования контейнеров и буферов. При операциях вытеснения (<code>Evict</code>) или устаревания (<code>Expire</code>) не бросайте объект на растерзание GC, а возвращайте его в пул: <code>cache.pool.Put(item)</code>. Это минимизирует системные вызовы <code>mallocgc</code> и удерживает паузы STW около нуля.</p>
 <h3 id="false-sharing-v-shardirovannykh-keshakh">False Sharing в шардированных кэшах</h3>
 <p>Если массив структур шардов размещен в непрерывном блоке памяти, а ядра процессора параллельно модифицируют смежные шарды, попадающие в одну 64-байтную кэш-линию, возникает губительный эффект <strong>False Sharing</strong>. Протокол аппаратной когерентности кэшей (MESI) будет непрерывно сбрасывать кэш-линию на всех ядрах, разрушая параллелизм.<br />
 <strong>Решение:</strong> Выравнивать структуры шардов по границе 64 байт с помощью паддинга: <code>_ [56]byte</code> между критическими полями структуры. На Go 1.21+ это часто нивелируется размером <code>sync.Mutex</code>, но для кастомных и lock-free структур padding остаётся обязательным.</p>
@@ -701,7 +701,7 @@ flowchart LR
 <ul>
 <li><strong>Проектирование кэша</strong> — это инженерный поиск баланса между согласованностью, задержкой, объемом памяти и устойчивостью кластера при авариях.</li>
 <li>В Go связка <strong>Cache-Aside + singleflight</strong> решает 80% типовых задач. Шардирование хранилища по маске <code>hash(key) &amp; (N-1)</code> снимает взаимную блокировку горутин.</li>
-<li><strong>Механическая симпатия</strong>: задействуйте <code>sync.Pool</code> для переиспользования буферов, избегайте оверхеда типа <code>any</code>, защищайте структуры от False Sharing и учитывайте нагрузку на <span class="wikilink-unresolved" title="Заметка в разработке">GC</span>.</li>
+<li><strong>Механическая симпатия</strong>: задействуйте <code>sync.Pool</code> для переиспользования буферов, избегайте оверхеда типа <code>any</code>, защищайте структуры от False Sharing и учитывайте нагрузку на <a href="../../07-glubokiy-go-vnutrennee-ustroystvo/24-sborshchik-musora-go-obshchaya-arkhitektura.html" class="wikilink">GC</a>.</li>
 <li><strong>Защита от отказов</strong>: вероятностный джиттер TTL, Circuit Breaker, фильтры Блума от атак Cache Penetration и фоновый асинхронный прогрев данных.</li>
 <li><strong>Сильная согласованность</strong> достигается через связку CDC или Outbox Pattern, однако в большинстве случаев достаточна eventual consistency с коротким TTL и детерминированной инвалидацией.</li>
 <li><strong>Интервью-фокус</strong>: глубокое понимание Cache Stampede / Avalanche / Penetration, компромиссы между локальным и распределенным слоями, реализация алгоритмов вытеснения под конкурентной нагрузкой.</li>
