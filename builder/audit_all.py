@@ -4,7 +4,8 @@ builder/audit_all.py
 1. Проверка кроссплатформенной совместимости имен файлов (Windows, macOS, Linux).
 2. Проверка целостности ссылок (0 broken links).
 3. Валидность анкоров и структуры.
-4. Корректность и синтаксис диаграмм Mermaid (статические проверки + реальный разбор
+4. Отсутствие управляющих символов в sources/*.md (C0 кроме \n/\t, DEL; TAB внутри формул вне кода).
+5. Корректность и синтаксис диаграмм Mermaid (статические проверки + реальный разбор
    вендорным mermaid.min.js в headless-браузере Firefox по протоколу file://).
 """
 
@@ -34,6 +35,59 @@ WIN_RESERVED_NAMES = {
 # Максимальное время одного прогона разбора диаграмм в браузере, секунды
 MERMAID_RUNTIME_TIMEOUT = 300
 
+# Открывающая/закрывающая ограда кода (в выносках строка начинается с '>')
+FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
+CALLOUT_PREFIX_RE = re.compile(r"^(\s*>)+\s?")
+INLINE_CODE_RE = re.compile(r"(`+)(.+?)(?<!`)\1(?!`)")
+
+
+def code_mask(text: str) -> bytearray:
+    """Отмечает символы, лежащие в коде: ограды (в том числе внутри выносок) и inline-код."""
+    mask = bytearray(len(text))
+    pos = 0
+    fence = None
+    for line in text.split("\n"):
+        start, end = pos, pos + len(line)
+        pos = end + 1
+        body = CALLOUT_PREFIX_RE.sub("", line)
+        m = FENCE_RE.match(body)
+        if fence:
+            mask[start:end] = b"\x01" * (end - start)
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence) and body.strip() == m.group(1):
+                fence = None
+            continue
+        if m:
+            fence = m.group(1)
+            mask[start:end] = b"\x01" * (end - start)
+            continue
+        for cm in INLINE_CODE_RE.finditer(line):
+            mask[start + cm.start():start + cm.end()] = b"\x01" * (cm.end() - cm.start())
+    return mask
+
+
+def formula_spans(text: str, mask: bytearray) -> List[Tuple[int, int]]:
+    """Границы формул $…$ (в пределах строки) и $$…$$ (через строки) вне кода."""
+    spans = []
+    i, n = 0, len(text)
+    while i < n:
+        if text[i] == "$" and not mask[i] and (i == 0 or text[i - 1] != "\\"):
+            if text.startswith("$$", i):
+                j = text.find("$$", i + 2)
+                if j != -1:
+                    spans.append((i, j + 2))
+                    i = j + 2
+                    continue
+            else:
+                j = i + 1
+                while j < n and text[j] != "\n" and not (text[j] == "$" and text[j - 1] != "\\"):
+                    j += 1
+                if j < n and text[j] == "$":
+                    spans.append((i, j + 1))
+                    i = j + 1
+                    continue
+        i += 1
+    return spans
+
 
 class SiteAuditor:
     def __init__(self, dist_dir: str = "./dist", repo_root: str = ".", mermaid_runtime: bool = True):
@@ -48,6 +102,8 @@ class SiteAuditor:
         self.mermaid_errors: List[Dict[str, str]] = []
         self.missing_anchors: List[Dict[str, str]] = []
         self.filename_issues: List[Tuple[str, str]] = []
+        self.control_char_issues: List[Tuple[str, int, str]] = []
+        self.scanned_sources_count = 0
         self.scanned_dirs_count = 0
         self.scanned_files_count = 0
 
@@ -64,6 +120,14 @@ class SiteAuditor:
             print(f"      ❌ Найдено несовместимых имен: {len(self.filename_issues)}")
         else:
             print("      ✅ Все имена файлов и папок на 100% совместимы со всеми ОС.")
+
+        # 1b. Управляющие символы в исходниках (порча вида '\text' -> TAB + 'ext')
+        self._audit_control_chars()
+        print(f"      Проверено исходников на управляющие символы: {self.scanned_sources_count}")
+        if self.control_char_issues:
+            print(f"      ❌ Найдено управляющих символов: {len(self.control_char_issues)}")
+        else:
+            print("      ✅ Управляющих символов в sources/ нет (TAB внутри формул тоже).")
 
         if not os.path.exists(self.dist_dir):
             print(f"❌ ОШИБКА: Директория {self.dist_dir} не найдена. Сначала выполните сборку!")
@@ -98,6 +162,7 @@ class SiteAuditor:
         # 4. Подведение итогов
         print("\n[4/4] 📊 Результаты проверки:")
         print(f"      Ошибок несовместимости имен файлов: {len(self.filename_issues)}")
+        print(f"      Управляющих символов в sources/: {len(self.control_char_issues)}")
         print(f"      Всего проверено страниц: {len(self.html_files)}")
         print(f"      Битых ссылок (Broken Links): {len(self.broken_links)}")
         print(f"      Ошибок анкоров (Missing Anchors): {len(self.missing_anchors)}")
@@ -114,6 +179,14 @@ class SiteAuditor:
                 print(f"  Проблема:   {desc}\n")
             if len(self.filename_issues) > 15:
                 print(f"  ... и еще {len(self.filename_issues) - 15} ошибок имен файлов.")
+
+        if self.control_char_issues:
+            success = False
+            print("\n❌ НАЙДЕНЫ УПРАВЛЯЮЩИЕ СИМВОЛЫ В ИСХОДНИКАХ:")
+            for path, line_no, desc in self.control_char_issues[:15]:
+                print(f"  {path}:{line_no}: {desc}")
+            if len(self.control_char_issues) > 15:
+                print(f"  ... и еще {len(self.control_char_issues) - 15} мест.")
 
         if self.broken_links:
             success = False
@@ -202,6 +275,39 @@ class SiteAuditor:
                     self.filename_issues.append((col_rel, f"Регистровый конфликт с {repr(lower_map[low])} на регистронезависимых ФС (Windows/macOS)"))
                 else:
                     lower_map[low] = name
+
+    def _audit_control_chars(self):
+        """
+        Ищет в sources/*.md управляющие символы. При редакторской переписке '\\text' уже
+        превращался в TAB + 'ext', '\\approx' — в BEL + 'pprox' (U18). Ошибка:
+        любой символ C0, кроме '\\n' и '\\t', и DEL; TAB — только внутри формулы вне кода.
+        """
+        sources_dir = os.path.join(self.repo_root, "sources")
+        for root, _, files in os.walk(sources_dir):
+            for f in sorted(files):
+                if not f.endswith(".md"):
+                    continue
+                path = os.path.join(root, f)
+                rel = os.path.relpath(path, self.repo_root)
+                self.scanned_sources_count += 1
+                # newline="" — иначе Python сам превратит CRLF в LF, и CR не найдётся
+                with open(path, "r", encoding="utf-8", errors="replace", newline="") as fp:
+                    text = fp.read()
+                for k, ch in enumerate(text):
+                    o = ord(ch)
+                    if (o < 32 and ch not in "\n\t") or o == 127:
+                        hint = " (переведите файл на LF)" if ch == "\r" else ""
+                        self.control_char_issues.append(
+                            (rel, text.count("\n", 0, k) + 1, f"управляющий символ {ch!r}{hint}"))
+                if "\t" not in text or "$" not in text:
+                    continue
+                mask = code_mask(text)
+                for a, b in formula_spans(text, mask):
+                    for k in range(a, b):
+                        if text[k] == "\t" and not mask[k]:
+                            self.control_char_issues.append(
+                                (rel, text.count("\n", 0, k) + 1,
+                                 "TAB внутри формулы: …" + (text[max(a, k - 20):k] + "⟨TAB⟩" + text[k + 1:k + 12]).replace("\n", "⏎") + "…"))
 
     def _audit_single_page(self, page_path: str, file_ids_cache: Dict[str, Set[str]]):
         with open(page_path, "r", encoding="utf-8", errors="ignore") as fp:
