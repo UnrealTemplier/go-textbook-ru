@@ -369,11 +369,12 @@ class SiteAuditor:
 
     def _audit_control_chars(self):
         """
-        Ищет в sources/*.md управляющие символы. При редакторской переписке '\\text' уже
+        Ищет в исходниках книги ([content] root, по умолчанию sources/) управляющие символы. При редакторской переписке '\\text' уже
         превращался в TAB + 'ext', '\\approx' — в BEL + 'pprox' (U18). Ошибка:
         любой символ C0, кроме '\\n' и '\\t', и DEL; TAB — только внутри формулы вне кода.
         """
-        sources_dir = os.path.join(self.repo_root, "sources")
+        sources_dir = (self.config.path(self.config.content.root) if self.config is not None
+                       else os.path.join(self.repo_root, "sources"))
         for root, _, files in os.walk(sources_dir):
             for f in sorted(files):
                 if not f.endswith(".md"):

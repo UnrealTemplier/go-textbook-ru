@@ -1,6 +1,6 @@
 """Тест рантайма window.__BOOK__ в headless Firefox (анализ § 4.9, 7 сценариев) и модального окна Mermaid (А3м).
 
-Собирает демо-книгу во временный каталог, кладёт рядом пробные страницы со скриптами сценариев
+Собирает демо-книгу (корень репозитория движка) во временный каталог, кладёт рядом пробные страницы со скриптами сценариев
 и обходит их одной цепочкой. Ранний скрипт стоит сразу после inline-скрипта рантайма и
 фиксирует состояние <html> до отрисовки; поздний — после DOMContentLoaded. Результаты приходят
 маячком на локальный сервер. Без Firefox тест пропускается.
@@ -20,7 +20,8 @@ from urllib.parse import urlparse, parse_qs
 from engine.build import build
 from engine.config import load_config
 
-DEMO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "demo")
+from engine.tests import DEMO_ROOT, HAS_DEMO
+
 BROWSER = os.environ.get("MERMAID_BROWSER") or shutil.which("firefox")
 RUNTIME_END = "window.__BOOK__.init();</script>"
 
@@ -81,6 +82,7 @@ const im=new Image();im.onload=im.onerror=()=>{%(next)s};
 im.src='http://127.0.0.1:%(port)d/?d='+encodeURIComponent(JSON.stringify(r));},1200));</script>"""
 
 
+@unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")
 @unittest.skipUnless(BROWSER, "нет Firefox (PATH или MERMAID_BROWSER)")
 class BookRuntimeTest(unittest.TestCase):
     @classmethod
@@ -88,7 +90,7 @@ class BookRuntimeTest(unittest.TestCase):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.dist = os.path.join(cls.tmp.name, "dist")
         with contextlib.redirect_stdout(io.StringIO()):
-            build(load_config(os.path.join(DEMO, "book.toml")), dist_dir=cls.dist, is_pilot=False)
+            build(load_config(os.path.join(DEMO_ROOT, "book.toml")), dist_dir=cls.dist, is_pilot=False)
         cls.results = cls.run_scenarios()
 
     @classmethod

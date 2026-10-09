@@ -1,5 +1,7 @@
-"""Golden-тест демо-книги (engine/demo): HTML-страницы побайтно равны эталону engine/demo/golden.
+"""Golden-тест демо-книги: HTML-страницы побайтно равны эталону demo-golden/.
 
+Демо-книга лежит в корне репозитория html-textbook-engine (book.toml, demo-sources/, book/).
+В книгах, куда ядро приходит через engine.sync, её нет — тест пропускается.
 Эталон обновляется намеренно: UPDATE_GOLDEN=1 python -m unittest engine.tests.test_demo
 (изменение вывода демо — повод записать «меняет вывод: да» в CHANGELOG).
 """
@@ -14,8 +16,9 @@ from engine.audit import SiteAuditor
 from engine.build import build
 from engine.config import load_config
 
-DEMO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "demo")
-GOLDEN = os.path.join(DEMO, "golden")
+from engine.tests import DEMO_ROOT, HAS_DEMO
+
+GOLDEN = os.path.join(DEMO_ROOT, "demo-golden")
 
 
 def html_files(root):
@@ -29,15 +32,16 @@ def html_files(root):
     return out
 
 
+@unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")
 class DemoGoldenTest(unittest.TestCase):
     def test_demo_matches_golden_and_passes_audit(self):
-        cfg = load_config(os.path.join(DEMO, "book.toml"))
+        cfg = load_config(os.path.join(DEMO_ROOT, "book.toml"))
         with tempfile.TemporaryDirectory() as tmp:
             dist = os.path.join(tmp, "dist")
             with contextlib.redirect_stdout(io.StringIO()):
                 warnings = build(cfg, dist_dir=dist, is_pilot=False, strict=True)
                 self.assertEqual(warnings, [])
-                auditor = SiteAuditor(dist, os.path.join(DEMO, "sources"), mermaid_runtime=False, config=cfg)
+                auditor = SiteAuditor(dist, cfg.path(cfg.content.root), mermaid_runtime=False, config=cfg)
                 self.assertTrue(auditor.run_audit())
             pages = html_files(dist)
             if os.environ.get("UPDATE_GOLDEN"):
