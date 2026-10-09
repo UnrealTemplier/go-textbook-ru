@@ -8,8 +8,37 @@ import os
 import re
 import html
 import json
+from string import Template
 from typing import Dict, Any, List, Optional
 from .config import BookConfig, read_text_asset
+from .hooks import load_hooks
+
+TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
+_PARTIALS: Dict[Any, Template] = {}
+
+
+def extra_asset_tags(config: BookConfig, rel_root: str, kind: str) -> str:
+    """<link>/<script> для extra.css / extra.js книги, если они есть (иначе пустая строка)."""
+    name = "extra.css" if kind == "css" else "extra.js"
+    if not os.path.isfile(config.path(os.path.join(config.layout.extra_assets_dir, name))):
+        return ""
+    if kind == "css":
+        return f'\n  <link rel="stylesheet" href="{rel_root}assets/extra.css">'
+    return f'\n  <script src="{rel_root}assets/extra.js"></script>'
+
+
+def partial(name: str, config: BookConfig, ctx: Dict[str, Any]) -> str:
+    """Частичный шаблон: book/overrides/templates/<name>.html книги или engine/templates/<name>.html.
+
+    Подстановки — string.Template ($имя): фигурные скобки CSS и JS в шаблонах не мешают.
+    """
+    key = (config.root_dir, config.layout.overrides_dir, name)
+    if key not in _PARTIALS:
+        override = config.path(os.path.join(config.layout.overrides_dir, "templates", name + ".html"))
+        path = override if os.path.isfile(override) else os.path.join(TEMPLATES_DIR, name + ".html")
+        with open(path, encoding="utf-8") as fp:
+            _PARTIALS[key] = Template(fp.read().rstrip("\n"))
+    return _PARTIALS[key].substitute(ctx)
 from .scanner import Article
 
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
@@ -333,6 +362,8 @@ def render_article_page(
     else:
         toc_html = ""
 
+    rt = config.navigation.reading_time
+    reading_time = max(rt.min, int(article.size_bytes / rt.divisor))
     ap = config.article_page
     br = config.branding
     footer_html = "\n        ".join(f"<p>{line}</p>" for line in ap.footer_html)
@@ -341,8 +372,23 @@ def render_article_page(
         position_html = f'\n              <span class="meta-tag position-tag">{config.t("article.position", n=article.position, m=total_articles)}</span>'
     if article.is_index:
         article_html += render_index_children(article, rel_root)
-    rt = config.navigation.reading_time
-    reading_time = max(rt.min, int(article.size_bytes / rt.divisor))
+    mermaid_tag = (f'<span class="meta-tag mermaid-tag">{config.t("article.mermaid_count", n=article.mermaid_count)}</span>'
+                   if article.mermaid_count > 0 else '')
+    ctx = {
+        "rel_root": rel_root,
+        "logo_aria_label": br.logo_aria_label,
+        "logo_icon": read_text_asset(config, br.logo_icon_svg_file),
+        "logo_title": read_text_asset(config, br.logo_title_svg_file),
+        "logo_title_text": br.logo_title_text,
+        "logo_sub": br.logo_sub,
+        "module_tag": config.t("article.module_tag", n=article.module_num),
+        "reading_time": config.t("article.reading_time", n=reading_time),
+        "mermaid_tag": mermaid_tag,
+        "position": position_html,
+        "title": html.escape(article.title),
+        "footer": footer_html,
+    }
+    load_hooks(config).page_context(article, ctx)
 
     return f"""<!DOCTYPE html>
 {make_html_tag()}
@@ -354,7 +400,7 @@ def render_article_page(
   {render_favicon_links(config, rel_root)}
   {make_anti_flicker_script(config)}
   <link rel="stylesheet" href="{rel_root}assets/style.css">
-  <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">{extra_asset_tags(config, rel_root, "css")}
 </head>
 <body>
   <div class="reading-progress-bar" id="reading-progress" role="progressbar" aria-label="{config.t("page.reading_progress_aria")}" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
@@ -362,17 +408,7 @@ def render_article_page(
   <div class="app-layout">
     <!-- Левый сайдбар -->
     <aside class="app-sidebar" id="app-sidebar" aria-label="{config.t("sidebar.aria")}">
-      <header class="sidebar-header">
-        <a href="{rel_root}index.html" class="brand-logo" aria-label="{br.logo_aria_label}">
-          <div class="logo-icon" aria-hidden="true">
-            {read_text_asset(config, br.logo_icon_svg_file)}
-          </div>
-          <div class="logo-text">
-            <span class="logo-title">{read_text_asset(config, br.logo_title_svg_file)}{br.logo_title_text}</span>
-            <span class="logo-sub">{br.logo_sub}</span>
-          </div>
-        </a>
-      </header>
+      {partial("sidebar_header", config, ctx)}
 
       <!-- Поиск по сайдбару -->
       <div class="sidebar-search" role="search">
@@ -409,14 +445,7 @@ def render_article_page(
 
       <main class="content-wrapper" id="main-content">
         <article class="article-body">
-          <header class="article-header">
-            <div class="article-meta-tags">
-              <span class="meta-tag module-tag">{config.t("article.module_tag", n=article.module_num)}</span>
-              <span class="meta-tag read-time">{config.t("article.reading_time", n=reading_time)}</span>
-              {f'<span class="meta-tag mermaid-tag">{config.t("article.mermaid_count", n=article.mermaid_count)}</span>' if article.mermaid_count > 0 else ''}{position_html}
-            </div>
-            <h1 class="article-title">{html.escape(article.title)}</h1>
-          </header>
+          {partial("article_header", config, ctx)}
 
           <div class="article-markdown">
             {article_html}
@@ -433,9 +462,7 @@ def render_article_page(
         {toc_html}
       </main>
 
-      <footer class="app-footer">
-        {footer_html}
-      </footer>
+      {partial("article_footer", config, ctx)}
     </div>
   </div>
 
@@ -469,7 +496,7 @@ def render_article_page(
   <script src="{rel_root}assets/vendor/mermaid.min.js"></script>
   <script src="{rel_root}assets/vendor/katex/katex.min.js"></script>
   <script src="{rel_root}assets/vendor/katex/contrib/auto-render.min.js"></script>
-  <script src="{rel_root}assets/main.js"></script>
+  <script src="{rel_root}assets/main.js"></script>{extra_asset_tags(config, rel_root, "js")}
 </body>
 </html>
 """
@@ -501,6 +528,22 @@ def render_index_page(
             <p>{st['text_html']}</p>
           </div>
         </li>""" for st in ip.roadmap_steps)
+
+    ctx = {
+        "hero_badge": fc(ip.hero_badge_html),
+        "version": version,
+        "hero_title": fc(ip.hero_title_html),
+        "quote": ip.quote_html,
+        "quote_author": ip.quote_author_html,
+        "search_label": config.t("index.search_label"),
+        "search_placeholder": html.escape(fc(ip.search_placeholder)),
+        "search_aria": config.t("index.search_aria"),
+        "search_results_aria": config.t("index.search_results_aria"),
+        "stats_aria": config.t("index.stats_aria"),
+        "stats": stats_html,
+        "footer": index_footer_html,
+    }
+    load_hooks(config).page_context(None, ctx)
 
     cards_html = []
     for mod in modules_tree:
@@ -543,37 +586,12 @@ def render_index_page(
   <meta name="description" content="{fc(ip.meta_description_html)}">
   {render_favicon_links(config, rel_root)}
   {make_anti_flicker_script(config)}
-  <link rel="stylesheet" href="{rel_root}assets/style.css">
+  <link rel="stylesheet" href="{rel_root}assets/style.css">{extra_asset_tags(config, rel_root, "css")}
 </head>
 <body class="index-page">
   <main class="index-container" id="main-content">
     <!-- Героическая секция -->
-    <header class="index-hero">
-      <div class="hero-top-meta">
-        <span class="hero-badge">{fc(ip.hero_badge_html)}</span>
-        <span class="hero-version">v{version}</span>
-      </div>
-      <h1 class="hero-title">{fc(ip.hero_title_html)}</h1>
-      <blockquote class="hero-quote">
-        <p>{ip.quote_html}</p>
-        <cite class="quote-author">{ip.quote_author_html}</cite>
-      </blockquote>
-
-      <!-- Полнотекстовый живой поиск -->
-      <div class="hero-search-box" role="search">
-        <div class="search-bar-inner">
-          <label for="global-search-input" class="visually-hidden">{config.t("index.search_label")}</label>
-          <svg class="hero-search-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input type="search" id="global-search-input" placeholder="{html.escape(fc(ip.search_placeholder))}" autocomplete="off" aria-label="{config.t("index.search_aria")}">
-        </div>
-        <div class="search-results-dropdown" id="global-search-results" role="listbox" aria-label="{config.t("index.search_results_aria")}"></div>
-      </div>
-
-      <!-- Виджеты статистики -->
-      <div class="stats-ribbon" role="region" aria-label="{config.t("index.stats_aria")}">
-{stats_html}
-      </div>
-    </header>
+    {partial("index_hero", config, ctx)}
 
     <!-- Каталог модулей -->
     <section class="modules-catalog" aria-labelledby="catalog-heading">
@@ -597,16 +615,14 @@ def render_index_page(
       </ol>
     </section>
 
-    <footer class="index-footer">
-      {index_footer_html}
-    </footer>
+    {partial("index_footer", config, ctx)}
   </main>
 
   <!-- Единый плавающий переключатель темы -->
   {theme_switcher_html(config)}
 
   <script src="{rel_root}assets/search-data.js"></script>
-  <script src="{rel_root}assets/main.js"></script>
+  <script src="{rel_root}assets/main.js"></script>{extra_asset_tags(config, rel_root, "js")}
 </body>
 </html>
 """

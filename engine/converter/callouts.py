@@ -10,6 +10,7 @@ HTML. С А3а′ выноска заменяется строкой <!--CALLOUT
 import re
 from typing import Dict, List
 
+from ..hooks import load_hooks
 from .code_mask import UnifiedCodeLineMask
 
 CALLOUT_START_RE = re.compile(r"^>\s*\[!([a-zA-Z0-9_-]+)\]\s*(.*)$")
@@ -71,4 +72,4 @@ class CalloutExtractor:
         inner_html = conv.md.convert(body)       # heading_slugs здесь None: HeadingTreeprocessor пассивен
         conv.md.reset()
         cfg, title = conv.callout_style(c_type, c_title)
-        return conv._callout_html(cfg, title, inner_html)
+        return load_hooks(conv.config).render_callout(c_type, title, conv._callout_html(cfg, title, inner_html))

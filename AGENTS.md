@@ -76,6 +76,10 @@ go-textbook/
 │   ├── __init__.py        # Пакет: запуск только как модуль (python -m engine.build), импорты относительные
 │   ├── build.py           # Главный сборочный конвейер: python -m engine.build (--all, --pilot, --module N, --limit N, --book, --sources, --dist)
 │   ├── config.py          # Загрузка и проверка book.toml (tomllib + dataclasses; неизвестный ключ — ошибка)
+│   ├── templates/         # Частичные шаблоны ($-подстановки): sidebar_header, article_header, article_footer, index_hero, index_footer; книга заменяет их файлами в book/overrides/templates/
+│   ├── hooks.py           # Хуки книги из book/hooks.py: transform_markdown, render_callout, page_context, extra_audit_checks
+│   ├── checksums.py       # Контрольные суммы ядра (engine/.checksums.json создаётся при выпуске версии)
+│   ├── VERSION / CHANGELOG.md  # Версия ядра (сейчас 1.2.0-dev) и журнал с пометкой «меняет вывод»
 │   ├── strings/ru.toml    # Строки интерфейса движка (подписи, aria-label, заголовки выносок); книга переопределяет их в book.toml [strings]
 │   ├── scanner.py         # Рекурсивный обход sources/ любой глубины (ошибки вместо тихих потерь файлов), индексные файлы каталогов, title_source, slugify, граф wikilinks
 │   ├── converter/         # Конвертер Markdown → семантический HTML (пакет)
@@ -155,6 +159,7 @@ python3 -m engine.build --all --dist /tmp/dist-check
 * Порядок шагов: чтение версии из `AGENTS.md` → сканирование `sources/` → копирование ассетов и сборка `style.css` из тем → `search-data.js` и иконки → конвертация статей → `index.html`.
 * Выходные пути статей: `dist/docs/{NN-slug-модуля}/[{подраздел}/[{под-подраздел}/]]{slug-статьи}.html` (транслитерация через `slugify` из `scanner.py`).
 * **Структура `sources/`** (`engine/scanner.py`): модуль — каталог верхнего уровня «N. Название» (номера уникальны), внутри — каталоги любой глубины; в сайдбаре глубокие каталоги показываются одним подразделом с путём через « / ». Сборка падает (`ScanError`), если файл не попал бы на сайт: `.md` в корне `sources/`, статьи рядом с подкаталогами ниже уровня модуля, каталог модуля без номера, два модуля с одним номером, совпадение выходных путей после обрезки slug.
+* **Слой книги** (`[layout]` в `book.toml`, пути от каталога `book.toml`): `book/overrides/templates/<имя>.html` заменяет частичный шаблон движка, `book/overrides/assets/<путь>` — файл ассета; `book/assets/extra.css` и `extra.js` подключаются на всех страницах после ассетов движка; `book/hooks.py` — хуки. Ничего из этого у `go-textbook` нет.
 * **Возможности для других книг** (в `go-textbook` выключены, `book.toml`): `[content] title_source = "h1"` — название страницы из первого `# …`, который убирается из тела; `index_file` — регулярное выражение имени индексного файла каталога: такая страница становится заглавной (список дочерних страниц под текстом, ссылка из сайдбара и хлебных крошек, входит в пагинацию, но не в счётчики; на остальных страницах появляется счётчик «N из M»).
 
 ### 3.2. Сквозной QA-аудит качества (`engine/audit.py`)

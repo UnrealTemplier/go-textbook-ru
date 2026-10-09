@@ -23,6 +23,9 @@ import http.server
 from urllib.parse import unquote, urlparse, parse_qs
 from typing import List, Dict, Tuple, Set, Optional
 
+from .config import load_config
+from .hooks import load_hooks
+
 # Недопустимые символы Windows (NTFS / FAT): < > : " / \ | ? * и управляющие символы 0-31
 WIN_FORBIDDEN_CHARS = set("<>:\"/\\|?*")
 # Зарезервированные имена устройств DOS / Windows
@@ -90,7 +93,10 @@ def formula_spans(text: str, mask: bytearray) -> List[Tuple[int, int]]:
 
 
 class SiteAuditor:
-    def __init__(self, dist_dir: str = "./dist", repo_root: str = ".", mermaid_runtime: bool = True):
+    def __init__(self, dist_dir: str = "./dist", repo_root: str = ".", mermaid_runtime: bool = True,
+                 config=None):
+        self.config = config
+        self.hook_errors: List[str] = []
         self.mermaid_runtime = mermaid_runtime
         # (страница, порядковый номер блока на странице, исходный код) — для рантайм-разбора
         self.mermaid_blocks: List[Tuple[str, int, str]] = []
@@ -163,6 +169,9 @@ class SiteAuditor:
         print("\n[4/4] 📊 Результаты проверки:")
         print(f"      Ошибок несовместимости имен файлов: {len(self.filename_issues)}")
         print(f"      Управляющих символов в sources/: {len(self.control_char_issues)}")
+        if self.config is not None:
+            self.hook_errors = load_hooks(self.config).extra_audit_checks(self.dist_dir)
+            print(f"      Ошибок проверок книги (extra_audit_checks): {len(self.hook_errors)}")
         print(f"      Всего проверено страниц: {len(self.html_files)}")
         print(f"      Битых ссылок (Broken Links): {len(self.broken_links)}")
         print(f"      Ошибок анкоров (Missing Anchors): {len(self.missing_anchors)}")
@@ -187,6 +196,14 @@ class SiteAuditor:
                 print(f"  {path}:{line_no}: {desc}")
             if len(self.control_char_issues) > 15:
                 print(f"  ... и еще {len(self.control_char_issues) - 15} мест.")
+
+        if self.hook_errors:
+            success = False
+            print("\n❌ ОШИБКИ ПРОВЕРОК КНИГИ (book/hooks.py: extra_audit_checks):")
+            for err in self.hook_errors[:20]:
+                print(f"  {err}")
+            if len(self.hook_errors) > 20:
+                print(f"  ... и еще {len(self.hook_errors) - 20}.")
 
         if self.broken_links:
             success = False
@@ -536,9 +553,11 @@ def main():
     parser.add_argument("--repo-root", default=".", help="Корень репозитория для проверки имен файлов")
     parser.add_argument("--no-mermaid-runtime", action="store_true",
                         help="Не запускать рантайм-разбор диаграмм Mermaid в headless Firefox")
+    parser.add_argument("--book", default=None, help="Путь к book.toml (по умолчанию ./book.toml): хук extra_audit_checks")
     args = parser.parse_args()
 
-    auditor = SiteAuditor(args.dist, args.repo_root, mermaid_runtime=not args.no_mermaid_runtime)
+    auditor = SiteAuditor(args.dist, args.repo_root, mermaid_runtime=not args.no_mermaid_runtime,
+                          config=load_config(args.book))
     success = auditor.run_audit()
     sys.exit(0 if success else 1)
 

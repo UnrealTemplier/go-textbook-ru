@@ -13,6 +13,7 @@ from typing import List, Optional
 
 from .scanner import KnowledgeBaseScanner, Article
 from .converter import MarkdownConverter
+from .checksums import verify as verify_checksums
 from .config import BookConfig, load_config
 from .template import render_article_page, render_index_page, get_book_version
 
@@ -86,6 +87,21 @@ def build_themed_css(engine_assets_dir: str, dist_assets_dir: str) -> list:
     print(f"      Темы CSS собраны: {[t['key'] for t in themes_sorted]} → dist/assets/style.css")
     return themes
 
+def apply_book_assets(config: BookConfig, dist_assets_dir: str) -> None:
+    """Ассеты книги поверх ассетов движка: overrides/assets/** заменяют файлы, extra.css и extra.js добавляются."""
+    overrides = config.path(os.path.join(config.layout.overrides_dir, "assets"))
+    if os.path.isdir(overrides):
+        for root, _, files in os.walk(overrides):
+            target = os.path.join(dist_assets_dir, os.path.relpath(root, overrides))
+            os.makedirs(target, exist_ok=True)
+            for f in files:
+                shutil.copy2(os.path.join(root, f), os.path.join(target, f))
+    for name in ("extra.css", "extra.js"):
+        src = config.path(os.path.join(config.layout.extra_assets_dir, name))
+        if os.path.isfile(src):
+            shutil.copy2(src, os.path.join(dist_assets_dir, name))
+
+
 def generate_search_data_js(articles: List[Article], dist_dir: str):
     """
     Генерация поискового индекса в виде search-data.js.
@@ -115,6 +131,11 @@ def build(
     target_module: Optional[int] = None,
     is_pilot: bool = False
 ):
+    # Ядро в книге не редактируется: предупреждаем о локальных правках engine/ (если есть .checksums.json)
+    issues = verify_checksums()
+    if issues:
+        print(f"[WARN] engine/ изменён локально ({len(issues)}): " + "; ".join(issues[:5]))
+
     # 0. Чтение и валидация версии книги (book.toml: version или version_file + version_pattern)
     project_version = get_book_version(config)
     sources_dir = sources_dir or config.path(config.content.root)
@@ -153,6 +174,7 @@ def build(
     dist_assets = os.path.join(dist_dir, "assets")
     copy_assets(engine_assets, dist_assets)
     themes_list = build_themed_css(engine_assets, dist_assets)
+    apply_book_assets(config, dist_assets)
     generate_search_data_js(all_articles, dist_dir)
     
     # Копирование фавиконок книги в корень dist/ и в dist/assets/

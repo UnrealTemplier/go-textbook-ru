@@ -14,6 +14,7 @@ from ..scanner import slugify, Article, KnowledgeBaseScanner, find_first_h1
 from .indented_fence import IndentedFenceExtension
 from .math_protect import MathProtectExtension
 from .obsidian_lists import ObsidianListsExtension
+from ..hooks import load_hooks
 
 CALLOUT_CONFIG = {
     "tip": {
@@ -81,7 +82,9 @@ class MarkdownConverter:
         with open(article.source_path, "r", encoding="utf-8", errors="ignore") as fp:
             raw_text = fp.read()
 
-        # 0. title_source = "h1": первый «# …» стал заголовком страницы — убираем его из тела
+        # 0. Хук книги transform_markdown, затем title_source = "h1": первый «# …» стал заголовком
+        #    страницы — убираем его из тела
+        raw_text = load_hooks(self.config).transform_markdown(raw_text, article)
         if self.config.content.title_source == "h1":
             h1 = find_first_h1(raw_text)
             if h1 is not None:
@@ -328,7 +331,7 @@ class MarkdownConverter:
         inner_md = "\n".join(body_lines)
         inner_html = self.md.convert(inner_md)
         self.md.reset()
-        return self._callout_html(cfg, title, inner_html)
+        return load_hooks(self.config).render_callout(callout_type, title, self._callout_html(cfg, title, inner_html))
 
     @staticmethod
     def _callout_html(cfg: Dict[str, str], title: str, inner_html: str) -> str:

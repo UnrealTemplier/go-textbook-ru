@@ -95,6 +95,14 @@ class MathConfig:
 
 
 @dataclass
+class LayoutConfig:
+    # Пути — относительно каталога book.toml; отсутствующие файлы и каталоги просто не используются
+    overrides_dir: str = "book/overrides"     # templates/<имя>.html и assets/<путь> заменяют файлы движка
+    hooks_file: str = "book/hooks.py"
+    extra_assets_dir: str = "book/assets"     # extra.css и extra.js подключаются после ассетов движка
+
+
+@dataclass
 class BrandingConfig:
     # Пути — относительно каталога book.toml; SVG вставляются в страницу как есть
     logo_icon_svg_file: str = ""
@@ -142,6 +150,7 @@ class BookConfig:
     navigation: NavigationConfig = field(default_factory=NavigationConfig)
     markdown: MarkdownConfig = field(default_factory=MarkdownConfig)
     math: MathConfig = field(default_factory=MathConfig)
+    layout: LayoutConfig = field(default_factory=LayoutConfig)
     branding: BrandingConfig = field(default_factory=BrandingConfig)
     article_page: ArticlePageConfig = field(default_factory=ArticlePageConfig)
     index_page: IndexPageConfig = field(default_factory=IndexPageConfig)
