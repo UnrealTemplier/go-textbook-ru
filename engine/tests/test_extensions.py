@@ -10,7 +10,7 @@ from engine.converter.callouts import CalloutExtractor
 from engine.converter.headings import HeadingIdsExtension, escape_trailing_hashes
 from engine.converter.indented_fence import IndentedFenceExtension
 from engine.converter.math_protect import MathProtectExtension
-from engine.converter.obsidian_lists import ObsidianListsExtension
+from engine.converter.obsidian_lists import ObsidianListsExtension, ObsidianListPreprocessor
 from engine.tools.verify_diff import block_in_p
 
 BASE = ["fenced_code", "tables", "sane_lists", "nl2br"]
@@ -163,6 +163,18 @@ class ObsidianListsTest(unittest.TestCase):
     def test_heading_closes_list_and_code_block_kept(self):
         self.assertIn("</ul>\n<h2>", render("- a\n## H", fences=False))
         self.assertIn("<pre><code>- код\n</code></pre>", render("Абзац\n\n    - код", fences=False))
+
+    def test_quote_inside_item_interrupts_paragraph(self):
+        out = render("1. **Пункт:**\n   Текст:\n   > цитата\n   > вторая строка\n2. дальше", fences=False)
+        self.assertIn("<blockquote>\n<p>цитата<br />\nвторая строка</p>\n</blockquote>", out)
+        self.assertNotIn("&gt;", out)
+        self.assertEqual(out.count("<ol>"), 1)
+
+    def test_pseudo_list_inside_plain_quote(self):
+        out = render("> 💡 **Связанные темы:**\n> - a\n> - b\n\nдальше", fences=False)
+        self.assertIn("<blockquote>\n<p>💡 <strong>Связанные темы:</strong></p>\n<ul>\n<li>a</li>\n<li>b</li>\n</ul>\n</blockquote>", out)
+        text = "> цитата\n> без списка\n>\n>  с отступом"
+        self.assertEqual(ObsidianListPreprocessor(None).run(text.split("\n")), text.split("\n"))
 
     def test_indented_fence_lines_untouched_when_fences_off(self):
         text = "1. Конфиг:\n   ```yaml\n   - name: x\n   ```"

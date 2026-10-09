@@ -17,9 +17,13 @@ engine/converter/obsidian_lists.py
    Так же — при смене типа списка (нумерованный ↔ маркированный) на верхнем уровне: в CommonMark
    это новый список, а Python-Markdown без пустой строки склеил бы его с прошлым пунктом.
    И перед вложенным пунктом, если он идёт сразу за отдельным абзацем внутри пункта (блок
-   начался строкой текста, а не пунктом).
+   начался строкой текста, а не пунктом). И перед первой строкой цитаты «>» внутри пункта:
+   в CommonMark цитата прерывает абзац, а Python-Markdown иначе выведет «>» текстом.
 4. Строки оград с отступом (пока препроцессор оград выключен) не трогаются; строки
    верхнеуровневых оград к этому моменту уже спрятаны fenced_code.
+5. Обычные цитаты «>» (выноски к этому моменту — плейсхолдеры, их тела обрабатываются отдельно):
+   строки цитаты без префикса проходят те же правила рекурсивно, затем префикс возвращается.
+   Python-Markdown разбирает содержимое цитаты блоками, но препроцессоры к нему не применяет.
 Эвристик для спорных мест нет (U23): такие места правятся в исходнике.
 """
 
@@ -33,10 +37,43 @@ from .code_mask import scan_indented_fences
 
 ITEM_RE = re.compile(r"^(?P<ind> *)(?P<m>[-*+]|\d{1,9}[.)])(?:(?P<sp> +)(?P<rest>.*))?$")
 BLOCK_START_RE = re.compile(r"^(#{1,6}\s|>|\||<|```|~~~|\x02)")
+QUOTE_RE = re.compile(r"^( {0,3})> ?")
 
 
 class ObsidianListPreprocessor(Preprocessor):
     def run(self, lines: List[str]) -> List[str]:
+        return self._lists(self._quotes(lines))
+
+    def _quotes(self, lines: List[str]) -> List[str]:
+        """Цитаты с отступом до 3 пробелов: содержимое — рекурсивно, неизменённые — побайтно как были."""
+        opaque = set()
+        for b in scan_indented_fences(lines):
+            opaque.update(range(b["start_line"], b["end_line"] + 1))
+        out: List[str] = []
+        i = 0
+        while i < len(lines):
+            m = QUOTE_RE.match(lines[i]) if i not in opaque else None
+            if m is None:
+                out.append(lines[i])
+                i += 1
+                continue
+            indent = m.group(1)
+            j = i
+            while j < len(lines) and j not in opaque:
+                mj = QUOTE_RE.match(lines[j])
+                if mj is None or mj.group(1) != indent:
+                    break
+                j += 1
+            inner = [QUOTE_RE.sub("", line, count=1) for line in lines[i:j]]
+            new_inner = self.run(inner)
+            if new_inner == inner:
+                out.extend(lines[i:j])
+            else:
+                out.extend(indent + ">" + (" " + line if line else "") for line in new_inner)
+            i = j
+        return out
+
+    def _lists(self, lines: List[str]) -> List[str]:
         opaque = set()
         for b in scan_indented_fences(lines):
             opaque.update(range(b["start_line"], b["end_line"] + 1))
@@ -111,6 +148,12 @@ class ObsidianListPreprocessor(Preprocessor):
                     stack = []          # заголовок, цитата, таблица, HTML после пункта закрывают список
             if stack:
                 top = stack[-1]
+                # 6) цитата внутри пункта прерывает абзац (CommonMark); Python-Markdown без пустой
+                #    строки вывел бы «>» текстом
+                if (not prev_blank and line.lstrip(" ").startswith(">")
+                        and not out[-1].lstrip(" ").startswith(">")):
+                    out.append("")
+                    prev_blank = True
                 new_indent = 4 * (top["level"] + 1) + max(0, indent - top["ci"])
                 emit(" " * new_indent + line.lstrip(" "), prev_blank, "text")
             else:
