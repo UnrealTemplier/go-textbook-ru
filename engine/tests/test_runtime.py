@@ -1,4 +1,4 @@
-"""Тест рантайма window.__BOOK__ в headless Firefox (анализ § 4.9, 7 сценариев).
+"""Тест рантайма window.__BOOK__ в headless Firefox (анализ § 4.9, 7 сценариев) и модального окна Mermaid (А3м).
 
 Собирает демо-книгу во временный каталог, кладёт рядом пробные страницы со скриптами сценариев
 и обходит их одной цепочкой. Ранний скрипт стоит сразу после inline-скрипта рантайма и
@@ -48,6 +48,8 @@ SCENARIOS = [
     ("old_html_mermaid", "mermaid", "", "", "strip"),
     ("old_html_code", "code", "", "copy", "strip"),
     ("old_html_math", "formulas", "", "", "strip"),
+    ("modal", "mermaid", "", "modal", False),
+    ("no_modal", "code", "", "nomodal", False),
 ]
 
 LATE_JS = """<script>const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -63,6 +65,17 @@ window.addEventListener('load',()=>setTimeout(async()=>{const r={name:%(name)s};
  if(%(action)s==='copy'){let copied=null;
    Object.defineProperty(navigator,'clipboard',{value:{writeText:t=>{copied=t;return Promise.resolve();}}});
    document.querySelector('[data-action="copy-code"]').click();await sleep(100);r.copied=(copied||'').length;}
+ if(%(action)s==='modal'){const m=document.getElementById('mermaid-modal');
+   const scale=()=>{const s=m.querySelector('svg');return s?s.style.transform:null;};
+   const click=a=>document.querySelector('#mermaid-modal [data-action="'+a+'"]').click();
+   document.querySelector('[data-action="mermaid-fullscreen"]').click();await sleep(100);
+   r.opened=m.classList.contains('active');r.hidden=m.getAttribute('aria-hidden');r.svg=!!m.querySelector('svg');
+   click('zoom-mermaid-in');click('zoom-mermaid-in');r.zoomIn=scale();click('zoom-mermaid-out');r.zoomOut=scale();
+   click('zoom-mermaid-reset');r.zoomReset=scale();click('close-mermaid-modal');r.closedByButton=!m.classList.contains('active');
+   document.querySelector('[data-action="mermaid-fullscreen"]').click();await sleep(100);
+   document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));r.closedByEsc=!m.classList.contains('active');}
+ if(%(action)s==='nomodal'){r.modal=!!document.getElementById('mermaid-modal');
+   document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));window.zoomMermaid(0.2);window.resetMermaidZoom();}
 }catch(e){r.exception=String(e);} r.errors=window.__errors;
 const im=new Image();im.onload=im.onerror=()=>{%(next)s};
 im.src='http://127.0.0.1:%(port)d/?d='+encodeURIComponent(JSON.stringify(r));},1200));</script>"""
@@ -180,6 +193,20 @@ class BookRuntimeTest(unittest.TestCase):
         self.assertGreater(mer["mermaid"][0], 0)
         self.assertGreater(code["copied"], 0)
         self.assertGreater(math["katex"], 0)
+
+    def test_8_mermaid_modal(self):
+        res = self.r("modal")
+        self.assertTrue(res["opened"])
+        self.assertEqual(res["hidden"], "false")
+        self.assertTrue(res["svg"])
+        self.assertEqual((res["zoomIn"], res["zoomOut"], res["zoomReset"]), ("scale(1.4)", "scale(1.2)", "scale(1)"))
+        self.assertTrue(res["closedByButton"])
+        self.assertTrue(res["closedByEsc"])
+
+    def test_9_no_modal_without_diagrams(self):
+        res = self.r("no_modal")                              # r() проверяет и отсутствие ошибок JS
+        self.assertEqual(res["mermaid"], [0, 0])
+        self.assertFalse(res["modal"])
 
 
 if __name__ == "__main__":

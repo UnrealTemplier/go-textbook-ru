@@ -45,6 +45,31 @@ def page_needs(article_html: str, config: BookConfig) -> Dict[str, bool]:
     }
 
 
+def mermaid_modal_html(config: BookConfig) -> str:
+    """Разметка полноэкранного просмотра диаграмм: выводится только на страницах с Mermaid (А3м).
+
+    Возвращает блок с хвостовым отступом под следующий элемент страницы.
+    """
+    return f"""<!-- Полноэкранный модальный просмотр Mermaid диаграмм -->
+  <div class="mermaid-modal" id="mermaid-modal" role="dialog" aria-modal="true" aria-labelledby="mermaid-modal-title" aria-hidden="true">
+    <div class="modal-backdrop" data-action="close-mermaid-modal" aria-hidden="true"></div>
+    <div class="modal-dialog" role="document">
+      <header class="modal-header">
+        <h2 class="modal-title" id="mermaid-modal-title">{config.t("mermaid.modal_title")}</h2>
+        <div class="modal-actions">
+          <button type="button" class="btn-modal-action" data-action="zoom-mermaid-in" title="{config.t("mermaid.zoom_in")}" aria-label="{config.t("mermaid.zoom_in")}">+</button>
+          <button type="button" class="btn-modal-action" data-action="zoom-mermaid-out" title="{config.t("mermaid.zoom_out")}" aria-label="{config.t("mermaid.zoom_out")}">-</button>
+          <button type="button" class="btn-modal-action" data-action="zoom-mermaid-reset" title="{config.t("mermaid.zoom_reset_title")}" aria-label="{config.t("mermaid.zoom_reset_aria")}">1:1</button>
+          <button type="button" class="btn-modal-action btn-modal-close" data-action="close-mermaid-modal" title="{config.t("mermaid.close_title")}" aria-label="{config.t("mermaid.close_aria")}">&times;</button>
+        </div>
+      </header>
+      <div class="modal-body" id="mermaid-modal-content" role="region" aria-label="{config.t("mermaid.viewport_aria")}" tabindex="0"></div>
+    </div>
+  </div>
+
+  """
+
+
 def extra_asset_tags(config: BookConfig, rel_root: str, kind: str) -> str:
     """<link>/<script> для extra.css / extra.js книги, если они есть (иначе пустая строка)."""
     name = "extra.css" if kind == "css" else "extra.js"
@@ -482,6 +507,7 @@ def render_article_page(
         article_html += render_index_children(article, rel_root)
     needs = page_needs(article_html, config)
     icon_sprite = f"\n  {ICON_SPRITE}" if needs["prism"] else ""
+    mermaid_modal = mermaid_modal_html(config) if needs["mermaid"] else ""
     head_lines = []
     if needs["katex"]:
         head_lines.append(f'  <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">')
@@ -590,24 +616,7 @@ def render_article_page(
     </div>
   </div>
 
-  <!-- Полноэкранный модальный просмотр Mermaid диаграмм -->
-  <div class="mermaid-modal" id="mermaid-modal" role="dialog" aria-modal="true" aria-labelledby="mermaid-modal-title" aria-hidden="true">
-    <div class="modal-backdrop" data-action="close-mermaid-modal" aria-hidden="true"></div>
-    <div class="modal-dialog" role="document">
-      <header class="modal-header">
-        <h2 class="modal-title" id="mermaid-modal-title">{config.t("mermaid.modal_title")}</h2>
-        <div class="modal-actions">
-          <button type="button" class="btn-modal-action" data-action="zoom-mermaid-in" title="{config.t("mermaid.zoom_in")}" aria-label="{config.t("mermaid.zoom_in")}">+</button>
-          <button type="button" class="btn-modal-action" data-action="zoom-mermaid-out" title="{config.t("mermaid.zoom_out")}" aria-label="{config.t("mermaid.zoom_out")}">-</button>
-          <button type="button" class="btn-modal-action" data-action="zoom-mermaid-reset" title="{config.t("mermaid.zoom_reset_title")}" aria-label="{config.t("mermaid.zoom_reset_aria")}">1:1</button>
-          <button type="button" class="btn-modal-action btn-modal-close" data-action="close-mermaid-modal" title="{config.t("mermaid.close_title")}" aria-label="{config.t("mermaid.close_aria")}">&times;</button>
-        </div>
-      </header>
-      <div class="modal-body" id="mermaid-modal-content" role="region" aria-label="{config.t("mermaid.viewport_aria")}" tabindex="0"></div>
-    </div>
-  </div>
-
-  <!-- Кнопка Наверх -->
+  {mermaid_modal}<!-- Кнопка Наверх -->
   <button type="button" class="btn-scroll-top" id="btn-scroll-top" title="{config.t("page.scroll_top_title")}" aria-label="{config.t("page.scroll_top_aria")}">
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="18 15 12 9 6 15"></polyline></svg>
   </button>
