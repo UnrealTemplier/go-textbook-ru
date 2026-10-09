@@ -135,9 +135,9 @@ go-textbook/
 │   ├── scanner.py       # Сканирование источников, wikilinks-резолвер, канонизация якорей
 │   ├── converter/       # Конвертер Markdown -> HTML5: Callouts, Mermaid, маска кода, расширения (списки Obsidian, ограды в списках, защита формул, заголовки)
 │   ├── template.py      # HTML5 каркас, семантическая разметка, KaTeX, сайдбар, TOC
-│   ├── audit.py         # Сквозной QA-аудитор: python -m engine.audit (ссылки, анкоры, Mermaid, кроссплатформенность)
+│   ├── audit.py         # Сквозной QA-аудитор: python -m engine.audit (ссылки, анкоры, id, ассеты, Offline Guard, Mermaid, кроссплатформенность, база известных дефектов)
 │   ├── tests/           # Тесты ядра (unittest)
-│   ├── tools/           # Проверка рефакторинга: verify_diff.py, runtime_projection.py
+│   ├── tools/           # Проверка рефакторинга: verify_diff.py, runtime_projection.py, оракулы lists_oracle.py и fences_oracle.py; title_duplicates.py
 │   └── assets/          # Исходные ассеты
 │       ├── themes/      # Реестр и CSS-токены тем (один файл — одна тема)
 │       │   ├── manifest.json  # Реестр тем (порядок, label, icon, default)
@@ -146,8 +146,8 @@ go-textbook/
 │       ├── main.js      # Клиентская логика (темы, поиск, Mermaid, KaTeX)
 │       └── vendor/      # Локальные вендоры: Prism, Mermaid 10.9.1, KaTeX шрифты
 ├── book.toml            # Конфигурация книги для движка: версия, slug, канонические названия, клише, выноски, логотип, тексты главной
-├── book/                # Слой книги: книжные тесты корпуса, tools/verify_editorial.py (контроль авторской редактуры)
-├── fact-checks/         # Отчёты фактчека по модулям (mod1/ … mod4/)
+├── book/                # Слой книги: реестр изменений вывода, база дефектов аудита, книжные тесты корпуса, tools/verify_editorial.py (контроль авторской редактуры)
+├── fact-checks/         # Отчёты фактчека по модулям (mod1/ … mod4/) и реестр двойных H1
 ├── engine-extraction/   # Выделение движка html-textbook-engine: итоговый анализ, технический план, дорожная карта
 ├── requirements.txt     # markdown>=3.10,<3.11 — единственная зависимость сборки
 ├── .github/workflows/   # pages.yml: публикация dist/ на GitHub Pages при push в main
