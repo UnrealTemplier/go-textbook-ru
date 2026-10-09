@@ -158,10 +158,11 @@
     const resizer = document.getElementById('drag-resizer');
     if (!sidebar || !resizer) return;
 
-    const STORAGE_KEY = 'go_encyclopedia_sidebar_width';
+    // Ключ строится префиксом книги (window.__BOOK__); без него (старый HTML) ширина не сохраняется
+    const STORAGE_KEY = window.__BOOK__ ? window.__BOOK__.storageKey('sidebar_width') : null;
     let savedWidth = null;
     try {
-      savedWidth = localStorage.getItem(STORAGE_KEY);
+      if (STORAGE_KEY) savedWidth = localStorage.getItem(STORAGE_KEY);
     } catch (e) {}
     if (savedWidth) {
       const widthNum = parseInt(savedWidth, 10);
@@ -397,7 +398,7 @@
       const originalHTML = btn.innerHTML;
       btn.innerHTML = `
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${successColor}" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>
-        <span style="color:${successColor}; font-weight:600;">Скопировано!</span>
+        <span style="color:${successColor}; font-weight:600;">${(window.__BOOK__ && window.__BOOK__.strings.copied) || 'Скопировано!'}</span>
       `;
       btn.style.borderColor = successColor;
 
@@ -913,7 +914,8 @@
     if (typeof renderMathInElement === 'function') {
       const content = document.querySelector('.article-markdown') || document.body;
       try {
-        renderMathInElement(content, {
+        // Конфиг KaTeX — из book.toml [math] через window.__BOOK__; запасные значения — для старого HTML
+        const m = (window.__BOOK__ && window.__BOOK__.math) || {
           delimiters: [
             { left: '$$', right: '$$', display: true },
             { left: '$', right: '$', display: false },
@@ -921,7 +923,12 @@
             { left: '\\[', right: '\\]', display: true }
           ],
           ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'option'],
-          ignoredClasses: ['code-block', 'mermaid', 'mermaid-wrapper'],
+          ignoredClasses: ['code-block', 'mermaid', 'mermaid-wrapper']
+        };
+        renderMathInElement(content, {
+          delimiters: m.delimiters,
+          ignoredTags: m.ignoredTags,
+          ignoredClasses: m.ignoredClasses,
           throwOnError: false
         });
       } catch (err) {
@@ -931,35 +938,28 @@
   }
 
   // -------------------------------------------------------------------------
-  // 10. Переключение тем (paper / light / dark)
+  // 10. Переключение тем: данные и функции — из window.__BOOK__ (inline-скрипт в <head>),
+  //     тот же код ставит тему до отрисовки. Без window.__BOOK__ (старый HTML) переключатель
+  //     не работает, остальные модули — работают (Е2).
   // -------------------------------------------------------------------------
-  const THEME_KEY = 'go_encyclopedia_theme';
-  // Список тем читается из data-атрибута <html> (инжектируется сборщиком),
-  // с fallback на хардкодные значения для совместимости.
-  const _themesAttr = document.documentElement.dataset.availableThemes;
-  const THEMES = _themesAttr ? _themesAttr.split(',') : ['paper', 'light', 'dark'];
-  const _themeLabelsAttr = document.documentElement.dataset.themeLabels;
-  const THEME_NAMES = _themeLabelsAttr
-    ? Object.fromEntries(_themeLabelsAttr.split(',').map(s => s.split(':')))
-    : { paper: 'Paper', light: 'Light', dark: 'Dark' };
-
   function updateThemeSwitcherBtn() {
+    const book = window.__BOOK__;
     const btn = document.getElementById('theme-switcher-btn');
-    if (!btn) return;
-    const current = document.documentElement.dataset.theme || 'dark';
+    if (!book || !btn) return;
+    const current = document.documentElement.dataset.theme || book.defaultTheme;
     btn.dataset.currentTheme = current;
-    const currentName = THEME_NAMES[current] || current;
-    btn.setAttribute('aria-label', `Текущая тема: ${currentName} (нажмите для смены)`);
+    const name = book.themeNames[current] || current;
+    btn.setAttribute('aria-label', book.strings.themeLabel.replace('{name}', name));
   }
 
   function toggleTheme() {
-    const current = document.documentElement.dataset.theme || 'dark';
-    const idx = THEMES.indexOf(current);
-    const next = THEMES[(idx + 1) % THEMES.length];
-    document.documentElement.dataset.theme = next;
-    try {
-      localStorage.setItem(THEME_KEY, next);
-    } catch (e) {}
+    const book = window.__BOOK__;
+    if (!book) return;
+    const themes = book.availableThemes;
+    const current = document.documentElement.dataset.theme || book.defaultTheme;
+    const next = themes[(themes.indexOf(current) + 1) % themes.length];
+    book.applyTheme(next);
+    book.saveTheme(next);
     updateThemeSwitcherBtn();
     if (typeof rerenderMermaid === 'function') {
       setTimeout(rerenderMermaid, 80);
@@ -969,20 +969,8 @@
   window.toggleTheme = toggleTheme;
 
   function initThemeSwitcher() {
-    // Restore saved theme on load (also done by inline script for anti-flicker)
-    try {
-      const saved = localStorage.getItem(THEME_KEY);
-      if (saved && THEMES.includes(saved)) {
-        document.documentElement.dataset.theme = saved;
-      } else if (!document.documentElement.dataset.theme) {
-        document.documentElement.dataset.theme = 'dark';
-      }
-    } catch (e) {
-      if (!document.documentElement.dataset.theme) {
-        document.documentElement.dataset.theme = 'dark';
-      }
-    }
-
+    const book = window.__BOOK__;
+    book.applyTheme(book.getTheme());       // то же, что сделал inline-скрипт до отрисовки
     updateThemeSwitcherBtn();
 
     const btn = document.getElementById('theme-switcher-btn');
@@ -1006,7 +994,9 @@
     initScrollProgress();
     initMobileMenu();
     initGlobalSearch();
-    initThemeSwitcher();
+    if (window.__BOOK__) {         // старый HTML без window.__BOOK__: не запускаем только тему (Е2)
+      initThemeSwitcher();
+    }
   });
 
 })();
