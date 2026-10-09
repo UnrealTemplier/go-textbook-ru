@@ -202,6 +202,91 @@
   }
 
   // -------------------------------------------------------------------------
+  // 2а. Гибридный сайдбар: модули, которых нет в HTML страницы, достраиваются из
+  //     assets/nav-data.js (window.NAV_DATA) — при раскрытии модуля или при фильтре
+  // -------------------------------------------------------------------------
+  const SUB_CHEVRON = '<span class="sub-chevron" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg></span>';
+
+  function navContext() {
+    const nav = document.getElementById('sidebar-content');
+    if (!nav || !window.NAV_DATA || nav.dataset.relRoot === undefined) return null;
+    return { nav: nav, root: nav.dataset.relRoot, current: nav.dataset.current || '' };
+  }
+
+  function navIndexLink(ctx, page, text) {
+    if (!page) return escapeHtml(text);
+    const cur = page[1] === ctx.current;
+    return '<a href="' + ctx.root + page[1] + '" class="index-link' + (cur ? ' active" aria-current="page"' : '"') + '>' + escapeHtml(text) + '</a>';
+  }
+
+  function navItemsHtml(ctx, items, listClass) {
+    let h = '<ul class="' + listClass + '">';
+    items.forEach(function (p) {
+      const cur = p[1] === ctx.current;
+      h += '<li class="nav-item' + (cur ? ' active' : '') + '"><a href="' + ctx.root + p[1] + '"' +
+        (cur ? ' aria-current="page"' : '') + '>' + escapeHtml(p[0]) + '</a></li>';
+    });
+    return h + '</ul>';
+  }
+
+  function moduleContentHtml(ctx, mod) {
+    let h = mod.items.length ? navItemsHtml(ctx, mod.items, 'nav-articles-list') : '';
+    mod.subs.forEach(function (sub) {
+      h += '<details class="nav-submodule"><summary class="nav-submodule-title">' + SUB_CHEVRON +
+        '<span class="sub-text">' + navIndexLink(ctx, sub.index, sub.name) + '</span></summary>' +
+        navItemsHtml(ctx, sub.items, 'nav-articles-list sub-list') + '</details>';
+    });
+    return h;
+  }
+
+  function hydrateModule(ctx, details) {
+    const content = details.querySelector('.nav-module-content[data-nav-stub]');
+    if (!content) return;
+    const num = Number(details.dataset.navModule);
+    const mod = window.NAV_DATA.modules.find(function (m) { return m.num === num; });
+    if (!mod) return;
+    content.innerHTML = moduleContentHtml(ctx, mod);
+    content.removeAttribute('data-nav-stub');
+  }
+
+  function hydrateAllModules() {
+    const ctx = navContext();
+    if (!ctx) return;
+    ctx.nav.querySelectorAll('.nav-module[data-nav-module]').forEach(function (d) { hydrateModule(ctx, d); });
+  }
+
+  function initHybridSidebar() {
+    const ctx = navContext();
+    if (!ctx) return;
+    const count = document.querySelector('[data-nav-count]');
+    if (count) count.textContent = window.NAV_DATA.count;
+
+    // static_module_list = false: модулей, кроме текущего, в HTML нет — создаём заглушки по порядку
+    const list = ctx.nav.querySelector('.sidebar-nav');
+    if (list) {
+      const present = {};
+      list.querySelectorAll('.nav-module[data-nav-module]').forEach(function (d) { present[d.dataset.navModule] = d; });
+      let after = null;
+      window.NAV_DATA.modules.forEach(function (mod) {
+        let d = present[String(mod.num)];
+        if (!d) {
+          d = document.createElement('details');
+          d.className = 'nav-module';
+          d.dataset.navModule = mod.num;
+          d.innerHTML = '<summary class="nav-module-title"><span class="mod-badge">' + mod.num +
+            '</span> <span class="mod-text">' + navIndexLink(ctx, mod.index, mod.title) + '</span></summary>' +
+            '<div class="nav-module-content" data-nav-stub="1"></div>';
+          if (after) after.after(d); else list.prepend(d);
+        }
+        after = d;
+      });
+    }
+    ctx.nav.querySelectorAll('.nav-module[data-nav-module]').forEach(function (d) {
+      d.addEventListener('toggle', function () { if (d.open) hydrateModule(ctx, d); });
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // 3. Мгновенная фильтрация лекций в сайдбаре
   // -------------------------------------------------------------------------
   function initSidebarFilter() {
@@ -210,12 +295,13 @@
     const sidebarContent = document.getElementById('sidebar-content');
     if (!filterInput || !sidebarContent) return;
 
-    const navItems = sidebarContent.querySelectorAll('.nav-item');
-    const modules = sidebarContent.querySelectorAll('.nav-module');
-    const submodules = sidebarContent.querySelectorAll('.nav-submodule');
-
     filterInput.addEventListener('input', function () {
       const query = filterInput.value.trim().toLowerCase();
+      // Гибридный сайдбар: перед поиском достраиваем все модули из nav-data.js
+      if (query) hydrateAllModules();
+      const navItems = sidebarContent.querySelectorAll('.nav-item');
+      const modules = sidebarContent.querySelectorAll('.nav-module');
+      const submodules = sidebarContent.querySelectorAll('.nav-submodule');
 
       if (clearBtn) {
         clearBtn.style.display = query ? 'block' : 'none';
@@ -914,6 +1000,7 @@
     initKaTeX();
     initActionDelegation();
     initSidebarResize();
+    initHybridSidebar();
     initSidebarFilter();
     initSidebarCentering();
     initScrollProgress();
