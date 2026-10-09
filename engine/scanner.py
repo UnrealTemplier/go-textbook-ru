@@ -340,6 +340,21 @@ class KnowledgeBaseScanner:
             original_setitem(key, art)
         index = _RecordingIndex(put)
         self._fill_wikilink_index(index)
+        # Пути исходников (от корня книги, без .md) для ссылок вида [[папка/Статья]], как в Obsidian
+        self.wikilink_paths: List[Tuple[str, "Article"]] = []
+        for art in self.articles:
+            rel = os.path.relpath(art.source_path, self.sources_dir).replace(os.sep, "/")
+            self.wikilink_paths.append((rel[:-3].casefold() if rel.endswith(".md") else rel.casefold(), art))
+
+    def path_matches(self, target: str) -> List["Article"]:
+        """Статьи, путь которых (от корня книги, без .md) равен target или оканчивается на «/target»."""
+        t = target.strip().strip("/")
+        if t.endswith(".md"):
+            t = t[:-3]
+        t = t.casefold()
+        if "/" not in t:
+            return []
+        return [art for rel, art in getattr(self, "wikilink_paths", []) if rel == t or rel.endswith("/" + t)]
 
     def ambiguous_link(self, link_raw: str) -> List[str]:
         """Пути статей, если имя ссылки (до '|' и '#') подходит нескольким статьям."""
@@ -348,7 +363,13 @@ class KnowledgeBaseScanner:
             cands = self.wikilink_candidates.get(key)
             if cands and len(cands) > 1:
                 return sorted(cands)
-        return []
+        m = re.match(r"^\d+\.\s*(.+)$", target)
+        keys = [target, normalize_key(target)] + ([normalize_key(m.group(1))] if m else [])
+        if any(k in self.wikilink_candidates for k in keys):
+            return []
+        # по названию не нашлось: ссылка с путём, как в resolve_wikilink
+        by_path = self.path_matches(target)
+        return sorted(a.rel_output_path for a in by_path) if len(by_path) > 1 else []
 
     def _fill_wikilink_index(self, index) -> None:
         for art in self.articles:
@@ -433,6 +454,12 @@ class KnowledgeBaseScanner:
             m = re.match(r"^\d+\.\s*(.+)$", target_name)
             if m:
                 art = self.wikilink_index.get(normalize_key(m.group(1)))
+
+        if not art and "/" in target_name:
+            # [[папка/Статья]]: по названию не нашлось — ищем по концу пути исходника
+            by_path = self.path_matches(target_name)
+            if by_path:
+                art = by_path[-1]          # как и для названий: при совпадении побеждает статья, идущая позже
 
         if art:
             curr_dir = os.path.dirname(current_output_rel)

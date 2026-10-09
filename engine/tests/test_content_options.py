@@ -20,6 +20,49 @@ def make_tree(root, files):
             fp.write(text)
 
 
+class PathWikilinkTest(unittest.TestCase):
+    """[[папка/Статья]] выбирает одну из одноимённых статей (как в Obsidian); названия со «/» не ломаются."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.src = os.path.join(self.tmp.name, "sources")
+        make_tree(self.src, {
+            "1. Базы/1. Ссылки.md": ("[[2. Распределённые/8. Транзакции]] [[3. Системы/8. Транзакции|там]] "
+                                     "[[8. Транзакции]] [[2. CI/CD]] [[Нет/8. Транзакции]] "
+                                     "[[2. распределённые/8. транзакции#Итог]]"),
+            "1. Базы/2. CI_CD.md": "",
+            "1. Базы/2. Распределённые/8. Транзакции.md": "## Итог",
+            "3. Системы/8. Транзакции.md": "",
+        })
+        self.sc = KnowledgeBaseScanner(self.src, BookConfig(content=ContentConfig(canonical_replacements=[["CI_CD", "CI/CD"]])))
+        self.arts = self.sc.scan()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_path_selects_article(self):
+        here = self.arts[0].rel_output_path
+        href, text = self.sc.resolve_wikilink("2. Распределённые/8. Транзакции", here)
+        self.assertIn("raspredelyonnye", href)
+        self.assertEqual(text, "8. Транзакции")
+        href, text = self.sc.resolve_wikilink("3. Системы/8. Транзакции|там", here)
+        self.assertTrue(href.startswith("../03-"), href)
+        self.assertEqual(text, "там")
+        href, _ = self.sc.resolve_wikilink("2. распределённые/8. транзакции#Итог", here)
+        self.assertTrue(href.endswith("#itog"), href)
+
+    def test_ambiguity(self):
+        self.assertEqual(len(self.sc.ambiguous_link("8. Транзакции")), 2)
+        self.assertEqual(self.sc.ambiguous_link("2. Распределённые/8. Транзакции"), [])
+        self.assertEqual(len(self.sc.ambiguous_link("8. транзакции.md#Итог")), 2)
+
+    def test_title_with_slash_and_unknown_path(self):
+        here = self.arts[0].rel_output_path
+        self.assertIsNotNone(self.sc.resolve_wikilink("2. CI/CD", here)[0])
+        self.assertEqual(self.sc.ambiguous_link("2. CI/CD"), [])
+        self.assertEqual(self.sc.resolve_wikilink("Нет/8. Транзакции", here)[0], None)
+
+
 class ContentOptionsTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
