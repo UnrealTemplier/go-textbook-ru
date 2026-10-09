@@ -200,6 +200,13 @@ class MathProtectTest(unittest.TestCase):
     def test_dollars_protected_when_asked(self):
         self.assertEqual(self.render(r"$$a_1 * b_1$$", ["$$"]), r"<p>$$a_1 * b_1$$</p>")
 
+    def test_escaped_delimiter_does_not_close_formula(self):
+        # \$ внутри формулы — знак доллара, а не конец формулы; выделение после неё остаётся
+        self.assertEqual(self.render(r"$x = \$5$ и *курсив* и $y$", ["$$", "$"]),
+                         r"<p>$x = \$5$ и <em>курсив</em> и $y$</p>")
+        self.assertEqual(self.render(r"$$v = (\$1), (\$2)$$", ["$$"]), r"<p>$$v = (\$1), (\$2)$$</p>")
+        self.assertEqual(self.render(r"\(a \\ b_1 * c_1\)", ["\\("]), r"<p>\(a \\ b_1 * c_1\)</p>")
+
     def test_protect_must_be_in_delimiters(self):
         with self.assertRaises(ValueError):
             MathProtectExtension([{"left": "$$", "right": "$$", "display": True}], ["\\("])

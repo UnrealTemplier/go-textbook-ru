@@ -35,5 +35,9 @@ class MathProtectExtension(markdown.Extension):
 
     def extendMarkdown(self, md):
         for idx, d in enumerate(self.pairs):
-            pattern = r"(?<!\\)" + re.escape(d["left"]) + r"(.+?)" + re.escape(d["right"])
+            right = re.escape(d["right"])
+            # Тело — экранированные пары \x целиком или любой символ кроме «\»: экранированный
+            # разделитель (\$ в $…\$…$) не закрывает формулу, как и в KaTeX auto-render.
+            body = r"((?:(?!" + right + r")(?:\\.|[^\\]))+?)"
+            pattern = r"(?<!\\)" + re.escape(d["left"]) + body + right
             md.inlinePatterns.register(MathInlineProcessor(pattern, md), f"math_protect_{idx}", 185)
