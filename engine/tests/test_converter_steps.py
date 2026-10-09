@@ -233,3 +233,16 @@ class HeadingsPipelineTest(unittest.TestCase):
         self.assertIn('<h2 id="zhirnyy-pid"><strong>Жирный</strong> &amp; <pid></h2>', html_out)
         self.assertIn("<h3>Внутри выноски</h3>", html_out)
         self.assertEqual([t["anchor"] for t in toc], ["anatomiya-testing-b", "go-protiv-php-i-c", "zhirnyy-pid"])
+
+
+class WikilinkDisplayCodeTest(unittest.TestCase):
+    """Код в подписи wikilink экранируется один раз: `&^` → <code>&amp;^</code>, а не &amp;amp;."""
+
+    def test_code_in_display_escaped_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            make_tree(tmp, {"1. М/1. С.md": "[[#Оператор `&^` (AND NOT)?]] и [[Нет такой `a<b`]]\n\n## Оператор `&^` (AND NOT)?\n"})
+            sc = KnowledgeBaseScanner(tmp)
+            html_out, _ = MarkdownConverter(sc).convert_article(sc.scan()[0])
+        self.assertIn('class="wikilink">Оператор <code>&amp;^</code> (AND NOT)?</a>', html_out)
+        self.assertIn("Нет такой <code>a&lt;b</code></span>", html_out)
+        self.assertNotIn("&amp;amp;", html_out)

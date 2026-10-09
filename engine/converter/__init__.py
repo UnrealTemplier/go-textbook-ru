@@ -431,12 +431,19 @@ class MarkdownConverter:
                 self.warn(f"неоднозначная ссылка [[{raw_link}]]: подходят {', '.join(ambiguous)}")
             return href, display_text
 
+        def display_html(text):
+            # `код` в подписи (заголовок с кодом в [[#…]]) превращаем в <code> сами и экранируем один раз:
+            # иначе Python-Markdown разберёт обратные кавычки внутри <a> и экранирует & повторно (&amp;amp;)
+            parts = re.split(r"(`[^`\n]+`)", text)
+            return "".join(f"<code>{html.escape(p[1:-1])}</code>" if p.startswith("`") and p.endswith("`") and len(p) > 1
+                           else html.escape(p) for p in parts)
+
         def repl(match):
             href, display_text = resolve(match.group(1).strip())
             if href:
-                return f'<a href="{href}" class="wikilink">{html.escape(display_text)}</a>'
+                return f'<a href="{href}" class="wikilink">{display_html(display_text)}</a>'
             else:
-                return f'<span class="wikilink-unresolved" title="{self.config.t("content.wikilink_unresolved_title")}">{html.escape(display_text)}</span>'
+                return f'<span class="wikilink-unresolved" title="{self.config.t("content.wikilink_unresolved_title")}">{display_html(display_text)}</span>'
 
         def code_span(match):
             whole = re.fullmatch(r"\s*\[\[(.+?)\]\]\s*", match.group(2))
