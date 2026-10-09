@@ -86,7 +86,7 @@ go-textbook/
 │   ├── converter/         # Конвертер Markdown → семантический HTML (пакет)
 │   │   ├── __init__.py    # MarkdownConverter: клише, Mermaid (+санитайзер), выноски, wikilinks, заголовки/TOC, таблицы, блоки кода
 │   │   ├── code_mask.py   # Строчная маска кода и сканер оград с отступом
-│   │   ├── obsidian_lists.py  # Списки в стиле Obsidian (флаг markdown.obsidian_lists; в go-textbook выключен до А3л)
+│   │   ├── obsidian_lists.py  # Списки в стиле Obsidian (флаг markdown.obsidian_lists; в go-textbook включён с А3л)
 │   │   ├── indented_fence.py  # Ограды с отступом в списках (markdown.indented_fences; выключен до А3з)
 │   │   ├── math_protect.py    # Защита формул от Python-Markdown (math.protect; пуст до А3и)
 │   │   ├── headings.py        # Разметка в H2–H4 и id по TOC (не подключено до А3е)
@@ -375,7 +375,7 @@ python3 -m engine.tools.lists_oracle --book book.toml --report /tmp/lists.json
 3. Выноски (`converter/callouts.py`) — Obsidian-выноски `> [!type] Заголовок` заменяются плейсхолдером `<!--CALLOUT_PLACEHOLDER_N-->`, тело рендерится отдельно (маска кода → wikilinks → Python-Markdown) и подставляется после основного прохода как `<aside class="callout callout-{type}">`. Типы: `tip`, `interview`, `info`, `warning`, `note`, `important`, `caution`, `danger`.
 4. `_transform_wikilinks` — `[[…]]` → относительные ссылки через `scanner.resolve_wikilink`. Строки кода (маска `code_mask.py` по тексту этого шага) не трогаются: ссылки не попадают внутрь fenced-кода (U10). В inline-коде (U20): если код целиком — найденная ссылка `` `[[X]]` ``, получается `<a class="wikilink"><code>X</code></a>`; иначе код остаётся буквальным (`map[[2]int]T`, массивы, ненайденные названия).
 5. `_process_headings` — собирает TOC: `id` заголовков H2–H4 через `slugify(…, 80)` из исходного текста (без разметки), повторяющийся заголовок получает `-2`, `-3`, … (`unique_slug`, А3д), wikilink на `#якорь` ведёт на первое вхождение. Строка заголовка остаётся Markdown (с А3е, U24): разметку внутри (`` `код` ``, `**жирный**`) обрабатывает Python-Markdown, а `id` по списку TOC ставит `HeadingTreeprocessor` (`converter/headings.py`) только в основном проходе; при расхождении числа заголовков с TOC сборка падает (`RuntimeError`). Во всех ATX-заголовках приклеенный хвост `#` экранируется (`C#` → `C\#`), иначе Python-Markdown срезает его.
-6. Python-Markdown (`fenced_code`, `tables`, `sane_lists`, `nl2br`).
+6. Python-Markdown (`fenced_code`, `tables`, `sane_lists`, `nl2br`) и препроцессор списков `converter/obsidian_lists.py` (с А3л, U17): список может идти сразу за строкой абзаца, вложенность — 2–3 пробела, как в Obsidian/CommonMark; цитата внутри пункта прерывает абзац; псевдосписки внутри обычных цитат обрабатываются рекурсивно. Эвристик нет: место, которое нельзя показать как задумано, правится в исходнике (U23).
 7. Возврат Mermaid-блоков и выносок на место плейсхолдеров.
 8. `_wrap_tables` — обёртка `.table-container`.
 9. `_enhance_code_blocks` — шапка блока кода и кнопка копирования.
