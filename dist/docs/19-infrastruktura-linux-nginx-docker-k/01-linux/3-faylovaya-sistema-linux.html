@@ -2222,6 +2222,7 @@ flowchart TD
 
 
 <p>В современных файловых системах (ext4, XFS) блоки данных часто организуются в экстенты (extents) — непрерывные цепочки блоков, что минимизирует фрагментацию диска при последовательной записи.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2231,6 +2232,7 @@ flowchart TD
     <p>Имя файла хранится не в Inode, а в директории (которая сама по себе является просто файлом со списком маппингов <code>имя -&gt; номер Inode</code>). Именно поэтому в Linux можно создавать Hard Links — несколько имен, указывающих на один и тот же Inode. Удаление файла (через <code>unlink</code>) — это просто удаление записи из директории. Физические данные на диске удалятся только тогда, когда счетчик ссылок (link count) в Inode станет равен нулю и ни один процесс не держит этот файл открытым.</p>
   </div>
 </aside>
+
 
 <p>Если процесс удерживает открытый файловый дескриптор, вызов <code>rm</code> удалит имя из каталога, но блоки данных на диске не освободятся, пока процесс не закроет дескриптор или не завершится. Это классическая причина, почему <code>df -h</code> показывает 100% заполненный диск, а <code>du -sh</code> сообщает о полупустой файловой системе.</p>
 <hr />
@@ -2245,6 +2247,7 @@ flowchart TD
 <h3 id="lovushka-limitov-ulimit">Ловушка лимитов (ulimit)</h3>
 
 <p>Процесс не может открывать файлы бесконечно. Ядро Linux ограничивает количество открытых FD на процесс.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2256,6 +2259,7 @@ flowchart TD
 <p><strong>Решение:</strong> Всегда настраивайте лимиты через <code>ulimit -n</code> перед запуском приложения (или в Docker-файле/Unit-файле Systemd), либо программно через <code>syscall.Setrlimit</code> в Go. В продакшене значения <code>65535</code> или <code>1048576</code> — норма.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mechanical-sympathy-page-cache-i-tsena-diskovogo-io">Mechanical Sympathy: Page Cache и цена дискового IO</h2>
@@ -2292,6 +2296,7 @@ file.Write(data)
 <li><strong>Сетевой IO (Net Poller)</strong>: Go использует системный вызов <code>epoll</code> в Linux. Когда горутина читает из сокета, а данных нет, рантайм переводит горутину в состояние ожидания (паркует), <strong>не потребляя поток ОС (M)</strong>. Один системный поток может обслуживать тысячи спящих сетевых горутин.</li>
 <li><strong>Файловый IO</strong>: К сожалению, <code>epoll</code> не работает с обычными файлами в Linux (они всегда готовы для чтения/записи). Поэтому, когда горутина делает системный вызов <code>read</code> или <code>write</code> для файла, рантайм Go <strong>блокирует поток ОС (M)</strong> до завершения операции.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2302,6 +2307,7 @@ file.Write(data)
 <strong>Ответ:</strong> Произойдет Thread Starvation (голодание потоков). Так как файловый IO блокирует поток ОС (M), рантайм Go будет вынужден создавать новые потоки ОС для обслуживания остальных горутин. Количество потоков ОС взлетит до лимита <code>runtime.GOMAXPROCS</code> или ограничения ОС, и планировщик начнет деградировать. Решение — использование пула воркеров (ограничение конкурентности) или асинхронного файлового IO (пакеты вроде <code>aio</code> или использование <code>io_uring</code> через CGO, что сложнее).</p>
   </div>
 </aside>
+
 
 <h3 id="buferizatsiya-pochemu-bufio-spasaet-proizvoditelnost">Буферизация: почему bufio спасает производительность</h3>
 

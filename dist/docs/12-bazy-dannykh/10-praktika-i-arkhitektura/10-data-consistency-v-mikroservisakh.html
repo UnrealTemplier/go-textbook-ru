@@ -2191,6 +2191,7 @@
 *   Идиоматичную реализацию оркестратора Saga в Go с сохранением состояния, обработкой частичных отказов и компенсациями.<br />
 *   Стратегии идемпотентности и дедупликации как единственный путь к детерминированному поведению.<br />
 *   Типичные ловушки, антипаттерны и каверзные вопросы с хардовых собеседований.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2200,6 +2201,7 @@
     <p>Распределенная согласованность упирается в отсутствие глобальных часов и гарантированную задержку передачи информации между узлами. Любая попытка синхронизировать состояние через сеть требует как минимум одного дополнительного раунд-трипа (RTT). В Go это означает, что горутина переходит в состояние <code>waiting</code>, паркуется планировщиком, а системный тред возвращается в пул для выполнения другой работы. Цена ожидания измеряется не только латентностью, но и аллокациями буферов под контекст запроса, которые создают давление на Garbage Collector при масштабировании ретраев.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="teoreticheskiy-fundament-cap-pacelc-i-perekhod-k-base">Теоретический фундамент: CAP, PACELC и переход к BASE</h2>
@@ -2241,6 +2243,7 @@ flowchart LR
 </figure>
 
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2252,6 +2255,7 @@ flowchart LR
   </div>
 </aside>
 
+
 <hr />
 <h2 id="pod-kapotom-setevye-vyzovy-netpoll-i-tsena-ozhidaniya-v-rantayme-go">Под капотом: Сетевые вызовы, netpoll и цена ожидания в рантайме Go</h2>
 
@@ -2262,6 +2266,7 @@ flowchart LR
 <li><strong>Парковка горутины:</strong> Планировщик (<code>runtime.scheduler</code>) меняет состояние горутины на <code>waiting</code>, снимает её с <code>M</code> (системного треда) и ставит в очередь ожидания <code>pollDesc</code>. Тред <code>M</code> освобождается для других горутин.</li>
 <li><strong>Пробуждение:</strong> Когда <code>epoll</code> сигнализирует о готовности данных, рантайм перемещает горутину обратно в глобальную или локальную очередь (<code>runq</code>), и она продолжает выполнение с того же места.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом: Влияние на GC и аллокации при ретраях">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2276,6 +2281,7 @@ flowchart LR
 <strong>Защита:</strong> Используйте circuit breakers, ограничивайте количество одновременных ретраев, применяйте <code>sync.Pool</code> для переиспользования структур запросов.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="patterny-soglasovannosti-pochemu-2pc-umer-a-saga-stala-standartom">Паттерны согласованности: Почему 2PC умер, а Saga стала стандартом</h2>
@@ -2324,6 +2330,7 @@ flowchart TD
 </figure>
 
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2334,6 +2341,7 @@ flowchart TD
 Компенсирующая транзакция — это новая бизнес-операция, которая семантически обращает изменения, но не использует <code>ROLLBACK</code>. Например, если при оплате товар уже физически отгружен со склада, компенсация <code>Вернуть товар на склад</code> может быть невозможна. В этом случае сага переходит в состояние <code>Manual Intervention</code> или требует асинхронного арбитражного процесса. Проектируйте компенсации так, чтобы они были идемпотентными и учитывали внешние состояния.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="idiomatichnaya-realizatsiya-orkestratora-saga-v-go">Идиоматичная реализация оркестратора Saga в Go</h2>
@@ -2416,6 +2424,7 @@ func (o *Orchestrator) Execute(ctx context.Context) error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом: Почему состояние саги нужно хранить в БД">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2425,6 +2434,7 @@ func (o *Orchestrator) Execute(ctx context.Context) error {
     <p>В приведенном примере состояние хранится в переменной <code>completed</code>. При рестарте пода или падении процесса сага будет потеряна, а компенсации не вызовутся, что приведет к несогласованности данных. В продакшене оркестратор должен записывать <code>current_step_index</code> и <code>status</code> в надежное хранилище <strong>перед</strong> выполнением каждого шага, используя <code>INSERT ... ON CONFLICT DO UPDATE</code> или транзакцию с <code>SELECT FOR UPDATE</code>. Это позволяет при перезапуске безопасно продолжить выполнение с места отказа или запустить компенсации.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="idempotentnost-edinstvennyy-sposob-garantirovat-korrektnost">Идемпотентность: Единственный способ гарантировать корректность</h2>
@@ -2472,6 +2482,7 @@ func (o *Orchestrator) Execute(ctx context.Context) error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2482,6 +2493,7 @@ func (o *Orchestrator) Execute(ctx context.Context) error {
 <strong>Ответ:</strong> Нет. Это математически доказано для сетей с возможными потерями и дубликатами сообщений (задача двух генералов). На практике используется <strong>at-least-once доставка + идемпотентный потребитель</strong>. Брокер гарантирует, что сообщение доставится хотя бы раз. Потребитель гарантирует, что повторная обработка не изменит конечное состояние. Комбинация этих двух подходов дает эффект, неотличимый от exactly-once для бизнес-логики.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="lovushki-antipatterny-i-voprosy-s-sobesedovaniy">Ловушки, антипаттерны и вопросы с собеседований</h2>

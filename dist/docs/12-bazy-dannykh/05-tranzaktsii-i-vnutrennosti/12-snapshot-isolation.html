@@ -2237,6 +2237,7 @@ flowchart TD
 <li>Если <code>xmax != 0</code> и <code>xmax &lt;= snapshot.high_limit</code> и <code>xmax</code> зафиксирован → строка удалена после начала снимка. <strong>Невидима</strong>.</li>
 </ol>
 <p>Этот алгоритм выполняется на уровне движка СУБД за несколько тактов CPU, без обращения к менеджеру блокировок и без дисковых операций.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2246,6 +2247,7 @@ flowchart TD
     <p>В структуре <code>SnapshotData</code> (PostgreSQL) хранится массив <code>xip[]</code> (in-progress transactions). Для оптимизации поиска СУБД использует двоичный поиск или битовые маски. В InnoDB аналогичная структура называется <code>read_view_t</code> и содержит поля <code>up_limit_id</code> и <code>low_limit_id</code>, между которыми лежит «окно» активных транзакций. Проверка видимости сводится к сравнению 64-битных целых чисел, что идеально ложится на регистры современного CPU.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="pod-kapotom-upravlenie-pamyatyu-i-struktura-procarray">Под капотом: Управление памятью и структура `ProcArray`</h2>
@@ -2258,6 +2260,7 @@ flowchart TD
 <li>Создаёт <code>SnapshotData</code> в стеке или куче процесса.</li>
 </ol>
 <p>В InnoDB (MySQL) аналогом выступает глобальная структура <code>trx_sys-&gt;rw_trx_list</code>, защищённая мьютексом. Создание снимка требует захвата этого мьютекса, что при тысячах параллельных <code>BEGIN</code> может создать точку сериализации. Для снижения конкуренции современные версии MySQL используют RCU-подобные оптимизации и атомарные счётчики.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2267,6 +2270,7 @@ flowchart TD
     <p>Долгоживущий снимок не освобождает память в СУБД, но <strong>блокирует горизонт очистки</strong>. Пока снимок активен, <code>VACUUM</code> (PostgreSQL) или <code>purge thread</code> (InnoDB) не может удалить старые версии строк, созданные после <code>low_limit_id</code> снимка. Это приводит к разрастанию таблиц (bloat), увеличению размера файлов на диске и падению эффективности кэша страниц ОС. В высоконагруженных системах одна «зависшая» аналитическая транзакция может снизить <code>INSERT</code>/<code>UPDATE</code> пропускную способность на 30-50%.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="anomaliya-write-skew-granitsa-izolyatsii-snimkov">Аномалия Write Skew: Граница изоляции снимков</h2>
@@ -2300,6 +2304,7 @@ COMMIT;
 
 <p>Обе транзакции увидели снимок, где врачей двое. Обе приняли решение, что могут уйти. После коммита в базе 0 врачей. Правило нарушено. <code>Snapshot Isolation</code> не видит конфликта, потому что транзакции изменяли разные строки и не пересекались по блокировкам.</p>
 <p>Решение: использовать <code>SERIALIZABLE</code> (с SSI или предикатными блокировками) или явные <code>SELECT ... FOR UPDATE</code> на уровне приложения.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2310,6 +2315,7 @@ COMMIT;
 <strong>Ответ:</strong> <code>SI</code> допускает <code>Write Skew</code>, так как проверяет конфликты только на уровне перезаписи одной и той же строки. <code>SSI</code> (реализован в PostgreSQL при <code>ISOLATION LEVEL SERIALIZABLE</code>) дополнительно отслеживает предикатные зависимости (чтение диапазона → запись в диапазон) и при обнаружении цикла откатывает одну из транзакций с кодом <code>40001</code>. Это даёт строгую сериальную эквивалентность ценой более частых конфликтов.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mekhanicheskaya-simpatiya-tsena-soglasovannosti-dlya-zheleza">Механическая симпатия: Цена согласованности для железа</h2>
@@ -2419,6 +2425,7 @@ func GoodProcessing(ctx context.Context, db *sql.DB) error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2428,6 +2435,7 @@ func GoodProcessing(ctx context.Context, db *sql.DB) error {
     <p>В драйвере <code>lib/pq</code> или <code>pgx</code> вызов <code>tx.Commit()</code> не мгновенно освобождает снимок на стороне сервера. Сервер помечает транзакцию как <code>idle in transaction</code> до получения <code>COMMIT</code> пакета по сети. Если между <code>defer tx.Rollback()</code> и фактическим коммитом происходит паника или сетевой разрыв, снимок может остаться активным до таймаута соединения (<code>idle_in_transaction_session_timeout</code>). Всегда настраивайте этот параметр в <code>postgresql.conf</code> на уровне 5-10 минут.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

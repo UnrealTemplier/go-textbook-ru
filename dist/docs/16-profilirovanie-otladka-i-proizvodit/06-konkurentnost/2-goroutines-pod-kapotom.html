@@ -2233,6 +2233,7 @@
   - <code>lr</code> — Link Register (регистр адреса возврата на архитектурах ARM64);<br />
   - <code>g</code> — указатель на саму структуру <code>g</code>.<br />
 - <strong><code>atomicstatus</code></strong> — атомарный флаг состояния горутины, с помощью которого планировщик координирует переходы между очередями без дорогих системных блокировок.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Ассемблерная магия переключения через gobuf">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2243,6 +2244,7 @@
 Процедура <code>gogo</code> берет значения из <code>g.sched</code> и за десяток инструкций процессора загружает их в физические регистры CPU: восстанавливает указатель стека в регистр <code>SP</code>, базовый указатель в <code>BP</code>, связывает текущую горутину и выполняет инструкцию косвенного перехода <code>JMP</code> по адресу регистра <code>PC</code>. Выполнение возобновляется ровно в той точке, где горутина отдала управление. Это чистый Userspace Context Switch: никаких обращений к ядру ОС, никаких таблиц прерываний, никаких сбросов очередей ядра!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="sozdanie-gorutiny-chto-proiskhodit-pri-go-func">Создание горутины: что происходит при `go func()`</h2>
@@ -2314,6 +2316,7 @@ sequenceDiagram
 <li><strong>Мгновенный возврат:</strong><br />
    Родительская горутина не ждет старта дочерней: вызов <code>runtime.newproc</code> завершается за <strong>20–40 наносекунд</strong>, и родительский поток исполнения продолжает свою работу.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Вопрос с собеседования: Стоимость создания горутины">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2331,6 +2334,7 @@ sequenceDiagram
 Никаких обращений к ядру ОС, создания системных дескрипторов или вызовов <code>clone(2)</code> не происходит.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="zhiznennyy-tsikl-konechnyy-avtomat-g">Жизненный цикл: конечный автомат G</h2>
@@ -2383,6 +2387,7 @@ flowchart TD
 <li><strong><code>_Gwaiting</code> $\to$ <code>_Grunnable</code>:</strong> Ожидаемое событие произошло (другая горутина отправила сообщение в канал, мьютекс освободился, сработал сетевой <code>epoll</code>). Сторонняя горутина или netpoller вызывает процедуру <code>goready</code>, которая атомарно переводит спящую горутину в состояние <code>_Grunnable</code> и возвращает ее в очередь выполнения <code>runq</code>.</li>
 <li><strong><code>_Grunning</code> $\to$ <code>_Gdead</code>:</strong> Функция завершила выполнение, достигнув финального <code>return</code>. Управление переходит в <code>runtime.goexit</code>, которая вызывает деструкторы, открепляет горутину, освобождает избыточную память стека и помещает структуру <code>g</code> в пул переиспользования <code>p.gFree</code>.</li>
 </ul>
+
 <aside class="callout callout-tip" aria-label="Диагностика зависших состояний">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">💡</span>
@@ -2393,6 +2398,7 @@ flowchart TD
 Если в отчете обнаружены тысячи горутин в статусе <code>_Gwaiting</code> на операциях с каналами (<code>chan receive</code>) — это верный признак утечки горутин (Goroutine Leak). Если же тысячи горутин зависли в статусе <code>_Grunnable</code>, но утилизация CPU низкая — это указывает на жесткий Lock Contention или блокировку процессоров системными вызовами.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="stek-gorutiny-nepreryvnyy-rastushchiy-kopiruemyy">Стек горутины: непрерывный, растущий, копируемый</h2>
@@ -2474,6 +2480,7 @@ flowchart LR
 <li><strong>Пересчет указателей (Pointer Adjustment):</strong> Это самая сложная фаза. Если переменная в стеке указывала на другую переменную в том же самом стеке, ее абсолютный виртуальный адрес изменился! Компилятор Go генерирует специальные битовые карты (<strong>Stack Maps</strong>), описывающие, какие ячейки стека содержат указатели. Рантайм обходит стек по этим картам и корректирует все внутренние указатели, прибавляя дельту смещения адресов.</li>
 <li><strong>Утилизация:</strong> Старый блок памяти освобождается и возвращается в пул аллокатора.</li>
 </ol>
+
 <aside class="callout callout-important" aria-label="Ограничение максимального размера стека">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚡</span>
@@ -2486,6 +2493,8 @@ flowchart LR
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Рекурсивные вызовы и скрытое копирование стека">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2495,6 +2504,7 @@ flowchart LR
     <p>Хотя расширение стека происходит относительно быстро (сотни наносекунд), при частом вызове глубокой рекурсии непрерывное копирование стека ($2 \to 4 \to 8 \to 16$ МБ) создаёт колоссальное давление на шину памяти и сборщик мусора. Кроме того, во время сборки мусора рантайм выполняет обратную операцию — <strong>Stack Shrinking</strong> (сжатие стека вдвое, если используется менее 25% его емкости). Если горутина в цикле то раздувает стек, то сжимает его, вы получите новую вариацию Hot Split Problem. Проектируйте глубокие алгоритмы итеративно или переносите крупные буферы в кучу!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="pereklyuchenie-konteksta-chto-sokhranyaetsya-i-vosstanavlivaetsya">Переключение контекста: что сохраняется и восстанавливается</h2>
@@ -2601,6 +2611,7 @@ sequenceDiagram
 <li>Ядро Linux прерывает выполнение инструкций потока <code>M</code> и вызывает обработчик сигналов Go-рантайма (<code>runtime.sighandler</code>).</li>
 <li>Обработчик корректирует адрес возврата так, чтобы горутина принудительно вызвала процедуру <code>runtime.asyncPreempt</code>, которая замораживает регистры, возвращает задачу в очередь <code>runq</code> и вызывает диспетчер <code>schedule()</code>.</li>
 </ul>
+
 <aside class="callout callout-interview" aria-label="Вопрос с собеседования: Бесконечный цикл без вызовов функций">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2613,6 +2624,7 @@ sequenceDiagram
 Начиная с Go 1.14, фоновый поток мониторинга <code>sysmon</code>, зафиксировав выполнение дольше 10 мс, пошлет потоку POSIX-сигнал <code>SIGURG</code>. Рантайм асинхронно вытеснит горутину, вернет ее в очередь <code>_Grunnable</code> и передаст процессор другим задачам. Однако следует помнить, что обработка сигналов ОС создает дополнительную нагрузку на ядро, поэтому намеренно полагаться на асинхронную преемпцию в бизнес-логике не рекомендуется.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="privyazka-k-potoku-os-lockosthread">Привязка к потоку ОС: LockOSThread</h2>
@@ -2651,6 +2663,7 @@ func init() {
 - Никакая другая горутина не сможет запуститься на этом потоке <code>M</code>.<br />
 - Если привязанная горутина блокируется, поток <code>M</code> засыпает вместе с ней и не передается планировщику.<br />
 - Освобождение потока выполняется парным вызовом <code>runtime.UnlockOSThread()</code>. Если горутина завершится без снятия блокировки, рантайм навсегда уничтожит этот поток <code>M</code>, породив взамен новый.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Злоупотребление LockOSThread">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2661,8 +2674,10 @@ func init() {
   </div>
 </aside>
 
+
 <hr />
 <h2 id="prakticheskie-vyvody-i-lovushki">Практические выводы и ловушки</h2>
+
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Не путайте горутины с потоками">
   <header class="callout-header">
@@ -2674,6 +2689,8 @@ func init() {
 Тем не менее помните: миллион заблокированных горутин, забытых на незакрытых каналах (Goroutine Leak), удерживают в куче свои стеки и все связанные объекты, постепенно приближая катастрофу OOMKilled. Всегда мониторьте объем горутин через эндпоинты <code>/debug/pprof/goroutine</code> и <code>/debug/pprof/goroutine?debug=2</code>.</p>
   </div>
 </aside>
+
+
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Горутины бесплатны, но не совсем">
   <header class="callout-header">
@@ -2688,6 +2705,7 @@ func init() {
 Если сервис создает 100 000 горутин, непрерывно выполняющих тяжелые вычисления, система потеряет производительность в очередях планировщика.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mechanical-sympathy-gorutiny-i-protsessor">Mechanical Sympathy: горутины и процессор</h2>

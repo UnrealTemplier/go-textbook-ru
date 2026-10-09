@@ -2311,6 +2311,7 @@ done:
 2. Проверяются биты цвета объекта, содержащего слот (через <code>heapBitsForAddr</code>).<br />
 3. Если объект чёрный, а значение белое, вызывается <code>gcMarkSpanForBarrier</code> и указатель помещается в буфер.</p>
 <p>Буфер write barrier — это специализированная структура <code>p.wbBuf</code>, выделенная для каждого логического процессора <code>P</code>. Это локальная для <code>P</code> циклическая очередь емкостью 512 записей. Когда буфер заполняется, вызывается системная процедура <code>runtime.wbBufFlush</code>, которая пачкой сбрасывает накопленные указатели в глобальные пулы <code>workbuf</code> для обработки GC worker'ами.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2320,6 +2321,7 @@ done:
     <p>В исходном коде <code>runtime/mbitmap.go</code> битовая карта цвета объектов хранится в метаданных спана: <code>mspan.gcmarkBits</code>. Барьер обращается к этим битам через служебную абстракцию <code>heapBits</code>. Для достижения предельной скорости критический путь барьера написан вручную на чистом ассемблере: файл <code>runtime/asm_amd64.s</code> содержит ультраоптимизированную процедуру <code>gcWriteBarrier</code>, бережно сохраняющую регистры процессора.</p>
   </div>
 </aside>
+
 
 <h3 id="write-barrier-i-stek">Write barrier и стек</h3>
 
@@ -2346,6 +2348,7 @@ done:
 <li><strong>Микробенчмарки с ключом <code>-benchmem</code>:</strong> Сравнение двух реализаций одного алгоритма (например, структура с обычным <code>int</code> против структуры с указателем <code>*int</code>, или слайс структур <code>[]Node</code> против слайса указателей <code>[]*Node</code> в горячем цикле) наглядно демонстрирует колоссальный разрыв в производительности, львиная доля которого обусловлена барьером записи.</li>
 <li><strong>Сравнение с отключённым GC:</strong> Хотя полностью отключить барьер в продакшене невозможно, запуск с <code>GODEBUG=gctrace=1</code> позволяет увидеть частоту сборок и сопоставить её со всплесками активности барьера.</li>
 </ul>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2356,6 +2359,7 @@ done:
 <strong>Ответ:</strong> Потому что компилятор Go генерирует перед каждой записью указателя в кучу проверку барьера записи (<code>CMPB runtime.writeBarrier</code>). Хотя в покое барьер отключён, проверка добавляет инструкции ветвления в конвейер CPU. А во время активности mark-фазы вызывается <code>runtime.gcWriteBarrier</code>, который обращается к битам цвета в <code>mspan</code>, сохраняет указатели в буфер <code>p.wbBuf</code> и может провоцировать дорогие промахи в кэш (L1/L2 Cache Miss).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="write-barrier-i-mechanical-sympathy">Write barrier и Mechanical Sympathy</h2>
@@ -2370,6 +2374,7 @@ done:
 <hr />
 <h2 id="lovushki-i-ogranicheniya">Ловушки и ограничения</h2>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2380,6 +2385,8 @@ done:
 Записи в память стека никогда не проходят через барьер. Если ваш горячий алгоритм оперирует срезом указателей, критически важно убедиться через анализ побега (<code>-gcflags="-m"</code>), что срез остаётся на стеке (<a href="../04-memory-profiling/3-escape-analysis.html" class="wikilink">3. Escape analysis</a>). Как только он утекает в кучу, каждая операция <code>slice[i] = ptr</code> превращается в вызов барьера записи.</p>
   </div>
 </aside>
+
+
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
@@ -2392,6 +2399,8 @@ done:
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2402,6 +2411,7 @@ done:
 Внешний код на языке Си, вызываемый через cgo, не имеет представления о сборщике мусора Go и не содержит вызовов <code>gcWriteBarrier</code>. Запись Go-указателя в память Си-структуры без ведома рантайма строжайше запрещена правилами передачи указателей cgo и немедленно приведёт к аварийному завершению программы.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

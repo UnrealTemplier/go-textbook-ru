@@ -2216,6 +2216,7 @@ flowchart TD
 
 
 <p>Для инженера, пишущего на Go, глубокое понимание этих явлений особенно критично: <strong>Go runtime не защищает вас от логических ошибок архитектуры синхронизации</strong>. Вы оперируете легковесными горутинами (<code>g</code>), которых при блокировке паркует планировщик Go (обычно без всякого системного вызова), и средой исполнения, которая жонглирует системными тредами (<code>m</code>) и логическими процессорами (<code>p</code>). Любой архитектурный просчет моментально масштабируется: взрывная нагрузка на планировщик при раздувании <code>GOMAXPROCS</code>, шторм кэш-промахов и истощение системных ресурсов.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2227,6 +2228,7 @@ flowchart TD
 <p>При <code>livlock</code> горутина непрерывно находится в активном состоянии <code>Grunning</code> или готовом <code>Grunnable</code>. Она совершает частые переключения контекста, потребляет 100% CPU, непрерывно изменяет переменные, но алгоритм в целом не совершает полезной работы. Это делает livelock в Go особенно коварным: мониторинг видит высокую загрузку CPU, не сигнализирует об остановке, но клиенты получают таймауты. Вдобавок это способно привести к аварийному завершению из-за неконтролируемого выделения памяти (<code>OOM</code>) или аппаратному троттлингу процессора.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="deadlock-vzaimnaya-blokirovka">Deadlock (Взаимная блокировка)</h2>
@@ -2283,6 +2285,7 @@ flowchart LR
 <li><strong>Wake-up</strong>: Когда текущий владелец вызывает <code>Unlock()</code>, рантайм вызывает <code>runtime_Semrelease</code>, который будит одну из ожидающих горутин (<code>Gwaiting</code> -&gt; <code>Grunnable</code>) тоже без обращения к ядру.</li>
 </ol>
 <p>Если цикл ожидания замкнут (Горутина 1 ждет Горутину 2, а та ждет Горутину 1), обе горутины будут спать вечно. С точки зрения ядра Linux всё абсолютно законно: оно про эти горутины ничего не знает, а потоки <code>m</code> просто простаивают в ожидании работы.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2294,6 +2297,7 @@ flowchart LR
 <p>Встроенный в Go рантайм-детектор завершает программу с <code>fatal error: all goroutines are asleep - deadlock!</code>, но только если <strong>все</strong> горутины в процессе уснули и рантайму больше нечего ждать! От значения <code>GOMAXPROCS</code> детектор не зависит, а вот живой таймер (тикер метрик), сетевой poll (<code>net.Listen</code> + <code>Accept</code>) или <code>signal.Notify</code> его глушат, и глобальный детектор deadlock'ов не сработает. Он молчит и у любого бинарника, собранного с cgo (а это по умолчанию любой бинарник, импортирующий <code>net</code>)! Просто фоновая горутина, которая тоже заблокирована навсегда, ему не мешает. Часть сервиса повиснет намертво, а процесс продолжит жить, вводя операторов в заблуждение.</p>
   </div>
 </aside>
+
 
 <h3 id="kak-predotvrashchat-i-detektit">Как предотвращать и детектить</h3>
 
@@ -2382,6 +2386,7 @@ sequenceDiagram
 <li>При следующем чтении с CPU2 немедленно возникает <code>Cache Miss</code>, и ядро вынуждено по шине запрашивать актуальные данные из L1 CPU1.</li>
 <li><strong>Стоимость катастрофы:</strong> феномен <code>Cache Line Bounce</code> съедает от 20 до 50 тактов CPU на каждый раунд согласования шины. В плотном цикле активного спина это нагревает процессор и парализует пропускную способность шины памяти быстрее, чем любой «тяжелый» <code>syscall</code>.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2392,6 +2397,7 @@ sequenceDiagram
 <p>Но если вы вручную проектируете lock-free алгоритм на циклах <code>atomic.Load/Store</code> или вызываете <code>runtime.Gosched()</code> в бесконечном цикле без задержек — вы собственноручно создаете разрушительный livelock на уровне протокола MESI и шины памяти.</p>
   </div>
 </aside>
+
 
 <h3 id="kak-predotvrashchat">Как предотвращать</h3>
 
@@ -2489,6 +2495,7 @@ flowchart TD
 <li>В этом режиме вновь прибывающие горутины вообще не пытаются захватить лок и не крутятся в спинлоке: они сразу встают в хвост очереди ожидания. Право владения мьютексом передается строго по цепочке первой ожидающей <code>g</code>.</li>
 <li>Мьютекс выходит из режима голодания только тогда, когда очередь ожидания полностью опустеет или разбуженная горутина ждала меньше 1 мс.</li>
 </ul>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2498,6 +2505,7 @@ flowchart TD
     <p><strong>Голодание стека (Stack Starvation)</strong>: Если вы запускаете бесконечный цикл без блокирующих операций (<code>for { doWork() }</code>), горутина не делает <code>yield</code>. На одном <code>p</code> она будет монополизировать CPU, пока не произойдет <code>preemption</code> (каждые ~10мс по умолчанию). Это создает иллюзию starvation для других горутин на том же <code>p</code>. Решение: <code>GOMAXPROCS &gt;= 2</code> или явный <code>runtime.Gosched()</code> в долгих циклах.</p>
   </div>
 </aside>
+
 
 <h3 id="kak-predotvrashchat">Как предотвращать</h3>
 
@@ -2575,6 +2583,7 @@ func fairLockAcquire(ctx context.Context, mu *sync.Mutex) error {
 <hr />
 <h2 id="lovushki-i-voprosy-s-sobesedovaniy">Ловушки и вопросы с собеседований</h2>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2585,6 +2594,8 @@ func fairLockAcquire(ctx context.Context, mu *sync.Mutex) error {
 <p><strong>Ответ:</strong> Go runtime <strong>не предотвращает</strong> deadlock автоматически. Он только детектирует его при завершении программы, если все <code>g</code> находятся в <code>Gwaiting</code> или <code>Gdead</code>. Детектор срабатывает не всегда (его глушат таймеры, сетевой poll, <code>signal.Notify</code> и cgo), а <code>runtime.GOMAXPROCS(0)</code> его не отключает: этот вызов лишь возвращает текущее значение. Правильный ответ: deadlock лечится архитектурно (таймауты, порядок захвата, <code>context</code>).</p>
   </div>
 </aside>
+
+
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -2597,6 +2608,8 @@ func fairLockAcquire(ctx context.Context, mu *sync.Mutex) error {
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2607,6 +2620,7 @@ func fairLockAcquire(ctx context.Context, mu *sync.Mutex) error {
 <code>ctx.Done()</code> в <code>select</code> не прервет горутину, которая делает <code>for { atomic.AddInt64(&amp;counter, 1) }</code>. Она будет работать вечно, потребляя CPU. Это классическая CPU starvation. Всегда добавляйте <code>runtime.Gosched()</code> или делайте периодические блокирующие вызовы.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

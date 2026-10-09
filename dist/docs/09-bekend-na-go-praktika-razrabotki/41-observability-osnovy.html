@@ -2225,6 +2225,7 @@ flowchart LR
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2234,6 +2235,7 @@ flowchart LR
     <p>Go-реализация OpenTelemetry SDK спроектирована с маниакальным вниманием к производительности основного приложения. Компонент <code>BatchSpanProcessor</code> использует ограниченный неблокирующий канал (<code>chan Span</code>) в памяти и отдельную фоновую горутину сборщика. Если бизнес-горутины порождают спаны быстрее, чем сетевой экспортер успевает прокачивать их через сетевой сокет, буферный канал переполняется, и OTel SDK начинает автоматически <strong>дроппать</strong> (отбрасывать) избыточные спаны. SDK осознанно жертвует полнотой телеметрии ради того, чтобы никогда не блокировать прикладные горутины и не спровоцировать катастрофический Out Of Memory. Это фундаментальная гарантия: телеметрия никогда не должна становиться причиной падения сервиса.</p>
   </div>
 </aside>
+
 
 <h3 id="2-treysing-distributed-tracing-pod-kapotom">2. Трейсинг (Distributed Tracing) под капотом</h3>
 
@@ -2270,6 +2272,7 @@ func doWork(ctx context.Context) {
 <p><strong>Механика распространения (Context Propagation)</strong>: <br />
 Когда вызывается метод <code>otel.Tracer().Start()</code>, OTel SDK генерирует структуру <code>Span</code>, вычисляет <code>TraceID</code> (уникальный 128-битный идентификатор всей распределенной цепочки) и <code>SpanID</code> (64-битный идентификатор текущего шага), после чего запаковывает указатель на спан в новый дочерний <code>Context</code>. </p>
 <p>Когда ваш код совершает сетевой вызов через <code>http.NewRequestWithContext(ctx, ...)</code>, установленный сетевой middleware перехватывает контекст, извлекает актуальные <code>TraceID</code> и <code>SpanID</code>, сериализует их в стандартный заголовок спецификации W3C Trace Context (<code>traceparent</code>, например: <code>00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01</code>) и отправляет по сети. Принимающий микросервис считывает этот заголовок и продолжает дерево трейса без разрыва контекста.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2279,6 +2282,7 @@ func doWork(ctx context.Context) {
     <p><strong>Глубина контекста и аллокации памяти</strong>: Каждый раз, когда в контекст внедряются новые метаданные (через <code>context.WithValue</code> или создание спана), рантайм Go аллоцирует новую структуру <code>valueCtx</code>, образующую односвязный список указателей на родителей. В глубоко эшелонированных цепочках вызовов микросервисов дерево контекста может насчитывать десятки узлов. Хотя начиная с Go 1.21 рантайм получил внутренние оптимизации <code>valueCtx</code> через атомарные операции, бездумное насыщение контекста тяжелыми объектами неизбежно приводит к раздуванию резидентной памяти (RSS) и создает измеримое давление на сборщик мусора (GC), так как структуры контекста сбегают в кучу (heap escape).</p>
   </div>
 </aside>
+
 
 <h3 id="3-vliyanie-na-proizvoditelnost-mechanical-sympathy">3. Влияние на производительность (Mechanical Sympathy)</h3>
 
@@ -2332,6 +2336,7 @@ func logWithTrace(ctx context.Context, msg string, args ...any) {
 <p>Благодаря наличию <code>trace_id</code> в каждом логе системы централизованного сбора (Grafana Loki, Elasticsearch) связываются с системами трейсинга (Tempo, Jaeger) на уровне веб-интерфейса.</p>
 <h3 id="5-sobesedovanie">5. Собеседование</h3>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2344,6 +2349,7 @@ func logWithTrace(ctx context.Context, msg string, args ...any) {
 <strong>Ответ:</strong> Грамотно спроектированный OTel SDK использует фоновый <code>BatchProcessor</code> со строго ограниченным кольцевым буфером в оперативной памяти. Если внешний коллектор недоступен, фоновый воркер предпринимает повторные попытки отправки с экспоненциальным backoff. При заполнении буфера новые спаны молча отбрасываются (drop). Сервис не должен зависать, замедлять обработку клиентских запросов или падать в панику. Этот фундаментальный принцип проектирования называется корректной деградацией функциональности (Graceful Degradation или Degradation Gracefully).</p>
   </div>
 </aside>
+
 
 <h3 id="6-instrumentariy-v-go">6. Инструментарий в Go</h3>
 

@@ -2305,6 +2305,7 @@ flowchart TD
 <li><strong>SACK (Selective Acknowledgment):</strong> Выборочные подтверждения, позволяющие повторно отправлять только потерянные сегменты, а не всю цепочку;</li>
 <li><strong>Timestamps:</strong> Метки времени для ювелирного измерения времени круговой задержки RTT и защиты от зацикливания номеров (PAWS).</li>
 </ul>
+
 <aside class="callout callout-info" aria-label="Под капотом: Структура `tcp_sock` в ядре Linux">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2320,6 +2321,7 @@ flowchart TD
 Эти поля ядро меняет под блокировкой сокета (socket lock), а не отдельными атомарными инструкциями вроде <code>LOCK CMPXCHG</code>; на многопроцессорных NUMA-узлах при сотнях тысяч мелких пакетов заметную цену платят за перемещение кэш-линий сокета между ядрами и за конкуренцию за эту блокировку.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="garantiynyy-kontrakt-tcp">Гарантийный контракт TCP</h2>
@@ -2375,6 +2377,7 @@ flowchart TD
 <li><strong>Отсутствие дубликатов (No Duplicates):</strong><br />
    Благодаря кумулятивным подтверждениям Cumulative ACK подтвержденный байт <strong><code>N</code></strong> гарантирует, что байты в диапазоне <strong><code>1..N-1</code></strong> не будут доставлены прикладному коду повторно. Любые запоздавшие дубликаты сегментов ядро фильтрует и отбрасывает на аппаратном и системном уровне.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Поток байт против сообщений (Streaming vs Framing)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2401,6 +2404,7 @@ TCP — это непрерывный поток байт, подобный ре
 В протоколах прикладного уровня (HTTP/1.1, gRPC, кастомные бинарные протоколы) разработчик <strong>обязан</strong> самостоятельно реализовывать механизм фрейминга: либо передавать явную длину сообщения (заголовок <strong><code>Content-Length</code></strong>), либо использовать уникальный разделитель (например, <code>\r\n\r\n</code> или нуль-терминатор). Если этого не сделать, следующий прикладной запрос «съест» остаток предыдущего сообщения.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="zhiznennyy-tsikl-soedineniya-ot-syn-do-fin">Жизненный цикл соединения: От SYN до FIN</h2>
@@ -2484,6 +2488,7 @@ sequenceDiagram
    - Гарантировать доставку финального ACK: если он потеряется, сервер повторно пришлет FIN, и клиент в состоянии <code>TIME_WAIT</code> сможет переотправить ACK;<br />
    - Предотвратить смешивание данных: гарантировать, что все задержавшиеся в сетевых буферах блуждающие пакеты старого соединения окончательно погибнут в сети (истечет их IP TTL) и не будут ошибочно восприняты новым сокетом, созданным на тех же самых портах.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Борьба с накоплением сокетов в TIME_WAIT">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2499,6 +2504,7 @@ sequenceDiagram
 3. <strong>Тюнинг ядра Linux:</strong> Включение параметра <code>net.ipv4.tcp_tw_reuse = 1</code>, позволяющего безопасно переиспользовать сокеты <code>TIME_WAIT</code> для исходящих соединений с помощью проверки временных меток TCP Timestamps.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="pod-kapotom-kak-go-obshchaetsya-s-tcp-stekom-os">Под капотом: Как Go общается с TCP стеком ОС</h2>
@@ -2575,6 +2581,7 @@ flowchart TD
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом: Эффективность памяти Netpoller">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2586,6 +2593,7 @@ flowchart TD
 Основное потребление памяти смещается в ядро Linux: на каждый активный сокет ядро выделяет дескриптор <strong><code>struct file</code></strong>, структуру <strong><code>struct tcp_sock</code></strong> и буферные очереди <code>sk_buff</code> (около 2–4 КБ ядерной памяти подсистемы <code>kmem:tcp</code> при пустых буферах).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="lovushki-i-inzhenernye-kompromissy-gotchas">Ловушки и инженерные компромиссы (Gotchas)</h2>
@@ -2618,6 +2626,7 @@ flowchart TD
 <p>При создании сотен тысяч кратковременных исходящих TCP-подключений ядро перебирает доступные порты из диапазона <strong><code>ip_local_port_range</code></strong> (обычно 32768–60999). Из-за задержки <code>TIME_WAIT</code> (60 сек) порты не успевают освобождаться, и <code>net.Dial</code> начинает падать с ошибкой <code>dial tcp: cannot assign requested address</code>. Решение — строгое использование пулов соединений.</p>
 <h3 id="4-povedenie-dedlaynov-v-go-deadlines-vs-network-drops">4. Поведение дедлайнов в Go (Deadlines vs Network Drops)</h3>
 <p>Методы <strong><code>SetReadDeadline</code></strong> и <strong><code>SetWriteDeadline</code></strong> интерфейса <code>net.Conn</code> не вызывают системных таймаутов ядра. Они устанавливают таймеры внутри рантайма Go. Если таймер истекает, сокет переводится в состояние ошибки, а вызовы возвращают системную ошибку <strong><code>i/o timeout</code></strong>. Не путайте ошибку дедлайна с физическим разрывом сетевого кабеля!</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Катастрофа утечки сокетов в состоянии CLOSE_WAIT">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2633,6 +2642,7 @@ flowchart TD
 * Много <strong><code>CLOSE_WAIT</code></strong> — баг утечки дескрипторов в вашем Go-коде (забытый <code>defer conn.Close()</code>).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

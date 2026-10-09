@@ -2308,6 +2308,7 @@ sequenceDiagram
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2318,6 +2319,8 @@ sequenceDiagram
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2327,6 +2330,7 @@ sequenceDiagram
     <p><code>strace -f</code> отслеживает fork, но логи пишутся в один файл, что создает коллизии. В production всегда используйте <code>-ff</code> — тогда каждый дочерний процесс получит свой <code>PID.strace</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="ltrace-trassirovka-bibliotechnykh-vyzovov">ltrace: Трассировка библиотечных вызовов</h2>
@@ -2390,6 +2394,7 @@ flowchart LR
 1. <strong>Нет динамических символов</strong>: <code>ld.so</code> не знает, какие функции нужно перехватывать.<br />
 2. <strong>CGO меняет правила</strong>: Если приложение использует CGO, <code>ltrace</code> может видеть вызовы C-библиотек, но не видит вызовы внутри Go-рантайма (<code>runtime.malloc</code>, <code>netpoll</code>, <code>epoll_pwait</code>).<br />
 3. <strong>Нет PLT</strong>: <code>ltrace</code> работает через <code>ptrace</code> и точки останова на записях PLT (механизм <code>LD_PRELOAD</code> он не использует). У статически собранного Go-бинарника PLT нет, а собственный аллокатор Go <code>malloc</code> из libc не вызывает.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2400,6 +2405,7 @@ flowchart LR
 <strong>Ответ:</strong> Go статически линкует <code>libc</code> и использует собственный аллокатор памяти, который работает через <code>mmap</code>/<code>munmap</code> и выделенные области виртуальной памяти. Динамический линковщик <code>ld.so</code> не видит импортируемых функций, поэтому <code>ltrace</code> не может внедрить свои заглушки в <code>.rela.plt</code>. Для отладки аллокаций в Go используют <code>GODEBUG=gctrace=1</code>, <code>pprof heap</code> или <code>madvise</code>/<code>mmap</code> трассировку через <code>strace</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="prakticheskiy-payplayn-otladki-dlya-backend">Практический пайплайн отладки для Backend</h2>
@@ -2456,12 +2462,13 @@ flowchart LR
 </code></pre>
 </div>
 
-<p>Покажет <code>connect</code>, <code>sendto</code>, <code>recvfrom</code>, <code>setsockopt</code>. Если видим <code>ECONNREFUSED</code> или <code>ETIMEDOUT</code> — проблема на уровне сети или <code>TIME_WAIT</code>/<code>CLOSE_WAIT</code> состояний (см. <code>&lt;a href="50-time-wait-close-wait-i-problemy-soketov.html" class="wikilink"&gt;50. TIME_WAIT, CLOSE_WAIT и проблемы сокетов&lt;/a&gt;</code>).</p>
+<p>Покажет <code>connect</code>, <code>sendto</code>, <code>recvfrom</code>, <code>setsockopt</code>. Если видим <code>ECONNREFUSED</code> или <code>ETIMEDOUT</code> — проблема на уровне сети или <code>TIME_WAIT</code>/<code>CLOSE_WAIT</code> состояний (см. <a href="50-time-wait-close-wait-i-problemy-soketov.html" class="wikilink"><code>50. TIME_WAIT, CLOSE_WAIT и проблемы сокетов</code></a>).</p>
 <h3 id="4-alternativy-dlya-production">4. Альтернативы для production</h3>
 <p><code>strace</code> слишком тяжел для боевого продакшена. Вместо него используют:<br />
 - <code>perf trace</code> / <code>bpftrace</code> — перехват через eBPF, минимальный оверхед (~0.1–1%).<br />
 - <code>cat /proc/PID/syscall</code> — быстрый снимок текущего состояния без отладчика.<br />
 - <code>gdb -p PID -batch -ex "info goroutines"</code> — для Go-специфичной диагностики.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2473,6 +2480,7 @@ flowchart LR
   </div>
 </aside>
 
+
 <hr />
 <h2 id="itog">Итог</h2>
 
@@ -2481,7 +2489,7 @@ flowchart LR
 2. Оверхед <code>ptrace</code> делает <code>strace</code> инструментом для разработки и staging, а не для production-мониторинга.<br />
 3. <code>ltrace</code> бесполезен для чистого Go из-за статической линковки и собственного рантайма.<br />
 4. Комбинация <code>strace -T</code> + <code>pprof</code> + <code>netpoller</code> логирования дает полную картину: от системного уровня до Go-рантайма.</p>
-<p>Мы разобрали, как наблюдать за процессом на уровне ядра. Но чтобы понять, <em>почему</em> процесс делает именно эти вызовы, нужно знать, как ОС управляет ресурсами, особенно файлами и дескрипторами. В следующей статье мы закроем фундаментальный концепт Linux: <code>&lt;a href="25-faylovye-deskriptory-vse-v-linux-yavlyaetsya-faylom.html" class="wikilink"&gt;25. Файловые дескрипторы. Все в Linux является файлом&lt;/a&gt;</code>.</p>
+<p>Мы разобрали, как наблюдать за процессом на уровне ядра. Но чтобы понять, <em>почему</em> процесс делает именно эти вызовы, нужно знать, как ОС управляет ресурсами, особенно файлами и дескрипторами. В следующей статье мы закроем фундаментальный концепт Linux: <a href="25-faylovye-deskriptory-vse-v-linux-yavlyaetsya-faylom.html" class="wikilink"><code>25. Файловые дескрипторы. Все в Linux является файлом</code></a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->

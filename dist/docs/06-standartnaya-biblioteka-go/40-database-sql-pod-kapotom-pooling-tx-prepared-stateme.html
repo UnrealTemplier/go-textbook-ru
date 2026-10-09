@@ -2183,6 +2183,7 @@
 
 <p>В большинстве языков программирования и фреймворков (например, в экосистеме Python с <code>SQLAlchemy</code> или PHP с внешним <code>PgBouncer</code>) разработчик привык делегировать пул соединений либо сторонним библиотекам, либо внешним системным демонам-прокси. В Go создатели стандартной библиотеки пошли по пути максимальной интеграции: масштабируемый, высококонкурентный менеджер пула встроен непосредственно в структуру <code>*sql.DB</code>.</p>
 <p>Это решение обеспечивает минимальные задержки (latency) и устраняет лишние сетевые хопы, но предъявляет жесткие требования к архитектурной дисциплине инженера. Непонимание того, что происходит под капотом <code>sql.DB</code>, превращает элегантный менеджер ресурсов в источник каскадных блокировок. <code>*sql.DB</code> — это не просто обертка над сетевыми сокетами, а сложный конечный автомат, управляющий разделяемым состоянием с помощью мьютексов, очередей ожидания и каналов горутин.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2195,6 +2196,7 @@
 <p>Когда прикладной код вызывает метод <code>db.Query()</code>, рантайм Go пытается мгновенно извлечь свободное соединение из <code>freeConn</code>. Если свободных соединений нет, но лимит <code>MaxOpenConns</code> еще не достигнут, в фоне инициируется открытие нового TCP-сокета, а горутина переводится в состояние ожидания. Это предотвращает блокировку потоков операционной системы (M в модели планировщика Go), переводя горутину в состояние <code>Gwaiting</code> до момента получения сокета через канал.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="under-the-hood-strategiya-polucheniya-soedineniya">Under the hood: Стратегия получения соединения</h2>
@@ -2316,6 +2318,7 @@ func updateUserGood(ctx context.Context, db *sql.DB, userID int64) error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2328,6 +2331,7 @@ func updateUserGood(ctx context.Context, db *sql.DB, userID int64) error {
 <strong>Золотое правило:</strong> Всегда вызывайте <code>defer tx.Rollback()</code> немедленно после успешного вызова <code>BeginTx()</code>! Если перед выходом из функции успешно сработал <code>tx.Commit()</code>, последующий вызов <code>Rollback()</code> в <code>defer</code> безопасно выполнит no-op (пустую операцию) и не вернет ошибку.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="prigotovlennye-vyrazheniya-keshirovanie-i-nyuansy">Приготовленные выражения: Кэширование и нюансы</h2>
@@ -2424,6 +2428,7 @@ for rows.Next() {
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2437,6 +2442,7 @@ for rows.Next() {
 <strong>Ответ:</strong> Все сокеты, находящиеся в срезе <code>freeConn</code>, становятся недействительными («битыми»). При следующей попытке извлечь соединение драйвер попытается отправить ping или запрос и получит ошибку <code>driver.ErrBadConn</code> (<code>bad connection</code>). Менеджер пула перехватывает этот сигнал, удаляет дефектное соединение из пула, уменьшает счетчик <code>numOpen</code> и инициирует прозрачное открытие нового сокета через <code>dialConn</code>. Если база данных уже успела подняться, запрос клиента выполнится успешно, хоть и с повышенной latency.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

@@ -2210,6 +2210,7 @@ type hmap struct {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Архитектурный контекст: Swiss Tables (Go 1.24+)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2220,10 +2221,12 @@ type hmap struct {
   </div>
 </aside>
 
+
 <p>Ключевые поля структуры:<br />
 - <strong><code>count</code></strong>: счетчик элементов. Именно это поле мгновенно читается за $O(1)$, когда вы вызываете функцию <code>len(m)</code>.<br />
 - <strong><code>B</code></strong>: показатель степени двойки для количества бакетов. Число бакетов всегда равно $2^B$. Если <code>B = 4</code>, в мапе ровно $2^4 = 16$ бакетов.<br />
 - <strong><code>buckets</code></strong>: прямой указатель на непрерывный массив бакетов в оперативной памяти.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Защита от HashDOS (hash0)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2235,6 +2238,7 @@ type hmap struct {
 В Go хэш-функции (аппаратный AES на процессорах с инструкциями AES-NI или высокоскоростной xxHash) обязательно засаливаются случайным значением <code>hash0</code>. Для каждой созданной мапы коллизии распределяются уникально, делая таргетированные атаки математически невозможными.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="2-struktura-bmap-baket-i-mechanical-sympathy">2. Структура bmap (Бакет) и Mechanical Sympathy</h2>
@@ -2335,6 +2339,7 @@ flowchart LR
 
 <p>Что происходит, когда в один и тот же бакет хэшируется 9-й элемент, а все 8 слотов уже заняты?</p>
 <p>Go использует модифицированный метод <strong>связных списков (Separate Chaining)</strong>. Рантайм выделяет в куче дополнительный бакет переполнения (Overflow Bucket) и записывает указатель на него в поле <code>overflow</code> текущего бакета, выстраивая цепочку.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2344,6 +2349,7 @@ flowchart LR
     <p>Если ключи генерируют слишком много коллизий, цепочки <code>overflow</code>-бакетов вытягиваются в длину. Скорость поиска неминуемо деградирует из $O(1)$ в $O(N)$ по связному списку, что приводит к постоянным Cache Misses. Чтобы предотвратить этот сценарий, мапа обязана динамически расти.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="5-evakuatsiya-rost-mapy">5. Эвакуация (Рост мапы)</h2>
@@ -2361,6 +2367,7 @@ flowchart LR
 Если в вашей таблице содержится 10 миллионов элементов, полная блокировка сервиса (Stop-The-World) ради их переноса заморозила бы сервер на секунды, сокрушив все SLA по задержкам (latency).</p>
 <p>Вместо этого Go применяет <strong>инкрементальную эвакуацию</strong>:<br />
 При каждом последующем вызове записи (<code>m[k] = v</code>) или удаления (<code>delete</code>) рантайм эвакуирует <strong>ровно один или два бакета</strong> из <code>oldbuckets</code>, пересчитывает для их 8 элементов новые адреса и аккуратно перемещает их в новый массив.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2371,6 +2378,7 @@ flowchart LR
 <strong>Ответ:</strong> При чтении рантайм Go первым делом проверяет старый массив <code>oldbuckets</code>. Если целевой бакет еще не был эвакуирован, данные мгновенно считываются из старого массива. Если же бакет уже перемещен (в его <code>tophash</code> выставлен специальный служебный маркер <code>evacuated</code>), поиск прозрачно перенаправляется в новый массив <code>buckets</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="evakuatsiya-togo-zhe-razmera-same-size-evacuation">Эвакуация того же размера (Same-size Evacuation)</h3>
 

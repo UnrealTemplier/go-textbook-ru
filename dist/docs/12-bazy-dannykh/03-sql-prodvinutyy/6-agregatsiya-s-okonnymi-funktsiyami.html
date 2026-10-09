@@ -2294,6 +2294,7 @@ flowchart LR
 <h2 id="pod-kapotom-inversivnye-funktsii-moving-aggregate">Под капотом: Инверсивные функции (Moving-Aggregate)</h2>
 
 <p>Наивный алгоритм вычисления скользящего агрегата в базе данных выглядел бы катастрофично: при переходе к каждой следующей строке движок заново сканировал бы всю рамку из $W$ строк и суммировал их с нуля. Сложность такого наивного подхода составляет $O(N \cdot W)$, где $N$ — число строк в таблице, а $W$ — размер окна. Для таблицы в миллион строк со скользящим окном в 1 000 записей это потребовало бы один миллиард операций суммирования!</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2311,6 +2312,7 @@ flowchart LR
   </div>
 </aside>
 
+
 <p>Однако здесь есть принципиальное алгоритмическое ограничение: <strong>не для всех математических агрегатов существует обратная функция</strong>. </p>
 <p>Функции <code>SUM()</code>, <code>AVG()</code> и <code>COUNT()</code> тривиально обратимы через вычитание. Но для <code>MIN()</code> и <code>MAX()</code> инверсивной функции не существует в природе: если текущий минимум покидает окно, невозможно угадать новое минимальное значение без повторного анализа оставшихся элементов! Для <code>MIN</code> и <code>MAX</code> в скользящих окнах PostgreSQL вынужден поддерживать внутри рамки двоичное дерево поиска (Tree), что увеличивает сложность до $O(N \log W)$ и требует дополнительного расхода оперативной памяти.</p>
 <h3 id="mechanical-sympathy-pamyat-i-disk">Mechanical Sympathy: Память и Диск</h3>
@@ -2321,6 +2323,7 @@ flowchart LR
 <h2 id="lovushki-rows-vs-range">Ловушки ROWS vs RANGE</h2>
 
 <p>Путаница между спецификаторами <code>ROWS</code> и <code>RANGE</code> — одна из самых дорогостоящих ошибок в финансовом и биллинговом коде.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2336,6 +2339,7 @@ flowchart LR
 <code>SUM(amount) OVER (ORDER BY created_at ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)</code></p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="vzaimodeystvie-s-go-tochnost-i-tipy-dannykh">Взаимодействие с Go: Точность и типы данных</h2>
@@ -2430,6 +2434,7 @@ func GetUserAnalytics(ctx context.Context, db *sqlx.DB, userID int64) ([]Transac
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом (Go)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2442,6 +2447,7 @@ func GetUserAnalytics(ctx context.Context, db *sqlx.DB, userID int64) ([]Transac
   </div>
 </aside>
 
+
 <hr />
 <h2 id="arkhitekturnyy-vybor-bd-vs-prilozhenie">Архитектурный выбор: БД vs Приложение</h2>
 
@@ -2451,6 +2457,7 @@ func GetUserAnalytics(ctx context.Context, db *sqlx.DB, userID int64) ([]Transac
 <li><strong>Вычисления в Go:</strong> Если через сервис проходят миллионы RPS (например, непрерывный поток телеметрии с датчиков IoT), перекладывать расчет скользящих средних на СУБД нерационально. Эффективнее забирать плоские потоковые данные и рассчитывать скользящие агрегаты в памяти сервиса на Go с помощью кольцевого буфера (Circular Buffer). Сервисы на Go тривиально масштабируются горизонтально в кластере Kubernetes, а кольцевой буфер фиксированного размера вычисляет скользящее среднее без единой аллокации в куче.</li>
 </ul>
 <hr />
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2462,6 +2469,7 @@ func GetUserAnalytics(ctx context.Context, db *sqlx.DB, userID int64) ([]Transac
 <p>По стандарту SQL при наличии <code>ORDER BY</code> рамка по умолчанию неявно выставляется в <code>RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</code>. Если колонка <code>date</code> содержит дубликаты (несколько событий в один день), <code>RANGE</code> объединит их в одну группу и посчитает сумму всех событий этой даты целиком, вернув абсолютно одинаковое значение для всех строк этого дня. Если же требуется строгий нарастающий итог от строки к строке, необходимо явно объявлять <code>ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

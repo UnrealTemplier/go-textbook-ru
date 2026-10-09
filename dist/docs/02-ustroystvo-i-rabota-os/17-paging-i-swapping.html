@@ -2197,6 +2197,7 @@
 - Виртуальное пространство процесса делится на <strong>страницы (Pages)</strong>.</p>
 <p>На распространенных архитектурах x86-64 и ARM64 базовый размер страницы составляет <strong>4 Килобайта</strong> (4096 байт). Современные серверные процессоры также аппаратно поддерживают <strong>Huge Pages</strong> (большие страницы размером 2 МБ и 1 ГБ), которые радикально сокращают размер таблиц страниц и снижают нагрузку на кэш TLB.</p>
 <p>Золотое правило страничной адресации: <strong>виртуальная страница не обязана быть непрерывно привязана к физическому кадру RAM</strong>. Она может отображаться на любой свободный фрейм в памяти, либо временно находиться в состоянии «отсутствия» (not present), располагаясь на NVMe-диске в swap-разделе.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2206,6 +2207,7 @@
     <p>Почему именно 4 КБ? Это компромисс между эффективностью использования памяти и размером таблиц страниц. При размере страницы 4 КБ таблица страниц для 64-битного процесса (теоретически) занимала бы петабайты. Именно поэтому используются многоуровневые таблицы страниц (4-level или 5-level page tables), которые мы разберем в <a href="13-stranitsy-pamyati-i-page-table.html" class="wikilink">13. Страницы памяти и Page Table</a>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="page-table-i-apparatnoe-preobrazovanie-adresov">Page Table и аппаратное преобразование адресов</h2>
@@ -2251,6 +2253,7 @@
   - <code>Accessed</code>: выставляется процессором при любом чтении страницы (используется алгоритмами LRU ядра).<br />
   - <code>Dirty</code>: выставляется процессором при любой модификации данных (сигнал ядру, что страницу нужно сбросить на диск перед выселением).</p>
 <p>Если бит <code>Present</code> равен <code>0</code>, процессор не может продолжить операцию и генерирует исключение — <strong>Page Fault</strong>.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Разница между Page Table и TLB">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2264,6 +2267,7 @@
 Промах по TLB (TLB Miss) приводит к аппаратному обходу таблицы страниц в RAM (Page Walk). Но даже это в сотни раз быстрее, чем считывание страницы с диска!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="page-fault-kogda-stranitsa-teryaetsya">Page Fault: Когда страница «теряется»</h2>
@@ -2331,6 +2335,7 @@ sequenceDiagram
 - <strong>Чтение со старого HDD:</strong> $\sim 5\ext{--}10\ext{ мс}$ (миллисекунд, в 100 000 раз медленнее!).</p>
 <p>Когда поток обращается к странице, вытесненной в swap, процессор останавливается, а ядро переводит поток в непрерываемый сон (<code>TASK_UNINTERRUPTIBLE</code>). </p>
 <p>Для высоконагруженного Go-сервиса, обрабатывающего тысячи запросов в секунду, даже несколько сотен таких вызовов в секунду приводят к <strong>катастрофическим задержкам (p99/p999 spikes)</strong>, накоплению очередей и каскадному падению всего кластера.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Swap — это не спасательный круг">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2342,6 +2347,7 @@ sequenceDiagram
 <p>В современных высокопроизводительных окружениях swap либо полностью отключают командой <code>swapoff -a</code>, либо жестко ограничивают агрессивность сброса через системный параметр <code>vm.swappiness</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="thrashing-kogda-pamyat-prevrashchaetsya-v-uzkoe-mesto">Thrashing: Когда память превращается в узкое место</h2>
@@ -2401,6 +2407,7 @@ func main() {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование: Динамический стек горутин и Paging">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2413,6 +2420,7 @@ func main() {
 Это избавляет Go от необходимости резервировать 8 МБ под каждый поток ОС, как это делает libc, и защищает ядро от напрасной траты страниц памяти и накладных расходов на <code>perf</code> и <code>strace</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="kak-monitorit-i-kontrolirovat-swap-v-prodakshene">Как мониторить и контролировать swap в продакшене</h2>
@@ -2452,6 +2460,7 @@ sudo swapoff -a
 - Разрыв между <code>runtime.ReadMemStats().Sys</code> (объем виртуальной памяти, запрошенной у ядра) и <code>runtime.ReadMemStats().HeapAlloc</code> (реально занятой объектами) показывает степень фрагментации и объем пулов арены.<br />
 - В контейнерах Kubernetes лимиты задаются через <code>resources.limits.memory</code>. При превышении лимита ядро Linux посылает контейнеру бескомпромиссный сигнал <code>SIGKILL</code> (OOMKilled).<br />
 - <strong>Huge Pages и оптимизация:</strong> Для latency-critical сервисов (торговые системы, базы данных) включают Huge Pages через вызов <code>madvise</code> с флагом <code>MADV_HUGEPAGE</code> или запускают процесс с привязкой через <code>numactl</code>, снижая TLB misses на 10-30%.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: RSS vs VSZ">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2464,6 +2473,7 @@ sudo swapoff -a
 Если <code>VSZ</code> Go-сервиса равен 10 ГБ, а <code>RSS</code> составляет всего 120 МБ — процесс совершенно здоров: он просто зарезервировал виртуальное адресное пространство аренами через <code>mmap</code> с флагами <code>MAP_ANONYMOUS | MAP_PRIVATE</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

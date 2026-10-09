@@ -2228,6 +2228,7 @@ flowchart TD
 
 <p>При изменении строки СУБД создаёт новую версию с новым <code>xmin</code>, а у старой версии проставляется <code>xmax</code>. Пока существует хотя бы одна транзакция, снимок которой (<code>snapshot</code>) включает <code>xmin</code> старой версии, эта версия остаётся «живой» для неё.</p>
 <p>Момент, с которого все мёртвые строки гарантированно не нужны ни одной транзакции, называется <strong>горизонтом очистки (cleanup horizon)</strong>. В PostgreSQL это значение <code>xmin</code> минус количество активных транзакций на момент запуска <code>VACUUM</code>. Всё, что старше этого горизонта (<code>xmin_horizon</code>), можно безопасно удалять или помечать как свободное.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2237,6 +2238,7 @@ flowchart TD
     <p>Если в вашем Go-сервисе открыта транзакция <code>BEGIN</code> и выполняется тяжёлая аналитика или обработка внешних HTTP-запросов, она «прибивает» горизонт очистки. СУБД не может удалить ни одной мёртвой строки, созданной после старта этой транзакции. За несколько часов высоконагруженной работы таблица может раздуться в 10-50 раз. Всегда закрывайте транзакции как можно быстрее.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="realizatsiya-pod-kapotom-dva-arkhitekturnykh-lagerya">Реализация под капотом: Два архитектурных лагеря</h2>
@@ -2256,6 +2258,7 @@ flowchart TD
 * <strong>Purge</strong>: Фоновый поток сканирует историю отката, удаляет старые версии из undo-логов и сбрасывает информацию о «призраках» из кластерного и вторичных индексов.<br />
 * <strong>Page Freeing</strong>: Страницы, ставшие полностью пустыми, возвращаются в <code>Free List</code> табличного пространства.<br />
 * <strong>Особенность</strong>: InnoDB не выполняет компактизацию «на лету» внутри одной страницы так агрессивно, как PG. Дефрагментация требует <code>ALTER TABLE ... FORCE</code>.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2265,6 +2268,7 @@ flowchart TD
     <p>В PostgreSQL структуры <code>FSM</code> и <code>VM</code> хранятся в отдельных файлах (<code>relname_fsm</code>, <code>relname_vm</code>). Каждый бит в <code>VM</code> соответствует одной странице данных. Если бит установлен, движок знает, что при <code>Index Only Scan</code> не нужно обращаться к куче для проверки видимости. Это сокращает логические чтения в 2 раза и минимизирует промахи кэша <code>L1/L2</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mekhanicheskaya-simpatiya-tsena-uborki-dlya-zheleza-i-os">Механическая симпатия: Цена уборки для железа и ОС</h2>
@@ -2287,6 +2291,7 @@ flowchart TD
 2. Реорганизует индексы с нуля.<br />
 3. Заменяет оригинальный файл новым.<br />
 4. Вызывает <code>fallocate</code> или <code>truncate</code>, возвращая место ОС.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2296,6 +2301,7 @@ flowchart TD
     <p><code>VACUUM FULL</code> требует блокировки <code>ACCESS EXCLUSIVE</code>. Это полностью останавливает <code>SELECT</code>, <code>INSERT</code>, <code>UPDATE</code> и <code>DELETE</code> для таблицы. В продакшене с репликами или пулами соединений это приводит к <code>connection pool exhaustion</code> и таймаутам на стороне Go. Никогда не запускайте его из кода приложения. Используйте <code>pg_repack</code> или <code>pg_squeeze</code> для онлайн-реорганизации.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="praktika-v-go-upravlenie-dolgozhivushchimi-tranzaktsiyami">Практика в Go: Управление долгоживущими транзакциями</h2>
@@ -2386,6 +2392,7 @@ func ProcessDataSafe(ctx context.Context, db *sql.DB, data []byte) error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2396,6 +2403,7 @@ func ProcessDataSafe(ctx context.Context, db *sql.DB, data []byte) error {
 <strong>Ответ:</strong> <code>VACUUM</code> пометил строки как свободные в <code>FSM</code>, но не уменьшил количество страниц в файле. <code>COUNT(*)</code> требует полного сканирования всех страниц таблицы (или индекса), даже если они пустые. СУБД читает их с диска, проверяет заголовки и убеждается, что строки мёртвые. Чтобы ускорить <code>COUNT</code>, нужно выполнить <code>VACUUM FULL</code> или переписать таблицу.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="parallel-s-garbage-collector-v-go">Параллель с Garbage Collector в Go</h2>

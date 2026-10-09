@@ -2184,6 +2184,7 @@
 <p><em>«Философия Unix состоит в том, чтобы проектировать системы, делающие одну вещь и делающие ее хорошо, полагаясь на операционную систему в том, что она умеет лучше всего».</em>  <br />
 — Дуг Макилрой, один из отцов Unix</p>
 </blockquote>
+
 <aside class="callout callout-note" aria-label="Заметка">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">📝</span>
@@ -2193,6 +2194,7 @@
     <p><strong>Связи:</strong> Эта статья погружает в физическое устройство хранилища, опираясь на <a href="1-kafka-arkhitektura-i-model-log-based-sistemy.html" class="wikilink">1. Kafka. Архитектура и модель log based системы</a>, <a href="2-topics-partitions-i-offsets.html" class="wikilink">2. Topics, partitions и offsets</a>, <a href="../01-fundament-asinkhronnosti/7-message-durability-i-persistence.html" class="wikilink">7. Message durability и persistence</a>, а также закладывает фундамент для <a href="8-retention-i-compaction.html" class="wikilink">8. Retention и compaction</a> и <a href="12-proizvoditelnost-kafka.html" class="wikilink">12. Производительность Kafka</a>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="pochemu-ponimanie-khranilishcha-kritichno">Почему понимание хранилища критично</h2>
@@ -2315,6 +2317,7 @@ flowchart LR
 - <strong><code>crc</code> (4 байта)</strong> — контрольная сумма CRC32C заголовка и записей для проверки целостности.<br />
 - <strong><code>ProducerId</code> (8 байт) и <code>ProducerEpoch</code> (2 байта)</strong> — параметры для поддержки идемпотентности и транзакций.<br />
 - <strong><code>records</code></strong> — поток отдельных сообщений. Каждое сообщение сохраняет свой offset как компактную дельту <code>offset delta = record.offset - baseOffset</code> (в виде Protobuf-подобного <code>varint</code>), что экономит до 7 байт на каждое сообщение!</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2324,6 +2327,7 @@ flowchart LR
     <p>Брокер Kafka хранит сжатый батч на диске в абсолютно неизменном виде: он <strong>не распаковывает</strong> данные при записи и не упаковывает их заново при чтении консьюмером! Продюсер сжал батч в lz4/zstd $\to$ брокер сохранил его в <code>.log</code> $\to$ передал по сети в сетевую карту через <code>sendfile</code> $\to$ консьюмер распаковал. Брокер тратит 0 процессорных тактов на декомпрессию, выступая идеальной конвейерной трубой.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="razrezhennye-indeksy">Разреженные индексы</h2>
@@ -2394,6 +2398,7 @@ flowchart TD
 
 <p>Файл <code>.timeindex</code> устроен полностью аналогично, но оперирует записями по <strong>12 байт</strong>: 8 байт Unix Timestamp + 4 байта Relative Offset. </p>
 <p>Он используется, когда приложению необходимо перемотать консьюмер на определенный момент времени — например, через API <code>offsetsForTimes(timestamp)</code>. Kafka находит по времени целевой <code>offset</code>, а затем по <code>.index</code> — физическую позицию на диске.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Деградация поиска по времени">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2403,6 +2408,7 @@ flowchart TD
     <p>Если в топик пишутся сообщения с некорректными (немонотонными) временными метками (например, продюсер генерирует timestamp на стороне распределенных клиентов с рассинхронизированными часами), <code>.timeindex</code> теряет строгую монотонность. В этом случае вызов <code>offsetsForTimes(timestamp)</code> может вернуть не самое ранее смещение, а брокер будет вынужден выполнять более глубокое сканирование лога. В современных системах рекомендуется использовать <code>CreateTime</code> на стороне продюсера с NTP-синхронизацией либо переключать топик на <code>LogAppendTime</code> на брокере.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="put-soobshcheniya-ot-prodyusera-do-diska">Путь сообщения от продюсера до диска</h2>
@@ -2538,6 +2544,7 @@ sequenceDiagram
 <p>Kafka предлагает выбор через параметры конфигурации брокера:<br />
 - <code>log.flush.interval.messages</code> — принудительный сброс на диск каждые N сообщений;<br />
 - <code>log.flush.interval.ms</code> — принудительный сброс на диск каждые N миллисекунд.</p>
+
 <aside class="callout callout-important" aria-label="Официальная рекомендация архитекторов Kafka">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚡</span>
@@ -2548,6 +2555,7 @@ sequenceDiagram
 Доверьте фоновый сброс грязных страниц демонам ядра Linux (<code>kswapd</code>, <code>pdflush</code>). Надёжность и долговечность данных в Kafka гарантируются не локальным диском одного узла, а <strong>распределенной репликацией в оперативной памяти нескольких независимых серверов (ISR с <code>acks=all</code>)</strong>! Вероятность одновременного внезапного обесточивания сразу трех серверов в разных стойках или зонах доступности несоизмеримо ниже, чем вероятность деградации производительности из-за синхронного <code>fsync</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mechanical-sympathy-pochemu-eto-rabotaet">Mechanical Sympathy: почему это работает</h2>
@@ -2567,6 +2575,7 @@ sequenceDiagram
 <hr />
 <h2 id="voprosy-dlya-sobesedovaniya">Вопросы для собеседования</h2>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2578,6 +2587,8 @@ sequenceDiagram
   </div>
 </aside>
 
+
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2588,6 +2599,7 @@ sequenceDiagram
 <strong>Ответ:</strong> Плотный индекс содержит указатель на абсолютно каждую запись в логе; его размер растет линейно с числом записей, требуя гигабайты оперативной памяти. Разреженный индекс Kafka сохраняет позицию только раз на каждые 4096 байт данных (<code>log.index.interval.bytes</code>). Это делает файлы индексов предельно компактными (несколько мегабайт), позволяя держать все индексы в памяти через <code>mmap</code> и находить точную запись за бинарный поиск по индексу плюс минимальное последовательное дочитывание блока до 4 КБ.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="zaklyuchenie">Заключение</h2>

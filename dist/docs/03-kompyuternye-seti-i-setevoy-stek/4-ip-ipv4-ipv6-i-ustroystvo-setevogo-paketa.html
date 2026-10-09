@@ -2190,6 +2190,7 @@
 <li><strong>Mechanical Sympathy и производительность:</strong> Выравнивание битовых полей в заголовках, аппаратная разгрузка контрольных сумм (Checksum Offloading), влияние размера заголовков на кэш-линии процессора L1/L2 и устранение паразитной фрагментации пакетов.</li>
 <li><strong>Системная архитектура и масштабирование:</strong> Проектирование CIDR-подсетей микросервисов, поддержка IPv6 Dual-Stack, работа с балансировщиками нагрузки (<a href="29-balansirovka-nagruzki-l4-l7-round-robin-least-connec.html" class="wikilink">29. Балансировка нагрузки. L4, L7, Round Robin, Least Connections</a>) и обратными прокси-серверами (<a href="27-proksi-reverse-proxy-i-api-gateway.html" class="wikilink">27. Прокси, Reverse Proxy и API Gateway</a>).</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2199,6 +2200,7 @@
     <p>В ядре Linux сетевой стек реализован в виде высокооптимизированных модулей ядра (<code>netfilter</code>, <code>tcp_ipv4</code>, <code>tcp_ipv6</code>, <code>xfrm</code>). Когда Go-приложение вызывает метод <code>net.Dial()</code>, запрос проходит многослойный путь: User Space (пакет <code>net</code>) → слой сокетов VFS → транспортный слой TCP/UDP → сетевой уровень IP → драйвер устройства → сетевая карта NIC. Понимание каждого звена позволяет осознанно управлять параметрами ядра через подсистему <code>sysctl</code> (например, повторное использование портов <code>net.ipv4.tcp_tw_reuse</code>, размер входной очереди сетевых карт <code>net.core.netdev_max_backlog</code>) и устранять скрытые узкие места сетевого стека.</p>
   </div>
 </aside>
+
 
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -2355,6 +2357,7 @@ flowchart TD
 
 <p><strong>Mechanical Sympathy и процессорный кэш:</strong><br />
 Заголовок IPv4 идеально выровнен по 32-битным (4-байтным) границам. Когда ядро Linux загружает 20 байт стандартного заголовка, он гарантированно помещается в одну 64-байтную кэш-линию процессора L1d вместе с началом TCP-заголовка. Однако если пакет содержит нестандартные опции IP, заголовок приобретает некратную длину. Это вызывает аппаратное расщепление строки кэша (<strong>cache line split</strong>) при последующем чтении TCP-портов, что приводит к дополнительным тактам задержки на уровне кремния CPU.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2365,6 +2368,7 @@ flowchart TD
 Поле <code>Header Checksum</code> в IPv4 защищает от искажения битов <em>только служебные поля самого IP-заголовка</em>. Сами передаваемые данные (payload) протоколом IP не проверяются вовсе! Это архитектурное решение было принято для предельной скорости маршрутизации в 1980-х годах, но оно перекладывает всю ответственность за целостность бизнес-данных на протоколы четвертого уровня (TCP, UDP). В приложениях на Go вы не можете полагаться на IP-уровень для отсева битых данных.</p>
   </div>
 </aside>
+
 
 <h2 id="ipv6-fiksirovannyy-zagolovok-i-evolyutsiya">IPv6: Фиксированный заголовок и эволюция</h2>
 
@@ -2467,6 +2471,7 @@ Next Header = TCP (6)&quot;]
 </figure>
 
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2477,6 +2482,7 @@ Next Header = TCP (6)&quot;]
 <strong>Ответ:</strong> Ради радикального ускорения транзитной маршрутизации пакетов на физических маршрутизаторах интернета. В IPv4 на каждом промежуточном маршрутизаторе ядро обязано уменьшить поле TTL на 1, что требует повторного вычисления контрольной суммы заголовка <code>Header Checksum</code>. При миллионах пакетов в секунду это создавало ощутимую вычислительную нагрузку. Поскольку канальный уровень (Ethernet FCS) аппаратно гарантирует отсутствие битовых ошибок в кадре, а транспортные протоколы (TCP, UDP) проверяют целостность данных псевдозаголовком, двойная проверка контрольной суммы в IP была признана избыточной и упразднена.</p>
   </div>
 </aside>
+
 
 <h2 id="sravnenie-i-perekhodnye-mekhanizmy">Сравнение и переходные механизмы</h2>
 
@@ -2537,6 +2543,7 @@ flowchart TD
 <li><strong>Контроль зацикливания (только при пересылке):</strong> Если пакет транзитный, перед отправкой дальше (в <code>ip_forward</code>) проверяется и декрементируется TTL / Hop Limit. Если он исчерпан, ядро отбрасывает пакет и генерирует диагностическое сообщение ICMP Time Exceeded (на этом механизме построена утилита <code>traceroute</code>). Для локально доставляемых пакетов TTL не декрементируется.</li>
 </ol>
 <p><strong>Оптимизация в Go:</strong> Современные сетевые адаптеры аппаратно поддерживают вычисление контрольных сумм (<strong>Checksum Offloading</strong>). Сетевая карта сама считает чексуммы TCP и UDP при передаче. В коде на Go при передаче потоков через <code>net.Conn</code> и буферизованный ввод-вывод <code>bufio</code> вычисление контрольных сумм прозрачно делегируется аппаратуре. А при отправке и приеме датаграмм UDP через методы <code>(*net.UDPConn).WriteMsgUDP</code>, <code>ReadMsgUDP</code> (или системные вызовы <code>sendmsg</code>/<code>recvmsg</code>) с флагом <code>MSG_MORE</code> ядро взаимодействует с сетевым адаптером напрямую, обрабатывая служебные управляющие структуры <code>CMsg</code> без лишних переаллокаций.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2552,6 +2559,7 @@ flowchart TD
 В современных Go-сервисах фрагментацию предотвращают установкой флага DF (Don't Fragment), согласованием размера сегмента <code>TCP MSS</code> (<a href="21-http-1-1-pod-kapotom-keep-alive-chunked-encoding-pip.html" class="wikilink">21. HTTP 1.1 под капотом. Keep Alive, Chunked Encoding, Pipelining</a>, <a href="22-http-2-multiplexing-frames-hpack.html" class="wikilink">22. HTTP 2. Multiplexing, Frames, HPACK</a>) и применением техники <strong><code>MSS clamping</code></strong> на пограничных маршрутизаторах.</p>
   </div>
 </aside>
+
 
 <h2 id="realizatsiya-v-go-ot-net-ip-k-netnetip">Реализация в Go: от `net.IP` к `net/netip`</h2>
 
@@ -2664,6 +2672,7 @@ flowchart LR
 <p><strong>Почему пакет <code>net/netip</code> кардинально превосходит старый подход:</strong><br />
 1.  <strong>Чистый тип-значение (Value Type):</strong> Структура <code>netip.Addr</code> хранит адрес во внутреннем фиксированном массиве <code>[4]byte</code> или <code>[16]byte</code>. Адрес передается по значению через регистры процессора, исключая аллокации в куче, лишние указатели и интерфейсные обёртки <code>interface{}</code>.<br />
 2.  <strong>Потокобезопасность и иммутабельность:</strong> Адрес невозможно случайно мутировать из другой горутины.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка dual-stack">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2674,10 +2683,12 @@ flowchart LR
   </div>
 </aside>
 
+
 <ol start="3">
 <li><strong>Совместимость с <code>map</code>:</strong> Структуры <code>netip.Addr</code> и <code>netip.Prefix</code> поддерживают прямое сравнение через оператор <code>==</code>, позволяя использовать их в качестве сверхбыстрых ключей хэш-таблиц для черных/белых списков IP и маршрутизаторов.</li>
 <li><strong>Мгновенные преобразования:</strong> Конструкторы <code>AddrFrom4</code>/<code>AddrFrom16</code>, методы <code>As4</code>/<code>As16</code> и <code>Unmap()</code> выполняются за $O(1)$ без обращения к куче, идеально интегрируясь с сетевым поллером (<a href="38-kak-go-rabotaet-s-setyu-net-net-http-netpoller-epoll.html" class="wikilink">38. Как Go работает с сетью. net, net/http, netpoller, epoll</a>).</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2688,6 +2699,7 @@ flowchart LR
 <strong>Ответ:</strong> Тип <code>net.IP</code> — это обычный срез байт <code>[]byte</code>, влекущий аллокации в куче, небезопасный для конкурентной модификации и требующий вызова метода <code>Equal</code> для сравнения (<code>==</code> на срезах не работает; а <code>bytes.Equal</code> по <code>net.IP</code> даёт неверный результат, если один адрес записан в 4-байтной форме, а другой — в 16-байтной). Структура <code>net.IPNet</code> хранит IP и маску как два независимых среза в куче. Структура <code>netip.Addr</code> из пакета <code>net/netip</code> — это компактный, неизменяемый тип-значение фиксированного размера, гарантирующий нулевые аллокации памяти, поддержку оператора <code>==</code> и прямое использование в структурах <code>map</code>. В современном продакшен-коде на Go 1.18+ всегда следует использовать <code>net/netip</code>.</p>
   </div>
 </aside>
+
 
 <h2 id="lovushki-i-voprosy-s-sobesedovaniy">Ловушки и вопросы с собеседований</h2>
 

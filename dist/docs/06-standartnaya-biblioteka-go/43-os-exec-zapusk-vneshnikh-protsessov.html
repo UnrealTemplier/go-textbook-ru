@@ -2185,6 +2185,7 @@
 <p>Пакет <code>os/exec</code> в Go предоставляет стандартизированный, строгий интерфейс для порождения внешних процессов и управления ими. В отличие от других языков (где вызов внешней утилиты часто выполняется через опасную оболочку <code>system()</code> или требует громоздких внешних библиотек), Go интегрирует управление процессами прямо в стандартную библиотеку, руководствуясь принципами явности, максимальной безопасности и абсолютной предсказуемости.</p>
 <p>Порождение дочернего процесса — одна из самых тяжелых операций в операционной системе. Ядру необходимо создать новую виртуальную память, настроить таблицы трансляции адресов MMU, организовать каналы межпроцессного взаимодействия (пайпы), смаппировать файловые дескрипторы и скоординировать доставку сигналов ОС. Пакет <code>os/exec</code> элегантно абстрагирует эту сложность, сохраняя за разработчиком полный контроль над жизненным циклом, таймаутами и потоками ввода-вывода. </p>
 <p>Ошибки при работе с <code>exec</code> обходятся дорого: они приводят к зомби-процессам, утечкам дескрипторов, зависаниям из-за переполнения 64-килобайтного буфера пайпа и катастрофическим уязвимостям внедрения команд (Command Injection).</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2194,6 +2195,7 @@
     <p>На POSIX-совместимых платформах вызов <code>exec.Command</code> в конечном итоге транслируется в классическую связку системных вызовов <code>fork</code> и <code>execve</code>. Рантайм Go использует оптимизированный ассемблерный вызов <code>syscall.ForkExec</code>: он клонирует текущий процесс, настраивает перенаправление стандартных потоков ввода-вывода через анонимные пайпы (<code>pipe2</code> с системным флагом <code>O_CLOEXEC</code>), принудительно закрывает все унаследованные файловые дескрипторы (кроме 0, 1, 2 и переданных явно), после чего заменяет адресное пространство дочернего процесса целевым бинарным файлом. В среде Windows используется нативный системный вызов <code>CreateProcessW</code> со схожей семантикой наследования хендлов.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="under-the-hood-fork-execve-i-nasledovanie-deskriptorov">Under the hood: fork, execve и наследование дескрипторов</h2>
@@ -2337,6 +2339,7 @@ func runExternalTask(ctx context.Context, timeout time.Duration, args []string) 
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2347,6 +2350,7 @@ func runExternalTask(ctx context.Context, timeout time.Duration, args []string) 
 Если дочерняя программа генерирует гигабайты вывода, использование <code>bytes.Buffer</code> аллоцирует всю память в куче Go-процесса, вызывая OOM. Для передачи больших объемов данных используйте <code>io.Pipe</code> или прямую потоковую запись в файл <code>os.File</code>, вычитывая данные в отдельной параллельной горутине, чтобы предотвратить переполнение буфера ядра.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="konkurentnaya-rabota-s-potokami-bez-deadlock">Конкурентная работа с потоками без deadlock</h2>
@@ -2456,6 +2460,7 @@ func runConcurrent(cmd *exec.Cmd) error {
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2468,6 +2473,7 @@ func runConcurrent(cmd *exec.Cmd) error {
 <strong>Ответ:</strong> Конструктор <code>exec.CommandContext</code> по умолчанию посылает процессу сигнал <code>SIGKILL</code> (на Unix) или вызывает <code>TerminateProcess</code> (на Windows) при истечении таймаута контекста. Для корректного завершения необходимо вручную отправить сигнал завершения через метод <code>cmd.Process.Signal(syscall.SIGTERM)</code>. Затем запустить горутину с таймером ожидания: если процесс не завершился за отведенное время (вызов <code>cmd.Wait()</code>), принудительно послать <code>cmd.Process.Kill()</code>. Начиная с Go 1.20, в структуре <code>exec.Cmd</code> появились поля <code>cmd.Cancel</code> и <code>cmd.WaitDelay</code>, позволяющие задать кастомную функцию отмены для <code>CommandContext</code> и задержку ожидания завершения ввода-вывода.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="sravnenie-s-ekosistemami-drugikh-yazykov">Сравнение с экосистемами других языков</h2>

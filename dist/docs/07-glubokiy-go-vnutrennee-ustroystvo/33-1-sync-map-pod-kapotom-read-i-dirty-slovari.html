@@ -2183,6 +2183,7 @@
 <p>И тут начинается суровая проблема аппаратного уровня. Если 32 ядра процессора одновременно пытаются сделать <code>RLock()</code> для чтения из <code>map + sync.RWMutex</code>, они все пытаются атомарно инкрементировать один и тот же счетчик читателей (<code>readerCount</code>). </p>
 <p>Каждая такая атомарная инструкция (например, <code>LOCK XADD</code> на x86) требует перевода процессорной кэш-линии в эксклюзивное состояние <code>Modified</code> по протоколу MESI. В результате кэш-линия с мьютексом непрерывно «прыгает» между L1/L2 кэшами разных процессорных ядер (эффект Cacheline Bouncing / False Sharing), а ядра простаивают сотни тактов, ожидая арбитража шины памяти и межъядерной синхронизации (подробнее в <a href="15-mutex-i-rwmutex-pod-kapotom.html" class="wikilink">15. Mutex и RWMutex под капотом</a>). Высокая конкуренция читателей превращает «параллельное» чтение в тяжелейший аппаратный затор.</p>
 <p>Чтобы решить эту проблему, в Go 1.9 добавили <strong><code>sync.Map</code></strong> — специализированную структуру для конкурентных словарей, которая в определенных сценариях работает вообще без блокировок (lock-free) и без инвалидации разделяемых кэш-линий.</p>
+
 <aside class="callout callout-note" aria-label="Архитектурный контекст: Классическая модель Read/Dirty (Go 1.9–1.23) vs Hash Trie Map (Go 1.24+)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">📝</span>
@@ -2193,6 +2194,7 @@
 Однако классическая архитектура двух словарей, разобранная ниже, является каноническим примером проектирования lock-free структур в Go и до сих пор составляет ядро вопросов на Senior-собеседованиях.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="1-arkhitektura-dva-slovarya-go-1-91-23">1. Архитектура: Два словаря (Go 1.9–1.23)</h2>
@@ -2395,6 +2397,7 @@ flowchart TD
 <li><code>misses</code> сбрасывается в <code>0</code>.</li>
 </ol>
 <p><strong>Это операция за $O(1)$.</strong> Мы мгновенно превратили медленный словарь в быстрый простой перестановкой указателя в <code>atomic.Pointer</code>. Следующие чтения новых ключей пойдут по сверхбыстрому Fast Path.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha. Налог на добавление (Demotion)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2406,6 +2409,7 @@ flowchart TD
 Это операция за <strong>$O(N)$</strong>. Если в вашей <code>sync.Map</code> миллион элементов, и вы постоянно добавляете новые уникальные ключи, каждый раз при пересоздании <code>dirty</code> ваш сервер будет испытывать чудовищные тормоза на копировании.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="6-tri-sostoyaniya-udaleniya-nil-i-expunged">6. Три состояния удаления: nil и expunged</h2>
@@ -2468,6 +2472,7 @@ stateDiagram-v2
 <p>❌ <strong>Плохие сценарии (sync.Map медленнее обычного RWMutex):</strong><br />
 1. <strong>Write-Heavy в классической архитектуре (Частая запись НОВЫХ ключей):</strong> Если вы постоянно пишете новые (уникальные) ключи в классической <code>sync.Map</code> (Go 1.9–1.23), вы постоянно промахиваетесь мимо <code>read</code>. Вы постоянно захватываете мьютекс для <code>dirty</code>, а главное — рантайм регулярно выполняет $O(N)$ копирование из <code>read</code> в <code>dirty</code>. <em>(Примечание: в Go 1.24+ с внедрением Hash Trie Map это ограничение устранено — древовидная структура эффективно масштабирует параллельные записи).</em><br />
 2. <strong>Предсказуемый размер:</strong> <code>sync.Map</code> нельзя инициализировать с заранее заданным <code>capacity</code> (как <code>make(map, 1000)</code>). Она будет динамически расти через внутренние аллокации.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование. sync.Map vs map+Mutex">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2477,6 +2482,7 @@ stateDiagram-v2
     <p>Если вас спросят, что выбрать, смело отвечайте: «По умолчанию всегда <code>map + sync.RWMutex</code>. Я перейду на <code>sync.Map</code> только если профайлер (<code>pprof</code>) покажет жесткую деградацию (Lock Contention) на мьютексе при чтении, и мой паттерн нагрузки — это <em>Read-Heavy</em> или <em>Disjoint Keys</em>. Для сценариев с огромным числом параллельных записей лучше использовать шардированную мапу (например, 32 или 64 независимых сегмента <code>map + sync.Mutex</code>).»</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

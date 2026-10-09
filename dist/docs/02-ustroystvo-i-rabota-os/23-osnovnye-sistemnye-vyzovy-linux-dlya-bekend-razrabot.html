@@ -2271,6 +2271,7 @@ flowchart TB
 </div>
 
 <p>Go использует инструкцию <code>SYSCALL</code> (x86-64) или <code>SVC</code> (ARM) для перехода в Ring 0. Аргументы передаются через регистры <code>RDI</code>, <code>RSI</code>, <code>RDX</code>, <code>R10</code>, <code>R8</code>, <code>R9</code> (аргументы с первого по шестой), а номер вызова — в <code>RAX</code>.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2280,6 +2281,7 @@ flowchart TB
     <p><strong>vDSO (Virtual Dynamic Shared Object)</strong> — оптимизация ядра Linux. Некоторые вызовы, не модифицирующие состояние системы (например, <code>clock_gettime</code> или <code>gettimeofday</code>), могут быть выполнены полностью в user space без переключения контекста. Ядро монтирует специальную страницу с кодом в адресное пространство процесса. Go runtime автоматически использует vDSO, если оно доступно, что делает <code>time.Now()</code> почти бесплатным.</p>
   </div>
 </aside>
+
 
 <h3 id="futex-i-primitivy-sinkhronizatsii-v-rantayme-go">Futex и примитивы синхронизации в рантайме Go</h3>
 <p>Для синхронизации потоков ОС ядро Linux предоставляет системный вызов <code>futex</code> (Fast Userspace Mutex). В Go разделяются синхронизация горутин и системных потоков:<br />
@@ -2330,6 +2332,7 @@ flowchart TD
 
 <h3 id="stoimost-sistemnogo-vyzova">Стоимость системного вызова</h3>
 <p>Переход Ring 3 → Ring 0, проверка прав, очистка TLB, сохранение контекста и возврат занимают от сотен до нескольких тысяч тактов CPU (на современном процессоре без KPTI пустой вызов обходится в десятки наносекунд, с mitigations дороже). При миллионе запросов в секунду это создаст узкое место даже на мощном процессоре.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2339,6 +2342,7 @@ flowchart TD
     <p><strong>Частая ошибка:</strong> Вызов <code>os.Stat()</code> или <code>os.ReadFile()</code> внутри горячего пути обработки запроса без кеширования. Каждый вызов генерирует syscall, что резко повышает P99 latency. Используйте локальные кэши или <code>stat</code> при старте приложения.</p>
   </div>
 </aside>
+
 
 <h3 id="buferizatsiya-i-zero-copy">Буферизация и Zero-Copy</h3>
 <ul>
@@ -2351,6 +2355,7 @@ flowchart TD
 <hr />
 <h2 id="voprosy-na-sobesedovaniyakh-i-prakticheskie-insayty">Вопросы на собеседованиях и практические инсайты</h2>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2361,6 +2366,8 @@ flowchart TD
 <strong>Ответ:</strong> Go использует неблокирующие сокеты и <code>epoll</code> (Linux) / <code>kqueue</code> (BSD/macOS). При попытке чтения/записи, если данные не готовы, runtime вызывает <code>epoll_wait</code> с таймаутом. Ядро возвращает управление только когда сокет станет готовым. Горутина не блокирует тред ОС, а сохраняется в структуре <code>g</code> и планирует на свободный тред через <code>netpoller</code>.</p>
   </div>
 </aside>
+
+
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -2373,6 +2380,8 @@ flowchart TD
   </div>
 </aside>
 
+
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2383,6 +2392,7 @@ flowchart TD
 <strong>Ответ:</strong> <code>futex</code> — примитив, работающий в user space. Сначала <code>sync.Mutex</code> пытается захватить блокировку атомарной инструкцией <code>CMPXCHG</code>. Если успешно — syscall не нужен. Если занято, горутина после недолгого спина паркуется рантаймом Go (<code>runtime_SemacquireMutex</code> → <code>gopark</code>), и <code>futex</code> при этом не вызывается: поток <code>M</code> берёт другую горутину. К <code>futex(FUTEX_WAIT/WAKE)</code> рантайм обращается, когда засыпает сам поток <code>M</code> или конкурируют за внутренние блокировки рантайма. Это гибридный подход, сочетающий скорость user-space и планирование в пространстве пользователя.</p>
   </div>
 </aside>
+
 
 <h3 id="diagnostika-i-otladka">Диагностика и отладка</h3>
 <p>Для анализа реального поведения процесса используйте <code>strace</code>. Он перехватывает все syscall и выводит их с таймингами:</p>

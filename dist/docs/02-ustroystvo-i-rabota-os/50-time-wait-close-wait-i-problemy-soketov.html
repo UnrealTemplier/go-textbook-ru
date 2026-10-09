@@ -2277,6 +2277,7 @@ flowchart TD
 <li><strong>Гарантия доставки финального ACK:</strong> Если последний <code>ACK</code> от активной стороны потеряется из-за сбоя в сети, пассивная сторона сочтет свой <code>FIN</code> недошедшим и отправит повторный <code>FIN</code>. Если бы сокет активной стороны был немедленно уничтожен, ядро ответило бы на повторный <code>FIN</code> жестким пакетом <code>RST</code> (сброс), посчитав его ошибочным. Состояние <code>TIME_WAIT</code> позволяет серверу корректно переотправить <code>ACK</code> и дать партнеру спокойно закрыться.</li>
 <li><strong>Очистка «призрачных» пакетов:</strong> В глобальной маршрутизации пакеты могут задерживаться и приходить с опозданием в десятки секунд. Если бы операционная система сразу выдала этот же локальный порт для нового соединения к тому же удаленному сервису, задержавшийся пакет из прошлой сессии попал бы в новое соединение, вызвав искажение данных. Тайм-аут 2MSL гарантирует полную очистку сети от старых сегментов.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом: Архитектура `tcp_death_row` и легковесные сокеты">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2289,6 +2290,8 @@ flowchart TD
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Исчерпание портов (Port Exhaustion)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2300,6 +2303,7 @@ flowchart TD
 В результате новые вызовы <code>net.Dial</code> начнут падать с ошибкой ядра <strong><code>cannot assign requested address</code></strong> (<code>EADDRNOTAVAIL</code>), хотя удаленный сервер абсолютно свободен и готов принимать соединения.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="closewait-passivnoe-zakrytie-i-utechki-prilozheniya">CLOSE_WAIT: Пассивное закрытие и утечки приложения</h2>
@@ -2349,6 +2353,7 @@ flowchart LR
 <li><strong>Непрочитанное тело ответа (<code>resp.Body</code>):</strong> В стандартном клиенте <code>http.Client</code>, если приложение прочитало только часть заголовков или данных, но не вычитало тело до конца через <code>io.Copy(io.Discard, resp.Body)</code> или <code>drain</code> и не вызвало <code>resp.Body.Close()</code>, базовое TCP-соединение не может вернуться в пул и зависает в <code>CLOSE_WAIT</code>.</li>
 <li><strong>Утечка в пуле соединений <code>http.Transport</code>:</strong> Если удаленный микросервис штатно разорвал Keep-Alive соединение по таймауту, но пул <code>Transport</code> из-за некорректных блокировок или утечек горутин не освободил дескриптор, сокет будет висеть в <code>CLOSE_WAIT</code> бесконечно — ядро Linux не имеет таймаута для <code>CLOSE_WAIT</code> (параметр <code>tcp_fin_timeout</code> управляет исключительно состоянием <code>FIN-WAIT-2</code> на активной стороне закрытия), поэтому сокет в <code>CLOSE_WAIT</code> останется до явного вызова <code>Close()</code> или завершения процесса.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2361,6 +2366,7 @@ flowchart LR
 - <strong><code>CLOSE_WAIT</code></strong> — это пассивное закрытие. Сокет все еще удерживается процессом, файловый дескриптор открыт (<code>fd</code> не освобожден). Это полноценная <strong>утечка ресурсов внутри Go-кода</strong>. По мере накопления сокетов в <code>CLOSE_WAIT</code> процесс исчерпает лимит открытых файлов (<code>ulimit -n</code>) и упадет с паникой <code>too many open files</code>. Лечится поиском забытых <code>defer conn.Close()</code> и закрытием <code>resp.Body</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="go-spetsifika-upravlenie-soedineniyami-i-soreuseport">Go-специфика: Управление соединениями и SO_REUSEPORT</h2>
@@ -2394,6 +2400,7 @@ flowchart LR
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-info" aria-label="Под капотом: SO_REUSEPORT и масштабируемость Go-серверов">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2404,6 +2411,7 @@ flowchart LR
 Это полностью устраняет contention (борьбу за блокировку <code>listen_lock</code>) внутри ядра, позволяя масштабировать обработку новых сетевых подключений линейно по числу ядер CPU.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="upravlenie-taymautami-i-linger">Управление таймаутами и linger</h3>

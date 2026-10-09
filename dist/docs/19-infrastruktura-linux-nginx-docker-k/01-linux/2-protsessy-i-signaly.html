@@ -2237,6 +2237,7 @@ flowchart TD
 <li><strong>Uninterruptible Sleep (<code>TASK_UNINTERRUPTIBLE</code>, состояние 'D'):</strong> Процесс ожидает критического аппаратного ввода-вывода (например, страница подкачивается со сбоящего диска или зависшего NFS-хранилища). Процесс в состоянии 'D' нельзя убить даже сигналом <code>SIGKILL</code> — он не вернется в User Space, пока драйвер диска не завершит операцию.</li>
 <li><strong>Zombie (<code>EXIT_ZOMBIE</code>, состояние 'Z'):</strong> Процесс завершил работу, освободил всю память и дескрипторы, но запись о нем сохраняется в таблице процессов ядра, пока родитель не прочитает код возврата.</li>
 </ul>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2246,6 +2247,7 @@ flowchart TD
     <p>Состояние <strong>Zombie</strong> (Зомби) — это процесс, который уже завершил выполнение, но его родитель еще не забрал код завершения (через системный вызов <code>wait</code>). Зомби не потребляют CPU или RAM, но они занимают запись в таблице процессов ядра (PID). Если ваш Go-сервис плодит зомби (например, выполняя <code>exec.Command</code> и не вызывая <code>cmd.Wait()</code>), рано или поздно ядро исчерпает лимит PID, и новые процессы (включая горутины, пытающиеся сделать <code>os/exec</code> или системный вызов) не смогут создаться.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="signaly-asinkhronnoe-upravlenie-protsessom">Сигналы: Асинхронное управление процессом</h2>
@@ -2344,6 +2346,7 @@ func main() {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2355,6 +2358,7 @@ func main() {
   </div>
 </aside>
 
+
 <hr />
 <h2 id="problema-pid-1-v-konteynerakh">Проблема PID 1 в контейнерах</h2>
 
@@ -2362,6 +2366,7 @@ func main() {
 1. Перехватывать сигналы от ядра.<br />
 2. "Жнить" (reap) зомби-процессы — дочерние процессы, которые завершились, но чьи родители умерли, и их нужно забрать из таблицы процессов.</p>
 <p>Когда вы упаковываете Go-бинарник в Docker, по умолчанию он запускается как процесс с PID 1 внутри контейнера. И вот тут кроется ловушка.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2372,6 +2377,7 @@ func main() {
 <p><strong>Вторая проблема:</strong> Ядро отправляет сигналы (например, <code>SIGTERM</code> при <code>docker stop</code>) процессу с PID 1. Но если PID 1 — это ваш Go-бинарник, bash-скрипт-обертка или shell-форма <code>CMD</code> в Dockerfile (например, <code>CMD go run main.go</code>), сигнал может не дойти до вашего приложения, потому что оболочка (shell) не пробрасывает сигналы своим дочерним процессам. Контейнер просто зависнет на 30 секунд и будет убит через <code>SIGKILL</code>.</p>
   </div>
 </aside>
+
 
 <p><strong>Решения:</strong><br />
 1. Использовать <code>ENTRYPOINT</code> в Dockerfile в exec-форме (массив JSON): <code>ENTRYPOINT ["./myapp"]</code>. В этом случае ваш бинарник становится PID 1 напрямую, без оболочки, и корректно получает сигналы.<br />

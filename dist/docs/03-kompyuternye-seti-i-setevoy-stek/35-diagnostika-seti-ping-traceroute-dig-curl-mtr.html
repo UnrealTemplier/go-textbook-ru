@@ -2311,6 +2311,7 @@ func pingHost(ctx context.Context, addr string) error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2320,6 +2321,7 @@ func pingHost(ctx context.Context, addr string) error {
     <p>Сокеты, которые создают <code>net.ListenIP</code>/<code>net.DialIP</code> и <code>golang.org/x/net/icmp</code>, в Go неблокирующие (<code>SOCK_NONBLOCK</code>): <code>Read</code> паркует горутину через netpoller, и поток <code>M</code> не блокируется, так что <code>runtime.LockOSThread</code> и особый пул горутин для этого не нужны. Реальная ловушка — привилегии: для <code>"ip4:icmp"</code> нужны root или <code>CAP_NET_RAW</code>; без них используйте непривилегированный ICMP-сокет <code>icmp.ListenPacket("udp4", ...)</code> (на Linux его доступность зависит от <code>net.ipv4.ping_group_range</code>).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="traceroute-ttl-i-marshrutizatsiya">traceroute: TTL и маршрутизация</h2>
@@ -2388,6 +2390,7 @@ conn.SetControlMessage(ipv4.FlagTTL, true)
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2398,6 +2401,7 @@ conn.SetControlMessage(ipv4.FlagTTL, true)
 <strong>Ответ:</strong> Многие фаерволы и прокси блокируют UDP-трафик на случайных портах. TCP traceroute (<code>tcptraceroute</code>) отправляет SYN-пакеты с инкрементируемым TTL на порт 80/443. Это обходит блокировки, но не работает, если целевой узел отбрасывает SYN-пакеты без ответа (stateless drop).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="dig-dns-rezolving-i-strategii-go">dig: DNS-резолвинг и стратегии Go</h2>
@@ -2454,6 +2458,7 @@ func main() {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2463,6 +2468,7 @@ func main() {
     <p>Резолвинг в Go <strong>блокирует</strong> текущую горутину. Если <code>LookupIP</code> виснет из-за DNS-атаки или таймаута, он заблокирует обработчик запроса. Всегда оборачивайте <code>net.LookupIP</code> или <code>net.Resolver.LookupIP</code> в <code>context.WithTimeout</code>. В высоконагруженных сервисах выносите резолвинг в фоновый воркер и кэшируйте результаты.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="curl-http-transport-i-puling-soedineniy">curl: HTTP-транспорт и пулинг соединений</h2>
@@ -2538,6 +2544,7 @@ func main() {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2547,6 +2554,7 @@ func main() {
     <p><code>http.Transport</code> использует внутреннюю очередь соединений. При высокой нагрузке <code>MaxIdleConnsPerHost</code> ограничивает количество живых сокетов. Если лимит исчерпан, новые запросы блокируются до появления свободного сокета или таймаута. Неправильная настройка приводит к <strong>connection exhaustion</strong> и <code>context deadline exceeded</code> в логике приложения.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mtr-nepreryvnyy-monitoring-v-prodakshene">mtr: непрерывный мониторинг в продакшене</h2>
@@ -2626,6 +2634,7 @@ func pingOnce(ctx context.Context, addr string) error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2637,6 +2646,7 @@ func pingOnce(ctx context.Context, addr string) error {
   </div>
 </aside>
 
+
 <hr />
 <h2 id="pod-kapotom-syscalls-syrye-sokety-i-planirovshchik-go">Под капотом: Syscalls, сырые сокеты и планировщик Go</h2>
 
@@ -2646,6 +2656,7 @@ func pingOnce(ctx context.Context, addr string) error {
 <li><strong>Планировщик и блокировки</strong>: Сокеты <code>net.ListenIP</code>/<code>icmp.ListenPacket</code> в Go неблокирующие: если горутина вызывает <code>conn.ReadFrom()</code> и пакет не приходит, она паркуется в netpoller, а поток <code>M</code> продолжает выполнять другие горутины. Блокирует поток только прямой вызов <code>syscall.Read</code> над блокирующим дескриптором, который вы создали сами.</li>
 <li><strong>eBPF и современный стек</strong>: В современных ядрах (4.9+) сырые сокеты для мониторинга заменяются на <code>eBPF</code> (см. статью <a href="36-ebpf-i-xdp-dlya-analiza-i-uskoreniya-setevogo-trafik.html" class="wikilink">36. eBPF и XDP для анализа и ускорения сетевого трафика</a>). eBPF позволяет перехватывать пакеты в ядре без блокировки пользовательских тредов и без <code>CAP_NET_RAW</code>.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2656,6 +2667,7 @@ func pingOnce(ctx context.Context, addr string) error {
 <strong>Ответ:</strong> Во-первых, это требует <code>CAP_NET_RAW</code> (root), что нарушает принцип минимальных привилегий. Во-вторых, самодельный сырой сокет через <code>syscall</code> придётся вручную переводить в неблокирующий режим и самостоятельно организовывать ожидание готовности, а готовые обёртки (<code>net.ListenIP</code>, <code>golang.org/x/net/icmp</code>) уже делают это: их сокеты неблокирующие и работают через netpoller, так что блокировки потоков не возникает.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

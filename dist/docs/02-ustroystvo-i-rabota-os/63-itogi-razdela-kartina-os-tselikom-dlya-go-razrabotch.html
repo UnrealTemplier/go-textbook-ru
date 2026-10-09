@@ -2290,6 +2290,7 @@ flowchart LR
 *   <strong>Стек горутин (Goroutine Stack):</strong> В классических языках (C, C++, Java) под каждый поток ОС выделяется массивный фиксированный стек размером от 1 до 8 МБ. Попытка создать 50 000 таких потоков мгновенно исчерпает физическую память сервера. В Go стек горутины стартует всего с <strong>2 КБ</strong> и динамически растет или сжимается в куче по мере необходимости. Это позволяет безболезненно удерживать миллионы горутин в памяти без риска падения по ошибке сегментации (<code>SIGSEGV</code>).<br />
 *   <strong>Куча (Heap) и отказ от <code>brk</code>/<code>sbrk</code>:</strong> Go полностью игнорирует устаревшие системные вызовы изменения сегмента данных <code>brk</code>/<code>sbrk</code>. Вся память запрашивается у ядра через системный вызов <code>mmap</code> с флагом <code>MAP_ANONYMOUS</code> огромными блоками, которые затем делятся на арены, центральные пулы <code>mspan</code> и локальные поточные кэши <code>mcache</code>.<br />
 *   <strong>Page Cache и бескомпромиссный Zero Copy:</strong> Чтение файлов через <code>os.File</code> проходит через системный страничный кэш ядра (<code>Page Cache</code>). Используя стандартные интерфейсы <code>io.Copy</code>, <code>io.ReaderFrom</code> и <code>io.WriterTo</code>, Go активирует системные вызовы <code>sendfile</code> или <code>copy_file_range</code>, передавая данные между сокетами и файлами полностью силами ядра Linux, вообще не копируя байты в пространство пользователя.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2300,6 +2301,7 @@ flowchart LR
 С параметром <code>GOMEMLIMIT</code> сборщик мусора Go динамически регулирует частоту циклов сборки, а рантайм лениво отдает неиспользуемые страницы операционной системе через системный вызов <code>madvise(MADV_DONTNEED)</code>, предотвращая аварийное уничтожение процесса.</p>
   </div>
 </aside>
+
 
 <h3 id="2-planirovanie-i-konkurentnost">2. Планирование и конкурентность</h3>
 
@@ -2344,6 +2346,7 @@ flowchart LR
 </figure>
 
 
+
 <aside class="callout callout-warning" aria-label="Ловушка">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2356,6 +2359,7 @@ flowchart LR
   </div>
 </aside>
 
+
 <h3 id="3-io-i-set">3. IO и сеть</h3>
 
 <p>Сетевая подсистема Go полностью построена на неблокирующем вводе-выводе и событийно-ориентированном мультиплексировании:<br />
@@ -2363,6 +2367,7 @@ flowchart LR
 *   Когда горутина вызывает <code>conn.Read()</code>, рантайм регистрирует сетевой файловый дескриптор в поллере <code>netpoller</code> и усыпляет горутину с помощью вызова <code>gopark</code>. Поток ОС <code>m</code> не засыпает, а немедленно берет следующую задачу!<br />
 *   Когда сетевая карта принимает пакеты и ядро помещает их в сокетный буфер, системный вызов <code>epoll_wait</code> пробуждает сетевой поллер, и горутина переводится в статус готовой к исполнению (<code>runnable</code>).<br />
 *   Для программиста код выглядит абсолютно синхронным и линейным, но под капотом он исполняется с максимальной производительностью асинхронного event loop.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2373,6 +2378,7 @@ flowchart LR
 <strong>Ответ:</strong> При локальном <code>Close()</code> рантайм сам помечает <code>pollDesc</code> закрытым и будит ожидающие горутины. Разбуженная горутина получит ошибку «use of closed network connection» (<code>net.ErrClosed</code>), а не <code>io.EOF</code> или <code>EBADF</code>. (<code>EPOLLHUP</code>/<code>EPOLLRDHUP</code> сообщают о разрыве соединения <em>удалённой</em> стороной, тогда <code>Read</code> вернёт <code>io.EOF</code>.) В отличие от устаревшего вызова POSIX <code>select</code>, требующего перебора всех дескрипторов, <code>epoll</code> работает по эффективной push-модели событий.</p>
   </div>
 </aside>
+
 
 <h3 id="4-arkhitektura-i-izolyatsiya">4. Архитектура и изоляция</h3>
 
@@ -2424,6 +2430,7 @@ flowchart LR
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2433,6 +2440,7 @@ flowchart LR
     <p>Внутренняя структура ядра рантайма <code>runtime.m</code> хранит прямую ссылку на дескриптор системного потока ОС (<code>sys</code>), указатель на текущую исполняемую горутину (<code>curg</code>) и счетчик тиков планировщика <code>schedtick</code> для вытеснения долгих задач. Логический процессор <code>runtime.p</code> динамически отцепляется от системного потока при входе в блокирующий системный вызов (<code>handoff</code>). Этот механизм гарантирует, что блокировка отдельного потока на дисковом I/O никогда не заблокирует глобальный пул задач <code>GOMAXPROCS</code>.</p>
   </div>
 </aside>
+
 
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -2502,6 +2510,7 @@ flowchart TD
 <li><strong>Культура обработки системных сигналов:</strong><br />
     Служба <code>os/signal</code> позволяет перехватывать системные сигналы завершения <strong><code>SIGTERM</code></strong> и <strong><code>SIGINT</code></strong>. Канал приема сигналов (<code>signal channel</code>) никогда не должен блокироваться. Используйте конструкцию <code>select</code> с таймаутом. Процедура плавного завершения (Graceful Shutdown) обязана укладываться в отведенный таймаут оркестратора Kubernetes (по умолчанию 30 секунд), иначе процесс будет принудительно и жестко уничтожен сигналом <strong><code>SIGKILL</code></strong>.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2513,6 +2522,8 @@ flowchart TD
   </div>
 </aside>
 
+
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2523,6 +2534,7 @@ flowchart TD
 <strong>Ответ:</strong> При входе в потенциально блокирующий системный вызов рантайм Go фиксирует, что системный поток <code>m</code> переходит в сон на уровне ядра. Планировщик немедленно отсоединяет логический процессор <code>p</code> от этого потока (процедура Hand-off) и передает его свободным системным потокам из пула <code>sched</code> или создает новый поток ОС с помощью фонового демона <code>sysmon</code>. Сама горутина переводится в статус ожидания <code>waiting</code> и временно покидает локальную очередь. Когда операция в ядре завершается, поток <code>m</code> просыпается, рантайм возвращает горутине статус <code>runnable</code> и отправляет ее на свободный процессор <code>p</code>.</p>
   </div>
 </aside>
+
 
 <h2 id="itog">Итог</h2>
 

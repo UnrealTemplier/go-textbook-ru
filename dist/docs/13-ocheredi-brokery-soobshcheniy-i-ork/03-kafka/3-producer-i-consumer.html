@@ -2184,6 +2184,7 @@
 <p><em>«Чтобы программа работала быстро, заставьте ее делать меньше работы. Чтобы она делала меньше работы, объединяйте операции в пакеты».</em>  <br />
 — Стивен Борн, создатель Bourne shell</p>
 </blockquote>
+
 <aside class="callout callout-note" aria-label="Заметка">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">📝</span>
@@ -2193,6 +2194,7 @@
     <p><strong>Связи:</strong> Эта статья — прямое продолжение <a href="2-topics-partitions-i-offsets.html" class="wikilink">2. Topics, partitions и offsets</a>, в котором мы рассмотрели физическую структуру лога. Теперь мы разберём, как приложения-отправители и получатели взаимодействуют с этим логом, опираясь на гарантии доставки из <a href="../01-fundament-asinkhronnosti/4-modeli-dostavki-at-most-once-at-least-once-exactly-on.html" class="wikilink">4. Модели доставки. At most once, at least once, exactly once</a> и закладывая основу для групповой координации <a href="4-consumer-groups.html" class="wikilink">4. Consumer groups</a>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="dve-storony-odnogo-loga">Две стороны одного лога</h2>
@@ -2330,6 +2332,7 @@ flowchart LR
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2339,6 +2342,7 @@ flowchart LR
     <p>Внутри <code>RecordAccumulator</code> работает пул буферов прямого доступа (<code>DirectByteBuffer</code> в Java, байтовые слайсы в Go), которые аллоцируются вне кучи GC, чтобы не создавать pressure на сборщик мусора. В Go-клиенте <code>franz-go</code> активно используется <code>sync.Pool</code> для переиспользования слайсов, что минимизирует аллокации и обеспечивает высокую пропускную способность. Память не запрашивается у ОС на каждое сообщение: буферы берутся из пула, заполняются и возвращаются обратно после получения подтверждения от брокера.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="mechanical-sympathy-zachem-nuzhen-linger-ms-i-batch-size">Mechanical Sympathy: зачем нужен `linger.ms` и `batch.size`</h3>
@@ -2447,6 +2451,7 @@ sequenceDiagram
    - Если <code>IncomingSeqNum &lt;= LastStoredSeqNum</code> — брокер понимает, что это дубликат из-за сетевого ретрая. Он <strong>не пишет запись в лог повторно</strong>, но возвращает продюсеру успешный <code>ACK</code>.<br />
    - Если <code>IncomingSeqNum &gt; LastStoredSeqNum + 1</code> — значит, произошла потеря сообщений в пути; брокер возвращает ошибку <code>OutOfOrderSequenceException</code>.</p>
 <p>Это гарантирует <strong>exactly-once семантику на уровне одной сессии продюсера в рамках одной партиции</strong> без снижения производительности.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2456,6 +2461,7 @@ sequenceDiagram
     <p>Идемпотентность продюсера спасает от дублирования, порождённого сетевыми ретраями, но она <strong>не переживает перезапуск продюсера с потерей Producer ID</strong>. При перезапуске процесс получит новый PID, и его последовательность <code>Sequence Number</code> начнётся заново. Для сквозного exactly-once между топиками и при перезапусках процессов используются Kafka Transactions (см. <a href="6-exactly-once-v-kafka.html" class="wikilink">6. Exactly once в Kafka</a>).</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="production-ready-prodyuser-na-go-franz-go">Production-ready продюсер на Go (franz-go)</h3>
@@ -2591,6 +2597,7 @@ flowchart TD
 <li><strong>Heartbeat</strong> — фоновые сигналы жизнедеятельности (по умолчанию отправляются каждые 3 секунды), подтверждающие координатору, что данный консьюмер жив. Если брокер не получает heartbeat дольше интервала <code>session.timeout.ms</code> (по умолчанию 45 с), консьюмер признаётся выпавшим из кластера, и координатор объявляет ребалансировку.</li>
 <li><strong><code>max.poll.interval.ms</code></strong> — максимальное допустимое время между последовательными вызовами метода <code>Poll</code> (по умолчанию 5 минут). Это защита от «зависших» или перегруженных воркеров. Если приложение заблокировалось при обработке батча (например, на тяжелом SQL-запросе) и не успело вызвать <code>Poll</code> до истечения таймаута, клиент самостоятельно покидает группу, чтобы не тормозить чтение партиции.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2600,6 +2607,7 @@ flowchart TD
     <p>В Go-консьюмере нельзя блокировать горутину, вызывающую <code>Poll</code>, на длительное время (например, тяжелой синхронной записью в базу данных или обращением к внешнему HTTP API). Это приведет к превышению <code>max.poll.interval.ms</code> и возникновению <strong>шторма бесконечных ребалансировок</strong> (rebalance storm): группа перераспределяет партиции, брокер отзывает их у зависшего воркера, другой воркер берет тот же батч, тоже зависает, и весь консьюмерский кластер встает колом! Сообщения всегда нужно передавать пулу рабочих горутин, оставляя цикл <code>Poll</code> быстрым и непрерывным.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="upravlenie-smeshcheniyami-avtomaticheskiy-vs-ruchnoy-kommit">Управление смещениями: автоматический vs ручной коммит</h3>
@@ -2768,6 +2776,7 @@ flowchart TD
    - Ядро Linux выполняет системный вызов <code>sendfile(2)</code> (или <code>splice(2)</code>), который переносит данные из страничного кэша (Page Cache) прямо в DMA-буфер сетевой карты, минуя пространство пользователя брокера. Никаких аллокаций в JVM/Go-рантайме брокера, никакой нагрузки на GC!</li>
 </ol>
 <hr />
+
 <aside class="callout callout-interview" aria-label="Вопрос с собеседования">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2778,6 +2787,7 @@ flowchart TD
 <strong>Ответ:</strong> Фоновые heartbeats (<code>session.timeout.ms</code>) подтверждают лишь то, что процесс консьюмера физически жив и сетевой сокет открыт. Однако брокер расценивает превышение <code>max.poll.interval.ms</code> как признак того, что консьюмер <strong>завис логически</strong> (deadlock, вечный цикл, зависший запрос к БД). Координатор принудительно исключит консьюмера из группы и запустит ребалансировку, отдав его партиции другому инстансу. Когда «зависший» консьюмер наконец очнется через 7 минут и попытается закоммитить свои offsets, брокер отклонит коммит с ошибкой <code>CommitFailedException</code> (партиции уже принадлежат другому узлу), что неизбежно приведет к повторной обработке и дубликатам. Для решения проблемы следует либо уменьшать размер вычитываемого батча (<code>max.poll.records</code>), либо выносить тяжелую работу в пул горутин.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="zaklyuchenie-i-sleduyushchie-shagi">Заключение и следующие шаги</h2>

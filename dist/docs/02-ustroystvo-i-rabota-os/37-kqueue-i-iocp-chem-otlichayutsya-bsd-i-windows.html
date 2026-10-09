@@ -2298,6 +2298,7 @@ flowchart LR
 
 
 <p>Каждый зарегистрированный фильтр привязывается к конкретному дескриптору. Ядро создает внутренние структуры (обычно это хеш-таблицы с цепочками и связными списками внутри <code>sys/kern/kern_kqueue.c</code>), которые отслеживают состояние. Когда событие происходит, ядро помещает пакет <code>kevent</code> в очередь, связанную с дескриптором. Приложение вызывает <code>kevent()</code> с нулевым timeout, и ядро возвращает только те события, которые действительно произошли.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2308,6 +2309,7 @@ flowchart LR
 <p>Стоимость регистрации события близка к O(1), а стоимость получения готовых событий — O(n), где n — количество изменившихся дескрипторов за период ожидания.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="iocp-model-zaversheniya-operatsiy-windows">IOCP: Модель завершения операций Windows</h2>
@@ -2358,6 +2360,7 @@ sequenceDiagram
 <li><strong>Получение результата:</strong> Приложение вызывает <code>GetQueuedCompletionStatus()</code>. Если операция еще не завершена, поток блокируется внутри ядра. Как только I/O заканчивается, ядро создает <strong>Completion Packet</strong> (пакет завершения) и помещает его в очередь порта. Блокированный поток пробуждается, забирает пакет и обрабатывает данные.</li>
 </ol>
 <p>Ключевая особенность IOCP — <strong>управление конкурентностью потоков</strong>, обслуживающих порт. Сам пул потоков заранее создаёт приложение (в Go — рантайм), а порт и ядро Windows лишь регулируют его работу. При создании порта вы можете указать лимит одновременно исполняемых потоков (Concurrency Value, обычно равный числу логических ядер процессора). Ядро Windows отслеживает состояние потоков: если один из потоков пула заблокировался (например, на мьютексе или страничном сбое), ядро немедленно будит следующий поток. Это предотвращает создание "thundering herd" (лавинного пробуждения потоков) и минимизирует смену контекстов CPU.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2368,6 +2371,7 @@ sequenceDiagram
 <p>Попытка перенести сетевую библиотеку с Linux на Windows путем слепой подстановки <code>select</code> превратит масштабируемый сервер в неповоротливого монстра.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="arkhitekturnoe-sravnenie-bsd-vs-windows">Архитектурное сравнение: BSD vs Windows</h2>
@@ -2494,6 +2498,7 @@ flowchart TD
 <li>Поскольку Windows требует запустить операцию заранее, Go выделяет служебную структуру <code>operation</code> (пакет <code>internal/poll</code>, первым полем она содержит <code>syscall.Overlapped</code>) и передает ее в вызовы <code>WSARecv</code> / <code>ReadFile</code> через указатель <code>lpOverlapped</code>.</li>
 <li>Функция <code>runtime.netpoll</code> вызывает системную функцию <code>GetQueuedCompletionStatus</code>. Когда ядро сообщает о завершении асинхронного чтения, Go извлекает указатель на <code>operation</code>, находит связанную горутину и переводит её в состояние <code>runnable</code>.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2505,6 +2510,7 @@ flowchart TD
 <p>Windows (<code>IOCP</code>) работает по модели завершения (Completion): она требует инициировать операцию чтения <em>до</em> того, как горутина уснет. Go вынужден выделять структуры памяти под операцию (<code>lpOverlapped</code> / <code>operation</code>), удерживать буферы заблокированными в памяти и полагаться на планировщик IOCP ядра для обработки завершений. Это делает рантайм Go под Windows архитектурно иным внутри, но сохраняет единый публичный API для программиста.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="lovushki-i-arkhitekturnye-nyuansy">Ловушки и архитектурные нюансы</h2>
@@ -2524,7 +2530,7 @@ flowchart TD
 <li><strong><code>IOCP</code></strong> перекладывает бремя мультиплексирования на ядро Windows: приложение передает буфер заранее через структуру <code>OVERLAPPED</code>, а ядро по завершении DMA-чтения пробуждает рабочий поток из внутреннего пула.</li>
 <li>В рантайме Go обе архитектуры гармонично скрыты внутри сетевого поллера (<code>netpoll_kqueue.go</code> и <code>netpoll_windows.go</code>), позволяя приложению использовать чистый синхронный синтаксис <code>conn.Read()</code> без потери наносекунд производительности.</li>
 </ol>
-<p>В следующей статье мы заглянем в самое сердце сетевого поллера Go: <code>&lt;a href="38-kak-netpoller-go-ispolzuet-epoll-i-kqueue.html" class="wikilink"&gt;38. Как netpoller Go использует epoll и kqueue&lt;/a&gt;</code>, где детально разберем внутренние структуры данных рантайма, координацию с системным монитором <code>sysmon</code> и то, как исключаются взаимные блокировки при сетевых вызовах.</p>
+<p>В следующей статье мы заглянем в самое сердце сетевого поллера Go: <a href="38-kak-netpoller-go-ispolzuet-epoll-i-kqueue.html" class="wikilink"><code>38. Как netpoller Go использует epoll и kqueue</code></a>, где детально разберем внутренние структуры данных рантайма, координацию с системным монитором <code>sysmon</code> и то, как исключаются взаимные блокировки при сетевых вызовах.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->

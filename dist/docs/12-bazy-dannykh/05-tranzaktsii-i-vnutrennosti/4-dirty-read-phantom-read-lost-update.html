@@ -2221,6 +2221,7 @@ flowchart TD
 <h3 id="mekhanika-vozniknoveniya">Механика возникновения</h3>
 
 <p>В системах, основанных на блокировках, <code>Dirty Read</code> возможен, если читатель не запрашивает разделяющую блокировку (<code>Shared Lock</code>), а писатель не ожидает её освобождения. В MVCC-системах это означало бы чтение «черновика» версии строки до того, как транзакция-автор получила <code>commit lsn</code>.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2233,6 +2234,7 @@ flowchart TD
 <strong>Практический вывод:</strong> Не тратьте время на защиту от <code>Dirty Read</code>. Уровень <code>READ COMMITTED</code> (по умолчанию) уже его предотвращает.</p>
   </div>
 </aside>
+
 
 <h3 id="kak-eto-vyglyadit-v-zaprosakh">Как это выглядит в запросах</h3>
 
@@ -2275,6 +2277,7 @@ ROLLBACK; -- баланс вернулся к 1000
 <li>Строка <code>X</code> теперь содержит <code>80</code>. Обновление <code>+10</code> от транзакции A безвозвратно потеряно.</li>
 </ol>
 <p>СУБД не видит конфликта, потому что обе транзакции работали с валидными снимками и применяли изменения к разным версиям. Это классическая проблема логики приложения, а не бага СУБД.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2284,6 +2287,7 @@ ROLLBACK; -- баланс вернулся к 1000
     <p>В PostgreSQL при создании новой версии строки (<code>heap_insert</code> в <code>heapam.c</code>) проверяется только то, что строка не была удалена другой транзакцией. Проверки «а меняло ли это поле кто-то ещё после моего чтения» по умолчанию нет. Отсюда необходимость явного контроля.</p>
   </div>
 </aside>
+
 
 <h3 id="idiomatichnoe-predotvrashchenie-v-go">Идиоматичное предотвращение в Go</h3>
 
@@ -2370,6 +2374,7 @@ func UpdateBalanceOptimistic(ctx context.Context, db *sql.DB, acc Account, newBa
 </div>
 
 <p>СУБД проверяет условие <code>WHERE version = $3</code>. Если строка уже обновлена, <code>RowsAffected()</code> вернёт <code>0</code>. Приложение обрабатывает это как конфликт и решает: повторить транзакцию, вернуть ошибку клиенту или применить стратегию «последний победитель».</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2380,6 +2385,7 @@ func UpdateBalanceOptimistic(ctx context.Context, db *sql.DB, acc Account, newBa
 <strong>Ответ:</strong> Потому что это атомарная операция на стороне СУБД. Движок баз данных сам считывает текущую версию строки внутри исполняемого плана, применяет <code>+ $1</code> и записывает результат. Нет этапа «чтение в приложение -&gt; вычисление -&gt; запись», который создаёт окно гонки. Используйте SQL-арифметику, где это возможно.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="3-phantom-read-fantomnoe-chtenie">3. Phantom Read: Фантомное чтение</h2>
@@ -2434,6 +2440,7 @@ SELECT COUNT(*) FROM orders WHERE status = 'new'; -- вернёт 11!
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2443,6 +2450,7 @@ SELECT COUNT(*) FROM orders WHERE status = 'new'; -- вернёт 11!
     <p><strong>Gap Lock в InnoDB:</strong> Если индекс содержит значения <code>[10, 20, 30]</code>, запрос <code>WHERE id &gt; 15</code> заблокирует не только строку <code>20</code> и <code>30</code>, но и «промежуток» между <code>10</code> и <code>20</code>, а также после <code>30</code>. Любая попытка вставить <code>15</code> или <code>25</code> будет ждать. Это предотвращает фантомов, но может резко снизить пропускную способность вставки в нагруженных системах.</p>
   </div>
 </aside>
+
 
 <h3 id="praktika-v-go-otchyoty-i-agregatsii">Практика в Go: Отчёты и агрегации</h3>
 
@@ -2506,6 +2514,7 @@ defer cancel()
 
 <h3 id="mvcc-i-lokalnost-dannykh">MVCC и локальность данных</h3>
 <p>В системах с MVCC <code>Lost Update</code> предотвращается хранением множества версий строк. Это размазывает логически связанные данные по разным страницам в <code>shared_buffers</code>. При чтении «горячей» строки СУБД может загрузить в кэш L3 CPU страницу, содержащую 5 старых версий и 1 новую. Это снижает эффективность предвыборки (prefetching) и увеличивает <code>cache miss rate</code> при сканировании диапазонов.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2516,6 +2525,7 @@ defer cancel()
 <strong>Ответ:</strong> Он сериализует вставки в определённый диапазон индексов. Если у вас высокая частота вставок с монотонно растущим <code>AUTO_INCREMENT</code> или <code>UUID</code>, и одновременно идут запросы с <code>WHERE id &gt; X</code>, возникнет очередь на вставку. В высоконагруженных системах это решается шардированием или использованием <code>SKIP LOCKED</code> для фоновой обработки.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="5-itog-i-strategiya-vybora">5. Итог и стратегия выбора</h2>

@@ -2246,6 +2246,7 @@ flowchart TD
 
 <h3 id="stranitsy-i-ekstenty-pages-extents">Страницы и экстенты (Pages & Extents)</h3>
 <p>Вся дисковая организация данных в InnoDB квантуется блоками строго фиксированного размера — <strong>Страницами (Pages)</strong>. По умолчанию размер страницы в InnoDB составляет ровно <strong>16 КБ (16 384 байта)</strong> — в два раза больше, чем в PostgreSQL (8 КБ).</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Mechanical Sympathy и размер страницы">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2257,6 +2258,7 @@ flowchart TD
 Сегодня на NVMe-накопителях в базах с преобладанием точечного случайного чтения (Random Read) вы можете перенастроить экземпляр на страницу в 4 КБ (<code>innodb_page_size=4k</code>). Это устраняет чтение лишних байтов из шины PCIe и кардинально снижает коэффициент усиления записи (<strong>Write Amplification</strong>) на накопителе.</p>
   </div>
 </aside>
+
 
 <p>Страницы объединяются в более крупные физические кластеры — <strong>Экстенты (Extents)</strong> по 64 страницы подряд (ровно 1 МБ). Набор экстентов формирует <strong>Табличные пространства (Tablespaces)</strong> — индивидуальные файлы с расширением <code>.ibd</code>, в которых хранятся таблицы вашей базы данных (режим <code>innodb_file_per_table = ON</code>).</p>
 <hr />
@@ -2348,6 +2350,7 @@ flowchart LR
 </figure>
 
 
+
 <aside class="callout callout-interview" aria-label="Собеседование: Защита от деградации кэша при Full Table Scan">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2359,6 +2362,7 @@ flowchart LR
 Список LRU в InnoDB разделен в пропорции 5/8 (горячая зона) и 3/8 (холодная зона). Вновь прочитанная с диска страница помещается не на вершину списка, а строго на границу (<strong>Midpoint</strong>), попадая в старую треть. Если страница была прочитана один раз в цикле полного сканирования таблицы и к ней больше не было повторных обращений в течение интервала <code>innodb_old_blocks_time</code> (по умолчанию 1000 мс), она быстро вытесняется из хвоста старой зоны, <strong>не затронув ни единой горячей страницы</strong> в молодой зоне!</p>
   </div>
 </aside>
+
 
 <h3 id="change-buffer-bufer-otlozhennykh-modifikatsiy">Change Buffer (Буфер отложенных модификаций)</h3>
 <p>Когда запрос обновляет строку, ему требуется обновить не только кластерный индекс, но и вторичные B-Tree индексы. Если целевой 16 КБ страницы вторичного индекса в данный момент нет в Buffer Pool, подъем этой страницы с диска ради изменения пары байтов вызвал бы губительный всплеск Random I/O.<br />
@@ -2373,6 +2377,7 @@ flowchart LR
 <p>Решение строится на парадигме <strong>Write-Ahead Logging (WAL)</strong>, которая в InnoDB реализована циклическим журналом повтора — <strong>Redo Log</strong> (файлы <code>ib_logfile0</code>, <code>ib_logfile1</code> в MySQL 5.7 или директория <code>#innodb_redo</code> в MySQL 8.0).</p>
 <p>При фиксации транзакции (<code>COMMIT</code>) InnoDB записывает в буфер памяти <strong>Log Buffer</strong> не саму страницу данных, а компактную дельту (физико-логический вектор изменений: «на странице №42 по смещению 128 записать байты 0xDEADBEEF»). Затем инициируется блокирующий системный вызов ядра Linux <strong><code>fsync()</code></strong>, который приказывает контроллеру накопителя физически сбросить буфер на диск. </p>
 <p>Запись в Redo Log идет строго последовательно (<strong>Sequential I/O</strong>), благодаря чему диск выжимает максимальную пропускную способность. Измененные же 16 КБ страницы данных (Dirty Pages) сбрасываются из Buffer Pool асинхронно, фоновыми воркерами <code>page_cleaner</code>. При аварийном рестарте InnoDB считывает Redo Log и накатывает дельты на базовые страницы (Crash Recovery, подробнее в <a href="../05-tranzaktsii-i-vnutrennosti/8-wal-write-ahead-log.html" class="wikilink">8. WAL. Write Ahead Log</a>).</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Параметр `innodb_flush_log_at_trx_commit`">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2385,6 +2390,7 @@ flowchart LR
 * <strong><code>0</code>:</strong> И вызов <code>write()</code>, и вызов <code>fsync()</code> производятся раз в секунду. Падение процесса MySQL уничтожит данные за последнюю секунду. Допустимо только для вспомогательных очередей и кэшей.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="consistency-zashchita-ot-razorvannykh-stranits-cherez-doublewrite-buffer">Consistency: Защита от разорванных страниц через Doublewrite Buffer</h3>
@@ -2475,6 +2481,7 @@ flowchart LR
 
 
 <p>Если транзакция A инициирует <code>SELECT</code>, а параллельная транзакция B обновляет баланс, транзакция A не блокируется: она переходит по цепочке указателей <code>DB_ROLL_PTR</code> в Undo Log и на лету воссоздает исторический снимок данных (Snapshot), актуальный на момент ее старта.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Почему `SELECT COUNT(*)` тормозит в InnoDB?">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2487,6 +2494,7 @@ flowchart LR
 Поэтому при выполнении <code>SELECT COUNT(*)</code> InnoDB вынужден физически обходить листовые узлы самого компактного вторичного B+ дерева и проверять видимость каждой отдельной строки по <code>DB_TRX_ID</code> относительно текущего снимка транзакции.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="praktika-v-go-idiomatichnaya-rabota-s-tranzaktsiyami">Практика в Go: Идиоматичная работа с транзакциями</h2>

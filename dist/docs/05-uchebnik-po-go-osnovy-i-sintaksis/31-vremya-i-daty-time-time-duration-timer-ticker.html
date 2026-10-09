@@ -2192,6 +2192,7 @@
 <li><strong>Wall Clock (Настенные часы):</strong> Показывают текущее астрономическое календарное время для людей. Они нестабильны: системный администратор может изменить дату вручную, а фоновый демон <strong>NTP (Network Time Protocol)</strong> периодически синхронизирует часы сервера с атомными эталонами и может «отмотать» их назад, если серверный таймер спешил.</li>
 <li><strong>Monotonic Clock (Монотонные часы):</strong> Аппаратный счетчик операционной системы (в Linux это <code>CLOCK_MONOTONIC</code>). Он запускается в момент старта ОС и <strong>непрерывно идет только вперед</strong>. На него не способны повлиять ни NTP-синхронизация, ни високосные секунды, ни ручные манипуляции с датой.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Отрицательная длительность">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2204,6 +2205,7 @@
 Если ровно посередине выполнения <code>do_work()</code> служба NTP скорректировала часы сервера на 50 миллисекунд назад, разность <code>t2 - t1</code> окажется <strong>отрицательной</strong>. В распределенной системе это ломает расчет таймаутов и логику вычисления задержек.</p>
   </div>
 </aside>
+
 
 <p>В Go структура <code>time.Time</code> спроектирована исключительно изящно: она способна хранить <strong>оба показания времени одновременно</strong>!</p>
 <p>Когда вы вызываете функцию <code>time.Now()</code>, рантайм запрашивает у ядра операционной системы сразу оба значения — и календарное время Wall Clock, и монотонное время Monotonic Clock — упаковывая их в одну компактную структуру:</p>
@@ -2239,6 +2241,7 @@ func main() {
 </div>
 
 <p>Функция <code>time.Since(start)</code> специально проверяет наличие монотонной метки: если она присутствует, расчет интервала выполняется строго по Monotonic Clock, исключая любые сюрпризы от NTP.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Устройство time.Time и Memory Layout">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2266,6 +2269,7 @@ func main() {
 <p>Обратите внимание на поле <code>loc *Location</code>. Структура <code>time.Time</code> идиоматично передается <strong>по значению</strong> (<code>time.Time</code>, а не указатель <code>*time.Time</code>). Копирование 24 байт через регистры процессора исключительно дешево для CPU и не создает лишней работы сборщику мусора, а указатель на <code>Location</code> безопасно разделяется между всеми копиями.</p>
   </div>
 </aside>
+
 
 <h3 id="vdso-i-mechanical-sympathy">vDSO и Mechanical Sympathy</h3>
 
@@ -2353,6 +2357,7 @@ func main() {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование: Опечатка в шаблоне даты">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2363,6 +2368,7 @@ func main() {
 <strong>Ответ:</strong> Компилятор и рантайм Go не выбросят ошибку! Парсер просто сопоставит цифру <code>02</code> (стоящую на месте месяца) с днем, а цифру <code>01</code> (стоящую на месте дня) — с месяцем. В базу данных или логи запишется искаженная дата, где месяцы и дни поменялись местами. Всегда строго сверяйте шаблон форматирования с каноном <code>1 2 3 4 5 6 7</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="4-taymzony-i-problema-tzdata-v-docker">4. Таймзоны и проблема tzdata в Docker</h2>
@@ -2387,6 +2393,7 @@ timeInMSK := time.Now().In(loc)
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Минималистичные образы scratch и alpine">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2397,6 +2404,7 @@ timeInMSK := time.Now().In(loc)
 <p><strong>Решение:</strong> Добавляйте зависимость <code>tzdata</code> в ваш <code>Dockerfile</code> (через менеджер пакетов ОС) или импортируйте пакет <code>_ "time/tzdata"</code>, который вошьет базу прямо в бинарник (увеличит его размер на ~400 КБ).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="5-taymery-i-tikery-kanaly-sobytiy">5. Таймеры и Тикеры: Каналы событий</h2>
@@ -2425,6 +2433,7 @@ fmt.Println(&quot;Таймер сработал&quot;)
 <h3 id="allokatsii-i-utechki-pamyati-s-time-after">Аллокации и утечки памяти с time.After</h3>
 
 <p>Функция <code>time.After</code> — удобная обертка над <code>time.NewTimer</code>, сразу возвращающая канал <code>&lt;-chan Time</code>. Однако в циклических конструкциях она превращается в классический источник проблем с производительностью и памятью.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Поведение time.After в цикле for-select">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2487,6 +2496,7 @@ for {
 <p><em>(Примечание для старых версий Go &lt; 1.23: канал таймера был буферизованным емкостью 1, поэтому перед <code>timer.Reset</code> требовалось дренировать канал через <code>if !timer.Stop() { select { case &lt;-timer.C: default: } }</code>. В Go 1.23+ канал таймера стал небуферизованным и синхронным, а <code>timer.Reset</code> безопасно вызывается напрямую).</em></p>
   </div>
 </aside>
+
 
 <h3 id="time-ticker-periodicheskie-tiki">time.Ticker (Периодические тики)</h3>
 
@@ -2564,6 +2574,7 @@ graph TD
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом: Netpoll и спящие потоки">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2574,6 +2585,7 @@ graph TD
 Планировщик вычисляет дедлайн самого раннего таймера среди всех процессоров <code>P</code> и передает его в системный селектор ввода-вывода <code>netpoll</code> (системный вызов <code>epoll_wait</code> в Linux или <code>kqueue</code> в macOS). Поток операционной системы безопасно засыпает в ядре, но ровно в расчетный момент таймера ОС пробуждает поток, возвращая управление в рантайм Go!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

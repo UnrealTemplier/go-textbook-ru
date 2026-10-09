@@ -2279,6 +2279,7 @@ cat /proc/&lt;pid&gt;/limits
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом: Таблица дескрипторов в task_struct ядра">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2291,12 +2292,14 @@ cat /proc/&lt;pid&gt;/limits
   </div>
 </aside>
 
+
 <h3 id="gde-i-kak-nastraivayutsya-limity-ulimit">Где и как настраиваются лимиты `ulimit`:</h3>
 <ol>
 <li>В текущей командной оболочке: <code>ulimit -n 65535</code>.</li>
 <li>На уровне входа пользователей через PAM: конфигурационный файл <code>/etc/security/limits.conf</code>.</li>
 <li>Для системных демонов под управлением systemd: директива <code>LimitNOFILE</code> в секции <code>[Service]</code> unit-файла (поскольку <code>systemd</code> по умолчанию игнорирует <code>/etc/security/limits.conf</code>!).</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Границы применимости ulimit">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2307,6 +2310,7 @@ cat /proc/&lt;pid&gt;/limits
 Он <strong>не оказывает никакого влияния</strong> на демоны, запущенные через <code>systemd</code>, фоновые задания <code>cron</code> или контейнеры <code>docker run</code> (если вы явно не передали флаг <code>--ulimit nofile=65535:65535</code>). В современных облачных средах и микросервисах на базе Docker и Kubernetes механизм <code>ulimit</code> часто отходит на второй план, уступая место контрольным группам — <strong>cgroups</strong>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="cgroups-control-groups-sovremennyy-standart-izolyatsii">cgroups (control groups): Современный стандарт изоляции</h2>
@@ -2367,6 +2371,7 @@ flowchart TD
 <li><strong><code>memory.max</code> (Жесткий потолок оперативной памяти):</strong> Лимит физической памяти. Если суммарное потребление памяти процессами cgroup превысит <code>memory.max</code>, ядро попытается сбросить Page Cache, а при неудаче вмешается механизм <strong>OOM Killer</strong> и мгновенно уничтожит процесс сигналом <code>SIGKILL</code>!</li>
 <li><strong><code>pids.max</code>:</strong> Лимит на общее количество потоков и процессов. Хотя горутины в Go мультиплексируются в пространстве пользователя, вызовы <code>syscall</code>, запуск подпроцессов через <code>os/exec</code>, интеграция с <code>Cgo</code> или блокировки в <code>netpoller</code> требуют аллокации новых системных тредов ОС (<code>M</code>). При исчерпании лимита системный вызов <code>clone()</code> вернет ошибку ядра <code>EAGAIN</code>. Для рантайма Go, которому нужен новый поток <code>M</code>, это фатально: он напечатает <code>runtime: failed to create new OS thread</code> и аварийно завершится (<code>throw</code>).</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Почему рантайм Go не видит лимиты cgroups «из коробки»?">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2380,6 +2385,7 @@ flowchart TD
 <p>Начиная с Go 1.19, в язык внедрена переменная окружения <strong><code>GOMEMLIMIT</code></strong> (мягкий лимит памяти). Она заставляет GC Pacer следить за тем, чтобы суммарное потребление памяти рантаймом приближалось к целевой границе, агрессивно запуская циклы сборки мусора и возвращая свободные страницы ОС через <code>madvise(MADV_DONTNEED)</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="quotas-kvoty-disk-i-polzovateli">Quotas (Квоты): Диск и пользователи</h2>
@@ -2450,6 +2456,7 @@ spec:
 - Системный вызов <code>net.Dial</code> немедленно завершается ошибкой <code>too many open files</code> (<code>EMFILE</code>).<br />
 - Создание файлов через <code>os.File</code> терпит крах.<br />
 - Внутренний механизм <code>netpoll</code> не может зарегистрировать новые события дескрипторов в таблице <code>epoll</code>.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Requests против Limits в Kubernetes">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2462,6 +2469,7 @@ spec:
 <p>Если вы выставляете в Go переменную <code>GOMEMLIMIT</code>, она обязана быть строго <strong>меньше</strong> <code>resources.limits.memory</code> (обычно на 10–20% меньше, то есть при <code>limits.memory = 1Gi</code> выставляйте <code>GOMEMLIMIT = 800MiB-850MiB</code>). Этот запас жизненно необходим для того, что <code>GOMEMLIMIT</code> не охватывает: памяти C-библиотек (cgo), областей <code>syscall.Mmap</code>, сетевых буферов ядра и Page Cache. (Стеки горутин, метаданные рантайма и накладные расходы сборщика мусора, наоборот, уже входят в лимит рантайма.)</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="otladka-i-monitoring-limitov">Отладка и мониторинг лимитов</h2>

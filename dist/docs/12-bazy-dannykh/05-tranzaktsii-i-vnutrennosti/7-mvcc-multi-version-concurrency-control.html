@@ -2237,6 +2237,7 @@ flowchart TD
 2. <code>xmax = 0</code> ИЛИ <code>xmax &gt; snapshot_txmax</code> ИЛИ <code>xmax</code> ещё не зафиксирована.<br />
 3. <code>xmin</code> не находится в списке активных транзакций снимка.</p>
 <p>Это правило проверяется за несколько тактов CPU с помощью целочисленных сравнений и битовых масок, без обращения к менеджеру блокировок.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2246,6 +2247,7 @@ flowchart TD
     <p>В системном каталоге <code>clog</code> (commit log) хранится статус каждой транзакции: <code>IN_PROGRESS</code>, <code>COMMITTED</code> или <code>ABORTED</code>. При проверке видимости СУБД сначала смотрит на <code>xmin</code>/<code>xmax</code>, а при необходимости обращается к <code>clog</code>, чтобы понять, завершилась ли транзакция-автор. Страницы <code>clog</code> кэшируются в памяти, поэтому доступ к ним занимает наносекунды.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="realizatsiya-pod-kapotom-dva-arkhitekturnykh-lagerya">Реализация под капотом: Два архитектурных лагеря</h2>
@@ -2264,6 +2266,7 @@ flowchart TD
 <p>InnoDB хранит <strong>только последнюю версию</strong> в кластерном индексе. Старые версии выносятся в отдельные сегменты отката (<code>UNDO tablespace</code>). В заголовке строки хранится указатель (<code>DB_ROLL_PTR</code>) на предыдущую версию в undo-логе.</p>
 <p><strong>Плюсы:</strong> Основная таблица остаётся компактной, запись быстрее, меньше фрагментации данных.<br />
 <strong>Минусы:</strong> Чтение старой версии требует дополнительных переходов по памяти (pointer chasing), что убивает предвыборку CPU.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2274,6 +2277,7 @@ flowchart TD
 <strong>Ответ:</strong> Это обеспечивает безопасность параллельных транзакций. Если транзакция A обновляет строку, а транзакция B одновременно читает её, <code>B</code> должна увидеть согласованную старую версию. Перезапись на месте уничтожила бы эту версию. Кроме того, физическая структура строк в MVCC неизменна после создания, что упрощает атомарность операций на уровне страниц.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mechanical-sympathy-vliyanie-na-cpu-kesh-i-diski">Mechanical Sympathy: Влияние на CPU, кэш и диски</h2>
@@ -2316,6 +2320,7 @@ SELECT * FROM users; -- Снимок зафиксирован
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2325,6 +2330,7 @@ SELECT * FROM users; -- Снимок зафиксирован
     <p>В Go это часто происходит при использовании <code>sql.Tx</code> без <code>defer tx.Rollback()</code> или при длительной обработке внутри транзакции. Если вы держите транзакцию открытой дольше, чем нужно, вы блокируете очистку мёртвых кортежей во всей базе. Результат: рост дискового пространства, замедление <code>seq scan</code>, промахи кэша и в итоге <code>disk full</code>. Всегда минимизируйте время жизни <code>*sql.Tx</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="hot-updates-optimizatsiya-v-postgresql">HOT Updates: Оптимизация в PostgreSQL</h3>
 

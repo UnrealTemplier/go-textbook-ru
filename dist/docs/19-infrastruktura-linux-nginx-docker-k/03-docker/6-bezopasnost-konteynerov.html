@@ -2190,6 +2190,7 @@
 <p>Если злоумышленник через уязвимость удаленного исполнения кода (<strong>RCE</strong>) в Go-бэкенде или небезопасный системный вызов захватит контроль над контейнером, он немедленно окажется root-пользователем:<br />
 * Имея доступ к смонтированным томам, он сможет перезаписать критические системные файлы хоста (например, <code>/etc/crontab</code> или <code>/etc/shadow</code>).<br />
 * Он получит возможность взаимодействовать с системным сокетом ядра и атаковать недокументированные системные вызовы.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Иллюзия безопасности User Namespaces">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2204,12 +2205,14 @@
   </div>
 </aside>
 
+
 <hr />
 <h2 id="2-linux-capabilities-razdelenie-polnomochiy-superpolzovatelya">2. Linux Capabilities: Разделение полномочий суперпользователя</h2>
 
 <p>В традиционном Unix привилегии были бинарными: либо процесс обычный пользователь, либо всемогущий root. Начиная с версии ядра 2.2, в Linux появился механизм <strong>Linux Capabilities (Привилегии)</strong>, который разделил права root на десятки независимых атомарных разрешений.</p>
 <p>По умолчанию Docker наделяет вновь созданный контейнер набором из ~14 привилегий, включая <code>CAP_NET_RAW</code>, <code>CAP_CHOWN</code>, <code>CAP_MKNOD</code>, <code>CAP_FOWNER</code>. </p>
 <p>Однако типичному Go-микросервису, который слушает непривилегированный HTTP-порт (например, 8080) и общается с базой данных, эти привилегии абсолютно не нужны! Наличие <code>CAP_NET_RAW</code>, например, позволяет скомпрометированному контейнеру генерировать сырые Ethernet-фреймы, проводить ARP-спуфинг внутри Docker-сети и перехватывать трафик соседних сервисов.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Проверка привилегий в ядре Linux">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2220,6 +2223,7 @@
 <p>Ядро анализирует битовую маску возможностей в структуре учетных данных процесса <strong><code>struct cred</code></strong>. Сбросив флаг <code>CAP_NET_RAW</code>, вы гарантируете, что даже если атакующий получит доступ к шеллу внутри контейнера, системный вызов создания сырого сокета будет заблокирован ядром с ошибкой <code>EPERM</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="bezopasnyy-zapusk-po-printsipu-naimenshikh-privilegiy-least-privilege">Безопасный запуск по принципу наименьших привилегий (Least Privilege)</h3>
 <p>Лучшая практика безопасности — сначала <strong>сбросить абсолютно все привилегии</strong>, а затем явно выдать только минимально необходимые:</p>
@@ -2244,6 +2248,7 @@
 <p>Механизм <strong>Seccomp (Secure Computing Mode)</strong> ядра Linux позволяет сформировать декларативный BPF-фильтр системных вызовов, блокирующий доступ к неиспользуемым интерфейсам ядра.</p>
 <p>Рантайм Go невероятно компактен и предсказуем: он использует системные вызовы для сетевого поллера (<code>epoll_create1</code>, <code>epoll_ctl</code>, <code>epoll_wait</code>), ввода-вывода (<code>read</code>, <code>write</code>), управления памятью (<code>mmap</code>, <code>madvise</code>) и планировщика горутин (<code>clone</code>, <code>futex</code>). Ни один корректный Go-бэкенд никогда не вызывает <code>ptrace</code> или <code>reboot</code>!</p>
 <p>По умолчанию Docker использует профиль Seccomp, блокирующий около 44 заведомо деструктивных системных вызовов. Однако для высокозащищенных сред создаются жесткие кастомные профили (Whitelists), разрешающие только строго необходимый список вызовов для Go.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Атака через системный вызов ptrace">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2257,6 +2262,7 @@
   </div>
 </aside>
 
+
 <hr />
 <h2 id="4-spetsifika-go-staticheskaya-linkovka-protiv-cgo">4. Специфика Go: Статическая линковка против CGO</h2>
 
@@ -2266,6 +2272,7 @@
 <li><strong>Детерминированный профиль Syscalls:</strong> В отличие от скриптовых языков, где сторонний пакет может непредсказуемо вызвать произвольный системный интерфейс, статический Go-код чрезвычайно прост для аудита и покрытия жесткими профилями Seccomp.</li>
 <li><strong>Образы Scratch и Distroless:</strong> Как мы разбирали в лекции <a href="3-multi-stage-build.html" class="wikilink">3. Multi stage build</a>, Go-бинарник может запускаться в пустом контейнере без шелла (<code>sh</code>, <code>bash</code>), без утилит <code>curl</code>, <code>wget</code> и пакетных менеджеров. Это блокирует горизонтальное перемещение (<strong>Lateral Movement</strong>): даже если атакующий эксплуатирует уязвимость в HTTP-хендлере, вызывающем команду через <code>os.Exec</code>, ядро вернет ошибку, так как командной оболочки в контейнере просто не существует.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Включение CGO сводит на нет преимущества изоляции">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2277,6 +2284,7 @@
 <p>Если CGO неизбежен, базовые образы контейнеров обязаны обновляться и сканироваться на регулярной основе!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="5-bezopasnost-tsepochki-postavok-supply-chain-security">5. Безопасность цепочки поставок (Supply Chain Security)</h2>

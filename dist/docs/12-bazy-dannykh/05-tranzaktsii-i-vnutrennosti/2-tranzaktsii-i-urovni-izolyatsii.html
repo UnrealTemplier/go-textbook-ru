@@ -2234,6 +2234,7 @@ flowchart LR
 <li><strong>Failed (Сбойное):</strong> Произошла логическая ошибка (нарушение ограничения целостности, конфликт сериализации или отмена контекста). Дальнейшее выполнение невозможно.</li>
 <li><strong>Aborted (Прерванное):</strong> Сервер выполнил <code>ROLLBACK</code>. Все модификации отменены, старые версии данных восстановлены.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2243,6 +2244,7 @@ flowchart LR
     <p>В архитектуре PostgreSQL каждая транзакция, модифицирующая данные, получает монотонно возрастающий 32-битный или 64-битный идентификатор <code>xmin</code> (transaction ID). При первом изменении данных СУБД резервирует этот идентификатор в глобальном счетчике рантайма и фиксирует активный моментальный снимок (Snapshot) видимости. В движке MySQL InnoDB аналогичную фундаментальную роль играет идентификатор <code>trx_id</code>, который записывается в служебный заголовок каждой строки кластерного индекса вместе с 7-байтовым указателем <code>roll_ptr</code> на историю отката (Undo Log).</p>
   </div>
 </aside>
+
 
 <h3 id="sostoyaniya-na-urovne-yadra-subd">Состояния на уровне ядра СУБД</h3>
 
@@ -2256,6 +2258,7 @@ flowchart LR
 2. Вызывается системный вызов <code>fsync()</code> (если параметр <code>synchronous_commit = on</code>), принудительно вытесняющий кэш контроллера накопителя.<br />
 3. Снимаются все эксклюзивные блокировки строк и страниц, освобождая ожидающие транзакции.<br />
 4. Снимок помечается закрытым, открывая возможность фоновому сборщику мусора <code>VACUUM</code> вычищать устаревшие кортежи.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2265,6 +2268,7 @@ flowchart LR
     <p>В Go соединение, выданное для транзакции, остаётся закреплённым за ней до момента <code>Commit()</code> или <code>Rollback()</code>. Если вы забудете вызвать один из этих методов, соединение никогда не вернётся в пул — это приведёт к исчерпанию пула соединений (<code>sql: database is closed</code> или <code>timeout waiting for connection</code>). Всегда используйте <code>defer</code> для гарантии отката:</p>
   </div>
 </aside>
+
 
 
 <div class="code-block" data-lang="go">
@@ -2367,6 +2371,7 @@ flowchart LR
 </tbody>
 </table></div>
 <p>Важно: в PostgreSQL <code>REPEATABLE READ</code> предотвращает и фантомные чтения благодаря механизму предикатных блокировок, тогда как в стандарте это не гарантируется.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2377,6 +2382,7 @@ flowchart LR
 <strong>Ответ</strong>: Потому что каждый запрос внутри транзакции видит новый снимок данных — тот, который был актуален на момент начала <em>этого запроса</em>, а не всей транзакции. Если между двумя <code>SELECT</code> в одной транзакции другая транзакция зафиксировала изменение, второй <code>SELECT</code> увидит новое значение.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mekhanizmy-realizatsii-blokirovki-protiv-mvcc">Механизмы реализации: блокировки против MVCC</h2>
@@ -2413,6 +2419,7 @@ COMMIT;
 <li><strong>Преимущества</strong>: Ошеломляющая скорость чтения — аналитические запросы могут часами сканировать таблицы, не мешая оперативным <code>UPDATE</code>.</li>
 <li><strong>Недостатки</strong>: Физическое разрастание таблиц из-за устаревших версий (Bloat), необходимость периодической фоновой сборки мусора (<code>VACUUM</code>).</li>
 </ul>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2440,6 +2447,7 @@ COMMIT;
 <p>Это позволяет мгновенно отфильтровать невидимые версии без блокировок.</p>
   </div>
 </aside>
+
 
 <h3 id="sravnenie-podkhodov-v-tablitsakh">Сравнение подходов в таблицах</h3>
 
@@ -2540,6 +2548,7 @@ err := tx.QueryRowContext(ctx,
 <li>Конфликты транзакций редки, и вы готовы обрабатывать ошибки сериализации повтором.</li>
 <li>Бизнес-логика слишком сложна для ручного управления блокировками.</li>
 </ul>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2549,6 +2558,7 @@ err := tx.QueryRowContext(ctx,
     <p>В PostgreSQL при <code>SERIALIZABLE</code> транзакция может завершиться с ошибкой <code>SQLSTATE 40001</code> (serialization_failure), даже если логически конфликта не было. Это цена за строгую гарантию. Всегда обрабатывайте эту ошибку повтором транзакции:</p>
   </div>
 </aside>
+
 
 
 <div class="code-block" data-lang="go">
@@ -2668,6 +2678,7 @@ err := WithSavepoint(ctx, tx, &quot;sp1&quot;, func() error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2678,6 +2689,7 @@ err := WithSavepoint(ctx, tx, &quot;sp1&quot;, func() error {
 <strong>Ответ</strong>: Можно, и это правильный подход. Но важно помнить: <code>*sql.Tx</code> привязана к одному соединению из пула. Если вы случайно вызовете <code>db.Query()</code> вместо <code>tx.Query()</code> внутри той же логической операции, вы выполните запрос вне транзакции — это частая ошибка. Всегда явно передавайте <code>*sql.Tx</code> и используйте только её методы.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mekhanicheskaya-simpatiya-tsena-izolyatsii-na-urovne-zheleza">Механическая симпатия: цена изоляции на уровне железа</h2>
@@ -2698,6 +2710,7 @@ err := WithSavepoint(ctx, tx, &quot;sp1&quot;, func() error {
 <li>Управление блокировками требует атомарных операций (CAS — Compare-And-Swap), которые могут вызывать инвалидацию кэш-линий между ядрами CPU (cache coherency traffic).</li>
 <li>В Go, когда горутина ждёт ответа от БД, она паркуется, и тред ОС может выполнять другие горутины. Но если транзакция держит соединение и блокировки в БД, это не помогает параллелизму на стороне СУБД.</li>
 </ul>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2712,6 +2725,7 @@ err := WithSavepoint(ctx, tx, &quot;sp1&quot;, func() error {
 <p>Это означает, что даже «ожидание» в базе данных потребляет ресурсы: память под структуру процесса, дескриптор сокета, место в очереди планировщика.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

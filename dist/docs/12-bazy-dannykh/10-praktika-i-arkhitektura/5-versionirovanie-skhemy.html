@@ -2191,6 +2191,7 @@
 *   Стратегии ветвления, разрешения конфликтов и интеграцию с CI/CD.<br />
 *   Идиоматичные паттерны тестирования схемы в Go с использованием <code>testcontainers</code> и <code>embed.FS</code>.<br />
 *   Типичные ловушки и каверзные вопросы с собеседований.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2200,6 +2201,7 @@
     <p>Версионирование схемы упирается в фундаментальное ограничение: <strong>код можно откатить атомарно через перезапуск бинарника, а данные — нельзя</strong>. Изменение схемы БД — это мутация состояния на диске. Любой подход к версионированию должен учитывать эту асимметрию и гарантировать, что переход между версиями схемы либо успешен полностью, либо оставляет БД в консистентном состоянии, пригодном для повторного применения.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="podkhody-k-upravleniyu-skhemoy-migratsii-protiv-sostoyaniya">Подходы к управлению схемой: Миграции против Состояния</h2>
@@ -2265,6 +2267,7 @@ flowchart LR
 </figure>
 
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2275,6 +2278,7 @@ flowchart LR
 <strong>Ответ:</strong> Декларативный подход идеален для проектов с несколькими параллельными ветками разработки, где разработчики часто меняют одни и те же сущности. Git-merge для файлов состояния работает надежно, тогда как ручное разрешение конфликтов в пронумерованных миграциях требует координации. Однако для высоконагруженных OLTP-систем, где критичен контроль над блокировками и точный план выполнения <code>ALTER</code>, эволюционный подход предпочтительнее, так как генерируемый автоматически DDL может не учитывать нюансы вроде <code>CONCURRENTLY</code> или пакетной обработки.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="arkhitektura-payplayna-ot-kommita-k-prodakshenu">Архитектура пайплайна: От коммита к продакшену</h2>
@@ -2319,6 +2323,7 @@ flowchart LR
 <li><strong>CI Валидация</strong>: При открытии PR создается эфемерный контейнер с БД (например, через <code>testcontainers-go</code>). Миграции применяются, запускаются интеграционные тесты. Это отлавливает синтаксические ошибки и конфликты типов до мержа.</li>
 <li><strong>Прод-развертывание</strong>: Миграции запускаются не как часть основного сервиса, а как отдельный Job или init-контейнер. Обязательно используется <code>pg_try_advisory_lock</code> (или аналог), чтобы только один под применял изменения в кластере.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2330,6 +2335,7 @@ flowchart LR
 <strong>Решение:</strong> Выносите применение миграций в отдельный <code>Job</code> или используйте <code>initContainers</code> с последовательным запуском, либо применяйте <code>goose</code> с флагом <code>-allow-missing</code>, если деплой происходит построчно.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="pod-kapotom-sistemnye-katalogi-diff-i-tsena-validatsii">Под капотом: Системные каталоги, diff и цена валидации</h2>
@@ -2357,6 +2363,7 @@ SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public';
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2367,6 +2374,7 @@ SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public';
 Декларативные инструменты загружают всё в память, строят граф зависимостей и вычисляют diff с помощью алгоритмов обхода деревьев (AST сравнение). Это требует значительного CPU и памяти на стороне клиента, особенно для схем с 500+ таблицами. В эволюционном подходе этого оверхеда нет: инструмент просто читает <code>schema_migrations</code> и применяет следующий файл.</p>
   </div>
 </aside>
+
 
 <h3 id="tsena-validatsii-i-setevye-zaderzhki">Цена валидации и сетевые задержки</h3>
 
@@ -2389,6 +2397,7 @@ SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public';
 <h3 id="deklarativnyy-podkhod-i-git-merge">Декларативный подход и Git-merge</h3>
 <p>Файл <code>schema.sql</code> конфликтует как обычный текстовый файл. Разработчики решают конфликт в Git, после чего инструмент рассчитывает новый diff относительно продакшена. Это выглядит проще, но таит риск: если разработчик А удалил индекс, а Б добавил колонку, итоговый diff может сгенерировать <code>DROP INDEX</code> до <code>ADD COLUMN</code>, что нарушит зависимости.<br />
 <strong>Защита:</strong> Современные инструменты (<code>atlas</code>) имеют режим <code>--dev</code>, который применяет изменения к временной БД и проверяет целостность перед генерацией финального плана.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2399,6 +2408,7 @@ SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public';
 <strong>Ответ:</strong> Используйте стратегию «последний выигрывает с валидацией». Мержите изменения, затем запускайте <code>diff</code>-расчет против чистой копии продакшн-схемы (дампа). Просматривайте сгенерированный план миграции в ручном ревью. Никогда не применяйте автоматически сгенерированный DDL на прод без верификации человеком. Автоматизация полезна для генерации, но ответственность за блокировки и откат лежит на инженере.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="integratsiya-s-cicd-i-testirovanie-skhemy-v-go">Интеграция с CI/CD и тестирование схемы в Go</h2>
@@ -2475,6 +2485,7 @@ func TestMigrationsApplyAndRollback(t *testing.T) {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2484,6 +2495,7 @@ func TestMigrationsApplyAndRollback(t *testing.T) {
     <p><code>testcontainers</code> создает полноценный процесс БД в Docker. При <code>migrate.Up()</code> происходит реальное взаимодействие с <code>pg_catalog</code>, запись в WAL и проверка констрейнтов. Это не моки. Затраты на запуск контейнера ~1-2 секунды, что допустимо для CI, но слишком дорого для <code>go test -short</code>. Используйте <code>t.Skip()</code> или теги <code>//go:build integration</code> для локального запуска.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="lovushki-i-voprosy-sobesedovaniy">Ловушки и вопросы собеседований</h2>
@@ -2502,6 +2514,7 @@ func TestMigrationsApplyAndRollback(t *testing.T) {
 </ul>
 </li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2516,6 +2529,7 @@ func TestMigrationsApplyAndRollback(t *testing.T) {
 4.  Для предотвращения: всегда используйте <code>CONCURRENTLY</code> для индексов, <code>statement_timeout</code> на сессии миграции, и применяйте изменения в часы низкой нагрузки. В идеале — разбивайте тяжелый <code>ALTER</code> на серию легких шагов.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

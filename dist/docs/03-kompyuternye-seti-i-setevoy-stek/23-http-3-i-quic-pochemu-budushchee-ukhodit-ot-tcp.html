@@ -2229,6 +2229,7 @@ flowchart TD
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2238,6 +2239,7 @@ flowchart TD
     <p>TCP-стек ядра Linux (<code>tcp_congestion_ops</code>) оптимизирован под десктопные сценарии. В условиях микропотерь и высокой RTT классические алгоритмы (Cubic, Reno) агрессивно снижают окно, что приводит к «залипанию» горутин в <code>time.Sleep</code> или <code>runtime.gosched</code>. Go может переопределить это только через <code>sysctl net.ipv4.tcp_congestion_control</code>, что невозможно в контейнеризованных средах без <code>SYS_ADMIN</code> прав.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="quic-arkhitektura-poverkh-udp">QUIC: Архитектура поверх UDP</h2>
@@ -2329,6 +2331,7 @@ sequenceDiagram
 <p><code>quic-go</code> интенсивно работает с памятью. Каждый UDP-пакет парсится, распаковывается TLS, маршрутизируется по <code>StreamID</code>. Без оптимизаций это породит тысячи аллокаций на запрос.<br />
 - Используется <code>sync.Pool</code> для буферов <code>[]byte</code> и заголовков пакетов. Escape-анализ показывает, что при высокой нагрузке (10k+ RPS) буферы уходят в кучу, но пул снижает давление на GC на 60-70%.<br />
 - Планировщик Go (<code>runtime.scheduler</code>) маппит goroutines, обрабатывающие streams, на OS threads (M-P-G). <code>netpoller</code> (epoll на Linux, kqueue на macOS/BSD) асинхронно опрашивает UDP-сокеты. Нет блокирующих syscalls <code>read</code>/<code>write</code>, только <code>recvfrom</code>/<code>sendto</code> с флагом <code>MSG_DONTWAIT</code> или <code>epoll_wait</code>.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2339,6 +2342,7 @@ sequenceDiagram
 <strong>Ответ:</strong> В PHP/Java HTTP/3 часто оборачивается через CGI/FPM или JNI, что добавляет накладные расходы на IPC и контекстные переключения. Go работает с <code>quic-go</code> нативно в одном процессе. <code>netpoller</code> эффективно маппит UDP-события на goroutines, а user-space congestion control обходит ограничения ядра ОС, что критично для микросервисов в контейнерах с ограниченными <code>SYS_ADMIN</code> правами.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="klyuchevye-mekhanizmy-i-optimizatsii">Ключевые механизмы и оптимизации</h2>
@@ -2382,6 +2386,7 @@ sequenceDiagram
 </figure>
 
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2392,9 +2397,10 @@ sequenceDiagram
   </div>
 </aside>
 
+
 <h3 id="2-multipleksirovanie-na-transportnom-urovne">2. Мультиплексирование на транспортном уровне</h3>
 
-<p>Каждый stream имеет независимый <code>StreamID</code>. Потеря пакета в stream 0 не влияет на stream 1. Это решает проблему HoL-блокировки, характерную для <code>&lt;a href="10-tcp-ustroystvo-garantii-i-zhiznennyy-tsikl-soedineni.html" class="wikilink"&gt;10. TCP. Устройство, гарантии и жизненный цикл соединения&lt;/a&gt;</code>. Если в потоке передачи аудиофайла потерян UDP-пакет, ядро и рантайм продолжают бесперебойно передавать байты критического потока управления.</p>
+<p>Каждый stream имеет независимый <code>StreamID</code>. Потеря пакета в stream 0 не влияет на stream 1. Это решает проблему HoL-блокировки, характерную для <a href="10-tcp-ustroystvo-garantii-i-zhiznennyy-tsikl-soedineni.html" class="wikilink"><code>10. TCP. Устройство, гарантии и жизненный цикл соединения</code></a>. Если в потоке передачи аудиофайла потерян UDP-пакет, ядро и рантайм продолжают бесперебойно передавать байты критического потока управления.</p>
 <h3 id="3-ustoychivost-k-nat-i-mobilnosti">3. Устойчивость к NAT и мобильности</h3>
 
 <p>QUIC использует <code>Connection ID</code> вместо связки <code>IP:Port</code>. Это позволяет клиентам менять сеть без разрыва соединения. Для миграции соединения используются <code>PATH_CHALLENGE</code>/<code>PATH_RESPONSE</code>. Механизма <code>UDP hole punching</code> (ICE/STUN) в <code>quic-go</code> нет; при необходимости обхода NAT его реализуют отдельно.</p>
@@ -2446,6 +2452,7 @@ func main() {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2455,6 +2462,7 @@ func main() {
     <p>При вызове <code>ListenAndServeTLS</code>, <code>http3.Server</code> автоматически создает <code>net.UDPConn</code> на указанном порту. <code>netpoller</code> начинает мониторить сокет. При входящем UDP-пакете <code>quic-go</code> парсит заголовок, извлекает <code>ConnectionID</code>, находит или создает <code>Connection</code> state, дешифрует TLS 1.3 и маршрутизирует HTTP/3 фреймы по <code>StreamID</code>. Весь процесс занимает ~2-5 мкс на CPU без блокировки OS threads.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="lovushki-i-voprosy-na-sobesedovaniyakh">Ловушки и вопросы на собеседованиях</h2>

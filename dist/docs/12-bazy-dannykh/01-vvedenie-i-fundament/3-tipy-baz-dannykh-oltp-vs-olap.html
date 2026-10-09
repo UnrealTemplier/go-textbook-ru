@@ -2198,6 +2198,7 @@
 <p>Чтобы СУБД могла атомарно обновить профиль пользователя (например, изменить баланс или адрес доставки), все атрибуты этого пользователя должны располагаться на диске физически рядом. Именно поэтому реляционные OLTP-базы (PostgreSQL, MySQL, Oracle) организуют хранение по принципу <strong>строкового формата (Row-Oriented Storage)</strong>.</p>
 <p>Файл таблицы на диске разбивается на страницы по 8 КБ (или 16 КБ), внутри которых кортежи строк записываются последовательно:<br />
 <code>[ID1, Имя1, Возраст1, Баланс1] [ID2, Имя2, Возраст2, Баланс2]...</code></p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2207,6 +2208,7 @@
     <p>Когда СУБД необходимо обновить <code>Баланс1</code>, исполнитель обращается к Buffer Pool. Если страница (8 КБ) находится в ОЗУ, СУБД накладывает кратковременную эксклюзивную блокировку на кортеж (Tuple), перезаписывает байты баланса и маркирует страницу как «грязную» (dirty page). Поскольку все поля пользователя упакованы в одном месте, операция модификации локализована в одном непрерывном участке памяти и генерирует минимальный объем трафика дискового ввода-вывода (I/O).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="olap-online-analytical-processing">OLAP (Online Analytical Processing)</h2>
@@ -2274,6 +2276,7 @@ flowchart TD
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом: Магия кэш-линий и SIMD">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2287,6 +2290,7 @@ flowchart TD
 </ol>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="arkhitekturnye-patterny-v-go-kak-pisat-v-raznye-subd">Архитектурные паттерны в Go: Как писать в разные СУБД</h2>
@@ -2315,6 +2319,7 @@ func CreateOrder(ctx context.Context, db *sql.DB, order Order) error {
 <h3 id="2-rabota-s-olap-clickhouse">2. Работа с OLAP (ClickHouse)</h3>
 <p><strong>Никогда не отправляйте точечные INSERT-запросы по одной строке в колоночную базу данных!</strong></p>
 <p>Колоночные СУБД используют под капотом архитектуру LSM-дерева или механизм слияния кусков (MergeTree, подробности в <a href="../09-nosql-bazy/12-clickhouse-pod-kapotom.html" class="wikilink">12. ClickHouse под капотом</a>). Каждая операция <code>INSERT</code> создает на диске независимый набор файлов (part) для каждого столбца. Если вы будете слать одиночные вставки в цикле под трафиком 5 000 событий в секунду, база создаст десятки тысяч мелких файлов. Фоновый процесс фонового слияния (Merge) захлебнется, и сервер упадет с фатальной ошибкой <code>Too many parts in all data in table...</code>.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2324,6 +2329,7 @@ func CreateOrder(ctx context.Context, db *sql.DB, order Order) error {
     <p>Распространенная ошибка разработчиков: подключить колоночную СУБД через стандартный интерфейс и выполнять привычный <code>INSERT</code> на каждый входящий HTTP-запрос или сообщение брокера. Для аналитических хранилищ это смертельно.</p>
   </div>
 </aside>
+
 
 <p>Канонический паттерн работы с OLAP на Go — это <strong>Батчинг (Batching)</strong>. События аккумулируются в буфере памяти (или вычитываются пачками из топиков Apache Kafka) и сбрасываются в СУБД укрупненными блоками (от 5 000 до 50 000 строк за один сетевой запрос):</p>
 
@@ -2355,6 +2361,7 @@ func FlushAnalyticsToOLAP(ctx context.Context, conn driver.Conn, events []Event)
 
 <p>Более детально этот паттерн и управление буферизацией мы разберем в статье <a href="../04-indeksy-i-proizvoditelnost/16-batch-zaprosy.html" class="wikilink">16. Batch запросы</a>.</p>
 <hr />
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2366,6 +2373,7 @@ func FlushAnalyticsToOLAP(ctx context.Context, conn driver.Conn, events []Event)
 Как правило, это реализуется с помощью гибридного движка хранения: основной мастер-узел обрабатывает пишущие транзакции в строковом формате (для высокой скорости точечных изменений), а специализированные аналитические реплики асинхронно или полусинхронно перепаковывают входящий поток WAL в колоночный формат (например, TiFlash в TiDB). Это позволяет выполнять аналитические запросы над свежайшими данными, не создавая конкуренции за ресурсы с транзакционной нагрузкой.</p>
   </div>
 </aside>
+
 
 <h2 id="itog">Итог</h2>
 

@@ -2231,6 +2231,7 @@ flowchart TD
 <p>Когда ваше приложение на Go подключается к очереди через вызов <code>ch.Consume(...)</code>, RabbitMQ может работать в одном из двух режимов подтверждения.</p>
 <h3 id="1-auto-ack-fire-and-forget">1. Auto-Ack (Fire and Forget)</h3>
 <p>Если при вызове метода подписки передан аргумент <code>autoAck: true</code>, брокер помечает сообщение как успешно выполненное и удаляет его из очереди ровно в тот момент, когда <strong>запишет байты фрейма в свой исходящий TCP-сокет</strong>.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Катастрофическая потеря данных в Auto-Ack">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2245,6 +2246,7 @@ flowchart TD
 <p><em>Инженерное правило:</em> <strong>Никогда не используйте <code>autoAck: true</code> в production-системах</strong> для бизнес-критичных задач (финансы, заказы, биллинг, критические события).</p>
   </div>
 </aside>
+
 
 <h3 id="2-manual-ack-ruchnoe-podtverzhdenie">2. Manual Ack (Ручное подтверждение)</h3>
 <p>В промышленных системах стандартным является использование <code>autoAck: false</code>. В этом режиме удаление сообщения из брокера происходит только по явной команде приложения.</p>
@@ -2283,6 +2285,7 @@ sequenceDiagram
 <h3 id="mekhanika-statusa-unacked-pod-kapotom">Механика статуса Unacked под капотом</h3>
 <p>Когда брокер передает сообщение клиенту, он не стирает его с диска или из оперативной памяти. Он переводит сообщение из статуса <strong><code>Ready</code></strong> во внутреннее состояние <strong><code>Unacked</code></strong> (ожидает подтверждения) и ассоциирует его с дескриптором конкретного <code>amqp.Channel</code>.</p>
 <p>Каждому сообщению, летящему внутри канала, брокер присваивает монотонно возрастающее 64-битное целое число — <strong><code>deliveryTag</code></strong>. Этот тег уникален строго в рамках данного канала и служит адресом сообщения при отправке подтверждения.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Обработка сбоев сети и статус Unacked">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2294,6 +2297,7 @@ sequenceDiagram
 <p>В ту же миллисекунду RabbitMQ <strong>автоматически возвращает все сообщения этого канала из статуса Unacked обратно в статус Ready</strong> и помещает их в голову очереди! Они будут немедленно переданы любому другому свободному воркеру. Ни один байт не теряется.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="negativnye-podtverzhdeniya-nack-i-reject">Негативные подтверждения (Nack и Reject)</h2>
@@ -2335,6 +2339,7 @@ graph TD
 </figure>
 
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Бесконечный цикл отравленных сообщений (Poison Message Loop)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2350,6 +2355,7 @@ graph TD
   </div>
 </aside>
 
+
 <h3 id="2-requeue-false-arkhitekturno-pravilnyy-put">2. Requeue = false (Архитектурно правильный путь)</h3>
 <p>Если ошибка является фатальной (детерминированный баг валидации) либо счетчик повторных попыток исчерпан, воркер обязан передавать флаг отбрасывания — делать <code>Nack(requeue=false)</code>. </p>
 <p>В этом случае сообщение будет либо удалено навсегда, либо, что более правильно, сброшено в <strong>Dead Letter Exchange (DLX)</strong> для последующего анализа инженерами или отложенного ретрая (подробно разберем в лекции <a href="7-dead-letter-exchanges.html" class="wikilink">7. Dead letter exchanges</a>).</p>
@@ -2357,6 +2363,7 @@ graph TD
 <h2 id="publisher-confirms-kak-otpravitelyu-spat-spokoyno">Publisher Confirms: Как отправителю спать спокойно?</h2>
 
 <p>На технических собеседованиях и при проектировании архитектуры инженеры часто сосредотачиваются на консьюмерах, забывая про сторону отправителя (Producer).</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Иллюзия надежности ch.Publish(...)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2368,6 +2375,7 @@ graph TD
 Если через миллисекунду после возврата из функции упадет питание сервера RabbitMQ или сетевой коммутатор разорвет связь, сообщение бесследно растворится в воздухе. Ваше приложение будет уверено, что данные отправлены, хотя брокер их даже не получил.</p>
   </div>
 </aside>
+
 
 <p>Для устранения этой уязвимости в AMQP 0-9-1 существует механизм <strong>Publisher Confirms (Подтверждения издателя)</strong>:<br />
 1. Канал отправителя переводится в режим подтверждений вызовом <code>ch.Confirm(false)</code>.<br />
@@ -2482,6 +2490,7 @@ func startConsumer(ctx context.Context, ch *amqp.Channel, queueName string) erro
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Утечка памяти (Memory Leak) и аварийный Flow Control">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2498,6 +2507,7 @@ func startConsumer(ctx context.Context, ch *amqp.Channel, queueName string) erro
 <p><em>Мониторинг:</em> Дашборды в <strong>Grafana</strong> с алертом на метрику <code>Unacked Messages &gt; 1000</code> — абсолютный must-have для production-контура RabbitMQ!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

@@ -2190,6 +2190,7 @@
 *   Жизненный цикл запроса: от вызова <code>db.QueryContext</code> до системного вызова <code>read/write</code> в сокете.<br />
 *   Идиоматические паттерны работы с <code>rows</code>, транзакциями и подготовленными выражениями.<br />
 *   Влияние на производительность: аллокации, Escape Analysis и взаимодействие с GC.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2199,6 +2200,7 @@
     <p>Пакет <code>database/sql</code> сам по себе не умеет общаться с базами данных. Он определяет набор интерфейсов в пакете <code>database/sql/driver</code> (например, <code>driver.Conn</code>, <code>driver.Stmt</code>, <code>driver.Rows</code>), которые должен реализовать конкретный драйвер (например, <code>pgx</code> для PostgreSQL или <code>mysql</code> для MySQL). Рантайм <code>database/sql</code> выступает в роли диспетчера, который управляет потоком данных, синхронизацией и пуллингом, делегируя низкоуровневый ввод-вывод драйверу.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="arkhitektura-interfeysy-i-realizatsiya">Архитектура: Интерфейсы и реализация</h2>
@@ -2234,6 +2236,7 @@ flowchart LR
 <h3 id="rol-sql-db">Роль *sql.DB</h3>
 
 <p>Тип <code>*sql.DB</code> — это не одно соединение с базой данных. Это <strong>абстракция пула соединений</strong> (pool of connections). Она потокобезопасна и предназначена для длительного использования в течение всего времени жизни приложения.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2262,6 +2265,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 <strong>Правильный подход:</strong> Создайте <code>*sql.DB</code> один раз при старте приложения (например, в <code>main</code> или через DI-контейнер) и передавайте ссылку на неё туда, где она нужна.</p>
   </div>
 </aside>
+
 
 <h3 id="initsializatsiya-i-drayvery">Инициализация и драйверы</h3>
 
@@ -2301,6 +2305,7 @@ func main() {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2312,6 +2317,7 @@ func main() {
   </div>
 </aside>
 
+
 <hr />
 <h2 id="vnutrennee-ustroystvo-pula-soedineniy">Внутреннее устройство пула соединений</h2>
 
@@ -2322,6 +2328,7 @@ func main() {
 1.  <strong>idle</strong>: Свободно, ожидает запроса в пуле.<br />
 2.  <strong>inUse</strong>: Выдано горутине для выполнения запроса.<br />
 3.  <strong>closed</strong>: Закрыто (ошибка или таймаут), ожидает удаления.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2332,6 +2339,7 @@ func main() {
 <p>Синхронизация доступа к пулу осуществляется через мьютексы и атомарные счетчики. В современных версиях Go (1.11+) используется оптимистичная блокировка для повышения конкурентности при выдаче соединений.</p>
   </div>
 </aside>
+
 
 <h3 id="strategiya-vydachi-soedineniy">Стратегия выдачи соединений</h3>
 
@@ -2397,6 +2405,7 @@ if err != nil {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2406,6 +2415,7 @@ if err != nil {
     <p>При передаче <code>ctx</code> в <code>QueryContext</code>, <code>database/sql</code> запускает внутреннюю горутину-наблюдатель (или использует <code>select</code> по каналу <code>ctx.Done()</code>). Если контекст отменяется (таймаут или внешний сигнал), драйвер получает команду <code>Conn.Close()</code> или специфичный для драйвера сигнал прерывания. Это приводит к разрыву сетевого соединения или посылке <code>CANCEL</code> запроса на сторону БД.</p>
   </div>
 </aside>
+
 
 <h3 id="2-chtenie-dannykh-i-iteratsiya">2. Чтение данных и итерация</h3>
 
@@ -2435,6 +2445,7 @@ if err := rows.Err(); err != nil {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2447,9 +2458,11 @@ if err := rows.Err(); err != nil {
   </div>
 </aside>
 
+
 <h3 id="3-skanirovanie-i-allokatsii-escape-analysis">3. Сканирование и аллокации (Escape Analysis)</h3>
 
 <p>Метод <code>rows.Scan</code> принимает указатели <code>&amp;var</code>. Почему? Потому что драйвер должен записать данные, полученные из сети, в вашу память.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Escape Analysis">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2462,6 +2475,7 @@ if err := rows.Err(); err != nil {
 *   <strong>Оптимизация:</strong> Для высоконагруженных <code>SELECT</code> без сложной логики иногда эффективнее сканировать в переиспользуемые буферы или использовать специализированные методы драйверов (например, <code>pgx.CopyFrom</code> для вставки или низкоуровневый режим <code>pgx.Rows</code> для чтения), которые минимизируют аллокации.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="tranzaktsii-upravlenie-sostoyaniem">Транзакции: Управление состоянием</h2>
@@ -2504,6 +2518,7 @@ err = tx.Commit() // Фиксация изменений
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2516,6 +2531,7 @@ err = tx.Commit() // Фиксация изменений
 <strong>Правило:</strong> Держите транзакции максимально короткими. Вся подготовка данных должна идти <em>до</em> <code>BeginTx</code>, а обработка результатов — <em>после</em> <code>Commit</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="prepared-statements-pereispolzovanie-planov">Prepared Statements: Переиспользование планов</h2>
@@ -2541,6 +2557,7 @@ err = stmt.QueryRowContext(ctx, 123).Scan(&amp;name)
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2552,6 +2569,7 @@ err = stmt.QueryRowContext(ctx, 123).Scan(&amp;name)
 <p><strong>Важно:</strong> Не забывайте <code>stmt.Close()</code>. Если вы создаете подготовленное выражение внутри цикла или частого хендлера и не закрываете его, вы можете исчерпать лимит серверных ресурсов (например, <code>max_prepared_stmt_count</code> в MySQL).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="obrabotka-oshibok-idiomaticheskiy-podkhod">Обработка ошибок: Идиоматический подход</h2>
@@ -2610,6 +2628,7 @@ func GetUser(ctx context.Context, db *sql.DB, id int) (*User, error) {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2620,6 +2639,7 @@ func GetUser(ctx context.Context, db *sql.DB, id int) (*User, error) {
 <strong>Ответ:</strong> <code>sql.ErrNoRows</code> возвращает метод <code>QueryRow().Scan()</code>, если запрос не вернул ни одной строки. Это ожидаемое поведение, а не сбой системы. Обычная ошибка (network timeout, syntax error) означает, что запрос не мог быть выполнен. Важно обрабатывать <code>ErrNoRows</code> отдельно, чтобы не возвращать клиенту <code>500 Internal Server Error</code> на валидный запрос "пользователь не найден" (который должен быть <code>404</code>).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="proizvoditelnost-tyuning-i-mechanical-sympathy">Производительность: Тюнинг и Mechanical Sympathy</h2>
@@ -2644,6 +2664,7 @@ db.SetConnMaxIdleTime(10 * time.Minute) // Как долго держать idle
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом: Почему ConnMaxLifetime важен?">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2653,6 +2674,7 @@ db.SetConnMaxIdleTime(10 * time.Minute) // Как долго держать idle
     <p>Если ваше приложение работает за облачным прокси (например, AWS RDS Proxy или Cloud SQL Proxy) или балансировщиком, старые соединения могут быть невалидны с точки зрения инфраструктуры, даже если приложение этого не знает. Установка <code>ConnMaxLifetime</code> гарантирует, что приложение будет периодически "ротировать" соединения, устанавливая новые, что предотвращает ошибки <code>broken pipe</code> или <code>connection reset</code> при долгой работе.</p>
   </div>
 </aside>
+
 
 <h3 id="vliyanie-na-gc-i-allokatsii">Влияние на GC и аллокации</h3>
 
@@ -2700,6 +2722,7 @@ db.SetConnMaxIdleTime(10 * time.Minute) // Как долго держать idle
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2710,6 +2733,7 @@ db.SetConnMaxIdleTime(10 * time.Minute) // Как долго держать idle
 <strong>Ответ:</strong> Для сложных аналитических запросов, высоконагруженных систем или миграции легаси лучше использовать <code>database/sql</code> или <code>sqlc</code>, чтобы явно видеть и контролировать генерируемый SQL. ORM удобен для типичных CRUD-операций в стартапах или внутренних инструментах, где скорость разработки важнее микро-оптимизаций. Однако опытный инженер должен уметь писать чистый и безопасный код на <code>database/sql</code>, так как это фундамент, на котором строятся все остальные абстракции.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="cheklist-gotovnost-k-prodakshenu">Чеклист: Готовность к продакшену</h2>

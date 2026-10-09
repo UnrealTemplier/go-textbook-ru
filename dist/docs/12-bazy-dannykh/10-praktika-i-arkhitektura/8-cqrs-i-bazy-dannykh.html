@@ -2192,6 +2192,7 @@
 *   Идиоматичную реализацию проекционных воркеров, идемпотентность и обработку отказов.<br />
 *   Стратегии выбора СУБД: полиглотное хранение и оптимизация под задачи чтения/записи.<br />
 *   Типичные ловушки, антипаттерны и каверзные вопросы с собеседований.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2201,6 +2202,7 @@
     <p>Разделение чтения и записи меняет физический профиль нагрузки на диск и сеть. Запись в CQRS обычно превращается в <strong>последовательный аппенд</strong> (быстрый, минимальные блокировки, высокая пропускная способность), тогда как чтение использует <strong>индексированные выборки</strong> или денормализованные структуры (быстрый поиск, но требующие поддержания сложных индексов). Понимание этого сдвига критично для настройки пулов соединений, мониторинга WAL и проектирования схем.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="arkhitektura-razdelenie-otvetstvennosti-i-potoki-dannykh">Архитектура: Разделение ответственности и потоки данных</h2>
@@ -2248,6 +2250,7 @@ flowchart TD
 <li><strong>Query Side</strong>: Отвечает на запросы чтения. Работает исключительно с Read Model, оптимизированной под конкретные сценарии (материализованные представления, денормализованные таблицы, поисковые индексы).</li>
 <li><strong>Projection Layer</strong>: Асинхронный механизм, который слушает события изменений и обновляет Read Model. Обеспечивает согласованность между двумя мирами.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2259,6 +2262,7 @@ flowchart TD
   </div>
 </aside>
 
+
 <hr />
 <h2 id="pod-kapotom-mekhanika-proektsiy-i-eventual-consistency">Под капотом: Механика проекций и Eventual Consistency</h2>
 
@@ -2269,6 +2273,7 @@ flowchart TD
 <li><strong>Logical Replication / CDC</strong>: Чтение бинарного журнала (WAL в PostgreSQL, binlog в MySQL) на уровне СУБД. Нулевое влияние на бизнес-транзакции, но требует сложной инфраструктуры.</li>
 <li><strong>Публикация из кода</strong>: <code>db.Exec</code> -&gt; <code>kafka.Publish</code>. Рискует потерей события при краше после коммита, но проще в реализации. Требует транзакционного outbox для надежности.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом: Влияние на рантайм Go и GC">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2282,6 +2287,7 @@ flowchart TD
 *   Батчьте обновления в Read Model: накапливайте 100-500 событий в памяти, затем выполняйте один <code>INSERT ... ON CONFLICT UPDATE</code> или транзакцию. Это сокращает количество сетевых раунд-трипов и транзакционных оверхедов в БД.</p>
   </div>
 </aside>
+
 
 <h3 id="mekhanika-soglasovannosti-i-zaderzhki">Механика согласованности и задержки</h3>
 <p>Задержка проекции (<code>projection lag</code>) неизбежна. Она складывается из:<br />
@@ -2407,6 +2413,7 @@ func (pw *ProjectionWorker) flushBatch(ctx context.Context) error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2417,6 +2424,7 @@ func (pw *ProjectionWorker) flushBatch(ctx context.Context) error {
 Если воркер упадет после <code>Commit</code> в Write DB, но до коммита в Read DB, событие будет обработано повторно. Без защиты по <code>event_id</code> это приведет к дублированию данных или некорректным счетчикам. Всегда проектируйте проекции так, чтобы повторное применение одного и того же события не меняло состояние системы (используйте уникальные констрейнты, хеши или версионирование строк).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="vybor-subd-poliglotnoe-khranenie">Выбор СУБД: Полиглотное хранение</h2>
@@ -2458,6 +2466,7 @@ func (pw *ProjectionWorker) flushBatch(ctx context.Context) error {
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-info" aria-label="Под капотом: Разделение пулов соединений">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2467,6 +2476,7 @@ func (pw *ProjectionWorker) flushBatch(ctx context.Context) error {
     <p>В Go при использовании <code>database/sql</code> для Write и Read моделей <strong>нельзя использовать один <code>*sql.DB</code></strong>. Write пул должен быть консервативным (меньше <code>MaxOpenConns</code>, строгие таймауты), так как транзакции удерживают соединения долго. Read пул может быть агрессивным (больше соединений, чтение без блокировок), так как запросы обычно быстрые и не блокируют запись. Создавайте два независимых экземпляра <code>*sql.DB</code> с разными настройками пула и мониторингом метрик.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="slozhnosti-lovushki-i-antipatterny">Сложности, ловушки и антипаттерны</h2>
@@ -2492,6 +2502,7 @@ func (pw *ProjectionWorker) flushBatch(ctx context.Context) error {
     В Java/C# фреймворки вроде Axon или MassTransit берут на себя много магии проекций и саг. В Go принят подход <strong>явной инженерии</strong>: вы сами пишете воркеры, управляете контекстами и транзакциями. Это требует больше кода, но дает полный контроль над ресурсами, поведением при отказах и отсутствием скрытых оверхедов фреймворка.</p>
 </li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2502,6 +2513,7 @@ func (pw *ProjectionWorker) flushBatch(ctx context.Context) error {
 <strong>Ответ:</strong> Использовать паттерн <code>at-least-once</code> с идемпотентным применением. Воркер коммитит смещение потребления (например, в Kafka <code>consumer.commit()</code> или в БД чекпоинт) <strong>только после</strong> успешного коммита транзакции проекции. При рестарте воркер читает последнее закоммиченное смещение, получает те же события, но благодаря <code>event_id</code> уникальности и <code>ON CONFLICT DO NOTHING</code> (или проверяющим запросам) состояние системы не меняется. Для критичных систем добавляют Dead Letter Queue для событий, которые падают после 3-5 ретраев.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="monitoring-i-nablyudaemost">Мониторинг и наблюдаемость</h2>
@@ -2531,6 +2543,7 @@ func TrackLag(ctx context.Context, dbWrite, dbRead *sql.DB) error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2541,6 +2554,7 @@ func TrackLag(ctx context.Context, dbWrite, dbRead *sql.DB) error {
 Миграции Write и Read моделей должны быть раздельными. Изменение схемы в Read DB не должно блокировать или требовать отката изменений в Write DB. Используйте независимые папки миграций и разные инструменты версионирования, если это возможно. Это соответствует принципу <a href="5-versionirovanie-skhemy.html" class="wikilink">5. Версионирование схемы</a>, но с изоляцией доменов.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

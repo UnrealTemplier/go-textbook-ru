@@ -2187,6 +2187,7 @@
 <h2 id="tablitsa-table-kak-struktura-khraneniya">Таблица (Table) как структура хранения</h2>
 
 <p>На уровне SQL таблица предстает перед разработчиком логическим двухмерным контейнером. Однако на дисковом накопителе (на примере PostgreSQL, являющегося стандартом де-факто в современной Go-разработке) таблица организуется в структуру, именуемую <strong>Heap (Куча)</strong>.</p>
+
 <aside class="callout callout-note" aria-label="Терминологический контекст">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">📝</span>
@@ -2197,6 +2198,7 @@
 В теории баз данных <strong>Heap File</strong> — это неупорядоченный файл данных. СУБД просто дописывает новые строки туда, где в текущий момент нашлось свободное место на страницах памяти.</p>
   </div>
 </aside>
+
 
 <p>В Heap-файле нет и не может быть никакого естественного физического порядка. Если в запросе опущен модификатор <code>ORDER BY</code>, СУБД возвратит строки в том порядке, в котором их блоки попадутся на диске. Поиск по Heap-файлу без использования индексов всегда превращается в полное последовательное сканирование (<strong>Seq Scan</strong>), вынуждающее поднять в Buffer Pool весь файл таблицы от начала до конца.</p>
 
@@ -2242,6 +2244,7 @@ flowchart TD
 
 <p>В представлении начинающего разработчика строка — это просто полезные данные: <code>(id=1, name='Bob')</code>. В реальности же СУБД вынуждена хранить тяжелый массив служебных метаданных для каждой строки, чтобы обеспечить транзакционную изоляцию, видимость версий и блокировки.</p>
 <p>В исходном коде PostgreSQL структура заголовка строки называется <code>HeapTupleHeaderData</code>. Она отнимает минимум 23 байта (а с учетом обязательного аппаратного выравнивания процессора — ровно <strong>24 байта</strong>) <em>до того</em>, как начнутся ваши реальные пользовательские данные.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2258,6 +2261,7 @@ flowchart TD
 * <strong>NULL Bitmap</strong>: Битовая маска наличия NULL-значений. Если в таблице есть колонки, допускающие NULL, СУБД не тратит байты на запись «пустоты» — она выставляет бит <code>1</code> в битовой маске заголовка.</p>
   </div>
 </aside>
+
 
 <h3 id="mechanical-sympathy-data-alignment-vyravnivanie-dannykh">Mechanical Sympathy: Data Alignment (Выравнивание данных)</h3>
 
@@ -2313,6 +2317,7 @@ type GoodUser struct {
 
 <p>СУБД будет вынуждена вставлять пустые байты между атрибутами каждой отдельной строки!</p>
 <p>На объеме в 100 миллионов записей невидимый <em>padding</em> раздует размер таблицы на 20–30 гигабайт чистого мусора. Чем больше физический размер Heap-файла — тем больше страниц приходится вычитывать с диска, тем меньше полезных строк помещается в <strong>Buffer Pool (RAM)</strong>, тем выше процент промахов (Cache Miss) и тем медленнее работает весь бэкенд.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2324,6 +2329,7 @@ type GoodUser struct {
   </div>
 </aside>
 
+
 <hr />
 <h2 id="stolbtsy-columns-i-tekhnika-toast">Столбцы (Columns) и техника TOAST</h2>
 
@@ -2333,6 +2339,7 @@ type GoodUser struct {
 1. Если размер строки превышает пороговое значение (в Postgres — около 2 КБ, <code>TOAST_TUPLE_THRESHOLD</code>), СУБД пробует прозрачно сжать данные столбца на лету (алгоритмами <code>pglz</code> или современным <code>lz4</code>).<br />
 2. Если после сжатия строка все еще не помещается в допустимый лимит, СУБД физически «вырезает» большой атрибут из кортежа основной таблицы.<br />
 3. Данные разрезаются на фрагменты по 2 КБ и сохраняются в отдельную скрытую служебную таблицу (TOAST-таблицу). В исходной строке остается лишь компактный 18-байтный указатель-дескриптор.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2343,6 +2350,7 @@ type GoodUser struct {
 В промышленном коде запрашивайте только те столбцы, которые вы непосредственно сканируете в структуру: <code>SELECT id, name, email FROM users</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="klyuchi-keys-fundament-identifikatsii">Ключи (Keys). Фундамент идентификации</h2>
@@ -2361,6 +2369,7 @@ type GoodUser struct {
 <li><strong>Суррогатный ключ (Surrogate Key):</strong> Искусственный идентификатор, лишенный какого-либо прикладного бизнес-смысла. Обычно это автоинкрементный <code>BIGINT</code> (Sequence / Identity) или <code>UUID</code>.  </li>
 <li><em>Индустриальный стандарт:</em> Суррогатный ключ неизменен на протяжении всей жизни записи, что гарантирует абсолютную стабильность связей между таблицами.</li>
 </ul>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2374,6 +2383,7 @@ type GoodUser struct {
 3. <strong>Современный золотой стандарт: UUID v7 (RFC 9562).</strong> Первые 48 бит отводятся под миллисекундный Unix Timestamp, а оставшиеся биты заполняются энтропией. Это дает возможность генерировать ID распределенно в микросервисах на Go и сохранять монотонный рост, устраняя фрагментацию B-Tree страниц в СУБД. Подробнее о механике расщепления страниц мы поговорим в <a href="../04-indeksy-i-proizvoditelnost/2-b-tree-indeks-pod-kapotom.html" class="wikilink">2. B Tree индекс под капотом</a>.</p>
   </div>
 </aside>
+
 
 <h2 id="itog">Итог</h2>
 

@@ -2235,6 +2235,7 @@
 <p>Пока процессор занят сканированием памяти, горутины, отправившие SQL-запросы в базу данных, не получают квантов времени CPU от планировщика, чтобы вовремя вычитать ответ из сокета БД. Запросы массово падают с ошибкой <code>context.DeadlineExceeded</code>.</p>
 <h3 id="4-rasprava-oom-killer">4. Расправа OOM Killer</h3>
 <p>Ядро Linux видит, что контейнер с сервисом превысил лимит памяти своей контрольной группы <code>cgroup</code> (<code>memory.max</code>). Демон OOM Killer ядра шлет процессу беспощадный сигнал <code>SIGKILL</code>. Консьюмер погибает, а тысячи сообщений, находившихся в оперативной памяти, теряются навсегда.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Аппаратный Backpressure протокола TCP">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2246,6 +2247,7 @@
 <p>Проблема в том, что высокоуровневые брокеры сообщений читают данные из ОС мгновенно, перенося буфер из ядра в пространство пользователя (User Space) приложения, где аппаратный TCP-контроль перестает работать сам по себе.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="2-backpressure-vnutri-go-patterny-zashchity-protsessa">2. Backpressure внутри Go: Паттерны защиты процесса</h2>
@@ -2413,6 +2415,7 @@ flowchart TD
 <h3 id="rabbitmq-i-model-push-kovarstvo-neupravlyaemogo-potoka">RabbitMQ и модель Push: Коварство неуправляемого потока</h3>
 
 <p>RabbitMQ по умолчанию работает в модели <strong>Push</strong>: брокер берет на себя инициативу и активно «выталкивает» сообщения в открытый TCP-сокет подключенного консьюмера с максимальной скоростью сетевой карты.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Смерть консьюмера без настройки QoS">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2422,6 +2425,7 @@ flowchart TD
     <p>По умолчанию в RabbitMQ лимит неотвеченных сообщений отсутствует. Если ваш консьюмер выполняет тяжелую запись в БД за 10 мс, а продюсеры шлют события пачками, RabbitMQ за считаные секунды набьет сетевой буфер и оперативную память консьюмера сотнями тысяч сообщений. Процесс гарантированно рухнет по <code>OOM</code>.</p>
   </div>
 </aside>
+
 
 <p>Чтобы включить Backpressure в RabbitMQ, консьюмер <strong>обязан выставить лимит QoS (Quality of Service)</strong> через параметр <code>Prefetch Count</code>:<br />
 - Настройка <code>channel.Qos(prefetchCount = 50, 0, false)</code> говорит брокеру:<br />
@@ -2438,6 +2442,7 @@ flowchart TD
 3. Консьюмер обрабатывает полученный батч (вставляет записи в БД, валидирует данные).<br />
 4. <strong>Пока обработка не завершена, консьюмер физически не отправляет следующий запрос <code>Poll</code>.</strong></p>
 <p>В Kafka Backpressure встроен на фундаментальном уровне протокола: брокер физически не способен завалить консьюмер данными, потому что консьюмер берет ровно столько, сколько может проглотить прямо сейчас.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Что происходит с Kafka при отставании консьюмера?">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2452,6 +2457,7 @@ flowchart TD
 <p>Если медленный консьюмер отстает, растет метрика <strong>Consumer Lag (Лаг отставания)</strong>. Если консьюмер не успевает вычитать данные до истечения Retention, Kafka удаляет старые сегменты лога с диска. При попытке консьюмера запросить удаленный оффсет он получит ошибку <code>OffsetOutOfRange</code>. Поэтому в Kafka ключевым фактором стабильности является постоянный мониторинг Consumer Lag через системы оповещения (Prometheus / Grafana).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="4-strategii-sbrosa-nagruzki-load-shedding">4. Стратегии сброса нагрузки (Load Shedding)</h2>

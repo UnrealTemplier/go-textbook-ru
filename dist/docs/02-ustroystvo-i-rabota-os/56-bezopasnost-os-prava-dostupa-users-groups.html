@@ -2289,6 +2289,7 @@ flowchart LR
 </figure>
 
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2299,6 +2300,7 @@ flowchart LR
 <strong>Ответ:</strong> <code>os.Getuid()</code> возвращает Real UID — идентификатор пользователя, фактически запустившего процесс в операционной системе. Функция <code>os.Geteuid()</code> возвращает Effective UID — идентификатор, от имени которого процесс в данный момент запрашивает системные ресурсы у ядра. В обычных условиях они совпадают. Однако если исполняемый файл имел установленный бит <code>setuid</code> (например, принадлежал пользователю <code>root</code> с правами <code>4755</code>) или если сервис в процессе работы вызвал смену привилегий через <code>sys_setresuid</code>, эти значения будут различаться. Go использует <code>Geteuid()</code> для понимания реальных полномочий процесса, и именно Effective UID оценивается ядром Linux при проверке прав на открытие файлов и системные вызовы.</p>
   </div>
 </aside>
+
 
 <h2 id="prava-dostupa-k-faylam-rwx-i-spetsialnye-bity">Права доступа к файлам: rwx и специальные биты</h2>
 
@@ -2397,6 +2399,7 @@ flowchart TD
 <li><strong>Sticky Bit (восьмеричный вес <code>1</code>, режим <code>1777</code>):</strong><br />
     В современных ОС применяется к каталогам общего доступа (например, <code>/tmp</code> или <code>/var/tmp</code>). При включенном Sticky Bit удалить или переименовать файл внутри каталога может <em>только владелец самого файла или суперпользователь <code>root</code></em>, даже если для каталога выставлены полные права записи <code>777</code> (<code>rwxrwxrwx</code>). Без этого бита любой локальный пользователь мог бы удалить временный файл чужого процесса или подменить сокет базы данных.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2406,6 +2409,7 @@ flowchart TD
     <p><strong>SUID/SGID в Go-приложениях.</strong> Если вы скомпилируете Go-бинарник с правами <code>4755</code> (SUID) и запустите его от имени обычного пользователя, процесс получит UID <code>0</code> (root). В Go это означает, что <code>os.Open("/etc/shadow")</code> сработает без ошибок, а <code>net.Listen(":80")</code> не выбросит <code>permission denied</code>. Это частая причина катастрофических уязвимостей, когда разработчики «для удобства» запускают сервисы от root или забывают сбрасывать SUID-биты после сборки. Более того, многопоточный рантайм Go исторически конфликтовал с классическими системными вызовами <code>setuid</code>/<code>setgid</code>, так как в Linux учетные данные привязаны к конкретному потоку ОС (POSIX thread), а планировщик Go свободно мигрирует горутины между системными тредами.</p>
   </div>
 </aside>
+
 
 <h2 id="pod-kapotom-kak-yadro-proveryaet-prava">Под капотом: как ядро проверяет права</h2>
 
@@ -2603,6 +2607,7 @@ sequenceDiagram
 <li><strong>Гранулярные Linux Capabilities:</strong><br />
     Вместо опасных бинарников с битом <code>setuid</code> современный Linux позволяет наделять исполняемый файл или процесс точечными привилегиями. Например, привилегия <code>cap_net_bind_service</code> позволяет непривилегированному процессу слушать порты <code>&lt;1024</code> без наделения его всемогущим статусом <code>root</code>.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2612,6 +2617,8 @@ sequenceDiagram
     <p>В стандартной библиотеке Go нет функций <code>os.Setuid</code> или <code>os.Setgid</code>. В Linux системный вызов <code>setuid(2)</code> на уровне ядра меняет учетные данные только для <em>текущего системного потока (M)</em>. В многопоточном рантайме Go это приводило бы к критической уязвимости: одна горутина исполнялась бы под UID 1000, а другая на соседнем потоке ОС — под root (UID 0). Начиная с Go 1.16, на Linux <code>syscall.Setuid</code>, <code>syscall.Setgid</code> и родственные вызовы сами рассылают системный вызов всем потокам рантайма (внутри они опираются на <code>syscall.AllThreadsSyscall</code>, а в бинарниках с cgo идут через libc), гарантируя согласованный сброс привилегий для всего процесса. <code>unix.Setuid</code> из <code>golang.org/x/sys/unix</code> — лишь тонкая обёртка над <code>syscall.Setuid</code>. Вызывать <code>AllThreadsSyscall</code> напрямую не нужно: в бинарниках с cgo он всегда возвращает <code>ENOTSUP</code>.</p>
   </div>
 </aside>
+
+
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -2627,6 +2634,7 @@ sequenceDiagram
 4. <strong>Compliance &amp; Безопасность:</strong> Индустриальные стандарты безопасности (PCI DSS, SOC 2, ISO 27001) категорически запрещают выполнение прикладных сервисов от суперпользователя.</p>
   </div>
 </aside>
+
 
 <h2 id="itogi">Итоги</h2>
 

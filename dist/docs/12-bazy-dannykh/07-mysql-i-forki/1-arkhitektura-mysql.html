@@ -2243,6 +2243,7 @@ flowchart TD
 1. Сервер проверяет пул готовых свободных потоков — <strong>Thread Cache</strong>.<br />
 2. Если свободный поток найден, он немедленно назначается на обслуживание данного клиента.<br />
 3. Если кэш пуст, ядро базы данных обращается к Linux через системный вызов <code>clone()</code>, порождая новый тяжелый поток ОС.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Потоки операционной системы против Горутин Go">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2255,6 +2256,8 @@ flowchart TD
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Connection Storm (Шторм подключений)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2265,6 +2268,7 @@ flowchart TD
 <strong>Инженерное правило:</strong> Всегда жестко лимитируйте параметры <code>SetMaxOpenConns</code> и <code>SetMaxIdleConns</code> в Go (подробно в <a href="../10-praktika-i-arkhitektura/2-connection-pool.html" class="wikilink">2. Connection pool</a>). Для высоконагруженных систем перед MySQL устанавливают внешний интеллектуальный мультиплексор (например, <strong>ProxySQL</strong>), либо используют расширенные форки (такие как <strong>Percona Server</strong>), где реализован компонент <strong>Thread Pool</strong>, мультиплексирующий тысячи клиентских соединений на фиксированное количество рабочих потоков ОС — по образу и подобию планировщика Go.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="uroven-2-yadro-subd-server-layer-sql-layer">Уровень 2. Ядро СУБД (Server Layer / SQL Layer)</h2>
@@ -2277,6 +2281,7 @@ flowchart TD
 </ul>
 <h3 id="2-optimizator-zaprosov-query-optimizer">2. Оптимизатор запросов (Query Optimizer)</h3>
 <p>Интеллектуальный мозг MySQL. Оптимизатор функционирует на базе стоимостной модели — <strong>Cost-Based Optimizer (CBO)</strong> (подробнее в <a href="../04-indeksy-i-proizvoditelnost/11-cost-based-optimizer.html" class="wikilink">11. Cost based optimizer</a>). Он анализирует сотни возможных траекторий исполнения запроса, перебирает порядок соединения таблиц в <code>JOIN</code> и оценивает альтернативные пути выборки по индексам. Оптимизатор переводит каждый вариант в условную «стоимость» (CPU-такты и I/O-операции чтения страниц) и выбирает план с наименьшим значением Cost.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Ошибка выбора индекса">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2289,8 +2294,10 @@ flowchart TD
   </div>
 </aside>
 
+
 <h3 id="3-ispolnitel-execution-engine">3. Исполнитель (Execution Engine)</h3>
 <p>Берет сформированный оптимизатором план выполнения (дерево операций, доступное для анализа через команду <code>EXPLAIN</code>, см. <a href="../04-indeksy-i-proizvoditelnost/10-plan-vypolneniya-zaprosa-explain.html" class="wikilink">10. План выполнения запроса. EXPLAIN</a>) и пошагово вызывает методы нижнего уровня через Handler API, извлекая строки и передавая их в сеть клиенту.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Смерть Query Cache">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2301,6 +2308,7 @@ flowchart TD
 Причина этого решения — чистая физика многоядерных архитектур (Mechanical Sympathy). Исторический Query Cache кэшировал готовые результаты запросов, но был обязан моментально инвалидироваться при <em>любой</em> модификации целевой таблицы (<code>INSERT</code>/<code>UPDATE</code>). Для этой инвалидации требовался захват глобального мьютекса (<strong>Global Mutex</strong>). На многоядерных серверах (32–64 ядра) высококонкурентная борьба за этот единый мьютекс превращалась в главное бутылочное горлышко СУБД.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="uroven-3-podsistemy-khraneniya-storage-engine-layer">Уровень 3. Подсистемы хранения (Storage Engine Layer)</h2>
@@ -2378,6 +2386,7 @@ graph TD
 * <strong><code>sort_buffer_size</code></strong>: Память, резервируемая для внутренней сортировки (<code>ORDER BY</code>), если запрос не может опереться на готовый порядок B-Tree индекса.<br />
 * <strong><code>join_buffer_size</code></strong>: Буфер для выполнения операций соединения (<code>Block Nested Loop / Hash Join</code>), когда для связываемых таблиц отсутствуют внешние индексы.<br />
 * <strong><code>read_buffer_size</code></strong>: Буфер для последовательного чтения данных при Full Table Scan.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Лавинообразный OOM при нехватке индексов">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2389,6 +2398,7 @@ graph TD
 Если же памяти <code>sort_buffer_size</code> не хватает для удержания сортируемого набора, MySQL переключается на алгоритм <strong>Filesort</strong>, сбрасывая промежуточные куски во временные файлы на диск, что мгновенно обваливает производительность ввода-вывода (IOPS).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="spetsifika-raboty-s-mysql-iz-yazyka-go-databasesql">Специфика работы с MySQL из языка Go: `database/sql`</h2>

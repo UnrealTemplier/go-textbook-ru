@@ -2200,6 +2200,7 @@
 <li><code>SOCK_SEQPACKET</code> — надежный, пакетный. Гарантирует доставку целых сообщений в порядке отправки.</li>
 </ol>
 <p>UDS использует два типа пространств имен (namespaces) для привязки адреса:</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2210,6 +2211,7 @@
 <strong>Abstract (Абстрактное пространство):</strong> Специфично для Linux. Путь начинается с байта <code>\0</code>. Сокет существует только в памяти ядра и не имеет представления в файловой системе. Автоматически удаляется при завершении процесса, но подвержен коллизиям имен без проверки <code>stat()</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="pod-kapotom-yadernaya-realizatsiya-i-proizvoditelnost">Под капотом: Ядерная реализация и производительность</h2>
@@ -2256,6 +2258,7 @@ flowchart TB
 При использовании <code>127.0.0.1:8080</code> пакет проходит через:<br />
 <code>Приложение -&gt; TCP -&gt; IP -&gt; Loopback Driver -&gt; IP -&gt; TCP -&gt; Приложение</code>.<br />
 Каждый этап включает парсинг заголовков, проверку контрольных сумм, поиск в таблице маршрутизации и переключение контекстов сетевого стека. UDS пропускает все слои IP/TCP, оставаясь в пространстве <code>AF_UNIX</code>, что дает прирост производительности на <strong>20-40%</strong> и снижает задержку на <strong>10-30%</strong>.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2266,6 +2269,7 @@ flowchart TB
 <strong>Ответ:</strong> UDS все еще использует системные вызовы <code>sendmsg</code>/<code>recvmsg</code>, копирование данных через <code>copy_from_user</code>/<code>copy_to_user</code> и блокировки ядра для синхронизации очередей. Shared Memory (POSIX <code>shm_open</code> или <code>mmap</code>) позволяет процессам работать с одной физической страницей RAM без копирования и syscall-ов, что делает его самым быстрым IPC, но требует ручной реализации потокобезопасности (мьютексов, семафоров).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="idiomatichnaya-rabota-s-uds-v-go">Идиоматичная работа с UDS в Go</h2>
@@ -2370,6 +2374,7 @@ func main() {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2380,6 +2385,7 @@ func main() {
 <strong>Очистка:</strong> Если процесс падает с <code>panic</code>, файл сокета остается в системе. Последующий запуск выбросит <code>address already in use</code>. Всегда используйте <code>defer os.Remove(path)</code> или запускайте <code>unlink</code> перед <code>bind</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="prodvinutye-vozmozhnosti-i-tipichnye-lovushki">Продвинутые возможности и типичные ловушки</h2>
@@ -2454,6 +2460,7 @@ fds, _ := unix.ParseUnixRights(&amp;msgs[0])
 <li><strong>Длина пути:</strong> Длина пути жестко ограничена размером поля <code>sun_path</code> в структуре ядра <code>sockaddr_un</code> (<code>UNIX_PATH_MAX</code> = 108 байт в Linux, 104 байта в BSD/macOS, включая завершающий нулевой байт). Если путь превышает этот лимит, вызов <code>bind()</code> вернет ошибку (<code>EINVAL</code> или <code>ENAMETOOLONG</code>). Поэтому для длинных путей в контейнерах и сокетах часто используют относительные пути или абстрактные сокеты.</li>
 <li><strong>Права:</strong> Файловые UDS наследуют права файловой системы. Если сокет создан от <code>root</code>, он будет недоступен для обычного пользователя без <code>chmod 777</code> (что опасно). Абстрактные сокеты по умолчанию доступны всем процессам с доступом к ядру.</li>
 </ul>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2464,6 +2471,7 @@ fds, _ := unix.ParseUnixRights(&amp;msgs[0])
 <strong>Ответ:</strong> Через <code>ss -x</code> или <code>netstat -x</code>. UDS показывает тип <code>u_str</code> и путь в файловой системе. Также UDS не имеет IP-адресов и портов, поэтому <code>getsockopt(conn, SOL_SOCKET, SO_PEERNAME)</code> вернет путь к сокету, а <code>SO_TYPE</code> будет <code>SOCK_STREAM</code>/<code>SOCK_DGRAM</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="sravnenie-s-drugimi-ipc-mekhanizmami">Сравнение с другими IPC-механизмами</h2>

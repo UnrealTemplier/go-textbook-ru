@@ -2275,6 +2275,7 @@ flowchart TD
    При запуске тестов с флагом</code>-mutexprofile<code>тестовый раннер Go автоматически устанавливает</code>runtime.SetMutexProfileFraction(1)` на весь период выполнения бенчмарков.</p>
 </li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2284,6 +2285,7 @@ flowchart TD
     <p><code>SetMutexProfileFraction</code> должна быть вызвана до того, как начнутся интересующие нас contention. Если мьютексы активно захватываются в <code>init()</code>-функциях, профиль может недосчитаться этих событий. В production-сервисах обычно устанавливают в <code>main</code> раньше всех <code>go func()</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="sbor-i-analiz-profilya">Сбор и анализ профиля</h2>
@@ -2421,6 +2423,7 @@ flowchart TD
 
 
 <p>Это позволяет моментально найти истинного «виновника»: например, <code>holder</code> показывает, что мьютекс удерживался долгой операцией в <code>Cache.Update</code> (методом <code>mypkg.(*Cache).Update</code>), которая выполняется под замком, хотя парсинг JSON или дисковый I/O могли бы быть вынесены вне критической секции. Удержание мьютекса на 10 миллисекунд создало пробку из сотен читателей в методе <code>Get</code>!</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2430,6 +2433,7 @@ flowchart TD
     <p>При возникновении contention (медленный путь <code>sync.Mutex.Lock</code>) вызывается <code>runtime.semacquire1</code>. Именно в этот момент, если <code>mutexProfileFraction &gt; 0</code>, рантайм вызывает <code>saveMutexProfileEvent</code>. Она получает стек текущей горутины (<code>callers</code>), вычисляет адрес мьютекса, ищет в хеш-таблице запись для этого мьютекса и сохраняет стек удерживающей горутины, который был ранее записан в <code>m.holder</code> при успешном захвате мьютекса. Таким образом, <code>holder</code>-стек фиксируется в момент <code>Unlock()</code>? Нет, в момент <code>Lock()</code> владелец устанавливает <code>m.holder</code> (внутреннее поле структуры <code>sync.Mutex</code>) на свой стек. При contention вызывается <code>saveMutexProfileEvent</code>, которая копирует стек из <code>m.holder</code> и записывает его вместе со стеком ожидающего. Поэтому <code>holder</code> — это стек, который был активен <strong>на момент предыдущего успешного <code>Lock()</code></strong>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="otlichie-ot-block-profile">Отличие от block profile</h2>
@@ -2532,6 +2536,7 @@ flowchart LR
 <hr />
 <h2 id="lovushki-i-chastye-oshibki">Ловушки и частые ошибки</h2>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2541,6 +2546,8 @@ flowchart LR
     <p><code>SetMutexProfileFraction</code> должна быть вызвана до того, как начнутся интересующие нас contention. Если мьютексы активно захватываются в <code>init()</code>-функциях, профиль может недосчитаться этих событий. В production-сервисах обычно устанавливают в <code>main</code> раньше всех <code>go func()</code>.</p>
   </div>
 </aside>
+
+
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
@@ -2552,6 +2559,8 @@ flowchart LR
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2561,6 +2570,8 @@ flowchart LR
     <p><strong>Переустановка <code>SetMutexProfileFraction</code> сбрасывает статистику.</strong> При изменении <code>rate</code> хеш-таблица профиля очищается. Если нужно накопить данные за долгий период, устанавливайте <code>rate</code> один раз при старте.</p>
   </div>
 </aside>
+
+
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
@@ -2572,6 +2583,7 @@ flowchart LR
   </div>
 </aside>
 
+
 <hr />
 <h2 id="integratsiya-s-ci-i-observability">Интеграция с CI и observability</h2>
 
@@ -2580,6 +2592,7 @@ flowchart LR
 - <strong>Метрики рантайма (<code>runtime/metrics</code>):</strong> Начиная с Go 1.16, системный счетчик <code>/sync/mutex/wait/total:seconds</code> отслеживает кумулятивное время ожидания на мьютексах абсолютно без накладных расходов. Рост этой метрики в Grafana служит прямым триггером для снятия детального mutex profile.</p>
 <hr />
 <h2 id="sobesedovanie-tipichnye-voprosy">Собеседование: типичные вопросы</h2>
+
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -2592,6 +2605,8 @@ flowchart LR
   </div>
 </aside>
 
+
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2602,6 +2617,7 @@ flowchart LR
 <strong>Ответ:</strong> Открыть профиль через <code>go tool pprof -http=:8080 mutex.prof</code>, переключить отображение в режим <strong>Holders</strong> (через меню выбора метрик или поле «show: holders») и построить Flamegraph или Graph. Вершины графа укажут на функции, захватившие блокировку до возникновения конфликта.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

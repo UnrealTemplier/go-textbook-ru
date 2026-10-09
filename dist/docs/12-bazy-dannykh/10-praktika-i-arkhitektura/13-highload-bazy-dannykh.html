@@ -2190,6 +2190,7 @@
 *   Идиоматичные паттерны работы с данными под нагрузкой: стриминг, батчинг, избегание GC-давления и управление контекстами.<br />
 *   Механику диска и памяти: WAL, чекпоинты, вытеснение страниц из <code>shared_buffers</code> и влияние на CPU-кэши.<br />
 *   Типичные ловушки, антипаттерны и вопросы с хардовых собеседований.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2199,6 +2200,7 @@
     <p>Высоконагруженная СУБД — это в первую очередь задача управления вводом-выводом. Современные NVMe-диски способны обрабатывать сотни тысяч IOPS, но случайные <code>4KB</code> чтения из-за фрагментации индексов или горячих страниц всё равно упираются в задержки контроллера и планировщика ОС. Понимание того, как запрос превращается в последовательность <code>pread/pwrite</code>, <code>fsync</code> и операций с Page Cache, отличает инженера, который просто пишет <code>SELECT</code>, от архитектора, проектирующего устойчивые к нагрузке контуры.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="1-identifikatsiya-uzkikh-mest-io-cpu-set-i-blokirovki">1. Идентификация узких мест: I/O, CPU, сеть и блокировки</h2>
@@ -2245,6 +2247,7 @@ flowchart TD
 <li><strong>Сеть:</strong> Латентность растет линейно с ростом RPS. Причина: слишком много мелких запросов, отсутствие пайплайнинга, неоптимальный размер TCP-окна, лимиты на файловые дескрипторы.</li>
 <li><strong>Блокировки (Locks/Latches):</strong> Резкие скачки латентности при стабильной нагрузке. Причина: <code>hot rows</code> (частые <code>UPDATE</code> одних и тех же строк), длинные транзакции, удерживающие <code>SHARE</code>-локи, <code>latch contention</code> в буферном пуле СУБД.</li>
 </ul>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2256,6 +2259,7 @@ flowchart TD
 <strong>Диагностика:</strong> Сравнивайте <code>db.Stats().InUse</code> с <code>db.Stats().WaitDuration</code>. Если <code>WaitDuration</code> растет экспоненциально, а <code>Active</code> соединения в БД низкие — масштабируйте пул или оптимизируйте время выполнения запроса.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="2-arkhitekturnye-strategii-masshtabirovaniya">2. Архитектурные стратегии масштабирования</h2>
@@ -2273,6 +2277,7 @@ flowchart TD
 <li><strong>Партиционирование (Partitioning):</strong> Деление одной большой таблицы на сегменты по диапазону (даты) или хэшу. Уменьшает размер B-Деревьев, повышает <code>cache hit ratio</code>, ускоряет <code>VACUUM</code> и удаление старых данных (<code>DROP PARTITION</code> мгновенно освобождает место).</li>
 <li><strong>Шардирование (Sharding):</strong> Распределение данных по разным физическим серверам. Требует маршрутизации на уровне приложения или специализированного прокси (Vitess, Citus). Сложно в поддержке (кросс-шардовые <code>JOIN</code>, транзакции), но дает линейное масштабирование записи.</li>
 </ul>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2283,6 +2288,7 @@ flowchart TD
 <strong>Ответ:</strong> Шардирование оправдано, когда один физический узел упирается в лимиты дисковой записи (WAL/IO) или CPU, и вертикальное масштабирование/репликация не помогают. Это антипаттерн, если его применяют «на будущее» или для таблиц &lt; 50 ГБ. Шардирование резко усложняет операции: бэкапы, миграции, аналитические запросы, транзакции. Сначала используйте партиционирование, оптимизацию индексов и выгрузку исторических данных в холодные хранилища (ClickHouse, S3).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="3-pod-kapotom-model-soedineniy-v-subd-i-go">3. Под капотом: Модель соединений в СУБД и Go</h2>
@@ -2302,6 +2308,7 @@ flowchart TD
 3.  Парковка горутины в <code>netpoll</code> (ожидание ответа).<br />
 4.  Пробуждение, чтение через <code>read()</code>, десериализация.</p>
 <p>При <code>N</code> одновременных запросах к БД, <code>N</code> горутин паркуются. Это эффективно, но создает давление на <code>epoll</code> ядра и аллокации буферов. Если <code>N &gt; max_connections</code> СУБД, запросы блокируются на клиенте, что может привести к <code>OOM Killer</code> из-за накопления горутин и их стеков в памяти.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: PgBouncer в режиме `transaction`">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2311,6 +2318,7 @@ flowchart TD
     <p>Для высоконагруженных Go-сервисов рекомендуется ставить пулер перед БД. <code>PgBouncer</code> держит пул из 20-50 реальных соединений к PostgreSQL и мультиплексирует тысячи клиентских запросов. При завершении транзакции соединение мгновенно возвращается в пул. Это позволяет настроить <code>db.SetMaxOpenConns(1000+)</code> в Go, не перегружая СУБД процессами. Важно: в этом режиме запрещены подготовленные выражения (<code>PREPARE</code>) и сессионные переменные, так как соединение меняется после каждого запроса.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="4-idiomatichnaya-optimizatsiya-v-go-pod-nagruzku">4. Идиоматичная оптимизация в Go под нагрузку</h2>
@@ -2418,6 +2426,7 @@ flowchart TD
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2427,6 +2436,7 @@ flowchart TD
     <p>При <code>ExecContext</code> внутри транзакции драйвер отправляет команды в одном сетевом пакете или пайплайне. СУБД буферизует изменения в <code>shared_buffers</code>, записывает их в WAL последовательно и применяет <code>fsync</code> только при <code>COMMIT</code>. Это снижает количество <code>fsync</code> с <code>N</code> до <code>1</code> на чанк, кардинально уменьшая I/O-нагрузку на диск.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="5-mekhanika-diska-i-pamyati-pod-vysokoy-nagruzkoy">5. Механика диска и памяти под высокой нагрузкой</h2>
@@ -2441,6 +2451,7 @@ flowchart TD
 <p>Индексы в СУБД хранятся в B-Tree. При высокой нагрузке «горячие» страницы индексов держатся в <code>shared_buffers</code>. Однако если рабочая выборка превышает объем RAM, начинается вытеснение (<code>cache churn</code>).<br />
 *   <strong>Влияние на CPU:</strong> Каждая подгруженная с диска страница проходит через Page Cache ОС, копируется в пользовательское пространство, попадает в кучу Go, десериализуется. Это создает случайные обращения к RAM, вызывая <code>L1/L2 cache miss</code>. CPU простаивает в ожидании данных (<code>memory stall</code>).<br />
 *   <strong>Решение:</strong> Сужайте индексы (покрывающие), партиционируйте данные по времени, используйте SSD с низким временем доступа, применяйте <code>pg_prewarm</code> для критичных таблиц после перезапуска.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2451,6 +2462,7 @@ flowchart TD
 Генерация случайного UUID для <code>id</code> приводит к фрагментации B-Tree. Новые строки вставляются в случайные страницы, что уничтожает локальность данных, снижает эффективность префетчинга и увеличивает I/O. В highload-системах используйте <code>UUIDv7</code> (временной, монотонный) или <code>BIGINT</code> с последовательностью. Это превращает вставку в последовательный <code>APPEND</code>, максимизируя использование кэш-линий CPU и пропускную способность диска.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="6-tipichnye-lovushki-i-voprosy-s-sobesedovaniy">6. Типичные ловушки и вопросы с собеседований</h2>
@@ -2486,6 +2498,7 @@ flowchart TD
 </ul>
 </li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2500,6 +2513,7 @@ flowchart TD
 4. Исправить: оптимизировать порядок индексов, сократить время транзакций, применить <code>VACUUM</code>, пересмотреть горячие ключи. Если проблема в Go — проверить блокировки мьютексов в коде перед отправкой запроса, которые держат соединение пула.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

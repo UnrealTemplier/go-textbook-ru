@@ -2183,6 +2183,7 @@
 
 <p>Если большинство пакетов стандартной библиотеки Go строят уютные, абстрактные переборки между разработчиком и операционной системой, то пакет <code>runtime</code> — это прямой трап в машинное отделение корабля. В отличие от <code>os</code>, который предоставляет абстракцию над операционной системой, <code>runtime</code> дает доступ к планировщику горутин, сборщику мусора, управлению стеками и низкоуровневым метрикам памяти. </p>
 <p>Это не инструмент для повседневной бизнес-логики. Вызов функций <code>runtime</code> в обычном сервисном слое чаще всего свидетельствует о нарушении границ абстракций или архитектурном просчете. Однако для старшего инженера глубокое понимание устройства рантайма жизненно необходимо: именно оно превращает слепую панику при production-инцидентах в хладнокровный инженерный анализ. Утечки горутин, зависание потоков ОС, раздувание стеков и непредсказуемое поведение в контейнерах Docker и подах Kubernetes невозможно диагностировать без знания механики этого пакета.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2192,6 +2193,7 @@
     <p>Пакет <code>runtime</code> компилируется в один бинарный файл вместе с приложением и линкуется статически. Он не использует системные вызовы напрямую для внутренней координации, а полагается на встроенный планировщик G-M-P и атомарные инструкции CPU. Это обеспечивает минимальную задержку при интроспекции, но требует осторожности: ошибочный вызов может перевести весь процесс в состояние <code>Stop-The-World</code>.</p>
   </div>
 </aside>
+
 
 <h2 id="1-introspektsiya-planirovshchika-i-diagnostika-gorutin">1. Интроспекция планировщика и диагностика горутин</h2>
 
@@ -2251,6 +2253,7 @@ fmt.Printf(&quot;%s&quot;, buf[:n])
 </div>
 
 <p>Такая привязка незаменима при взаимодействии с графическими библиотеками (OpenGL, Cocoa), специфическими системными вызовами Linux (такими как смена namespace через <code>setns</code>) или библиотеками CGO, которые используют локальное хранилище потока (Thread-Local Storage, TLS).</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2261,6 +2264,7 @@ fmt.Printf(&quot;%s&quot;, buf[:n])
 Если горутина завершается (или паникует) в состоянии <code>locked</code>, тред <code>M</code> помечается как <code>lockedg = nil</code>, но не возвращается в пул. Планировщик создает новый системный тред для замены. При частых вызовах это приводит к росту <code>thread_count</code> ОС, исчерпанию лимитов (<code>pthread_create</code> fails) и OOM-killer. Всегда используйте <code>defer runtime.UnlockOSThread()</code> сразу после <code>Lock</code>.</p>
   </div>
 </aside>
+
 
 <h2 id="3-metriki-pamyati-i-evolyutsiya-upravleniya-gc">3. Метрики памяти и эволюция управления GC</h2>
 
@@ -2287,6 +2291,7 @@ fmt.Printf(&quot;NumGC: %d\n&quot;, ms.NumGC)                        // Заве
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2296,6 +2301,7 @@ fmt.Printf(&quot;NumGC: %d\n&quot;, ms.NumGC)                        // Заве
     <p><code>runtime.ReadMemStats</code> по-прежнему вызывает Stop-The-World (<code>stopTheWorld(stwReadMemStats)</code>) для фиксации консистентного среза структур аллокатора памяти. Частый вызов <code>ReadMemStats</code> в критических путях высоконагруженных сервисов приводит к ощутимым задержкам (latency spikes). Именно поэтому в современном Go для регулярного и высокочастотного сбора телеметрии рекомендуется пакет <code>runtime/metrics</code>, который считывает агрегированные счетчики атомарно и без остановки мира.</p>
   </div>
 </aside>
+
 
 <h3 id="gogc-i-gomemlimit">`GOGC` и `GOMEMLIMIT`</h3>
 
@@ -2388,6 +2394,7 @@ flowchart TD
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2400,6 +2407,7 @@ flowchart TD
 <strong>Ответ:</strong> Флаг <code>all=true</code> вызывает остановку всех горутин (<code>stopTheWorld</code>). На нагруженном сервере это приводит к задержке ответов на сотни миллисекунд, таймаутам клиентов и каскадным отказам. Для отладки используйте <code>pprof</code> или <code>debug.PrintStack()</code> только для текущей горутины.</p>
   </div>
 </aside>
+
 
 <h2 id="6-sravnenie-s-ekosistemami">6. Сравнение с экосистемами</h2>
 

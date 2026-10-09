@@ -2200,6 +2200,7 @@
 </ol>
 </li>
 </ul>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2209,6 +2210,7 @@
     <p>В ядре Linux статус процесса определяется через структуру <code>task_struct</code>. Флаг <code>PF_KTHREAD</code> указывает на системные потоки ядра, а флаг <code>PF_EXITING</code> — на процесс, завершающий работу. Демонизация по сути меняет принадлежность процесса к <strong>сессии</strong> и <strong>группе процессов</strong>, отрывая его от <code>tty</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="otvyazka-ot-terminala-pod-kapotom-setsid">Отвязка от терминала: Под капотом setsid()</h2>
@@ -2250,7 +2252,7 @@ flowchart TD
 <li><strong><code>setsid()</code></strong>: Создает новую сессию и делает процесс лидером сессии. Это разрывает связь с управляющим терминалом. Теперь процесс не может получить доступ к терминалу и не будет получать от него сигналы.</li>
 <li><strong><code>chdir("/")</code></strong>: Смена рабочей директории на корень, чтобы демон не блокировал размонтирование файловых систем.</li>
 <li><strong><code>umask(0)</code></strong>: Сброс маски прав, чтобы демон полностью контролировал права создаваемых файлов.</li>
-<li><strong>Закрытие FD</strong>: Закрытие всех унаследованных файловых дескрипторов (<code>&lt;a href="25-faylovye-deskriptory-vse-v-linux-yavlyaetsya-faylom.html" class="wikilink"&gt;25. Файловые дескрипторы. Все в Linux является файлом&lt;/a&gt;</code>), чтобы не держать открытыми сокеты или файлы родительской оболочки.</li>
+<li><strong>Закрытие FD</strong>: Закрытие всех унаследованных файловых дескрипторов (<a href="25-faylovye-deskriptory-vse-v-linux-yavlyaetsya-faylom.html" class="wikilink"><code>25. Файловые дескрипторы. Все в Linux является файлом</code></a>), чтобы не держать открытыми сокеты или файлы родительской оболочки.</li>
 </ol>
 
 <div class="code-block" data-lang="go">
@@ -2284,6 +2286,7 @@ flowchart TD
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2293,6 +2296,7 @@ flowchart TD
     <p>По умолчанию <code>os/exec</code> не вызывает <code>setsid()</code>: если вы просто используете <code>exec.Command</code>, дочерний процесс унаследует группу процессов и терминал. Но отрыв делается штатно: достаточно выставить <code>SysProcAttr{Setsid: true}</code> (как в примере выше), либо использовать библиотеки вроде <code>github.com/sevlyar/go-daemon</code>. В современных реалиях это почти никогда не требуется, так как <code>systemd</code> делает это за вас. Более того, в многопоточном рантайме Go ручной вызов <code>fork()</code> крайне опасен, так как он копирует состояние только одного потока ОС, оставляя рантайм, горутины и мьютексы в поврежденном состоянии.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="signaly-i-graceful-shutdown">Сигналы и Graceful Shutdown</h2>
@@ -2429,6 +2433,7 @@ sequenceDiagram
 </figure>
 
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2439,6 +2444,7 @@ sequenceDiagram
 <strong>Ответ:</strong> <code>Type=simple</code> считает процесс живым с момента запуска. Если приложение зависнет на старте (например, ждет БД), systemd не узнает об этом и может отправить <code>SIGKILL</code> по таймауту. <code>Type=notify</code> требует от приложения отправить сообщение через <code>sd_notify()</code>. Это гарантирует, что systemd знает о реальной готовности сервиса. Для Go это реализуется через <code>daemon.SdNotify(false, daemon.SdNotifyReady)</code> после запуска HTTP-сервера и подключения к БД.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="idiomatichnyy-go-demon-pattern-dlya-prodakshena">Идиоматичный Go-демон: Паттерн для продакшена</h2>
@@ -2507,6 +2513,7 @@ func main() {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2516,6 +2523,7 @@ func main() {
     <p><code>srv.Shutdown()</code> не убивает активные соединения мгновенно. Он перестает принимать новые и ждет завершения текущих. Если клиент зависнет, таймаут <code>context.WithTimeout</code> спасет от deadlock. В Go 1.20+ лучше использовать <code>signal.NotifyContext</code> вместо устаревшего <code>signal.Notify</code> + <code>make(chan os.Signal)</code>, так как первый автоматически очищает подписки при отмене контекста, предотвращая утечки горутин.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>
@@ -2527,7 +2535,7 @@ func main() {
 <li><strong>systemd:</strong> Современный стандарт. Отказ от ручной демонизации в пользу <code>Type=notify</code> и перехвата stdout/stderr в <code>journald</code>.</li>
 <li><strong>Go-паттерн:</strong> <code>signal.NotifyContext</code> + <code>context.WithTimeout</code> + <code>srv.Shutdown()</code> + <code>daemon.SdNotify</code> = надежный сервисный код.</li>
 </ol>
-<p>Мы разобрали, как процессы живут в фоне и как ОС управляет их жизненным циклом. Теперь логично перейти к тому, как именно <code>systemd</code> реализует это управление, какие директивы важны для Go-приложений и как работает активация сокетов. В следующей статье мы разберем: <code>&lt;a href="30-systemd-upravlenie-servisami-v-linux.html" class="wikilink"&gt;30. systemd. Управление сервисами в Linux&lt;/a&gt;</code>.</p>
+<p>Мы разобрали, как процессы живут в фоне и как ОС управляет их жизненным циклом. Теперь логично перейти к тому, как именно <code>systemd</code> реализует это управление, какие директивы важны для Go-приложений и как работает активация сокетов. В следующей статье мы разберем: <a href="30-systemd-upravlenie-servisami-v-linux.html" class="wikilink"><code>30. systemd. Управление сервисами в Linux</code></a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->

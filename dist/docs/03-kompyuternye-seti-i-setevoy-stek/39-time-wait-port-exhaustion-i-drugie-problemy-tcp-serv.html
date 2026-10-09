@@ -2239,6 +2239,7 @@ sequenceDiagram
 <p>Ядро удерживает закрытый сокет по двум фундаментальным причинам:<br />
 1. <strong>Надежность доставки финального подтверждения (ACK):</strong> Если последний отправленный клиентом <code>ACK</code> потеряется по дороге, пассивный сервер решит, что его собственный сегмент <code>FIN</code> не дошел, и отправит его повторно. Если бы клиент моментально уничтожил сокет, на пришедший повторный <code>FIN</code> ядро ответило бы аварийным пакетом <code>RST</code>. Сервер зафиксировал бы ошибку <code>Connection reset by peer</code>, хотя на самом деле все полезные данные были успешно переданы! Состояние <code>TIME_WAIT</code> удерживает сокет, позволяя корректно ответить повторным <code>ACK</code>.<br />
 2. <strong>Очистка сети от «заблудившихся» пакетов (Draining Duplicate Segments):</strong> Пакеты в сети могут задерживаться на перегруженных маршрутизаторах. Если локальный порт освободится мгновенно, новое соединение с тем же <code>SrcIP:SrcPort:DstIP:DstPort</code> может получить старый «фантомный» пакет от прошлой сессии с тем же <code>seq</code> и разрушить целостность данных приложения. Интервал <code>2 * MSL</code> гарантирует, что все задержавшиеся в пути дубликаты гарантированно умрут в сети до переиспользования порта.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2248,6 +2249,7 @@ sequenceDiagram
     <p>В Linux ядро не хранит полноценный <code>struct sock</code> для <code>TIME_WAIT</code>. Вместо этого используется легковесная структура <code>struct tcp_timewait_sock</code>. Она помещается в хеш-таблицу <code>tcp_time_wait_hash</code>. Это экономит память, но создает нагрузку на <code>conntrack</code> (таблицу отслеживания состояний), которая мониторит все активные и недавние соединения для NAT, брандмауэра и QoS.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="port-exhaustion-mekhanika-ischerpaniya">Port Exhaustion: Механика исчерпания</h2>
@@ -2267,6 +2269,7 @@ $$\text{Socket} = (\text{SrcIP}, \text{SrcPort}, \text{DstIP}, \text{DstPort})$$
 <li>Записи в системном кольцевом буфере <code>dmesg</code>: <code>nf_conntrack: table full, dropping packet</code></li>
 <li>Рост времени отклика и потеря входящих пакетов из-за перегрузки таблицы conntrack.</li>
 </ul>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2277,6 +2280,7 @@ $$\text{Socket} = (\text{SrcIP}, \text{SrcPort}, \text{DstIP}, \text{DstPort})$$
 <p>Еще более опасное состояние — <strong><code>CLOSE_WAIT</code></strong>. Если <code>TIME_WAIT</code> управляется ядром, то <code>CLOSE_WAIT</code> наступает на принимающей стороне, когда удаленный клиент уже закрыл соединение, а ваше Go-приложение забыло закрыть сокет (<code>resp.Body.Close()</code> или <code>conn.Close()</code>). Сокеты в <code>CLOSE_WAIT</code> висят вечно, утекают как файловые дескрипторы (<code>EMFILE</code>) и являются 100% ошибкой прикладного кода!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="strategii-borby-soreuse-tyuning-yadra-i-puling">Стратегии борьбы: SO_REUSE, тюнинг ядра и пулинг</h2>
@@ -2310,6 +2314,7 @@ net.ipv4.tcp_max_tw_buckets = 524288
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2320,6 +2325,7 @@ net.ipv4.tcp_max_tw_buckets = 524288
 <strong>Ответ:</strong> От проблемы перезапуска — да: <code>SO_REUSEADDR</code> разрешает <code>bind()</code> на порт слушающего сокета, пока на нём остались старые соединения в <code>TIME_WAIT</code> (в Go эта опция уже включена на слушающих сокетах). Но сами записи <code>TIME_WAIT</code> он не удаляет, и на исчерпание <em>клиентских</em> эфемерных портов не влияет — там помогают пулы соединений, расширение <code>ip_local_port_range</code> и <code>tcp_tw_reuse</code> (только для исходящих соединений). К таблице <code>conntrack</code> эта опция отношения не имеет.</p>
   </div>
 </aside>
+
 
 <h3 id="3-connection-pooling-pul-postoyannykh-soedineniy">3. Connection Pooling (Пул постоянных соединений)</h3>
 <p>Самый надежный способ победить <code>TIME_WAIT</code> — не закрывать TCP-соединения после каждого запроса, а держать их открытыми через HTTP Keep-Alive. В Go пулинг встроен в <code>net/http.Transport</code>. <code>IdleConnTimeout</code> задаёт время жизни <em>простаивающего</em> соединения в пуле и к длительности <code>TIME_WAIT</code> отношения не имеет (она определяется стороной, закрывшей соединение первой). Чем он меньше, тем чаще пул закрывает неиспользуемые соединения и тем чаще вам придётся открывать новые; практическое правило — клиентский <code>IdleConnTimeout</code> держать меньше серверного/балансировщика, чтобы клиент не использовал соединение, которое сервер уже закрыл.</p>
@@ -2332,6 +2338,7 @@ net.ipv4.tcp_max_tw_buckets = 524288
 <li>Клиентский пакет <code>net/http</code> по умолчанию использует транспорт <code>http.Transport</code> с глобальным пулом открытых соединений. Критичные поля пула: <code>MaxIdleConns</code>, <code>MaxIdleConnsPerHost</code>, <code>IdleConnTimeout</code>.</li>
 <li>Планировщик ввода-вывода <code>netpoll</code> (epoll/kqueue) непрерывно мониторит файловые дескрипторы. Каждый сокет — это FD. При исчерпании системного лимита файловых дескрипторов (<code>ulimit -n</code>) или системных таблиц ядра системный вызов <code>accept</code> начинает возвращать ошибки <code>EMFILE</code> («Too many open files») или <code>ENFILE</code> («Too many open files in system»).</li>
 </ul>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2341,6 +2348,7 @@ net.ipv4.tcp_max_tw_buckets = 524288
     <p>Рантайм Go использует <code>netpoll</code> для асинхронного приема соединений с самых первых версий (с Go 1.1). При высокой нагрузке на <code>TIME_WAIT</code> сокеты не потребляют CPU, но занимают память в ядре. Когда таблица <code>conntrack</code> переполняется, ядро начинает <code>drop</code> пакеты, что вызывает silent retransmissions и рост latency.</p>
   </div>
 </aside>
+
 
 <h3 id="primer-pravilnoy-nastroyki-dlya-production">Пример правильной настройки для production</h3>
 

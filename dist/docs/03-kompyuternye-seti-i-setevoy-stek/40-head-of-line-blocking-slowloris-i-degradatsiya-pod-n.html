@@ -2224,6 +2224,7 @@
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2233,6 +2234,7 @@
     <p>Для процессора это выглядит как простой конвейера (pipeline stall). Кэш-линии L1/L2 инвалидируются, когда CPU пытается прочитать данные из буфера, который заблокирован ожиданием network interrupt. Утилизация CPU падает, а latency растет экспоненциально.</p>
   </div>
 </aside>
+
 
 <h3 id="2-uroven-http1-1-prikladnoy-uroven">2. Уровень HTTP/1.1 (Прикладной уровень)</h3>
 <p>Проблема многократно усугубляется на прикладном уровне. В HTTP/1.1 для выполнения нескольких запросов к одному хосту используется <code>Keep-Alive</code>, но запросы обрабатываются <strong>строго последовательно</strong> (FIFO):</p>
@@ -2323,6 +2325,7 @@ sequenceDiagram
 * Буфер <code>bufio.Reader</code> (по умолчанию 4 КБ на соединение).<br />
 * Горутина, ожидающая чтения из сокета (стек 2-4 КБ, блокировка в <code>netpoller</code>).<br />
 * Поля <code>http.Server.MaxConns</code> в стандартной библиотеке нет: число одновременных соединений сервера не ограничено ничем, кроме системного предела <code>ulimit -n</code> (при его исчерпании <code>accept</code> возвращает <code>EMFILE</code>). Явное ограничение делают на уровне listener'а, например <code>netutil.LimitListener</code> из <code>golang.org/x/net/netutil</code>.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2332,6 +2335,7 @@ sequenceDiagram
     <p>Если вы используете <code>http.Server</code> с дефолтными настройками (<code>http.ListenAndServe(":8080", nil)</code>), таймауты чтения и записи в нем полностью отсутствуют. Сервер будет ждать заголовков бесконечно, пока клиент не отвалится по таймауту ОС (обычно 2+ часа). Ресурсы хоста истощаются мгновенно, а CPU при этом почти не грузится.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="degradatsiya-pod-nagruzkoy-sistemnyy-vzglyad">Деградация под нагрузкой: Системный взгляд</h2>
@@ -2416,6 +2420,7 @@ client := &amp;http.Client{
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2426,6 +2431,7 @@ client := &amp;http.Client{
 <strong>Ответ:</strong> Будет использовано значение по умолчанию <code>DefaultMaxIdleConnsPerHost = 2</code> (документация: «If zero, DefaultMaxIdleConnsPerHost is used»), а не «неограниченно»: при высокой параллельности лишние соединения после запроса закрываются, и сервис постоянно открывает новые (рост <code>TIME_WAIT</code>, задержек на handshake). Безлимитность относится к <code>MaxIdleConns = 0</code> (общее число idle-соединений во всём пуле). Для тысяч downstream-сервисов ограничивайте пул осознанно, а число <em>одновременных</em> соединений ограничивает <code>MaxConnsPerHost</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="3-vzaimodeystvie-s-netpoller">3. Взаимодействие с `netpoller`</h3>
 <p>Когда горутина блокируется на чтении из сокета (из-за Slowloris или HoL), она переходит в состояние <code>waiting</code> и перестает потреблять CPU. <code>netpoller</code> (epoll/kqueue) регистриует fd и ждет событий. Когда таймаут срабатывает, срабатывает дедлайн чтения, и <code>Read</code> возвращает ошибку <code>i/o timeout</code> (<code>os.ErrDeadlineExceeded</code>); затем сервер закрывает соединение. Горутина разблокируется, буферы <code>bufio</code> сбрасываются, и ресурсы возвращаются в пул.</p>

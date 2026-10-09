@@ -2255,6 +2255,7 @@ runtime.GOMAXPROCS(4)        // Принудительно установить 
 <p>Типичные сценарии изменения:<br />
 - <strong>Уменьшение</strong> — когда Go-процесс делит хост с другими critical-процессами (например, базой данных или сетевым прокси), и необходимо жестко ограничить аллокацию вычислительных ядер. Также уменьшение оправдано в облачных контейнерах при жестких CPU-квотах для предотвращения CPU throttling.<br />
 - <strong>Увеличение</strong> — в 99% случаев не имеет смысла и вредно. Установка <code>GOMAXPROCS</code> выше количества физических ядер процессора порождает паразитную конкуренцию за L1/L2/L3-кэши, лавину межпроцессорных прерываний и дорогостоящих вытесняющих контекстных переключений операционной системы (<a href="../06-konkurentnost/4-kontekstnye-pereklyucheniya.html" class="wikilink">4. Контекстные переключения</a>).</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2264,6 +2265,7 @@ runtime.GOMAXPROCS(4)        // Принудительно установить 
     <p>Вызов <code>GOMAXPROCS</code> на лету модифицирует внутреннее глобальное состояние планировщика <code>sched.procs</code>. Чтобы безопасно изменить количество <code>P</code>, рантайм производит процедуру <code>stopTheWorld("GOMAXPROCS")</code>: все работающие горутины временно паркуются. При увеличении создаются новые структуры <code>P</code>, при уменьшении — лишние <code>P</code> деаллоцируются, а их локальные очереди горутин <code>runq</code> сбрасываются в глобальную очередь <code>sched.runq</code>. Это порождает тяжелые блокировки планировщика, поэтому динамическое дерганье <code>GOMAXPROCS</code> в высоконагруженных горячих путях категорически недопустимо.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="gosched-dobrovolnaya-peredacha-upravleniya">Gosched — добровольная передача управления</h3>
@@ -2329,6 +2331,7 @@ runtime.GOMAXPROCS(4)        // Принудительно установить 
 <li><strong>Графические и UI-библиотеки (OpenGL, Cocoa, Win32):</strong> оконные подсистемы требуют, чтобы создание окон, обработка очереди событий мыши и клавиатуры, а также рендеринг происходили строго на главном системном потоке (Main Thread, поток <code>m0</code>).</li>
 <li><strong>Системные вызовы ядра, чувствительные к потоку:</strong> операции с пространствами имен Linux (<code>setns</code>), изменение UID/GID потока, или вызовы, привязанные к <code>tid</code> (thread ID).</li>
 </ul>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2338,6 +2341,7 @@ runtime.GOMAXPROCS(4)        // Принудительно установить 
     <p><strong>Неконтролируемое размножение системных потоков.</strong> Привязанный через <code>LockOSThread</code> поток <code>M</code> исключается из общего пула планировщика. Если вы запустите 1000 горутин, и каждая вызовет <code>LockOSThread</code>, рантайм Go будет вынужден породить 1000 полноценных тяжелых потоков ядра Linux! Это приведет к взрывному росту <code>runtime.NumThread()</code>, перегрузит память стеками потоков (по 2–8 МБ на поток) и приведет к падению процесса по <code>out of memory</code> или превышению лимита ядра <code>/proc/sys/kernel/threads-max</code>. Всегда вызывайте парный <code>runtime.UnlockOSThread()</code> и никогда не используйте привязку в массовых обработчиках сетевых запросов.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="upravlenie-sborshchikom-musora-i-pamyatyu">Управление сборщиком мусора и памятью</h2>
@@ -2422,6 +2426,7 @@ fmt.Printf(&quot;Количество прогонов GC (NumGC):        %d\n&q
 - <code>NumGC</code> — общее число завершенных циклов сборки мусора со старта приложения.<br />
 - <code>PauseNs</code> — кольцевой буфер последних 256 длительностей пауз Stop-The-World в наносекундах.<br />
 - <code>TotalAlloc</code> — кумулятивный объем всех когда-либо выделенных байт (монотонно растет).</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2433,6 +2438,7 @@ fmt.Printf(&quot;Количество прогонов GC (NumGC):        %d\n&q
 <strong>Современное решение:</strong> начиная с Go 1.16, стандартная библиотека предоставляет пакет <code>runtime/metrics</code>. Он считывает любые показатели памяти, планировщика и GC абсолютно <strong>без пауз Stop-The-World</strong>, используя атомарные счетчики в конкурентном режиме. Для экспорта телеметрии в продакшене всегда используйте <code>runtime/metrics</code> вместо <code>ReadMemStats</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="profilirovanie-iz-koda">Профилирование из кода</h2>
@@ -2560,6 +2566,7 @@ flowchart LR
 <hr />
 <h2 id="sobesedovanie-tipichnye-voprosy">Собеседование: типичные вопросы</h2>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2574,6 +2581,8 @@ flowchart LR
   </div>
 </aside>
 
+
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2585,6 +2594,8 @@ flowchart LR
   </div>
 </aside>
 
+
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2595,6 +2606,7 @@ flowchart LR
 <strong>Ответ:</strong> Технически это безопасно (гонки данных исключены), но архитектурно крайне нежелательно. Смена <code>GOMAXPROCS</code> выполняет процедуру Stop-The-World, останавливая все горутины, пересоздает структуры логических процессоров <code>P</code> и перераспределяет локальные очереди задач. Это гарантированно вызовет всплеск задержки (latency spike) в обслуживании сетевых запросов. Менять <code>GOMAXPROCS</code> следует только на этапе старта приложения (в <code>main()</code> или <code>init()</code>).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

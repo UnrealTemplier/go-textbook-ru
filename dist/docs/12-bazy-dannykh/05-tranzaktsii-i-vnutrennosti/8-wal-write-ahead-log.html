@@ -2226,6 +2226,7 @@ flowchart TD
 3. Только после получения подтверждения физической записи на диск клиенту возвращается успешный статус фиксации (<code>COMMIT</code>).<br />
 4. Сама изменённая страница данных («грязная страница») спокойно остается в оперативной памяти (<code>Shared Buffer</code> или <code>Buffer Pool</code>) и будет сброшена на диск значительно позже, фоновым процессом Checkpointer или BgWriter.</p>
 <p>Этот элегантный прием превращает случайную запись данных (Random I/O) в строго последовательную запись лога (Sequential I/O). А последовательная запись на 1-2 порядка быстрее случайной как на магнитных HDD, так и на современных флеш-накопителях NVMe SSD.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2236,6 +2237,7 @@ flowchart TD
   </div>
 </aside>
 
+
 <hr />
 <h2 id="arkhitektura-i-khranenie-pod-kapotom">Архитектура и хранение под капотом</h2>
 
@@ -2245,6 +2247,7 @@ flowchart TD
 <li><strong>Сегменты WAL</strong>: Файлы вида <code>000000010000000A0000002D</code>. Когда текущий сегмент заполняется, СУБД переходит к следующему. Старые сегменты переиспользуются (перезаписываются с начала), если их содержимое уже сохранено на основных данных или отправлено репликам.</li>
 <li><strong>Checkpoint</strong>: Периодически СУБД выполняет контрольную точку. В этот момент все «грязные» страницы до определённого <code>LSN</code> принудительно сбрасываются на диск, а в журнале ставится метка. Это позволяет отрезать и удалить старые сегменты лога, которые больше не нужны для восстановления. Подробнее об этом механизме — в статье <a href="9-checkpointing.html" class="wikilink">9. Checkpointing</a>.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2254,6 +2257,7 @@ flowchart TD
     <p>Если ваша база генерирует больше лога, чем может обработать архиватор или реплика, сегменты начнут накапливаться на диске. Это называется <strong>WAL bloat</strong>. В PostgreSQL это настраивается через <code>wal_keep_size</code>. При достижении лимита дискового пространства СУБД аварийно останавливается, так как не может гарантировать <code>Durability</code>. Мониторьте размер директории <code>pg_wal</code> или <code>innodb_log</code> в продакшене.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mekhanicheskaya-simpatiya-ot-bufera-os-do-nand-yacheek">Механическая симпатия: От буфера ОС до NAND ячеек</h2>
@@ -2274,6 +2278,7 @@ flowchart TD
 <h3 id="apparatnaya-lozh-hardware-write-cache">Аппаратная ложь (Hardware Write Cache)</h3>
 
 <p>Многие потребительские SSD и недорогие RAID-контроллеры агрессивно кэшируют операции записи в собственной энергозависимой DRAM-памяти. Они рапортуют операционной системе об успешном завершении <code>fsync()</code> до того, как биты физически легли в ячейки кремния. При внезапном обесточивании такие данные бесследно испаряются, разрушая гарантию <code>Durability</code>.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2286,6 +2291,7 @@ flowchart TD
 3. В Go-конфигурации пула БД: настройка <code>synchronous_commit</code> с учётом репликации, а не только локального диска.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="praktika-v-go-upravlenie-nadyozhnostyu-i-skorostyu">Практика в Go: Управление надёжностью и скоростью</h2>
@@ -2361,6 +2367,7 @@ tx.Commit()
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2371,6 +2378,7 @@ tx.Commit()
 <strong>Ответ:</strong> Логи всегда добавляются в конец текущего сегмента. Это линейный доступ к блокам диска, что минимизирует время поиска головки (HDD) и выравнивание износа (SSD). Грязные страницы сбрасываются асинхронно в случайные места файла данных, что создаёт высокий <code>random write IOPS</code>. Именно поэтому замена <code>fsync()</code> на <code>fdatasync</code> (синхронизация только данных, без метаданных) или использование быстрых NVMe критична для транзакционных нагрузок.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="svyaz-s-vosstanovleniem-i-replikatsiey">Связь с восстановлением и репликацией</h2>

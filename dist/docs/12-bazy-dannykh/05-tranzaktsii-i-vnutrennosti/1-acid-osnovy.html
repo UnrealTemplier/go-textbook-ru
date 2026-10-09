@@ -2252,6 +2252,7 @@ flowchart TD
 2. <strong>Undo-информация:</strong> Запись содержит как новые значения (Redo для наката изменений вперед), так и дельту предыдущего состояния (Undo для отката назад).<br />
 3. <strong>Точка невозврата (<code>COMMIT</code>):</strong> При фиксации транзакции в WAL пишется специальная запись фиксации (Commit Record). До тех пор пока эта запись не сброшена на диск, транзакция считается незавершенной.<br />
 4. <strong>Откат (<code>ROLLBACK</code>) или аварийное восстановление:</strong> Если транзакция прервана или сервер аварийно перезапустился, фоновый процесс Crash Recovery вычитывает лог и восстанавливает исходное состояние данных до начала транзакции.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: LSN и буферный пул">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2262,6 +2263,7 @@ flowchart TD
 СУБД строго соблюдает инвариант упреждающей записи: страница из <code>shared buffers</code> ни при каких обстоятельствах не может быть вытеснена на диск фоновым процессом BgWriter, пока WAL-файл не содержит записей с LSN, превышающим или равным LSN данной страницы данных! Это гарантирует возможность отката любых «грязных» изменений с контрольной точки <a href="9-checkpointing.html" class="wikilink">9. Checkpointing</a>.</p>
   </div>
 </aside>
+
 
 <h3 id="primer-na-go-korrektnaya-obrabotka-tranzaktsii">Пример на Go: корректная обработка транзакции</h3>
 
@@ -2336,6 +2338,7 @@ func TransferFunds(ctx context.Context, db *sql.DB, from, to int64, amount decim
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Зависшая транзакция (Idle in transaction)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2345,6 +2348,7 @@ func TransferFunds(ctx context.Context, db *sql.DB, from, to int64, amount decim
     <p>Если внутри тела функции между <code>BeginTx</code> и <code>Commit</code> вы вызовете долгий HTTP-запрос или забудете вызвать <code>tx.Rollback()</code> в ветке раннего возврата, соединение вернется в пул СУБД в статусе <code>idle in transaction</code>. Это заблокирует строки таблицы, задержит автоочистку мусора <a href="11-vacuum-i-garbage-collection.html" class="wikilink">11. VACUUM и garbage collection</a> и исчерпает доступные соединения СУБД! Всегда применяйте защитный <code>defer tx.Rollback()</code>. Повторный вызов <code>Rollback()</code> после успешного <code>Commit()</code> безопасен и возвращает <code>sql.ErrTxDone</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="consistency-soglasovannost-invarianty-i-ogranicheniya">Consistency (Согласованность): Инварианты и ограничения</h2>
@@ -2369,6 +2373,7 @@ func TransferFunds(ctx context.Context, db *sql.DB, from, to int64, amount decim
 2. Поиск дубликатов в уникальных индексах (B-Tree, Hash), требующий блокировки узлов индексного дерева.<br />
 3. Проверка внешних ключей: движок выполняет поиск по индексу родительской таблицы.<br />
 4. Вызов триггеров.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Кто отвечает за букву C?">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2379,6 +2384,7 @@ func TransferFunds(ctx context.Context, db *sql.DB, from, to int64, amount decim
 <strong>Ответ</strong>: Безусловно! Если в таблице <code>accounts</code> не было объявлено ограничение <code>CHECK (balance &gt;= 0)</code>, а разработчик в коде Go сначала прочитал баланс (<code>balance = 100</code>), затем в параллельной горутине тоже прочитал баланс (<code>100</code>), и обе горутины списали по 80 рублей, итоговый баланс станет <code>-60</code>. Все правила СУБД соблюдены, но бизнес-согласованность разрушена. Согласованность — это результат совместной работы СУБД и дисциплины разработчика!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="isolation-izolyatsiya-illyuziya-odinochnogo-vypolneniya">Isolation (Изоляция): Иллюзия одиночного выполнения</h2>
@@ -2468,6 +2474,7 @@ defer tx.Rollback()
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2477,6 +2484,7 @@ defer tx.Rollback()
     <p>Не все драйверы базы данных поддерживают все уровни изоляции. Например, драйвер <code>github.com/lib/pq</code> для PostgreSQL корректно мапит <code>sql.Level*</code> на системную инструкцию <code>SET TRANSACTION ISOLATION LEVEL</code>, а вот некоторые драйверы для MySQL могут игнорировать <code>sql.LevelReadCommitted</code>, если не переданы специальные параметры в DSN. Всегда проверяйте документацию драйвера и тестируйте поведение.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="durability-dolgovechnost-dannye-perezhivut-sboy">Durability (Долговечность): Данные переживут сбой</h2>
@@ -2522,6 +2530,7 @@ sequenceDiagram
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом: Системный вызов fsync и групповой коммит">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2532,6 +2541,7 @@ sequenceDiagram
 Чтобы тысячи транзакций в секунду не встали в очередь за <code>fsync()</code>, СУБД реализуют <strong>групповой коммит (Group Commit)</strong>: транзакции, финиширующие в одно и то же микросекундное окно, объединяют свои WAL-записи и сбрасывают их на диск одним совместным вызовом <code>fsync()</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="nastroyka-durability-v-zavisimosti-ot-trebovaniy">Настройка durability в зависимости от требований</h3>
 
@@ -2568,6 +2578,7 @@ _, err = tx.ExecContext(ctx, &quot;INSERT INTO click_metrics (event, ts) VALUES 
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование: Чем опасен `synchronous_commit = off`?">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2578,6 +2589,7 @@ _, err = tx.ExecContext(ctx, &quot;INSERT INTO click_metrics (event, ts) VALUES 
 <strong>Ответ</strong>: База данных <strong>не будет повреждена</strong>! Целостность (Consistency) и Атомарность (Atomicity) сохранятся полностью, поврежденных записей не появится. Однако вы потеряете последние изменения за небольшое окно времени (обычно до 3 * <code>wal_writer_delay</code>, около 600 мс), которые еще находились в буфере памяти и не успели сброситься на диск.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mekhanicheskaya-simpatiya-kak-acid-vliyaet-na-proizvoditelnost">Механическая симпатия: Как ACID влияет на производительность</h2>
@@ -2628,6 +2640,7 @@ return tx.Commit() // Ровно один групповой сброс WAL на
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Время жизни транзакции">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2637,6 +2650,7 @@ return tx.Commit() // Ровно один групповой сброс WAL на
     <p>Ни при каких обстоятельствах не удерживайте транзакцию открытой во время походов во внешние сетевые сервисы (HTTP API, сторонние шлюзы, тяжелые вычисления на CPU). В режиме <code>REPEATABLE READ</code> или <code>SERIALIZABLE</code> открытая транзакция удерживает виртуальный моментальный снимок базы, замораживая горизонт видимости и блокируя <code>VACUUM</code>. Выполняйте сетевые запросы <strong>до</strong> вызова <code>BeginTx</code> или <strong>после</strong> <code>Commit</code>!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="acid-v-raspredelyonnykh-sistemakh-granitsy-primenimosti">ACID в распределённых системах: границы применимости</h2>

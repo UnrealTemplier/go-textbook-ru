@@ -2295,6 +2295,7 @@ flowchart TD
 <li><strong>Массив бакетов.</strong> Ядро таблицы — это непрерывный кусок памяти, выделенный через <code>malloc</code> (в C-реализации Redis) или аналогичный механизм. Обращение по индексу — это O(1) с использованием L1/L2 кэша процессора. Обращение к бакету <code>table[index]</code> — это прямое чтение по адресу <code>base_addr + index * sizeof(pointer)</code>. Если бакет уже закэширован в L1d-кэше процессора (доступ ~1 нс), процессор тратит минимум тактов.</li>
 <li><strong>Разрешение коллизий.</strong> Когда два разных ключа дают одинаковый индекс бакета, они организуются в связный список (chaining). В наихудшем случае цепочка превращает поиск в $O(N)$. Чтобы предотвратить деградацию производительности, движок мониторит коэффициент заполнения (load factor). При превышении порога (обычно 1.0) запускается динамическое рехэширование.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2304,6 +2305,7 @@ flowchart TD
     <p>В Redis хеш-таблица — это <code>dictht</code>, содержащая массив <code>dictEntry*</code>. При рехэшировании Redis использует инкрементальный подход: операция переноса ключей из старой таблицы в новую выполняется понемногу при каждом обращении к базе, чтобы не блокировать сервер на длительный период. Это классический пример избегания «stop-the-world» пауз в конкурентной среде. Во время рехэширования в структуре присутствуют две таблицы (<code>ht[0]</code> и <code>ht[1]</code>). Новые записи всегда идут в <code>ht[1]</code>, а поиск проверяет сначала старую, затем новую.</p>
   </div>
 </aside>
+
 
 <h3 id="struktury-dannykh-dlya-znacheniy">Структуры данных для значений</h3>
 
@@ -2419,6 +2421,7 @@ func acquireLock(ctx context.Context, rdb *redis.Client, lockKey string, token s
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2428,6 +2431,7 @@ func acquireLock(ctx context.Context, rdb *redis.Client, lockKey string, token s
     <p>Наивная реализация блокировки: проверить <code>GET lock</code>, потом <code>SET lock</code> — это классическая race condition. Всегда используйте атомарные команды Redis (<code>SET NX PX</code>) или Lua-скрипты, чтобы избежать «разрыва» между проверкой и установкой. В Go клиенте это оборачивается в <code>client.SetNX(ctx, "lock", "value", expiration)</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="rate-limiting">Rate limiting</h3>
 <p>Алгоритм Token Bucket или Sliding Window Log легко реализуется с помощью команд <code>INCR</code> и <code>EXPIRE</code>. За счёт того, что инкремент — атомарная операция, работающая полностью в памяти Redis, он идеально подходит для ограничения запросов на уровне сотен тысяч RPS. Если бы вы попытались делать это в PostgreSQL, каждая проверка оборачивалась бы в транзакцию с <code>UPDATE ... WHERE</code> и блокировками — нагрузка, убийственная для базы.</p>
@@ -2443,6 +2447,7 @@ func acquireLock(ctx context.Context, rdb *redis.Client, lockKey string, token s
 <li><strong>Отсутствие транзакций над несколькими ключами.</strong> Можно собрать пайплайн или Lua-скрипт, который будет выполнен атомарно, но откатить изменения при падении средины скрипта нельзя. ACID не гарантируется. Это фундаментально отличает KV от PostgreSQL с полноценными транзакциями и уровнями изоляции (<a href="../05-tranzaktsii-i-vnutrennosti/3-read-committed-repeatable-read-serializable.html" class="wikilink">3. Read Committed, Repeatable Read, Serializable</a>).</li>
 <li><strong>Согласованность в кластере.</strong> В режиме кластера Redis или в распределённых KV (Dynamo) нарушается линеаризуемость. Появляются сценарии, когда прочитанные данные не совпадают с последней записью. См. <a href="../../14-raspredelennye-sistemy-na-go/03-dannye-i-soglasovannost/8-distributed-transactions.html" class="wikilink">8. Distributed transactions</a>, <a href="../08-raspredelennye-bazy-dannykh/6-consistency-modeli.html" class="wikilink">6. Consistency модели</a>.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2457,6 +2462,7 @@ func acquireLock(ctx context.Context, rdb *redis.Client, lockKey string, token s
 При проектировании кэшей критически важно всегда задавать TTL и настраивать адекватную политику вытеснения, иначе сервис захлебнется ошибками при всплеске нагрузки.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="klyuchevye-predstaviteli-kuda-smotret-dalshe">Ключевые представители: куда смотреть дальше</h2>

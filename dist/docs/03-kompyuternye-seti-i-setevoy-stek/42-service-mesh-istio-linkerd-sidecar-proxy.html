@@ -2251,6 +2251,7 @@ flowchart TD
 <li><strong>Data Plane (Плоскость данных):</strong> Высокопроизводительные сетевые прокси, физически перехватывающие и обрабатывающие каждый сетевой пакет в реальном времени. В подавляющем большинстве промышленных инсталляций это <a href="28-nginx-envoy-i-haproxy-kak-rabotayut-sovremennye-prok.html" class="wikilink">Envoy</a> или специализированный легковесный <code>linkerd2-proxy</code>. Data Plane работает в режиме минимальной задержки, без блокировок и без динамических аллокаций памяти.</li>
 <li><strong>Control Plane (Управляющая плоскость):</strong> Централизованный мозг системы, который компилирует декларативные правила маршрутизации K8s, генерирует криптографические ключи и сертификаты (mTLS) и непрерывно рассылает обновленные конфигурации всем активным прокси Data Plane. В Istio эту роль выполняет монолитный демон <code>istiod</code>, в Linkerd — связка контроллеров <code>linkerd-controller</code> + <code>destination</code> + <code>identity</code>.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2260,6 +2261,7 @@ flowchart TD
     <p>Разделение на плоскости позволяет обновлять сетевые политики без перезагрузки рабочих нагрузок. Control Plane работает в режиме централизованного управления, а Data Plane — в режиме stateless-обработки пакетов. Это классический пример паттерна <strong>Controller-Operator</strong>, адаптированного под сетевой стек.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="sidecar-pattern-magiya-perenapravleniya-trafika">Sidecar Pattern: Магия перенаправления трафика</h2>
@@ -2307,6 +2309,7 @@ flowchart TD
 <li><strong>Обработка в прокси:</strong> Сайдкар выполняет mTLS-рукопожатие с удаленным сайдкаром, инжектирует W3C Trace Context заголовки, проверяет Circuit Breaker и отправляет зашифрованный запрос.</li>
 <li><strong>Входящий трафик на удаленной стороне:</strong> На целевом узле входящий трафик перехватывается в цепочке <code>PREROUTING</code> и перенаправляется на локальный порт сайдкара <code>15006</code>. Сайдкар проверяет сертификат клиента, завершает TLS и отдает чистый HTTP-запрос приложению на <code>localhost:8080</code>.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2316,6 +2319,7 @@ flowchart TD
     <p>Go-приложения по умолчанию используют <code>net.Dialer</code>, который не знает о sidecar. Если вы явно укажете IP целевого сервиса, трафик может проскочить в обход прокси, если правила iptables настроены только на <code>localhost</code> или <code>127.0.0.0/8</code>. В Kubernetes это решается через <code>iptables</code> на уровне <code>kube-proxy</code> или <code>CNI</code>-плагина, но локальная разработка требует ручного маппинга <code>127.0.0.1</code> к sidecar.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="pod-kapotom-envoy-i-asinkhronnaya-model">Под капотом: Envoy и асинхронная модель</h2>
@@ -2347,6 +2351,7 @@ flowchart TD
 - Практически мгновенный холодный старт (&lt; 100 мс).<br />
 - Упрощенный Control Plane, управляемый нативными CRD Kubernetes без многостраничных конфигураторов.<br />
 - Автоматический zero-config mTLS «из коробки».</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2357,6 +2362,7 @@ flowchart TD
 <strong>Ответ:</strong> Envoy — C++ приложение с тяжелым runtime: кэширование TLS-сессий, сложные структуры для маршрутизации, статистика per-connection, поддержка множества протоколов (HTTP/1, HTTP/2, gRPC, MQTT, Redis). Linkerd2-proxy написан на Rust, использует <code>tokio</code> event loop, минималистичную маршрутизацию и не кэширует TLS-сессии агрессивно. Разница в trade-off: гибкость vs. overhead.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="vliyanie-na-go-prilozheniya-i-proizvoditelnost">Влияние на Go-приложения и производительность</h2>
@@ -2408,6 +2414,7 @@ func createMeshOptimizedClient() *http.Client {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2417,6 +2424,7 @@ func createMeshOptimizedClient() *http.Client {
     <p><strong>Каскадные таймауты (Tail Latency Amplification).</strong> Если сервис A вызывает B, а B вызывает C, и каждый добавляет 5ms задержки из-за mesh, общая latency растет линейно. На 10hop-пайплайне это +50ms. Решение: адаптивные таймауты (<code>timeouts</code> в Istio) или отключение mesh для внутренних вызовов (service-to-service).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="sravnenie-sidecar-vs-ebpf-vs-library-injection">Сравнение: Sidecar vs. eBPF vs. Library Injection</h2>
@@ -2459,6 +2467,7 @@ func createMeshOptimizedClient() *http.Client {
 <hr />
 <h2 id="lovushki-gotchas-i-voprosy-na-sobesedovaniyakh">Ловушки, Gotchas и вопросы на собеседованиях</h2>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2470,6 +2479,8 @@ func createMeshOptimizedClient() *http.Client {
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2479,6 +2490,8 @@ func createMeshOptimizedClient() *http.Client {
     <p><strong>Port Exhaustion на sidecar.</strong> Если Go-приложение открывает много коротких соединений (все они проходят через sidecar), локальный ephemeral port pool может исчерпаться. Решение: пулы соединений (keep-alive), <code>sysctl -w net.ipv4.ip_local_port_range="1024 65535"</code> и, при необходимости, <code>tcp_tw_reuse</code>. <code>SO_REUSEPORT</code> тут не поможет: он влияет на <code>bind()</code> слушающего сокета. (Linkerd перехватывает трафик правилами iptables на портах 4143/4140, а не через Unix domain sockets.)</p>
   </div>
 </aside>
+
+
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -2490,6 +2503,7 @@ func createMeshOptimizedClient() *http.Client {
 <strong>Ответ:</strong> <code>TIME_WAIT</code> возникает, когда Go-приложение закрывает соединение, а прокси еще не отправил FIN. В sidecar-архитектуре прокси использует <code>SO_LINGER=0</code> и <code>TCP_NODELAY</code> для быстрого сброса. Если проблема в приложении, нужно использовать <code>http.Transport.DisableKeepAlives=false</code> и контролировать <code>MaxIdleConns</code>. В Kubernetes также помогает тюнинг <code>net.ipv4.tcp_tw_reuse = 1</code> (глобальный режим; по умолчанию стоит 2 — только loopback) для переиспользования сокетов в <code>TIME_WAIT</code> (а <code>net.ipv4.tcp_fin_timeout</code> ускоряет освобождение подвисших сокетов в <code>FIN-WAIT-2</code>).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

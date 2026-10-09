@@ -2228,6 +2228,7 @@ flowchart TD
 <h2 id="page-cache-pervyy-rubezh-zashchity-ot-medlennogo-zheleza">Page Cache: Первый рубеж защиты от медленного железа</h2>
 
 <p>Когда ваше приложение вызывает функцию <code>os.ReadFile()</code> или метод <code>file.Write()</code>, данные не отправляются на диск немедленно. Они проходят через многоуровневую систему кэширования в оперативной памяти ядра.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2238,6 +2239,7 @@ flowchart TD
 <p>Когда процесс вызывает системный вызов <code>read()</code>, ядро сначала делает ультрабыстрый поиск в <code>xarray</code>. Если страница уже присутствует в оперативной памяти — фиксируется <strong>Page Hit</strong>, и данные копируются в буфер Go без единого дискового обращения. Если страницы в памяти нет — возникает <strong>Page Miss</strong>: ядро блокирует горутину (или тред ОС), отправляет блочный запрос контроллеру накопителя и терпеливо ждет завершения ввода-вывода.</p>
   </div>
 </aside>
+
 
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -2278,6 +2280,7 @@ flowchart TD
 <p><strong>Запись (Write): Отложенная буферизация Write-Back</strong><br />
 Запись работает по принципу <strong>Write-Back</strong>. Когда вы вызываете системный вызов <code>write()</code>, ядро выделяет страницу в Page Cache, копирует туда байты приложения через <code>copy_from_user</code> и выставляет в структуре страницы флаг <code>dirty</code> (грязная). </p>
 <p>Физическая запись на накопитель откладывается. Этим занимаются выделенные фоновые потоки ядра (<code>kworker</code>, ранее известные как <code>flush</code> и <code>pdflush</code>), которые в фоновом режиме упорядочивают грязные страницы и пакетно сбрасывают их на диск.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2288,6 +2291,8 @@ flowchart TD
 <p>Если ваше приложение пишет терабайты логов быстрее, чем дисковая подсистема физически способна их прожечь, объем грязных страниц переваливает за <code>vm.dirty_ratio</code>. В этот момент ядро переходит в аварийный режим: <strong>процесс принудительно блокируется прямо внутри системного вызова <code>write()</code></strong>, пока объем грязных страниц не снизится! В вашем микросервисе наступают необъяснимые секундные паузы, визуально похожие на Stop-The-World в GC, хотя процессор абсолютно свободен.</p>
   </div>
 </aside>
+
+
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -2300,6 +2305,7 @@ flowchart TD
 <p>Системный вызов <code>fsync()</code> (или метод <code>Sync()</code> у объекта <code>os.File</code> в Go) принудительно выталкивает все грязные страницы файла на физический накопитель, обновляет журнал метаданных ФС и ожидает подтверждения от контроллера диска (Flush Cache). Это блокирующая дисковая операция, которая прерывает фоновый write-back цикл и может выполняться миллисекунды.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="dva-urovnya-buferizatsii-prikladnoy-vs-sistemnyy">Два уровня буферизации: Прикладной vs Системный</h2>
@@ -2410,6 +2416,7 @@ func writeLogs() error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2421,6 +2428,7 @@ func writeLogs() error {
 <p>Если буфер мал и компилятор Go в процессе Escape Analysis доказывает, что созданный объект не покидает стек текущей функции, память под буфер может быть выделена на стеке. Однако в 99% реальных сценариев (возврат <code>w</code> наружу, передача в интерфейсы <code>io.Writer</code> или размер буфера более 32–64 КБ) происходит побег в кучу (Heap Escape). Для горячих путей в высоконагруженных шлюзах буферы <code>bufio</code> переиспользуют через <code>sync.Pool</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="2-syscall-odirect-obkhod-page-cache">2. `syscall.O_DIRECT` — обход Page Cache</h3>
 
@@ -2466,6 +2474,7 @@ func directWrite() error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2476,6 +2485,7 @@ func directWrite() error {
 <p>Стандартный вызов Go <code>make([]byte, 4096)</code> не гарантирует выравнивание адреса слайса по границе страницы! На файловых системах, строго проверяющих выравнивание (ext4, XFS), попытка записи вернет системную ошибку <strong><code>EINVAL</code> (Invalid argument)</strong>; но поведение зависит от файловой системы и версии ядра (например, на btrfs запись без выравнивания проходила без ошибки), поэтому полагаться на «починится само» нельзя. Кроме того, данные, записанные через <code>O_DIRECT</code>, не кэшируются: последующий <code>Read()</code> вызовет честный дисковый Page Miss.</p>
   </div>
 </aside>
+
 
 <h3 id="3-mmap-mapping-fayla-v-pamyat">3. `mmap` — маппинг файла в память</h3>
 
@@ -2543,7 +2553,7 @@ func mmapRead(path string) ([]byte, error) {
 <hr />
 <h2 id="sleduyushchaya-statya">Следующая статья</h2>
 
-<p>Мы детально исследовали, как операционная система буферизует ввод-вывод в оперативной памяти. Но что делать, если мы хотим вообще исключить процессор из цепочки перекладывания байтов между файлами и сетевыми сокетами? В следующей статье мы разберем механизмы обхода кэша и аппаратного ускорения: <code>&lt;a href="43-direct-io-i-zero-copy.html" class="wikilink"&gt;43. Direct IO и Zero Copy&lt;/a&gt;</code>.</p>
+<p>Мы детально исследовали, как операционная система буферизует ввод-вывод в оперативной памяти. Но что делать, если мы хотим вообще исключить процессор из цепочки перекладывания байтов между файлами и сетевыми сокетами? В следующей статье мы разберем механизмы обхода кэша и аппаратного ускорения: <a href="43-direct-io-i-zero-copy.html" class="wikilink"><code>43. Direct IO и Zero Copy</code></a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->

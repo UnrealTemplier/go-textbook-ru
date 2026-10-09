@@ -2234,6 +2234,7 @@ flowchart TD
 <li><strong>Пакетный сброс:</strong> Измененные страницы выгружаются на диск. Чтобы не обрушить на контроллер накопителя лавину случайной записи (I/O Spike), СУБД растягивает процесс во времени, ориентируясь на параметр <code>checkpoint_completion_target</code>.</li>
 <li><strong>Завершение:</strong> Когда все страницы физически легли на диск, в журнал пишется маркер <code>XLOG_CHECKPOINT_DONE</code>. Контрольный файл СУБД (<code>global/pg_control</code>) обновляется, перенося границу безопасной очистки сегментов лога вперед.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2243,6 +2244,7 @@ flowchart TD
     <p>В PostgreSQL за это отвечает выделенный процесс <code>checkpointer</code>, который общается с ядром ОС через сигналы и разделяемую память. В MySQL/InnoDB процесс встроен в главный тред (<code>srv_master_thread</code>), который циклически вызывает <code>flush_buffer_pool()</code>. Разница в архитектуре влияет на детерминизм: в PG вы можете точно настроить расписание, в InnoDB оно более эвристическое и привязано к активности пула.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mekhanicheskaya-simpatiya-vliyanie-na-disk-kesh-i-latentnost">Механическая симпатия: Влияние на диск, кэш и латентность</h2>
@@ -2272,6 +2274,7 @@ flowchart TD
 <li><strong>Фоновая запись (<code>bgwriter</code>):</strong> Специальный фоновый процесс непрерывно и плавно выталкивает небольшие порции грязных страниц в операционную систему, заблаговременно освобождая буферы для новых запросов и облегчая задачу процесса <code>checkpointer</code>.</li>
 <li><strong>Целевое время завершения (<code>checkpoint_completion_target</code>):</strong> Движок не сбрасывает страницы с максимальной яростью в первую секунду. Он берет заданную долю интервала (обычно 0.9, то есть 90% времени от <code>checkpoint_timeout</code>) и равномерно распределяет дисковый ввод-вывод на протяжении всего интервала. Это превращает пиковый шторм ввода-вывода в предсказуемый и спокойный ламинарный поток.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2281,6 +2284,7 @@ flowchart TD
     <p>Установка <code>checkpoint_timeout</code> слишком большим (например, 24 часа) кажется полезной для снижения I/O, но это ловушка. При сбое СУБД придётся проигрывать гигантский объём WAL с последней точки. Время восстановления (RTO) может превысить допустимые 5-10 минут, что приведёт к длительному простою сервиса. Оптимальный баланс: 10-15 минут или объём 1-2 ГБ лога.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="praktika-v-go-monitoring-i-vliyanie-prilozheniya">Практика в Go: Мониторинг и влияние приложения</h2>
@@ -2356,6 +2360,7 @@ func GetCheckpointMetrics(ctx context.Context, db *sql.DB) (CheckpointStats, err
 </div>
 
 <p>Анализируйте соотношение: если доля внеплановых чекпоинтов <code>Req / (Timed + Req) &gt; 30%</code>, необходимо либо увеличить параметр <code>max_wal_size</code>, либо оптимизировать объемы и частоту пакетных записей на стороне сервиса.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2366,6 +2371,7 @@ func GetCheckpointMetrics(ctx context.Context, db *sql.DB) (CheckpointStats, err
 <strong>Ответ:</strong> <code>fsync()</code> при коммите гарантирует сохранность только конкретной транзакции (её записей в WAL). Чекпоинт гарантирует сохранность самих изменённых страниц данных на диске и позволяет отрезать старые сегменты лога. Коммит может происходить тысячи раз в секунду, чекпоинт — раз в 5-15 минут. Без чекпоинтов база не смогла бы ограничить время восстановления после сбоя.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="arkhitekturnye-kompromissy-v-oblachnykh-sredakh">Архитектурные компромиссы в облачных средах</h2>

@@ -2241,6 +2241,7 @@
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-note" aria-label="Заметка">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">📝</span>
@@ -2250,6 +2251,7 @@
     <p><strong>Почему <code>R10</code>, а не <code>RCX</code>?</strong> В архитектуре x86-64 аппаратная инструкция <code>SYSCALL</code> автоматически сохраняет адрес возврата в регистр <code>RCX</code>, а регистр флагов <code>RFLAGS</code> — в <code>R11</code>. Если бы 4-й аргумент передавался через <code>RCX</code>, процессор затер бы его значение в момент перехода! Поэтому в соглашении вызовов ядра Linux для 4-го аргумента используется <code>R10</code>.</p>
   </div>
 </aside>
+
 
 <p>Результат выполнения всегда возвращается в <code>RAX</code>. Отрицательное значение (например, <code>-14</code> для <code>EFAULT</code>) означает ошибку. В Go рантайм преобразует это отрицательное число в положительный код ошибки типа <code>syscall.Errno</code>.</p>
 <h3 id="2-instruktsii-perekhoda">2. Инструкции перехода</h3>
@@ -2302,6 +2304,7 @@ sequenceDiagram
 4. <strong>Контекстное переключение:</strong> Сохранение регистров, флагов, дескрипторов сегментов.<br />
 5. <strong>KPTI (Kernel Page Table Isolation):</strong> Из-за аппаратных уязвимостей типа Meltdown современный Linux часто использует раздельные таблицы страниц для ядра и пользователя, что требует перезагрузки регистра <code>CR3</code> при каждом syscall, многократно усиливая промахи TLB.</p>
 <p><strong>Стоимость:</strong> От 200 до 5000 тактов CPU (nanoseconds range), в зависимости от типа syscall и состояния кэшей. При нагрузке в миллионы RPS, сотни тысяч syscall-ов в секунду превращаются в узкое место, даже если CPU загружен на 5%.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2328,6 +2331,7 @@ sequenceDiagram
 <p>Ваша программа будет работать бесконечно медленно. 99% времени CPU будет тратить на сброс конвейера и смену стека, а не на запись данных.</p>
   </div>
 </aside>
+
 
 <p><strong>Как это лечится? Буферизацией и агрегацией.</strong><br />
 В Go для этого есть пакет <code>bufio</code>. Он создает в памяти (в User Space) большой буфер (например, 4 КБ). Вы записываете данные в этот буфер (простая операция с памятью, очень быстро), и только когда буфер заполняется, Go делает <strong>один</strong> системный вызов <code>write</code>, отправляя сразу все 4 КБ данных. Это сокращает количество переключений контекста в тысячи раз.</p>
@@ -2374,6 +2378,7 @@ flowchart LR
 <li><strong>Исполнение готовых горутин:</strong> Освободившийся процессор <code>P</code> подхватывается другим свободным потоком ОС (<code>M2</code>) из пула ожидания либо создается новый поток (<code>newm</code>). Поток <code>M2</code> продолжает исполнять очередь горутин без задержек.</li>
 <li><strong>Выход из syscall (<code>exitsyscall</code>):</strong> Когда ядро возвращает результат, поток <code>M</code> пытается вернуть свой старый <code>P</code> или захватить любой свободный <code>P</code>. Если свободного <code>P</code> нет, горутина переводится в статус <code>_Grunnable</code> и отправляется в глобальную очередь (<code>sched.runqput</code>), а сам поток <code>M</code> паркуется (<code>mPark</code> / <code>notesleep</code>) до востребования.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2385,6 +2390,7 @@ flowchart LR
   </div>
 </aside>
 
+
 <hr />
 <h2 id="lovushki-i-praktiki-optimizatsii">Ловушки и практики оптимизации</h2>
 
@@ -2394,6 +2400,7 @@ flowchart LR
 <li><strong><code>io_uring</code> (Linux 5.1+):</strong> Современный асинхронный интерфейс ввода-вывода ядра Linux на разделяемых кольцевых буферах (SQ/CQ). Позволяет отправлять пачки I/O запросов в ядро без системного вызова на каждый чих. В стандартной библиотеке Go сетевой поллер опирается на проверенный <code>epoll</code>/<code>kqueue</code>, а поддержка <code>io_uring</code> доступна через сторонние специализированные библиотеки (например, Gain или go-uring).</li>
 <li><strong>CGO и syscall:</strong> Каждый переход в CGO (<code>#cgo</code>) и обратно — это отдельный syscall и контекстный переход. Избегайте частых вызовов CGO в hot-path.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2403,6 +2410,7 @@ flowchart LR
     <p>Фоновый системный монитор рантайма Go (<code>sysmon</code>) работает в отдельном потоке ОС без собственного <code>P</code>. Каждые 20 мкс — 10 мс <code>sysmon</code> обходит потоки <code>M</code>: если поток находится в системном вызове дольше одного тика <code>sysmon</code> и при этом в очереди есть готовые задачи (либо нет свободных <code>P</code>, либо прошло ~10 мс), <code>sysmon</code> принудительно забирает у него контекст <code>P</code> (<code>handoffp</code>) и запускает другой поток <code>M</code> для продолжения работы.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="sobesedovanie-na-chto-smotryat-na-intervyu">Собеседование: На что смотрят на интервью</h2>
@@ -2446,7 +2454,7 @@ flowchart LR
 <li><strong>Go runtime</strong> интеллектуально обрабатывает блокирующие вызовы через механизм hand-off процессоров <code>P</code>, чтобы не терять общую пропускную способность планировщика.</li>
 <li><strong>Оптимизация</strong> строится на буферизации, <code>mmap</code>, неблокирующем вводе-выводе и агрегации запросов.</li>
 </ol>
-<p>Мы разобрали сам механизм запроса ресурсов у ядра. В следующей статье мы детально пройдемся по конкретным системным вызовам, которые бэкенд-разработчик использует ежедневно: <code>read</code>, <code>write</code>, <code>accept</code>, <code>mmap</code>, <code>epoll_ctl</code>, <code>clone</code> и другим: <code>&lt;a href="23-osnovnye-sistemnye-vyzovy-linux-dlya-bekend-razrabot.html" class="wikilink"&gt;23. Основные системные вызовы Linux для бэкенд-разработчика&lt;/a&gt;</code>.</p>
+<p>Мы разобрали сам механизм запроса ресурсов у ядра. В следующей статье мы детально пройдемся по конкретным системным вызовам, которые бэкенд-разработчик использует ежедневно: <code>read</code>, <code>write</code>, <code>accept</code>, <code>mmap</code>, <code>epoll_ctl</code>, <code>clone</code> и другим: <a href="23-osnovnye-sistemnye-vyzovy-linux-dlya-bekend-razrabot.html" class="wikilink"><code>23. Основные системные вызовы Linux для бэкенд-разработчика</code></a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->

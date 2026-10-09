@@ -2302,6 +2302,7 @@ flowchart LR
 <p>В этой схеме:<br />
 - Происходит всего <strong>два переключения контекста</strong> (один системный вызов <code>sendfile</code>).<br />
 - Количество копирований процессором (CPU copy) равно <strong>абсолютному нулю</strong>! Данные перемещаются исключительно аппаратными блоками DMA.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2311,6 +2312,7 @@ flowchart LR
     <p>В ядре Linux реализация <code>sendfile</code> находится в файлах <code>fs/read_write.c</code> и <code>fs/splice.c</code>. Изначально он опирался на интерфейс <code>sendpage</code>, вызывавший специализированный метод драйвера <code>tcp_sendpage</code>. В современных версиях ядра Linux механизм <code>sendfile</code> унифицирован поверх инфраструктуры <code>splice</code>: ядро использует внутренний безымянный <code>pipe</code> для переброски страниц (<code>splice_to_pipe</code>), что делает <code>sendfile</code> оптимизированной специализацией вызова <code>splice</code>.</p>
   </div>
 </aside>
+
 
 <h2 id="splice-universalnaya-magistral">splice: универсальная магистраль</h2>
 
@@ -2397,6 +2399,7 @@ defer syscall.Munmap(data)
 
 <p>Переменная <code>data</code> — это валидный слайс Go, базовый указатель которого ссылается непосредственно на адреса виртуальной памяти, связанные с Page Cache ядра. При первом чтении байта <code>data[i]</code> процессор генерирует аппаратное прерывание отсутствия страницы (Page Fault), и ядро прозрачно подгружает 4-килобайтную страницу с диска через DMA.</p>
 <p><code>mmap</code> полностью устраняет системный вызов <code>read</code> и промежуточный буфер. Однако при последующей отправке этого среза в сокет через <code>conn.Write(data)</code> ядру все равно придется выполнить копирование из памяти пользователя в буфер сокета. Поэтому для тривиальной передачи файлов по сети <code>sendfile</code> эффективнее, чем <code>mmap</code>.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2406,6 +2409,7 @@ defer syscall.Munmap(data)
     <p><strong>Сигнал <code>SIGBUS</code> при усечении файла в <code>mmap</code>.</strong> Если файл спроецирован через <code>syscall.Mmap</code>, а другой сторонний процесс внезапно усечет этот файл (truncate), попытка вашей Go-программы прочитать байты за пределами новой границы файла вызовет не ошибку Go, а аппаратный сигнал ядра <code>SIGBUS</code> (Bus Error)! Рантайм Go не сможет поймать его через <code>recover()</code>, и сервис аварийно завершится (crash). Кроме того, если вы забудете вызвать <code>syscall.Munmap(data)</code>, процесс будет удерживать страницы Page Cache в заблокированном состоянии.</p>
   </div>
 </aside>
+
 
 <h2 id="zero-copy-v-go-standartnaya-biblioteka">Zero Copy в Go: стандартная библиотека</h2>
 
@@ -2561,6 +2565,7 @@ func sendFile(dst *TCPConn, src *os.File) (written int64, err error) {
 <code>sendfile</code> и <code>splice</code> — это полноценные системные вызовы (<a href="1-sistemnye-vyzovy-i-ikh-stoimost.html" class="wikilink">1. Системные вызовы и их стоимость</a>). При передаче крошечных файлов (по 100 байт) накладные расходы на постоянный вход в Ring 0 могут нивелировать выигрыш от экономии на копировании. Буферизация и агрегация всё ещё важны.</li>
 </ul>
 <p>Для Senior-инженера ключевой навык — <strong>измерять</strong>. Профилировщик CPU (<code>runtime/pprof</code>) покажет, исчезли ли <code>memmove</code> и <code>read/write</code> из горячих точек. Утилита <code>perf stat</code> покажет снижение cache misses и увеличение throughput.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2571,6 +2576,7 @@ func sendFile(dst *TCPConn, src *os.File) (written int64, err error) {
 <strong>Ответ:</strong> <code>io.Copy</code> использует Zero Copy только на поддерживаемых платформах (прежде всего Linux) и при определенных типах аргументов. Если передача идет из <code>*os.File</code> в <code>*net.TCPConn</code>, <code>io.Copy</code> под капотом вызывает метод <code>ReadFrom</code>, который делает системный вызов ядра <code>sendfile</code> (прямо из Page Cache в сетевой сокет). Если оба аргумента — <code>*net.TCPConn</code>, рантайм использует вызов <code>splice</code> через внутренний системный pipe. Если же хотя бы один из аргументов оборачивает буферизацию (например, <code>bufio.Reader</code>), шифрование (<code>tls.Conn</code>) или сжатие (<code>gzip.Reader</code>), данные неизбежно копируются в userspace через промежуточный буфер в куче.</p>
   </div>
 </aside>
+
 
 <h2 id="sravnenie-s-drugimi-yazykami">Сравнение с другими языками</h2>
 

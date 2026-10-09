@@ -2293,6 +2293,7 @@ flowchart LR
 </figure>
 
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2304,6 +2305,7 @@ flowchart LR
 <p>В противоположность им, <code>epoll</code> имеет сложность ожидания <strong>$O(1)$</strong>. Приложение регистрирует дескриптор в ядре ровно один раз. Ядро регистрирует в драйвере устройства обратный вызов (callback). Когда в сетевой сокет приходят байты, драйвер сам помещает готовый сокет в список готовых событий <code>rdllist</code>. Системный вызов <code>epoll_wait</code> не сканирует ничего: он просто забирает уже готовые элементы из списка за константное время.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="select-zhestkie-ogranicheniya-i-on">select: Жесткие ограничения и O(n)</h2>
@@ -2330,6 +2332,7 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struc
 3. Ядро перебирает все дескрипторы от 0 до <code>nfds</code> (алгоритмическая сложность $O(n)$), последовательно опрашивая подсистемы VFS и сетевые сокеты.<br />
 4. Ядро перезаписывает переданные битовые маски, выставляя единицы только в битах готовых сокетов, и копирует готовую маску обратно в User Space.<br />
 5. Приложение в цикле от 0 до <code>nfds</code> перебирает все биты макросом <code>FD_ISSET</code>, чтобы найти, кто именно готов к работе.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2339,6 +2342,7 @@ int select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, struc
     <p><code>fd_set</code> — это <strong>маска</strong>, а не список. Если вы зарегистрируете дескрипторы 5, 500 и 900, <code>select</code> все равно просканирует все 1024 бита. При 100k активных соединений это гарантированно убьет производительность. Кроме того, <code>select</code> модифицирует переданные структуры <code>fd_set</code> на месте, поэтому перед каждым вызовом их нужно пересоздавать через <code>FD_ZERO</code> и <code>FD_SET</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="poll-ustranenie-limita-no-sokhranenie-problemy">poll: Устранение лимита, но сохранение проблемы</h2>
@@ -2380,6 +2384,7 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout);
 - Массив <code>pollfd</code> все равно копируется целиком из User Space в Kernel Space при каждом вызове.<br />
 - Ядро все равно линейно перебирает весь массив от первого до последнего элемента ($O(n)$).<br />
 - Приложению после пробуждения все равно приходится в цикле обходить все $N$ элементов, чтобы отыскать те, у которых взведен флаг <code>revents</code>. Если из 50 000 сокетов данные пришли только в один, приложение выполнит 50 000 итераций впустую!</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2389,6 +2394,7 @@ int poll(struct pollfd *fds, nfds_t nfds, int timeout);
     <p><code>poll</code> по сути является оберткой над <code>select</code> внутри ядра Linux. В исходниках Linux (<code>fs/select.c</code>) можно увидеть, что <code>poll</code> и <code>select</code> используют одни и те же внутренние функции (<code>core_sys_select</code>, <code>do_select</code>). Разница лишь в том, как пользовательское пространство передает данные: через массив структур или через три битовые маски. На уровне ядра обе функции страдают от одного недуга — полного линейного перебора.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="epoll-arkhitektura-i-rabota-pod-kapotom">epoll: Архитектура и работа "под капотом"</h2>
@@ -2462,6 +2468,7 @@ flowchart TD
 <li>Обратный вызов ядра атомарно переносит соответствующий <code>struct epitem</code> в двусвязный список <code>rdllist</code> (Ready List) и будит спящий тред.</li>
 <li>Вызов <code>epoll_wait</code> не сканирует сокеты! Он мгновенно забирает элементы из <code>rdllist</code> и копирует их в буфер <code>events</code> в пространстве пользователя. Если <code>rdllist</code> пуст — поток засыпает в ядре без расхода тактов процессора.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2473,6 +2480,7 @@ flowchart TD
 <p><code>epoll</code> раскрывает свой колоссальный потенциал при высокой сетевой нагрузке (от 1 000 до миллионов соединений), где алгоритмическая сложность $O(1)$ при ожидании и полное отсутствие многократного копирования огромных массивов между ядром и пользователем дают многократный экспоненциальный выигрыш.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="triggered-modes-level-vs-edge">Triggered modes: Level vs Edge</h2>
@@ -2537,6 +2545,7 @@ flowchart TD
 </figure>
 
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2547,6 +2556,7 @@ flowchart TD
 <p>Если вы прочитаете только часть буфера и выйдете из цикла, <code>epoll</code> больше никогда не уведомит вас об оставшихся байтах, пока удаленный клиент не пришлет следующий сетевой пакет! В результате соединение «зависнет намертво» прямо посреди бизнес-транзакции.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mekhanicheskaya-simpatiya-pochemu-eto-vazhno-dlya-go">Механическая симпатия: Почему это важно для Go</h2>
@@ -2594,6 +2604,7 @@ sequenceDiagram
 <li>Фоновый поток сетевого поллера вызывает <code>epoll_wait</code>. Как только ядро сообщает о готовности сокета, рантайм через <code>runtime.netpollready</code> возвращает горутину в очередь готовых к исполнению.</li>
 </ol>
 <p>Таким образом, <code>epoll</code> — это краеугольный камень рантайма Go. Без эффективного мультиплексирования сетевых событий на уровне ядра Go-сервер не смог бы обрабатывать миллионы параллельных сетевых соединений на скромном многоядерном процессоре.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2604,6 +2615,7 @@ sequenceDiagram
 <p>Go регистрирует дескрипторы сокетов один раз при инициализации с флагом <code>EPOLLET</code> (Edge-Triggered) в комбинации с <code>EPOLLIN | EPOLLOUT | EPOLLRDHUP</code>. В отличие от флага <code>EPOLLONESHOT</code>, требующего постоянного повторного включения через <code>epoll_ctl(EPOLL_CTL_MOD)</code>, edge-triggered режим избавляет рантайм от лишних системных вызовов модификации, а синхронизация и защита от гонок возлагаются на атомарные флаги в структуре <code>pollDesc</code> самого рантайма.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="go-runtime-i-netpoller-klyuchevye-detali">Go runtime и netpoller: Ключевые детали</h2>
@@ -2625,7 +2637,7 @@ sequenceDiagram
 <li>Режимы <strong>Level-Triggered (LT)</strong> и <strong>Edge-Triggered (ET)</strong> определяют семантику уведомлений: LT безопасен и интуитивен, а ET требует неблокирующих сокетов и чтения до получения ошибки <code>EAGAIN</code>.</li>
 <li>Сетевой поллер Go (<strong><code>netpoller</code></strong>) прозрачно связывает системный механизм <code>epoll</code> с планировщиком горутин через <code>runtime.gopark</code> и <code>runtime.goready</code>, делая асинхронный сетевой ввод-вывод простым и синхронным по стилю написания.</li>
 </ol>
-<p>В следующей лекции мы исследуем, как аналогичную проблему решают операционные системы семейств BSD и Windows, и почему архитектура портов завершения ввода-вывода отличается от модели готовности: <code>&lt;a href="37-kqueue-i-iocp-chem-otlichayutsya-bsd-i-windows.html" class="wikilink"&gt;37. kqueue и IOCP. Чем отличаются BSD и Windows&lt;/a&gt;</code>.</p>
+<p>В следующей лекции мы исследуем, как аналогичную проблему решают операционные системы семейств BSD и Windows, и почему архитектура портов завершения ввода-вывода отличается от модели готовности: <a href="37-kqueue-i-iocp-chem-otlichayutsya-bsd-i-windows.html" class="wikilink"><code>37. kqueue и IOCP. Чем отличаются BSD и Windows</code></a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->

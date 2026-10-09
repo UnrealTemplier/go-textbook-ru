@@ -2184,6 +2184,7 @@
 <p><em>«Структуры данных и алгоритмы — это инструменты управления сложностью, но именно управление временем жизни данных сохраняет системам жизнь».</em>  <br />
 — Брайан Керниган</p>
 </blockquote>
+
 <aside class="callout callout-note" aria-label="Заметка">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">📝</span>
@@ -2193,6 +2194,7 @@
     <p><strong>Связи:</strong> Эта статья прямо продолжает <a href="7-kafka-storage-pod-kapotom.html" class="wikilink">7. Kafka storage под капотом</a>, в котором мы детально разобрали сегменты и физическую организацию лога. Здесь мы рассмотрим, как Kafka управляет жизненным циклом этих сегментов через два фундаментально разных механизма: <strong>Retention</strong> (удаление по времени/размеру) и <strong>Compaction</strong> (уплотнение по ключу).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="dva-vzglyada-na-zhiznennyy-tsikl-dannykh">Два взгляда на жизненный цикл данных</h2>
@@ -2308,6 +2310,7 @@ flowchart LR
 1. <strong>Неприкосновенность активного сегмента:</strong> Активный сегмент, в который в текущий момент поступают записи от продюсеров, <strong>никогда не удаляется</strong>, даже если его размер превышает <code>retention.bytes</code> или сообщения внутри него устарели по времени!<br />
 2. <strong>Проверка временных меток:</strong> Log Manager находит максимальный timestamp среди всех записей сегмента (хранящийся в заголовке <code>.timeindex</code>). Если <code>now - max_segment_timestamp &gt; retention.ms</code>, весь сегмент помечается кандидатом на удаление.<br />
 3. <strong>Системный вызов <code>unlink(2)</code>:</strong> Удаление закрытого сегмента — это тривиальный системный вызов ядра операционной системы <code>unlink(2)</code> (в Java — <code>File.delete()</code>), удаляющий тройку файлов: <code>.log</code>, <code>.index</code> и <code>.timeindex</code>. </p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2317,6 +2320,7 @@ flowchart LR
     <p>Удаление сегментов не приводит к дефрагментации файловой системы и не требует сканирования контента. Всё, что делает брокер, — удаляет файлы <code>.log</code>, <code>.index</code> и <code>.timeindex</code> целиком. Именно поэтому retention — лёгкая операция, практически не нагружающая ввод-вывод, если не считать кратковременного обновления метаданных файловой системы (inode в <code>ext4</code>/<code>xfs</code>).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="compaction-uplotnenie-po-klyuchu">Compaction: уплотнение по ключу</h2>
@@ -2468,6 +2472,7 @@ sequenceDiagram
 </figure>
 
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Воскрешение удаленных сущностей (Zombie Resurrect)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2477,6 +2482,7 @@ sequenceDiagram
     <p>Если консьюмер отстаёт больше, чем на <code>delete.retention.ms</code>, и tombstone уже удалён, при перемотке он увидит старые значения ключа, не узнав, что ключ был удалён. Это приводит к «воскрешению» удалённых записей в состоянии консьюмера. Чтобы избежать этого, необходимо либо гарантировать, что консьюмер не отстаёт на такие длительные периоды, либо использовать компактифицированные топики в сочетании с дополнительным механизмом синхронизации (например, снапшоты в Kafka Streams).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mechanical-sympathy-vliyanie-na-vvod-vyvod-i-stranichnyy-kesh">Mechanical Sympathy: влияние на ввод-вывод и страничный кеш</h2>
@@ -2613,6 +2619,7 @@ func loadCurrencyRates(ctx context.Context, client *kgo.Client) (map[string]floa
 <hr />
 <h2 id="voprosy-dlya-sobesedovaniya">Вопросы для собеседования</h2>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2624,6 +2631,8 @@ func loadCurrencyRates(ctx context.Context, client *kgo.Client) (map[string]floa
   </div>
 </aside>
 
+
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2634,6 +2643,7 @@ func loadCurrencyRates(ctx context.Context, client *kgo.Client) (map[string]floa
 <strong>Ответ:</strong> Сообщения без ключа не могут быть уплотнены, так как у них нет идентификатора сущности. В старых версиях Kafka такие сообщения удалялись при первой же очистке. В современных версиях брокер не может сопоставить им <code>Offset Map</code>, и они приводят либо к деградации эффективности Log Cleaner, либо сохраняются бесконечно. В компактифицированных топиках ключ сообщения <strong>обязателен</strong> для каждой записи.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="kogda-retention-a-kogda-compaction-pravilo-vybora">Когда Retention, а когда Compaction: правило выбора</h2>

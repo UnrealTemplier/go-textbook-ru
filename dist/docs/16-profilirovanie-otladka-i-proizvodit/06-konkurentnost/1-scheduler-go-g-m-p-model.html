@@ -2261,6 +2261,7 @@ flowchart LR
 <hr />
 <h2 id="struktury-dannykh-chto-vnutri-g-m-p">Структуры данных: что внутри G, M, P</h2>
 
+
 <aside class="callout callout-info" aria-label="Под капотом: Внутренние структуры runtime2.go">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2270,6 +2271,7 @@ flowchart LR
     <p>Все ключевые абстракции планировщика физически описаны на языке Go в файле <code>runtime/runtime2.go</code>. Хотя прикладной разработчик не взаимодействует с ними напрямую, понимание их внутреннего строения развеивает ореол «магии» вокруг конкурентности.</p>
   </div>
 </aside>
+
 
 <h3 id="g-gorutina">G (горутина)</h3>
 
@@ -2350,6 +2352,7 @@ flowchart LR
 </code></pre>
 </div>
 
+
 <aside class="callout callout-note" aria-label="Особая роль g0">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">📝</span>
@@ -2359,6 +2362,7 @@ flowchart LR
     <p>Обратите внимание на поле <code>g0</code>: каждый поток <code>M</code> при создании получает специальную горутину <code>g0</code>. В отличие от пользовательских горутин с динамическим стеком от 2 КБ, стек <code>g0</code> выделяется напрямую операционной системой (обычно 64 КБ – 8 МБ). Именно на стеке <code>g0</code> выполняются все внутренние задачи рантайма: вызовы планировщика <code>schedule()</code>, расширение стеков, запуск сборщика мусора и переключение контекстов. Пользовательский код никогда не исполняется на <code>g0</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="p-logicheskiy-protsessor">P (логический процессор)</h3>
 
@@ -2494,6 +2498,7 @@ flowchart TD
 - Фоновый мониторинговый поток рантайма <code>sysmon</code> периодически проверяет, как долго горутина непрерывно удерживает процессор <code>P</code>.<br />
 - Если выполнение длится дольше 10 миллисекунд, <code>sysmon</code> отправляет системному потоку <code>M</code> POSIX-сигнал <code>SIGURG</code>.<br />
 - Обработчик сигнала на потоке <code>M</code> перехватывает выполнение, сохраняет регистры горутины в <code>gobuf</code>, помечает горутину как <code>_Grunnable</code>, возвращает её в очередь и вызывает <code>schedule()</code>.</p>
+
 <aside class="callout callout-note" aria-label="Почему именно сигнал SIGURG?">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">📝</span>
@@ -2503,6 +2508,7 @@ flowchart TD
     <p>Разработчики Go выбрали <code>SIGURG</code> (Out-of-band data on socket), потому что этот сигнал традиционно не используется стандартными библиотеками C/POSIX, не генерируется ядром при сбоях аппаратуры (в отличие от <code>SIGSEGV</code> или <code>SIGBUS</code>) и игнорируется системными отладчиками (gdb/lldb) по умолчанию.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="svyaz-s-sistemnymi-vyzovami-i-parkovka-m">Связь с системными вызовами и парковка M</h2>
@@ -2553,6 +2559,7 @@ sequenceDiagram
 
 
 <p>Для асинхронного сетевого ввода-вывода Go использует принципиально иной, сверхэффективный механизм — сетевой поллер (<code>netpoller</code>), интегрированный с системными селекторами ядра (<code>epoll</code>, <code>kqueue</code>, <code>IOCP</code>). Вместо блокировки потока <code>M</code> горутина переводится в спящий режим <code>_Gwaiting</code>, а её дескриптор регистрируется в очереди netpoller. Поток <code>M</code> мгновенно берет следующую задачу из очереди, сохраняя 100% утилизацию ядер.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Взрывное размножение системных потоков (Thread Explosion)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2565,6 +2572,7 @@ sequenceDiagram
 Обязательно экспортируйте и контролируйте системную метрику <code>runtime.NumThread()</code> в Prometheus!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="instrumenty-nablyudeniya-za-planirovshchikom">Инструменты наблюдения за планировщиком</h2>
@@ -2628,6 +2636,7 @@ go tool trace trace.out
 - <code>idlethreads=5</code> — 5 потоков ОС припаркованы на системном futex и спят.<br />
 - <code>runqueue=128</code> — суммарное количество готовых горутин, ожидающих в <strong>глобальной очереди</strong> <code>sched.runq</code>.<br />
 - <code>[0 0 0 0 0 0 0 0]</code> — текущая глубина <strong>локальных очередей</strong> <code>runq</code> для каждого из 8 процессоров <code>P</code>.</p>
+
 <aside class="callout callout-tip" aria-label="Диагностика дисбаланса по schedtrace">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">💡</span>
@@ -2637,6 +2646,7 @@ go tool trace trace.out
     <p>Если параметр <code>runqueue</code> измеряется сотнями или тысячами, а локальные очереди <code>[...]</code> пусты или содержат нули — это верный признак того, что горутины массово блокируются на системных вызовах или мьютексах, сбрасываются в глобальную очередь, а механизмы воровства задач не справляются с их диспетчеризацией.</p>
   </div>
 </aside>
+
 
 <h3 id="pprof-gorutin">pprof горутин</h3>
 
@@ -2699,6 +2709,7 @@ pprof.Lookup(&quot;goroutine&quot;).WriteTo(os.Stdout, 2)
 <li><strong>Иллюзия выгоды от завышенного GOMAXPROCS:</strong><br />
    Попытка вручную выставить <code>GOMAXPROCS=128</code> на сервере с 8 физическими ядрами приводит к катастрофе: планировщик Go порождает десятки активных потоков <code>M</code>, которые вступают в яростную конкуренцию за реальные физические ядра в планировщике ядра Linux. Частота принудительных переключений контекста ОС подскакивает в сотни раз, а общая производительность системы стремительно деградирует.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Вопрос с собеседования: Конфигурация GOMAXPROCS в контейнерах">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2712,6 +2723,7 @@ pprof.Lookup(&quot;goroutine&quot;).WriteTo(os.Stdout, 2)
 <strong>Решение:</strong> Явно задавать <code>GOMAXPROCS</code> равным квоте контейнера (округляя до целого вниз, например, 2), либо использовать автоматические библиотеки инициализации, такие как <code>go.uber.org/automaxprocs</code>, считывающие реальные квоты из cgroup.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

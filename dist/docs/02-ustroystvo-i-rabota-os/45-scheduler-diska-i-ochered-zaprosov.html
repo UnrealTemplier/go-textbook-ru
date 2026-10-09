@@ -2284,6 +2284,7 @@ flowchart LR
 
 <p>Суммарно <strong>случайный доступ к HDD занимает ~10 мс</strong>. Это означает, что при строгом поочередном чтении диск способен выдать в лучшем случае всего <strong>100 IOPS</strong>! Если бы ядро не оптимизировало эти запросы, механический диск превратился бы в непреодолимое «бутылочное горлышко» всей операционной системы.</p>
 <p>Классический планировщик Linux работал по <strong>алгоритму лифта (Elevator Algorithm / SCAN)</strong>: вместо того чтобы метаться между крайними дорожками 1, 99, 2, 85, головка плавно движется от внешнего края диска к внутреннему (по возрастанию номеров секторов LBA), попутно обслуживая все встречные запросы, а затем совершает обратный ход.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: NCQ (Native Command Queuing)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2294,6 +2295,7 @@ flowchart LR
 Ядерный планировщик Linux и NCQ работают согласованно: ядро объединяет смежные секторы и группирует запросы, а контроллер NCQ выполняет микрооптимизацию на уровне оборотов шпинделя.</p>
   </div>
 </aside>
+
 
 <h3 id="a-chto-zhe-ssd-i-nvme">А что же SSD и NVMe?</h3>
 <p>В твердотельных накопителях физические головки и шпиндели отсутствуют — случайный доступ к ячейке flash занимает 20–100 мкс независимо от ее адреса. Однако планировщик не потерял актуальности:<br />
@@ -2385,6 +2387,7 @@ flowchart TD
 </figure>
 
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2395,6 +2398,7 @@ flowchart TD
 В таких сценариях <code>mq-deadline</code> оказывается предпочтительнее: он отдает приоритет чтению (тайм-аут по умолчанию 500 мс) над записью (тайм-аут 5000 мс), защищая критические пользовательские запросы от лавины фонового сброса dirty pages.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="evolyutsiya-ot-edinoy-ocheredi-k-blk-mq-i-nvme">Эволюция: от единой очереди к blk-mq и NVMe</h2>
@@ -2524,6 +2528,7 @@ flowchart LR
    - <strong>Sort (Сортировка):</strong> Запрос упорядочивается в красно-черном дереве (LBA Red-Black Tree) по физическому адресу сектора.</li>
 <li><strong>Dispatch:</strong> Диспетчер планировщика передает готовые пачки запросов в функцию драйвера <code>blk_mq_dispatch_rq_list</code>, которая записывает дескрипторы команд в DMA-кольцо контроллера.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2535,6 +2540,7 @@ flowchart LR
 Вызывающий поток ОС (и горутина Go) <strong>блокируется в непрерываемом сне (Uninterruptible Sleep, статус <code>D</code>)</strong> до тех пор, пока контроллер накопителя не выставит аппаратное прерывание о завершении DMA-транзакции и не гарантирует сброс внутренних кэшей накопителя (Cache Flush). В отличие от <code>fsync()</code>, родственный вызов <code>fdatasync()</code> сбрасывает данные, но избегает синхронизации метаданных inode (например, <code>atime</code>/<code>mtime</code>), если размер файла не изменился, что экономит лишний проход головки или цикл FTL.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="vliyanie-na-go-prilozheniya-i-bekend-razrabotku">Влияние на Go-приложения и бэкенд-разработку</h2>
@@ -2615,6 +2621,7 @@ echo &quot;0&quot; &gt; /sys/block/${DEV}/queue/add_random
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Head-of-Line Blocking">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2625,6 +2632,7 @@ echo &quot;0&quot; &gt; /sys/block/${DEV}/queue/add_random
 Слишком длинная очередь на SSD порождает эффект <strong>Head-of-Line Blocking</strong>: если во главе очереди контроллера встанет тяжелая операция стирания блока flash или массивный последовательный сброс, десятки мелких легковесных запросов на чтение окажутся запертыми позади него. Высокий throughput обернется катастрофическим разлетом p99.9-задержки. Контролируйте утилизацию очередей с помощью утилит <code>iostat</code> (параметры <code>aqu-sz</code> и <code>await</code>) и трассировщика <code>blktrace</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

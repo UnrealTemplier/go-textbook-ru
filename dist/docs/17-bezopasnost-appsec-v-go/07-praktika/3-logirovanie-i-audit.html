@@ -2227,6 +2227,7 @@ flowchart TD
 3. Задействует встроенный кодировщик JSON (или кастомный потоковый сериализатор). Если разработчик передает аргументы в виде свободных структур <code>map[string]any</code> или интерфейсов, данные проходят через механизм <code>reflect</code>, что <strong>гарантирует Escape Analysis</strong> и аллокацию памяти в куче (<code>Heap Allocation</code>).</p>
 <p><strong>Влияние на сборщик мусора (<code>GC</code>):</strong><br />
 При интенсивном потоке запросов миллионы мелких буферов JSON и боксированных интерфейсов непрерывно засоряют область памяти молодых объектов (молодое поколение, аналог <code>gen0</code>). Сборщик мусора Go вынужден запускать частые фазы очистки (<code>Minor GC</code>). Несмотря на субмиллисекундные паузы фазы Stop-The-World в рантайме Go, непрерывная фоновая работа марк-воркеров (<code>GC Pacer</code>) отбирает до 25% ресурсов CPU у рабочих горутин, разрушая SLA сервиса.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2239,6 +2240,7 @@ flowchart TD
 <strong>Идиоматичная замена:</strong> Всегда используйте строго типизированные конструкторы: <code>slog.Int64</code>, <code>slog.String</code>, <code>slog.Bool</code>, <code>slog.Duration</code>. Они передают примитивные значения напрямую в регистры процессора, упаковываются в <code>slog.Record</code> без кучевых аллокаций и сериализуются без участия <code>reflect</code>. Это снижает общее давление на <code>GC</code> на 40–60% в высоконагруженных API.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="bezopasnost-dannykh-sanitizatsiya-i-predotvrashchenie-inektsiy">Безопасность данных: санитизация и предотвращение инъекций</h3>
@@ -2328,6 +2330,7 @@ func (h *RedactingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 - <strong>Сквозная трассировка:</strong> Наличие глобального <code>trace_id</code> для сквозного сопоставления с метриками и спанами OpenTelemetry.<br />
 - <strong>Гарантия неизменяемости (Append-only &amp; Tamper-evidence):</strong> Каждая запись аудита должна содержать криптографический хеш предыдущей записи (хеш-цепь, Hash Chain), исключая возможность незаметного удаления или модификации строк скомпрометированным администратором.</p>
 <p>В коде на Go журнал аудита выносится в изолированный поток исполнения, пишущий в защищенный файл с системными флагами <code>O_APPEND|O_WRONLY|O_CREATE</code> (например, <code>os.OpenFile(..., os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)</code>) или транслирующий события в распределенный брокер очередей (Apache Kafka, NATS JetStream).</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2340,6 +2343,7 @@ func (h *RedactingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 <strong>Решение:</strong> Проектируйте асинхронный конвейер на базе каналов: <code>make(chan AuditEvent, 1024)</code>. Фоновая горутина считывает события из канала и пакетами сбрасывает их в хранилище. Если буфер канала переполнен из-за аварии сети, событие сбрасывается с немедленным инкрементом аварийной метрики <code>audit_events_dropped_total</code>, но бизнес-операция клиента завершается успешно.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="idiomatichnaya-realizatsiya-vysokoproizvoditelnogo-loggera">Идиоматичная реализация высокопроизводительного логгера</h3>
@@ -2431,6 +2435,7 @@ func (sw *syncWriter) Write(p []byte) (int, error) {
    Попытка передачи <code>trace_id</code> через <code>context.Value</code> и оборачивание контекста <code>context.WithValue</code> на каждом этапе порождает избыточные аллокации в куче. В высоконагруженных API предпочтительно передавать идентификатор трассировки первым аргументом либо использовать <code>slog.With()</code> на уровне middleware, создавая один дочерний логгер на запрос.</li>
 </ol>
 <hr />
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2444,6 +2449,7 @@ func (sw *syncWriter) Write(p []byte) (int, error) {
 3. <strong>Философия ввода-вывода Go:</strong> В языке Go тип <code>os.File</code> является тончайшей оберткой над системным вызовом <code>write(2)</code>. Рантайм принципиально не скрывает накладные расходы под «невидимой» магией фреймворка. Архитектура логирования строится на явном интерфейсе <code>io.Writer</code>. Инженер самостоятельно решает, где применить <code>bufio</code>, где выделить <code>sync.Pool</code>, а куда подключить сокет распределенного брокера. Это обеспечивает тотальный контроль над аллокациями и поведением планировщика, требуя при этом безупречной инженерной дисциплины.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

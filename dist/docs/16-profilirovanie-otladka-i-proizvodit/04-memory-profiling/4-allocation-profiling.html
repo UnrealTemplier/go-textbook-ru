@@ -2224,6 +2224,7 @@
 <h3 id="kogda-chto-ispolzovat">Когда что использовать?</h3>
 <p>Для устранения CPU-нагрузки и борьбы с задержками GC абсолютным приоритетом пользуется <strong><code>alloc_space</code></strong>. Сервис может иметь стабильный resident set size (RSS) в 100 МБ, но если его <code>alloc_space</code> генерирует 2 ГБ мусора в секунду, треть процессорного времени уйдет на работу фоновых сборщиков <code>gcBgMarkWorker</code>.</p>
 <p>Метрика <code>inuse_space</code> незаменима для другой задачи: обнаружения утечек памяти (<a href="6-utechki-pamyati.html" class="wikilink">6. Утечки памяти</a>) и анализа фрагментации адресного пространства (<a href="7-fragmentation.html" class="wikilink">7. Fragmentation</a>).</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование: alloc_space vs inuse_space">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2234,6 +2235,7 @@
 <strong>Ответ:</strong> Метрика <code>alloc_space</code> отражает совокупный объем всех аллокаций в куче за период наблюдения, включая объекты, которые уже были собраны сборщиком мусора. Именно она используется для снижения нагрузки на CPU, так как показывает функции, генерирующие максимальный поток мусора для GC и аллокатора. Метрика <code>inuse_space</code> учитывает только живые объекты, оставшиеся в памяти на момент снятия снимка, и применяется для поиска утечек памяти (memory leaks) и оценки общего потребления RAM.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="kak-sobrat-profil-allokatsiy">Как собрать профиль аллокаций</h2>
@@ -2268,6 +2270,7 @@
 </code></pre>
 </div>
 
+
 <aside class="callout callout-important" aria-label="Важно">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚡</span>
@@ -2277,6 +2280,7 @@
     <p>Параметр <code>seconds=30</code> заставляет рантайм записать разницу (дельта-срез) аллокаций строго за эти 30 секунд. Дополнительно перед стартом и в конце замера рантайм вызывает <code>runtime.GC()</code>, отсекая старый шум. Без параметра <code>seconds</code> эндпоинт вернет мгновенный моментальный снимок (inuse_space), бесполезный для анализа потока аллокаций.</p>
   </div>
 </aside>
+
 
 <p>Поддерживаемые параметры эндпоинта <code>/debug/pprof/heap</code>:<br />
 - <code>/debug/pprof/heap?seconds=N</code> — сбор дельты аллокаций за $N$ секунд (<code>alloc_space</code>);<br />
@@ -2371,6 +2375,7 @@ pprof.Lookup(&quot;heap&quot;).WriteTo(f, 0)
 </code></pre>
 </div>
 
+
 <aside class="callout callout-caution" aria-label="Предостережение">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🛑</span>
@@ -2381,6 +2386,8 @@ pprof.Lookup(&quot;heap&quot;).WriteTo(f, 0)
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка: Статистическая слепота редких мелких аллокаций">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2390,6 +2397,7 @@ pprof.Lookup(&quot;heap&quot;).WriteTo(f, 0)
     <p>При стандартном <code>MemProfileRate=512KB</code> функция, которая суммарно выделила несколько мегабайт мелкими объектами, отлично видна в профиле. Но если вспомогательная функция редко создает единичный объект в 32 байта, она может ни разу не попасть в сэмпл и будет отсутствовать в профиле. Помните: pprof показывает статистически значимые очаги нагрузки.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="analiz-profilya-go-tool-pprof">Анализ профиля: go tool pprof</h2>
@@ -2453,6 +2461,7 @@ Showing nodes accounting for 1.50GB, 85% of 1.76GB total
 <li>Применить инженерный прием устранения аллокации: предвыделение <code>cap</code>, замена указателя на значение, дженерики вместо <code>interface{}</code>, либо переиспользование через <code>sync.Pool</code>.</li>
 <li>Снять повторный профиль и зафиксировать падение <code>alloc_space</code> и метрики <code>B/op</code>.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом: Агрегация сэмплов в рантайме">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2462,6 +2471,7 @@ Showing nodes accounting for 1.50GB, 85% of 1.76GB total
     <p>Профиль памяти в Go не хранит последовательную временную ленту событий. Внутри рантайма выделена хэш-таблица <code>buckhash</code>, где ключом является стек вызовов (Call Stack), а значением — структура с четырьмя счетчиками: <code>alloc_bytes</code>, <code>alloc_objects</code>, <code>free_bytes</code>, <code>free_objects</code>. Когда вызывается внутренняя функция аллокатора <code>runtime.mallocgc</code>, рантайм обновляет соответствующий бакет. Переменные, оставшиеся на стеке, проходят мимо <code>mallocgc</code> и физически не могут попасть в профиль.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="tipichnye-goryachie-istochniki-allokatsiy-i-strategii-borby">Типичные «горячие» источники аллокаций и стратегии борьбы</h2>
@@ -2554,6 +2564,7 @@ func handleOptimized(w http.ResponseWriter, r *http.Request) {
 <hr />
 <h2 id="lovushki-i-chastye-oshibki">Ловушки и частые ошибки</h2>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка: Анализ inuse_space вместо alloc_space">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2563,6 +2574,8 @@ func handleOptimized(w http.ResponseWriter, r *http.Request) {
     <p>Разработчик открывает профиль без флага <code>-alloc_space</code> и видит текущее распределение живой памяти. Если функция генерирует терабайты мусора, который мгновенно подбирается GC, она будет абсолютно невидима в <code>inuse_space</code>! Всегда начинайте аудит производительности с <code>-alloc_space</code>.</p>
   </div>
 </aside>
+
+
 
 <aside class="callout callout-warning" aria-label="Ловушка: Слишком короткий интервал профилирования">
   <header class="callout-header">
@@ -2574,6 +2587,8 @@ func handleOptimized(w http.ResponseWriter, r *http.Request) {
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка: Игнорирование погрешности MemProfileRate">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2584,6 +2599,8 @@ func handleOptimized(w http.ResponseWriter, r *http.Request) {
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка: Невидимые аллокации в стандартной библиотеке">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2593,6 +2610,7 @@ func handleOptimized(w http.ResponseWriter, r *http.Request) {
     <p>Системные функции вроде <code>time.Parse</code> или внутренности роутера <code>net/http</code> создают служебные объекты. Профиль зафиксирует их на стандартных пакетах, маскируя реальный источник в вашем бизнес-коде. Используйте команду <code>tree</code> или флеймграф, чтобы распутать цепочку вызовов.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mechanical-sympathy-kak-allokatsii-vliyayut-na-kesh-i-tlb">Mechanical Sympathy: как аллокации влияют на кэш и TLB</h2>

@@ -2270,6 +2270,7 @@ Page Table Entry
 * <strong>User/Supervisor (U/S, бит 2):</strong> Защита привилегий (доступно ли из Ring 3 или только для Ring 0).<br />
 * <strong>Accessed (A, бит 5) и Dirty (D, бит 6):</strong> Отметки о чтении и модификации страницы, критичные для алгоритмов LRU ядра и работы сборщиков мусора.<br />
 * <strong>Физический базовый адрес фрейма:</strong> 40-битный физический адрес в чипах RAM.</p>
+
 <aside class="callout callout-info" aria-label="Математическая гармония: Почему именно 4 уровня по 9 бит?">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2282,6 +2283,7 @@ Page Table Entry
 Таблица любого уровня занимает <strong>ровно одну стандартную физическую страницу</strong>. Ядру Linux никогда не приходится решать проблему фрагментации для самих таблиц страниц: они аллоцируются и выгружаются абсолютно такими же стандартными 4-килобайтными блоками.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="razmer-stranitsy-i-huge-pages">Размер страницы и Huge Pages</h2>
@@ -2296,6 +2298,7 @@ Page Table Entry
 1. <strong>Страницы 2 МБ:</strong> Если в записи уровня PMD (Page Middle Directory) выставить бит <code>Page Size (PS = 1)</code>, процессор <strong>полностью пропускает уровень PTE</strong>! Младшие 21 бит адреса становятся прямым внутристраничным смещением ($2^{21} = 2\ext{ МБ}$). <br />
    - Одна запись в TLB вместо 4 КБ теперь покрывает сразу 2 Мегабайта памяти (в 512 раз больше!).<br />
 2. <strong>Страницы 1 ГБ:</strong> Бит PS выставляется на уровне PUD/PDPT. Младшие 30 бит служат смещением ($2^{30} = 1\ext{ ГБ}$).</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Фрагментация физической памяти при Huge Pages">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2322,6 +2325,7 @@ echo 1024 &gt; /proc/sys/vm/nr_hugepages
 <p>В Go для работы с большими страницами применяют системный вызов <code>mmap</code> с флагом <code>MAP_HUGETLB</code> а для отключения использования прозрачных больших страниц самим рантаймом существует настройка <code>GODEBUG=disablethp=1</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="page-faults-minor-vs-major">Page Faults: Minor vs Major</h2>
@@ -2362,6 +2366,7 @@ echo 1024 &gt; /proc/sys/vm/nr_hugepages
 <li><strong>Minor Page Fault:</strong> Данные физически уже находятся в памяти (например, нулевая страница, разделяемая библиотека или страница в кэше ядра Page Cache), но в таблице страниц текущего процесса флаг <code>Present</code> еще не был взведен. Ядро связывает PTE с существующим физическим фреймом. Это занимает доли микросекунды.</li>
 <li><strong>Major Page Fault:</strong> Физических данных в RAM нет вообще: страница была выгружена на диск в раздел подкачки (Swap) или читается из файла через <code>mmap</code>. Ядро переводит вызывающий поток в состояние непрерываемого сна (<code>TASK_UNINTERRUPTIBLE</code>), инициирует медленное чтение с накопителя и ждет завершения ввода-вывода миллисекунды.</li>
 </ul>
+
 <aside class="callout callout-info" aria-label="Под капотом: Lazy Allocation в рантайме Go">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2372,6 +2377,7 @@ echo 1024 &gt; /proc/sys/vm/nr_hugepages
 <p>Реальная физическая память выделяется ядром по схеме <strong>Lazy Allocation (отложенное выделение)</strong>: только когда горутина впервые пытается записать байт по новому адресу, срабатывает Minor Page Fault, и ядро Linux привязывает физический 4 КБ фрейм из пула свободных страниц.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="go-runtime-i-upravlenie-pamyatyu-na-urovne-stranits">Go Runtime и управление памятью на уровне страниц</h2>
@@ -2469,6 +2475,7 @@ func releaseUnusedPages(addr uintptr, length int) error {
 <li><strong>Escape Analysis и нагрузка на страницы:</strong><br />
    Переменные, уходящие со стека в кучу (Escape to Heap), требуют страниц из пула <code>mheap</code>. Используйте <code>sync.Pool</code>, чтобы уменьшить частоту аллокаций и снизить оверхед на системные вызовы <code>madvise</code>.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2481,6 +2488,7 @@ func releaseUnusedPages(addr uintptr, length int) error {
 <strong>Ответ:</strong> Системный поток ОС (<code>M</code>) мгновенно блокируется в ядре Linux, ожидая считывания блока данных со swap-раздела или диска. Планировщик Go при этом <strong>не</strong> отсоединяет логический процессор <code>P</code>: page fault происходит прямо в пользовательском коде, поток <code>M</code> не находится в системном вызове, а <code>sysmon</code> отбирает <code>P</code> только у потоков, застрявших в syscall. Поэтому вместе с потоком простаивает и его <code>P</code> со всеми горутинами из локальной очереди. Частые Major Page Faults приводят к лавине переключений контекста ОС и взрывному росту задержки сервиса (latency p99).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

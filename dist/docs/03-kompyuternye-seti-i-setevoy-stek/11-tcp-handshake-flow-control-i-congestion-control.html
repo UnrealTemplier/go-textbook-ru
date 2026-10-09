@@ -2260,6 +2260,7 @@ sequenceDiagram
 * Если бы рукопожатие состояло из <strong>двух шагов</strong>, сервер, получив этот запоздалый дубликат, немедленно создал бы у себя полноценное активное соединение, выделил бы память ядра <code>tcp_sock</code> и начал ждать данных. Но клиент об этом даже не знает: его приложение давно закрылось! Возникает фантомное соединение-зомби и утечка ресурсов.<br />
 * При <strong>трех шагах</strong> сервер отвечает <code>SYN-ACK</code>, но удивленный клиент, не ожидавший этого ответа, видит невалидный номер подтверждения и немедленно отправляет флаг <strong><code>RST</code> (Reset)</strong>, принудительно уничтожая ошибочную сессию в ядре сервера. </p>
 <p>Третий шаг гарантирует, что <em>обе</em> стороны окончательно подтвердили взаимную готовность.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Атаки SYN-Flood и полуоткрытые соединения (Half-Open Connections)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2287,6 +2288,7 @@ sequenceDiagram
 При переполнении очереди ядро включает механизм <strong>SYN Cookies</strong> (<code>net.ipv4.tcp_syncookies = 1</code>). Ядро вообще перестает аллоцировать память под структуру сокета при получении <code>SYN</code>! Вместо этого начальный номер <code>seq = Y</code> генерируется как криптографический хэш от IP-адресов, портов и секретного ключа ядра. Когда легитимный клиент возвращает финальный <code>ACK</code>, ядро проверяет хэш в номере подтверждения и только в этот момент создает сокет.</p>
   </div>
 </aside>
+
 
 <h3 id="put-vyzova-net-dial-v-srede-go">Путь вызова `net.Dial` в среде Go</h3>
 
@@ -2368,6 +2370,7 @@ flowchart LR
 <li>Данные копируются в буфер сокета. Когда ваше Go-приложение вызывает метод <strong><code>conn.Read()</code></strong> (системные вызовы <code>read</code> или <code>recv</code>), байты копируются из буфера ядра в пользовательский буфер Go-среза.</li>
 <li>При каждом исходящем пакете <code>ACK</code> ядро вычисляет актуальный остаток свободного места: <code>Window = Buffer_Size - Used_Space</code> и записывает полученное число в заголовок пакета.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом: Поля окна в структуре `tcp_sock`">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2381,6 +2384,7 @@ flowchart LR
 Если горутина на стороне получателя зависла в тяжелых вычислениях или заблокировалась на мьютексе, буфер заполняется до отказа. Когда <code>rcv_wnd == 0</code>, ядро отправляет отправителю критический сигнал — <strong>Zero Window</strong>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="zero-window-i-zero-window-probes">Zero Window и Zero Window Probes</h2>
@@ -2481,6 +2485,7 @@ flowchart TD
 </figure>
 
 
+
 <aside class="callout callout-interview" aria-label="Собеседование: Фундаментальная разница между Flow Control и Congestion Control">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2493,6 +2498,7 @@ flowchart TD
 2. <strong>Congestion Control:</strong> Защищает транзитную сетевую инфраструктуру (маршрутизаторы, коммутаторы) от заторов и потери пакетов. Это <em>адаптивный</em> алгоритм ядра отправителя, динамически вычисляющий размер окна <code>cwnd</code> на основе сетевых метрик (потери пакетов или роста RTT).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="osnovnye-algoritmy-aimd">Основные алгоритмы (AIMD)</h2>
@@ -2545,7 +2551,7 @@ flowchart LR
    Если в потоке теряется один пакет, получатель шлет дубликаты ACK на предыдущий пакет. При получении <strong>3 дублирующихся ACK</strong> ядро понимает: пакет потерян, но сеть жива!<br />
    Вместо долгого ожидания таймаута ядро немедленно переотправляет потерянный сегмент, снижает <code>cwnd</code> в 2 раза (Multiplicative Decrease), устанавливает новый порог <code>ssthresh = cwnd / 2</code> и продолжает линейный рост.</li>
 </ol>
-<p>В современных дистрибутивах Linux по умолчанию включен высокоэффективный алгоритм <strong>CUBIC</strong> (подробнее разобранный в лекции <code>&lt;a href="13-congestion-algorithms-reno-cubic-bbr.html" class="wikilink"&gt;13. Congestion Algorithms. Reno, Cubic, BBR&lt;/a&gt;</code>), использующий кубическую функцию для быстрого возврата к максимальной скорости на гигабитных оптоволоконных каналах.</p>
+<p>В современных дистрибутивах Linux по умолчанию включен высокоэффективный алгоритм <strong>CUBIC</strong> (подробнее разобранный в лекции <a href="13-congestion-algorithms-reno-cubic-bbr.html" class="wikilink"><code>13. Congestion Algorithms. Reno, Cubic, BBR</code></a>), использующий кубическую функцию для быстрого возврата к максимальной скорости на гигабитных оптоволоконных каналах.</p>
 <hr />
 <h2 id="pod-kapotom-linux-tcp-stack-i-go-netpoller">Под капотом: Linux TCP Stack и Go netpoller</h2>
 
@@ -2678,6 +2684,7 @@ func handleConn(ctx context.Context, conn net.Conn) {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Удвоение размера буфера в системных вызовах Go">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2689,6 +2696,7 @@ func handleConn(ctx context.Context, conn net.Conn) {
 Если вы передадите в вызов ровно 1 МБ (<code>1024 * 1024</code>), лимит учёта памяти сокета станет <strong>2 МБ</strong> (это предел, а не немедленная аллокация). Если вы хотите выделить ровно 1 МБ памяти под буфер, передавайте в метод половину требуемого объема: <strong><code>512 * 1024</code></strong>!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itogi">Итоги</h2>

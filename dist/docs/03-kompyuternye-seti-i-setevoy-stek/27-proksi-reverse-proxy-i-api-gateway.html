@@ -2235,6 +2235,7 @@ flowchart LR
 
 <p><strong>Forward Proxy</strong> находится <em>перед клиентом</em>. Клиент явно знает о его существовании (настраивает прокси в браузере или ОС). Он действует от имени клиента: анонимизирует запросы, фильтрует контент, кеширует ответы. Пример: корпоративный прокси для выхода в интернет, Squid.</p>
 <p><strong>Reverse Proxy</strong> находится <em>перед сервером</em>. Клиент не знает о его существовании. Он принимает запрос, определяет, какому бэкенду его направить, и возвращает ответ так, будто сам является целевым сервером. Пример: Nginx перед кластером Go-сервисов, CDN, API Gateway.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2244,6 +2245,7 @@ flowchart LR
     <p>Разница кроется в HTTP-заголовках и сетевом контексте. Forward proxy модифицирует заголовок <code>Host</code> и URI в абсолютном формате (<code>http://example.com/path</code>). Reverse proxy работает с относительными путями, переписывает <code>Host</code>, <code>X-Forwarded-For</code>, <code>X-Real-IP</code> и управляет жизненным циклом соединений к бэкенду.</p>
   </div>
 </aside>
+
 
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -2472,6 +2474,7 @@ flowchart TD
 <li><strong>Response Copy</strong>: Заголовки ответа копируются, статус перенаправляется. Тело ответа читается в отдельной горутине и записывается в <code>http.ResponseWriter</code>.</li>
 <li><strong>Cleanup</strong>: При отключении клиента или таймауте горутина завершается, соединение с бэкендом закрывается или возвращается в пул.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2481,6 +2484,7 @@ flowchart TD
     <p><code>httputil.ReverseProxy</code> <strong>не клонирует тело запроса автоматически</strong>. Если вы вызываете <code>proxy.ServeHTTP</code> дважды для одного <code>http.Request</code>, тело будет пустым при втором вызове, так как <code>io.ReadCloser</code> исчерпан. Всегда дублируйте тело через <code>bytes.NewBuffer</code> или <code>io.TeeReader</code>, если нужна повторная обработка.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="proizvoditelnost-i-mechanical-sympathy">Производительность и Mechanical Sympathy</h2>
@@ -2515,6 +2519,7 @@ transport := &amp;http.Transport{
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2525,6 +2530,7 @@ transport := &amp;http.Transport{
 <strong>Ответ:</strong> Если бэкенды динамически масштабируются, статический пул соединений может удерживать мертвые TCP-сокеты. Go не удаляет их из пула мгновенно, он ждет <code>IdleConnTimeout</code>. На пиковой нагрузке это приводит к <code>EADDRNOTAVAIL</code> или <code>TIME_WAIT</code> истощению. Решение: использовать <code>http2.Transport</code> для multiplexing или настраивать <code>net/http</code> с динамическим пересозданием пула при ошибках <code>connection reset</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="lovushki-i-voprosy-na-sobesedovaniyakh">Ловушки и вопросы на собеседованиях</h2>
@@ -2538,6 +2544,7 @@ transport := &amp;http.Transport{
 <p>Go автоматически использует HTTP/2 для соединений к бэкендам по TLS, если они поддерживают ALPN (клиентская поддержка HTTP/2 в <code>net/http</code> — с Go 1.6; у кастомного <code>http.Transport</code>, где заданы <code>DialContext</code> или <code>TLSClientConfig</code>, автоматический HTTP/2 отключается, пока не выставлен <code>ForceAttemptHTTP2: true</code>, появившийся в Go 1.13). Это устраняет <strong>Head of Line Blocking</strong> (статья <a href="23-http-3-i-quic-pochemu-budushchee-ukhodit-ot-tcp.html" class="wikilink">23. HTTP 3 и QUIC. Почему будущее уходит от TCP</a>). В прокси-слое это критично: один TCP-сокет обслуживает сотни потоков запросов, экономя память CPU и сетевой стек.</p>
 <h3 id="4-buffering-vs-streaming">4. Buffering vs Streaming</h3>
 <p><code>FlushInterval</code> в <code>ReverseProxy</code> контролирует, когда ответ буферизуется и когда отправляется клиенту. Значение <code>0</code> означает, что периодического flush нет (данные сбрасываются по мере заполнения внутренних буферов <code>ResponseWriter</code>). Значение <code>&gt;0</code> сбрасывает буфер с заданным периодом (баланс latency/throughput), а отрицательное значение — сбрасывает после каждой записи в ответ. Независимо от значения, ответы с <code>Content-Type: text/event-stream</code> и с неизвестной длиной (<code>ContentLength == -1</code>) сбрасываются сразу.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2547,6 +2554,7 @@ transport := &amp;http.Transport{
     <p>При проксировании gRPC через HTTP/2, заголовок <code>Content-Type: application/grpc</code> и <code>TE: trailers</code> обязательно должны присутствовать. Без них Go-клиент или балансировщик может отбросить ответ как невалидный.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="sravnenie-go-vs-nginxenvoy">Сравнение: Go vs Nginx/Envoy</h2>

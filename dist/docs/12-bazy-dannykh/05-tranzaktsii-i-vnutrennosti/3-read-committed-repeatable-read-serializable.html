@@ -2236,6 +2236,7 @@ flowchart TD
      (xmin &lt; snapshot_xmin AND (xmax = 0 OR xmax &gt;= snapshot_xmin))</code><br />
    где <code>xmin</code> — идентификатор транзакции, создавшей строку, а <code>xmax</code> — идентификатор транзакции, удалившей или обновившей ее.<br />
 3. Следующий оператор в этой же транзакции строит <strong>новый снимок</strong> — и мгновенно видит все изменения, которые успели зафиксировать сторонние транзакции за время между запросами!</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2249,6 +2250,7 @@ flowchart TD
 <p>Проверка видимости строки — это быстрая операция сравнения целых чисел, выполняемая без блокировок. Именно поэтому <code>READ COMMITTED</code> обеспечивает высокую параллельность чтений.</p>
   </div>
 </aside>
+
 
 <h3 id="primer-anomalii-non-repeatable-read">Пример аномалии: Non-Repeatable Read</h3>
 
@@ -2304,6 +2306,7 @@ func IncrementViewCount(ctx context.Context, db *sql.DB, articleID int64) error 
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2313,6 +2316,7 @@ func IncrementViewCount(ctx context.Context, db *sql.DB, articleID int64) error 
     <p>Если вы читаете значение, вычисляете новое на стороне Go и записываете обратно — <code>READ COMMITTED</code> не спасёт от потерянного обновления:</p>
   </div>
 </aside>
+
 
 
 <div class="code-block" data-lang="go">
@@ -2344,6 +2348,7 @@ _, err = db.ExecContext(ctx, &quot;UPDATE articles SET views = $1 WHERE id = $2&
 <li>Все последующие запросы транзакции используют этот первоначальный снимок, игнорируя любые сторонние коммиты.</li>
 <li>Если транзакция пытается изменить (<code>UPDATE</code>/<code>DELETE</code>) строку, которая была модифицирована и зафиксирована другой параллельной транзакцией после момента создания нашего снимка, база данных немедленно прерывает операцию с ошибкой <code>serialization_failure</code> (<code>could not serialize access due to concurrent update</code>).</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2353,6 +2358,7 @@ _, err = db.ExecContext(ctx, &quot;UPDATE articles SET views = $1 WHERE id = $2&
     <p>В PostgreSQL <code>REPEATABLE READ</code> предотвращает не только non-repeatable read, но и phantom read — благодаря механизму <strong>предикатных блокировок</strong> (predicate locking). Когда выполняется запрос с <code>WHERE</code>, СУБД запоминает предикат и при попытке другой транзакции вставить строку, удовлетворяющую этому предикату, возникает конфликт. Это реализовано через расширение системы снимков и не требует явных блокировок строк.</p>
   </div>
 </aside>
+
 
 <h3 id="primer-konsistentnyy-otchyot-v-odnoy-tranzaktsii">Пример: консистентный отчёт в одной транзакции</h3>
 
@@ -2442,6 +2448,7 @@ func ProcessOrder(ctx context.Context, db *sql.DB, orderID int64) error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2452,6 +2459,7 @@ func ProcessOrder(ctx context.Context, db *sql.DB, orderID int64) error {
 <strong>Ответ</strong>: Да. Если вы пытаетесь обновить строку, которая была изменена и зафиксирована другой транзакцией после создания вашего снимка, PostgreSQL выбросит ошибку <code>ERROR: could not serialize access due to concurrent update</code>. Это цена за строгую изоляцию: вы должны обработать эту ошибку повтором транзакции.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="serializable-strogaya-seriynaya-ekvivalentnost">SERIALIZABLE: Строгая серийная эквивалентность</h2>
@@ -2467,6 +2475,7 @@ func ProcessOrder(ctx context.Context, db *sql.DB, orderID int64) error {
    * <strong>Write-Read conflict</strong>: Транзакция T1 изменила строку, которую затем прочитала T2.</li>
 <li>Движок строит направленный граф конфликтов. Если в графе образуется опасный цикл (T1 → T2 → T1), ядро немедленно объявляет одну из транзакций жертвой и прерывает ее с ошибкой сериализации <code>serialization_failure</code> (SQLSTATE <code>40001</code>).</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2479,6 +2488,7 @@ func ProcessOrder(ctx context.Context, db *sql.DB, orderID int64) error {
 <p>Проверка на циклы выполняется при <code>COMMIT</code> и имеет сложность O(n) по числу активных транзакций. Это накладывает ограничения на масштабируемость при высокой конкуренции.</p>
   </div>
 </aside>
+
 
 <h3 id="primer-predotvrashchenie-lost-update">Пример: предотвращение lost update</h3>
 
@@ -2563,6 +2573,7 @@ COMMIT; -- ERROR: could not serialize access due to read/write dependencies amon
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2572,6 +2583,7 @@ COMMIT; -- ERROR: could not serialize access due to read/write dependencies amon
     <p>Не используйте <code>SERIALIZABLE</code> «на всякий случай». При высокой конкуренции частота ошибок <code>40001</code> может достигать 30-50%, что потребует множества ретраев и снизит пропускную способность. Начинайте с <code>READ COMMITTED</code>, добавляйте явные блокировки (<code>FOR UPDATE</code>) или оптимистический контроль версий (<code>version</code> колонка), и только если это невозможно — переходите к <code>SERIALIZABLE</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="sravnitelnaya-tablitsa-chto-predotvrashchaet-kazhdyy-uroven">Сравнительная таблица: что предотвращает каждый уровень</h2>
@@ -2620,6 +2632,7 @@ COMMIT; -- ERROR: could not serialize access due to read/write dependencies amon
 </table></div>
 <p>* В стандартном SQL <code>REPEATABLE READ</code> не гарантирует защиту от фантомов, но PostgreSQL реализует это через предикатные блокировки.<br />
 ** В <code>READ COMMITTED</code> lost update предотвращается только если вы используете атомарные <code>UPDATE ... = ... + 1</code> или явные блокировки <code>FOR UPDATE</code>.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2630,6 +2643,7 @@ COMMIT; -- ERROR: could not serialize access due to read/write dependencies amon
 <strong>Ответ</strong>: Write Skew — аномалия, когда две транзакции читают пересекающийся набор данных, принимают решение на основе прочитанного и изменяют непересекающиеся подмножества. Пример: два врача дежурят, правило «хотя бы один должен быть на месте». Оба читают, что коллега на месте, оба уходят — правило нарушено. В <code>REPEATABLE READ</code> каждая транзакция видит свой снимок и не видит изменений другой, поэтому конфликт не детектируется. Только <code>SERIALIZABLE</code> с SSI обнаружит зависимость и откатит одну транзакцию.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mekhanicheskaya-simpatiya-tsena-izolyatsii-na-urovne-zheleza">Механическая симпатия: цена изоляции на уровне железа</h2>
@@ -2653,6 +2667,7 @@ COMMIT; -- ERROR: could not serialize access due to read/write dependencies amon
 <li>Атомарные операции для управления блокировками (CAS) вызывают инвалидацию кэш-линий между ядрами (cache coherency traffic).</li>
 <li>В Go, когда горутина ждёт ответа от БД, она паркуется, но соединение и блокировки в СУБД остаются занятыми — это ограничивает параллелизм на стороне базы.</li>
 </ul>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2667,6 +2682,7 @@ COMMIT; -- ERROR: could not serialize access due to read/write dependencies amon
 <p>Это означает, что даже «ожидание» потребляет ресурсы: память под структуру <code>PGPROC</code>, дескриптор сокета, место в очереди планировщика Go. При тысячах параллельных запросов это становится узким местом.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="prakticheskie-rekomendatsii-kak-vybrat-uroven">Практические рекомендации: как выбрать уровень</h2>

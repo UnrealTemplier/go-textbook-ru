@@ -2239,6 +2239,7 @@ func f2() { print(b); print(a) }
 
 <p>Если горутины <code>go f1()</code> и <code>go f2()</code> выполняются параллельно без примитивов синхронизации, программа содержит состояние гонки (data race). Результатом вывода может стать не только очевидные <code>00</code>, <code>21</code>, но и парадоксальное <strong><code>02</code></strong> — потому что запись <code>a=1</code> еще не видна в кэше второго ядра, а <code>b</code> уже прочитано! Компилятор имеет полное право поменять местами инструкции <code>b = 2</code> и <code>a = 1</code> внутри <code>f1</code>, а процессор — сбросить кэш-линию переменной <code>b</code> раньше, чем переменную <code>a</code>.</p>
 <p>Подробнее стоимость различных примитивов синхронизации рассмотрена в <a href="../06-konkurentnost/5-sync-primitives-i-ikh-stoimost.html" class="wikilink">5. Sync primitives и их стоимость</a> и <a href="../06-konkurentnost/6-mutex-vs-channel.html" class="wikilink">6. Mutex vs channel</a>.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Примитивы happens-before">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2249,6 +2250,7 @@ func f2() { print(b); print(a) }
 <strong>Ответ:</strong> Запуск горутины (<code>go func()</code>), завершение горутины через координацию с <code>sync.WaitGroup</code> или закрытие канала, операции блокировки <code>sync.Mutex</code> (вызов <code>Unlock()</code> гарантированно предшествует последующему возврату из <code>Lock()</code>), гарантия завершения функции внутри <code>sync.Once.Do</code>, координация <code>sync.Cond</code> (<code>Signal</code>/<code>Broadcast</code> до пробуждения из <code>Wait</code>), отправка и получение данных из канала (<code>chan</code>), а также операции пакета <code>sync/atomic</code> с последовательным порядком исполнения.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="arkhitekturnaya-model-pamyati-kak-go-raskladyvaet-dannye">Архитектурная модель памяти: как Go раскладывает данные</h2>
@@ -2370,6 +2372,7 @@ flowchart TD
 - <strong><code>mcache</code> (локальный кэш логического процессора P):</strong> Каждый планировщик $P$ владеет персональным кэшем спанов. Выделение мелких объектов происходит <strong>вообще без блокировок мьютексов</strong>!<br />
 - <strong><code>mcentral</code> (центральный пул спанов):</strong> Если в локальном <code>mcache</code> закончились свободные ячейки требуемого класса размера, $P$ запрашивает новый спан из центрального пула <code>mcentral</code>, защищенного спинлоком.<br />
 - <strong><code>mheap</code> (глобальная куча):</strong> Управляет всеми аренами виртуальной памяти и крупными объектами.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Таблица классов размеров">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2379,6 +2382,7 @@ flowchart TD
     <p>Рантайм Go определяет 67 фиксированных классов размеров для мелких объектов: 8, 16, 24, 32, 48, 64, 80, 96, 112, 128 ... вплоть до 32768 байт. Если вы аллоцируете структуру размером 33 байта, рантайм выделит под нее слот ближайшего большего класса — 48 байт. 15 байт составят неизбежную <strong>внутреннюю фрагментацию</strong>, за счет которой достигается фантастическая скорость аллокации за $O(1)$ без поиска подходящих блоков в куче.</p>
   </div>
 </aside>
+
 
 <h3 id="pamyat-dlya-rantayma">Память для рантайма</h3>
 <p>Служебные структуры планировщика (<code>g</code>, <code>m</code>, <code>p</code>), очереди ожидания сетевого поллера netpoller, буферы трассировщика execution tracer и самого профилировщика <code>pprof</code> выделяются специальным внутренним системным аллокатором (<code>fixalloc</code> и системный <code>sysAlloc</code>). Этот аллокатор спроектирован так, чтобы быть устойчивым к рекурсии: код профилировщика памяти ни в коем случае не должен профилировать сам себя или триггерить сборку мусора!</p>

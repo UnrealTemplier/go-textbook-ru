@@ -2198,6 +2198,7 @@ $$O(\log n)$$</p>
 - <code>LevelDB</code> и <code>RocksDB</code>: организация оперативной таблицы мутаций (<strong>MemTable</strong>).<br />
 - Java Standard Library: <code>ConcurrentSkipListMap</code>.<br />
 - Высоконагруженные Key-Value движки и распределенные кэши в экосистеме Go (BadgerDB, BuntDB).</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2208,6 +2209,7 @@ $$O(\log n)$$</p>
 <strong>Ответ:</strong> Хеш-таблица даёт $O(1)$ по ключу, но не поддерживает диапазонные запросы и ранжирование. B-дерево оптимизировано под дисковые страницы, а Redis работает в RAM. Skip List занимает меньше памяти, чем полноценное красно-черное дерево, и критически важно: его уровни позволяют эффективно выполнять операции <code>ZRANGEBYSCORE</code> и <code>ZREM</code> без полной блокировки структуры. Кроме того, реализация Skip List проще, что уменьшает поверхность багов в ядре БД.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="1-arkhitektura-ekspress-polos-i-geometricheskoe-raspredelenie">1. Архитектура экспресс-полос и геометрическое распределение</h2>
@@ -2424,6 +2426,7 @@ type Node[T comparable] struct {
 <p>В отличие от плоского массива, узлы Skip List разбросаны по страницам виртуальной памяти кучи. Каждое смещение <code>current = current.forward[i]</code> вынуждает ядро процессора разыменовывать указатель (Pointer Chasing). </p>
 <p>Аппаратный Prefetcher CPU не в силах предугадать адрес следующего узла, что неизбежно ведет к задержкам L1/L2 Cache Miss (около 50–100 нс при обращении к DRAM). </p>
 <p>Однако благодаря тому, что горизонтальный проход идет строго вправо в отсортированном порядке, локальность Skip List на практике оказывается заметно выше, чем у хаотичных ветвлений бинарного дерева поиска (BST).</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2435,6 +2438,7 @@ type Node[T comparable] struct {
 В современных версиях Go рантайм использует оптимизированный аллокатор <code>mallocgc</code> и флаг <code>GOEXPERIMENT=noframes</code>, однако для систем со сверхжесткими требованиями к задержкам рекомендуется пулировать узлы через <code>sync.Pool</code> или реализовывать блочные арены памяти.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="4-konkurentnost-ot-fine-grained-locks-k-lock-free">4. Конкурентность: от fine-grained locks к lock-free</h2>
@@ -2481,6 +2485,7 @@ for {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2492,6 +2497,7 @@ for {
 В Go эта проблема маскируется сборщиком мусора (GC не перевыделяет адрес, пока на него есть живая ссылка в стеке), но при использовании ручного управления памятью через <code>sync.Pool</code> или пакет <code>unsafe</code> требуется явное версионирование ссылок (Tagged Pointers).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="5-lovushki-production-razrabotki-i-sobesedovaniya">5. Ловушки production-разработки и собеседования</h2>
@@ -2541,6 +2547,7 @@ for {
 </tbody>
 </table></div>
 <hr />
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2555,6 +2562,7 @@ for {
 <strong>Ответ:</strong> Использовать логическое удаление: пометить узел флагом <code>deleted = true</code> и пропускать его при поиске. Физическое удаление выполнить асинхронно в фоновой горутине или во время следующей вставки, которая обновит указатели <code>forward</code>. Это даёт eventual consistency и нулевые блокировки на чтение.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

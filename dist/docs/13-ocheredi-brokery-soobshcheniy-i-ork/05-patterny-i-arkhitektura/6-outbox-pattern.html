@@ -2184,6 +2184,7 @@
 <p><em>«Каждый раз, когда вы пытаетесь обновить два независимых конечных автомата одновременно без единого координирующего центра, вы неизбежно убеждаетесь, что законы физики и сеть вступили против вас в сговор».</em>  <br />
 — Брайан Керниган</p>
 </blockquote>
+
 <aside class="callout callout-note" aria-label="Заметка">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">📝</span>
@@ -2193,6 +2194,7 @@
     <p><strong>Связи:</strong> В <a href="3-event-driven-architecture.html" class="wikilink">3. Event Driven Architecture</a> и <a href="5-cqrs-i-brokery.html" class="wikilink">5. CQRS и брокеры</a> мы зафиксировали проблему <strong>Dual Write</strong>: невозможность в рамках одной распределенной транзакции обновить данные в реляционной СУБД и отправить сообщение в брокер (Kafka/RabbitMQ/NATS). В этой лекции мы детально разберем паттерн <strong>Transactional Outbox (Исходящий ящик)</strong> — индустриальный золотой стандарт гарантированной публикации событий. В следующей лекции — <a href="7-inbox-pattern.html" class="wikilink">7. Inbox pattern</a> — мы изучим его зеркальное отражение на стороне консьюмера.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="proklyatie-dvoynoy-zapisi-dual-write">Проклятие двойной записи (Dual Write)</h2>
@@ -2231,6 +2233,7 @@ func (s *Service) CreateOrder(ctx context.Context, req OrderRequest) error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Бомба замедленного действия под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2242,6 +2245,7 @@ func (s *Service) CreateOrder(ctx context.Context, req OrderRequest) error {
 <p>Транзакция в базе данных откатывается. Заказа в системе физически не существует. Но событие <code>OrderCreatedEvent</code> <strong>уже улетело в брокер</strong>! Сервис Склада радостно соберет и отправит посылку для несуществующего заказа, а деньги у клиента не спишутся. Система приходит в несогласованное состояние, которое невозможно исправить автоматически.</p>
   </div>
 </aside>
+
 
 <p>Пытаться объединить PostgreSQL и Kafka в двухфазный коммит (<strong>2PC / XA Transactions</strong>) в современных облачных средах бессмысленно: 2PC превращает систему в хрупкую конструкцию, где сбой любого узла блокирует ресурсы базы, а пропускная способность падает до единиц запросов в секунду.</p>
 <p>Инженерное решение этой задачи — паттерн <strong>Transactional Outbox (Исходящие сообщения)</strong>.</p>
@@ -2392,6 +2396,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, order Order) error {
 <h3 id="podkhod-1-polling-publisher-opros-bazy-dannykh">Подход 1: Polling Publisher (Опрос базы данных)</h3>
 
 <p>Периодический фоновый воркер на Go раз в $N$ миллисекунд опрашивает таблицу <code>outbox</code> обычным SQL-запросом.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Блокировки и гонки при конкурентном Polling">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2404,6 +2409,7 @@ func (s *OrderService) CreateOrder(ctx context.Context, order Order) error {
 Попытка заблокировать таблицу через обычный <code>FOR UPDATE</code> заблокирует параллельные воркеры, превратив конкурентную обработку в узкое горлышко.</p>
   </div>
 </aside>
+
 
 <p>Чтобы организовать параллельное чтение без взаимных блокировок, в PostgreSQL используется специализированная конструкция <strong><code>FOR UPDATE SKIP LOCKED</code></strong>:</p>
 
@@ -2442,6 +2448,7 @@ COMMIT;
 <h3 id="podkhod-2-transaction-log-tailing-cdc-industrialnyy-standart">Подход 2: Transaction Log Tailing (CDC) — Индустриальный стандарт</h3>
 
 <p>В высоконагруженных системах (HighLoad) периодический опрос базы данных неприменим из-за накладных расходов. Вместо этого применяется технология <strong>Change Data Capture (CDC — Захват изменений данных)</strong>.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Mechanical Sympathy, PostgreSQL WAL и Debezium">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2455,10 +2462,12 @@ COMMIT;
   </div>
 </aside>
 
+
 <p><em>Преимущества CDC:</em><br />
 1. <strong>Нулевая нагрузка на диски и индексы СУБД</strong> от повторяющихся <code>SELECT</code>-ов;<br />
 2. <strong>Минимальная задержка:</strong> событие попадает в брокер за считанные миллисекунды после коммита транзакции;<br />
 3. <strong>Чистый код сервиса:</strong> Go-приложению больше не нужно содержать воркеры отправки — сервис только пишет в таблицу <code>outbox</code>.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Гарантии доставки CDC">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2471,6 +2480,7 @@ Debezium (как и любой другой механизм репликаци�
 Любой сервис-консьюмер в архитектуре с Outbox <strong>обязан быть идемпотентным</strong>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="ochistka-outbox-tablitsy-housekeeping">Очистка Outbox-таблицы (Housekeeping)</h2>

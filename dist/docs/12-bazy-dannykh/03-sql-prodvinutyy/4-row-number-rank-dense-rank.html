@@ -2318,6 +2318,7 @@ flowchart TD
 - Функции <code>RANK()</code> и <code>DENSE_RANK()</code> работают исключительно на уровне peer groups: всем строкам одной группы присваивается единый ранг. <code>RANK</code> прибавляет к номеру ранга размер предыдущей группы, а <code>DENSE_RANK</code> просто делает инкремент <code>+1</code> при переходе к новой группе.<br />
 - Функция <code>ROW_NUMBER()</code> полностью игнорирует разбиение на peer groups: она держит в регистре процессора счетчик и тупо инкрементирует его на каждом кортеже.<br />
 - Все эти операции требуют сортировки партиций: если объем данных превышает лимит <code>work_mem</code>, движок начинает сбрасывать промежуточные результаты на диск (spill to disk).</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2332,6 +2333,7 @@ flowchart TD
 <code>ORDER BY created_at DESC, id DESC</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="mechanical-sympathy-parallelnoe-ispolnenie">Mechanical Sympathy: Параллельное исполнение</h3>
 
@@ -2466,6 +2468,7 @@ func GetTop3OrdersPerUser(ctx context.Context, db *sqlx.DB, status string) (map[
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом (Go)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2476,6 +2479,7 @@ func GetTop3OrdersPerUser(ctx context.Context, db *sqlx.DB, status string) (map[
 <p>Если бы мы объявили карту по значению — <code>map[int64]UserLatestOrders</code>, то вызов <code>result[userID].Orders = append(...)</code> привел бы к ошибке компиляции (элементы мапы неадресуемы в Go), либо потребовал бы извлечения копии всей структуры, выполнения <code>append</code> и обратной записи в мапу. Каждое такое копирование вызывало бы лишние аллокации в куче (Heap) и заставляло сборщик мусора Go (GC) работать на износ.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="udalenie-dublikatov-cherez-rownumber">Удаление дубликатов через ROW_NUMBER</h2>
@@ -2506,6 +2510,7 @@ WHERE id NOT IN (
 <p><em>Инженерное предупреждение о масштабе:</em> На гигантских таблицах (десятки миллионов строк) такой массовый <code>DELETE</code> заблокирует страницы данных, переполнит журнал упреждающей записи WAL и приведет к жесткой деградации ввода-вывода (IO). </p>
 <p>В высоконагруженных системах вместо каскадного <code>DELETE</code> часто применяют паттерн <strong>CTAS (Create Table As Select)</strong>: отбирают уникальные записи с <code>rn = 1</code> в новую чистую таблицу, создают на ней индексы, после чего выполняют мгновенный <code>TRUNCATE</code> старой таблицы или переключение имен (<code>ALTER TABLE ... RENAME</code>).</p>
 <hr />
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2517,6 +2522,7 @@ WHERE id NOT IN (
 <p>Использование <code>ROW_NUMBER()</code> приведет к багу при попытке отобрать лидеров («наградить всех пользователей с максимальным баллом»). Если пять участников набрали максимальные 100 баллов, <code>ROW_NUMBER() &lt;= 1</code> вернет только одного случайного счастливчика, а остальных четырех несправедливо отбросит из-за недетерминированного разделения мест. В этом сценарии бизнес-логика требует исключительно <code>DENSE_RANK() &lt;= 1</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

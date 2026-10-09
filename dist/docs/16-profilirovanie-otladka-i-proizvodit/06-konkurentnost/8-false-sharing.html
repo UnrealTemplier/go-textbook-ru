@@ -2325,6 +2325,7 @@ for i := 0; i &lt; 8; i++ {
 
 <p>Элементы <code>counters[0]</code> и <code>counters[1]</code> отстоят в памяти ровно на 8 байт — все 8 счетчиков массива <code>uint64</code> целиком помещаются в <strong>одну</strong> 64-байтную кэш-линию ($8 \times 8 = 64$ байта).</p>
 <p>Каждый вызов <code>atomic.AddUint64</code> компилируется в инструкцию с аппаратным префиксом <code>LOCK</code> (например, <code>LOCK ADDQ</code> на x86-64). Префикс <code>LOCK</code> требует от ядра эксклюзивного владения кэш-линией (состояние Modified). Восемь ядер, одновременно выполняющих <code>LOCK ADDQ</code> над одной кэш-линией, устраивают катастрофический шторм инвалидаций.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2334,6 +2335,7 @@ for i := 0; i &lt; 8; i++ {
     <p>Разработчик может использовать атомарные операции, чтобы избежать мьютексов, думая, что код будет быстрым. Но если атомарные переменные расположены в одной линии, код может работать <em>медленнее</em>, чем с одним мьютексом, из-за постоянных инвалидаций кэша. Аппаратная сериализация на шине памяти через протокол MESI оказывается намного дороже, чем софтверная координация горутин.</p>
   </div>
 </aside>
+
 
 <h2 id="kak-false-sharing-proyavlyaetsya-na-praktike">Как false sharing проявляется на практике</h2>
 
@@ -2400,6 +2402,7 @@ perf c2c report
 </div>
 
 <p>Если время на операцию (<code>ns/op</code>) не уменьшается пропорционально числу ядер или даже растёт — подозрение на contention, включая false sharing. Затем следует снять mutex profile (чтобы исключить настоящий contention на примитивах синхронизации) и, если он чист, переходить к аппаратным метрикам <code>perf</code>.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2410,6 +2413,7 @@ perf c2c report
 <strong>Ответ:</strong> Сначала сниму <code>mutex profile</code> (профиль блокировок Go) — он покажет время ожидания на мьютексах. Если contention на мьютексах отсутствует, но при увеличении <code>GOMAXPROCS</code> код не масштабируется или замедляется, я сниму аппаратные метрики через <code>perf stat -e cache-misses,L1-dcache-load-misses</code> и запущу <code>perf c2c record/report</code>. Если <code>perf c2c</code> зафиксирует высокий показатель HitM (Cache-to-Cache transfers) для конкретной кэш-линии, на которой расположены логически независимые поля структуры, значит, причина деградации — false sharing.</p>
   </div>
 </aside>
+
 
 <h2 id="borba-s-false-sharing-vyravnivanie-i-padding">Борьба с false sharing: выравнивание и паддинг</h2>
 
@@ -2487,6 +2491,7 @@ type Stats struct {
 </div>
 
 <p>Или вычисляют размер динамически через <code>unsafe.Sizeof</code>, но обычно 64 байта — константа для подавляющего большинства современных серверов.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2496,6 +2501,7 @@ type Stats struct {
     <p>В некоторых языках программирования существуют специализированные аннотации компилятора, такие как <code>@Contended</code> в Java (JEP 142) или спецификатор выравнивания <code>alignas(64)</code> в C++11. В языке Go компилятор намеренно не имеет автоматического механизма или директив pragma для предотвращения false sharing — эта ответственность целиком возложена на разработчика. Однако спецификация Go гарантирует, что поля структуры размещаются в оперативной памяти строго в порядке их объявления, поэтому ручной паддинг массивом байт работает абсолютно надежно и детерминировано на всех платформах.</p>
   </div>
 </aside>
+
 
 <h2 id="primer-do-i-posle">Пример: до и после</h2>
 
@@ -2609,6 +2615,7 @@ BenchmarkFalseSharing/Aligned-8         80000000            20 ns/op
 <p>Если две горутины в плотном цикле крутят независимые счетчики, процессор тратит 98% времени не на инкремент чисел, а на ожидание ответов от шины когерентности памяти. Это ярчайшая иллюстрация принципа Mechanical Sympathy: игнорирование законов кремния превращает современный суперскалярный CPU в медлительный калькулятор.</p>
 <h2 id="lovushki-i-nyuansy">Ловушки и нюансы</h2>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2618,6 +2625,8 @@ BenchmarkFalseSharing/Aligned-8         80000000            20 ns/op
     <p><strong>Размер кэш-линии может отличаться.</strong> На подавляющем большинстве современных x86-64 и ARM64 процессоров размер кэш-линии равен 64 байтам. Однако в специализированных серверных архитектурах (IBM POWER, некоторые процессоры Cavium ThunderX) или на процессорах Apple Silicon M-серии размер строки или блока предвыборки (prefetcher line) может составлять 128 байт. Паддинг в 64 байта решает 99% практических задач, но для специализированного железа может потребоваться заполнитель до 128 байт. В стандартной библиотеке Go универсальной платформонезависимой константы размера кэш-линии не экспортируется.</p>
   </div>
 </aside>
+
+
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
@@ -2629,6 +2638,8 @@ BenchmarkFalseSharing/Aligned-8         80000000            20 ns/op
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2639,6 +2650,8 @@ BenchmarkFalseSharing/Aligned-8         80000000            20 ns/op
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2648,6 +2661,7 @@ BenchmarkFalseSharing/Aligned-8         80000000            20 ns/op
     <p><strong>False sharing и интерфейсы.</strong> Интерфейсные значения (<code>interface{}</code> или <code>any</code>) в Go представлены двухсловной структурой <code>iface</code>/<code>eface</code> (указатель на тип/таблицу методов и указатель на данные — суммарно $8 + 8 = 16$ байт на 64-битной архитектуре). Если горутины модифицируют ячейки одного среза интерфейсов <code>[]any</code>, в одну 64-байтную кэш-линию помещаются ровно 4 интерфейсных заголовка ($4 \times 16 = 64$ байта). Перезапись интерфейсных значений разными потоками приведет к классическому false sharing.</p>
   </div>
 </aside>
+
 
 <h2 id="svyaz-s-drugimi-temami">Связь с другими темами</h2>
 

@@ -2184,6 +2184,7 @@
 <p>В классическом программировании на C сетевой ввод-вывод всегда был разделен на два одинаково неудобных лагеря: либо блокирующие сокеты, требующие выделения отдельного тяжелого потока ОС на каждого клиента, либо неблокирующий мультиплексированный ввод-вывод (<code>select</code>, <code>poll</code>, <code>epoll</code>), низвергающий разработчика в пучину конечных автоматов, буферов фрагментов и сложнейших асинхронных колбэков.</p>
 <p>Пакет <code>net</code> в Go совершил тихую инженерную революцию. Это не просто тонкая обертка над POSIX-сокетами. Это глубоко интегрированная в рантайм Go подсистема, реализующая высокоуровневую асинхронную модель программирования без колбэков, промисов или event-loop'ов, видимых разработчику. Благодаря ему, сетевой код на Go выглядит синхронным, прямолинейным и чистым, но под капотом исполняется предельно асинхронно на уровне планировщика горутин и ядра операционной системы.</p>
 <p>Для инженера уровня Senior понимание <code>net</code> — это понимание того, как десятки и сотни тысяч соединений обслуживаются одним бинарником с минимальным потреблением памяти и CPU, как работает интеграция с <code>epoll</code>/<code>kqueue</code>, и почему сетевые таймауты в Go фундаментально отличаются от таймаутов на уровне <code>context</code>.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2193,6 +2194,7 @@
     <p>В основе пакета лежат интерфейсы <code>net.Conn</code> и <code>net.Listener</code>. Они абстрагируют потоковый и дейтаграммный IO, предоставляя унифицированный API для TCP, UDP, Unix-сокетов и IP-протоколов. Реальные реализации (например, <code>*net.TCPConn</code>) делегируют работу структуре <code>netFD</code>, которая связывает файловый дескриптор сокета с внутренним сетевым поллером (<code>netpoller</code>).</p>
   </div>
 </aside>
+
 
 <h2 id="under-the-hood-netpoller-g-m-p-i-asinkhronnost-bez-kolbekov">Under the hood: netpoller, G-M-P и асинхронность без колбэков</h2>
 
@@ -2289,6 +2291,7 @@ flowchart TD
 </div>
 
 <p>Вызов <code>Accept()</code> блокируется на уровне планировщика до появления нового входящего соединения. При вызове <code>Close()</code> все ожидающие <code>Accept</code> горутины немедленно просыпаются с ошибкой <code>net.ErrClosed</code>.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2300,6 +2303,7 @@ flowchart TD
 В свою очередь, <code>context.Context</code> управляет логическим временем жизни операции в бизнес-слое. В <code>net/http</code> они связаны: при отмене <code>r.Context()</code> сервер автоматически вызывает <code>conn.Close()</code>, что пробуждает горутины, ждущие IO с ошибкой <code>net.OpError</code>. Не смешивайте их без четкого понимания границ ответственности.</p>
   </div>
 </aside>
+
 
 <h2 id="2-mechanical-sympathy-faylovye-deskriptory-epoll-i-tsena-syscall">2. Mechanical Sympathy: Файловые дескрипторы, epoll и цена syscall</h2>
 
@@ -2415,6 +2419,7 @@ ips, err := resolver.LookupIPAddr(context.Background(), &quot;api.example.com&qu
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2424,6 +2429,7 @@ ips, err := resolver.LookupIPAddr(context.Background(), &quot;api.example.com&qu
     <p>Стандартный пакет <code>net</code> принципиально <strong>не кэширует</strong> DNS-ответы внутри рантайма Go. Кэширование возлагается на системные службы ОС (<code>systemd-resolved</code>, <code>nscd</code>, <code>dnsmasq</code>) или сетевую инфраструктуру. Выбор между нативным чистым Go-резолвером и системным libc/cgo управляется через <code>GODEBUG=netdns=go</code> или <code>netdns=cgo</code> (а флаг <code>netdns=1</code> включает подробный отладочный вывод).</p>
   </div>
 </aside>
+
 
 <h2 id="lovushki-i-khardkornye-voprosy-s-sobesedovaniy">Ловушки и хардкорные вопросы с собеседований</h2>
 
@@ -2463,6 +2469,7 @@ ips, err := resolver.LookupIPAddr(context.Background(), &quot;api.example.com&qu
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2475,6 +2482,7 @@ ips, err := resolver.LookupIPAddr(context.Background(), &quot;api.example.com&qu
 <strong>Ответ:</strong> При вызове <code>ln.Close()</code> блокирующий <code>Accept()</code> просыпается с <code>net.ErrClosed</code>. HTTP-сервер Go использует это для остановки приема новых соединений, а затем ждет завершения активных запросов через <code>context</code> и таймауты.</p>
   </div>
 </aside>
+
 
 <h2 id="sravnenie-s-ekosistemami-drugikh-yazykov">Сравнение с экосистемами других языков</h2>
 

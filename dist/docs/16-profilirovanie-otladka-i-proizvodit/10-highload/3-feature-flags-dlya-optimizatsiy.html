@@ -2190,6 +2190,7 @@
 <p>Feature Flag в коде — это всегда условное ветвление (<code>if flag { ... } else { ... }</code>).</p>
 <p>Когда речь идет о высокоуровневой продуктовой бизнес-логике (например, показать ли новую кнопку в веб-интерфейсе), флаг допустимо проверять сетевым запросом к Redis, Consul или базе данных: сетевая задержка в 1–2 мс на фоне общего рендеринга страницы незаметна.</p>
 <p>Но когда мы защищаем микрооптимизацию, которая экономит сотни наносекунд в горячем цикле, сетевой запрос (и даже захват мьютекса <code>sync.Mutex</code>) <strong>мгновенно уничтожит всю производительность</strong>.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Сетевые проверки в горячем пути">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2221,8 +2222,10 @@
   </div>
 </aside>
 
+
 <p>Проверка флага в Hot Path обязана происходить <strong>исключительно в оперативной памяти (In-Memory)</strong> и быть абсолютно потокобезопасной (Thread-Safe) без использования блокировок ядра ОС.</p>
 <p>Идеальным инструментом для этой задачи является стандартный пакет <strong><code>sync/atomic</code></strong>.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: аппаратная цена atomic.Bool">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2236,6 +2239,7 @@
 Системная инвалидация кэш-линий и нагрузка на шину памяти возникают <em>исключительно</em> в момент записи (<code>atomic.Store</code>), когда администратор переключает рубильник, что происходит считанные разы за все время жизни сервиса.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="idiomatichnaya-realizatsiya-in-memory-flagov">Идиоматичная реализация In-Memory флагов</h2>
@@ -2328,6 +2332,7 @@ flowchart TD
 
 <p>Для многоэтапных операций прямое чтение глобального <code>atomic.Bool</code> несет в себе скрытую опасность. Представьте длинный пайплайн обработки данных или распределенную транзакцию (Saga).</p>
 <p>Что произойдет, если в начале обработки входящего запроса флаг «Использовать новый формат сериализации» был <code>true</code>, сервис создал объект новой структуры, а в середине пайплайна дежурный инженер переключил флаг в <code>false</code>? Вторая половина пайплайна прочитает <code>false</code>, попытается десериализовать данные по старому алгоритму и вызовет <code>panic</code> или повреждение данных (Data Corruption).</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2338,6 +2343,7 @@ flowchart TD
 <strong>Ответ:</strong> Состояние всех критических флагов должно <strong>замораживаться</strong> ровно один раз на входе в систему (в HTTP/gRPC Middleware) и транслироваться по всему дереву вызовов внутри объекта <code>context.Context</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="realizatsiya-cherez-middleware">Реализация через Middleware:</h3>
 

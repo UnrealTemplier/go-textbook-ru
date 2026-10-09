@@ -2182,6 +2182,7 @@
             <h2 id="vvedenie">Введение</h2>
 
 <p>В предыдущей статье <a href="23-http-3-i-quic-pochemu-budushchee-ukhodit-ot-tcp.html" class="wikilink">23. HTTP 3 и QUIC. Почему будущее уходит от TCP</a> мы рассмотрели мотивы перехода от TCP к UDP + QUIC. Теперь мы спустимся на уровень реализации, чтобы понять, как QUIC заменяет ядро ОС, как Go управляет пакетами в userspace и какие инженерные компромиссы это несёт. </p>
+
 <aside class="callout callout-note" aria-label="Заметка">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">📝</span>
@@ -2191,6 +2192,7 @@
     <p>Спецификация QUIC разделена IETF на два базовых документа: RFC 9000 (устройство транспорта и инкапсуляция фреймов) и RFC 9002 (алгоритмы детекции потерь и контроля перегрузок). Это модульное разделение позволяет независимо оптимизировать транспортные механизмы и алгоритмы congestion control.</p>
   </div>
 </aside>
+
 
 <p>QUIC — это не просто обёртка над UDP. Это полноценный транспортный протокол, реализованный в пространстве пользователя. Для Go-разработчика это означает, что мы берём на себя ответственность за планирование, аллокации, криптографию и контроль перегрузок, которые раньше обеспечивал Linux TCP-стек.</p>
 <p>Когда операционная система освобождается от забот о надежности передачи, все обязанности по переотправке пакетов, вычислению RTT, скользящим окнам и криптографии падают на плечи рантайма вашего приложения. Если в TCP вы просто читали байты из файлового дескриптора сокета, то в QUIC ваш Go-процесс становится собственной миниатюрной сетевой подсистемой ядра.</p>
@@ -2332,6 +2334,7 @@ flowchart LR
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2342,6 +2345,8 @@ flowchart LR
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2351,6 +2356,7 @@ flowchart LR
     <p>Заголовок Short Header шифруется с использованием ключей, полученных на этапе рукопожатия. Если клиент или сервер потеряют эти ключи, они не смогут расшифровать данные, даже если IP-адреса совпадают. При этом сами ключи не привязаны к 5-tuple, поэтому миграция соединения их не обнуляет: QUIC использует <strong>Connection ID</strong> именно для того, чтобы менять IP-адрес и порт (5-tuple), сохраняя контекст соединения; новый путь проверяется фреймами <code>PATH_CHALLENGE</code>/<code>PATH_RESPONSE</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="2-streams-i-multipleksirovanie">2. Streams и мультиплексирование</h3>
@@ -2381,6 +2387,7 @@ flowchart LR
 <li><code>0x02</code>: Инициирован клиентом, однонаправленный (например, поток телеметрии).</li>
 <li><code>0x03</code>: Инициирован сервером, однонаправленный (например, Server-Push или служебный управляющий поток HTTP/3).</li>
 </ul>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2391,6 +2398,7 @@ flowchart LR
 <strong>Ответ:</strong> В HTTP/2 потоки мультиплексируются поверх одного TCP-соединения, но теряют данные при потере любого пакета в TCP-стеке. В QUIC потоки мультиплексируются на уровне транспорта: потеря пакета в Stream A не блокирует Stream B, так как loss recovery работает на уровне QUIC, а не ядра ОС.</p>
   </div>
 </aside>
+
 
 <p><strong>Flow Control (Управление потоком):</strong><br />
 QUIC использует оконный контроль на двух независимых уровнях:<br />
@@ -2488,6 +2496,7 @@ stateDiagram-v2
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2502,6 +2511,7 @@ stateDiagram-v2
 Go-рантайм компенсирует это за счёт <code>netpoll</code> (epoll/kqueue) и асинхронного цикла чтения/записи, но CPU-циклы на сборку пакетов и криптографию ложатся на приложение.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="4-realizatsiya-v-go-netpoll-sync-pool-i-escape-analysis">4. Реализация в Go: netpoll, sync.Pool и Escape Analysis</h3>
@@ -2554,6 +2564,7 @@ func (c *connection) readLoop(conn *net.UDPConn) error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2567,6 +2578,7 @@ func (c *connection) readLoop(conn *net.UDPConn) error {
 3. Отключение <code>GODEBUG=asyncpreemptoff=1</code> только для критических путей, так как async preemption добавляет overhead на контекст.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="5-lovushki-sravnenie-s-tcp-i-voprosy-dlya-sobesedovaniya">5. Ловушки, сравнение с TCP и вопросы для собеседования</h3>
@@ -2607,6 +2619,7 @@ func (c *connection) readLoop(conn *net.UDPConn) error {
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2616,6 +2629,8 @@ func (c *connection) readLoop(conn *net.UDPConn) error {
     <p><strong>UDP Fragmentation &amp; MTU Discovery:</strong> QUIC не умеет автоматически фрагментировать пакеты. Если размер QUIC-пакета &gt; PMTU (Path MTU), пакеты дробятся на UDP-уровне, что приводит к потере целого QUIC-пакета при потере одного фрагмента. Go-реализации используют <strong>Path MTU Discovery (PMTUD)</strong> и <strong>BDP (Bandwidth-Delay Product)</strong> для динамической подстройки размера пакета. В контейнерах (Docker/K8s) MTU часто 1500, но Overlay-сети (VXLAN) отнимают 50 байт. Без корректной настройки QUIC будет фрагментировать, теряя производительность.</p>
   </div>
 </aside>
+
+
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -2630,6 +2645,7 @@ func (c *connection) readLoop(conn *net.UDPConn) error {
 4. <em>Как QUIC решает проблему "Thundering Herd" при восстановлении соединения?</em> -&gt; Connection ID позволяет клиенту восстановить контекст без полного TCP-повтора. Сервер маппит ID на <code>connectionState</code> в кэше.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

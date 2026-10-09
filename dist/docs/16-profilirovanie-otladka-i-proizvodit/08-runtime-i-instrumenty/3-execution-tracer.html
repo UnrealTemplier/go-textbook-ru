@@ -2329,6 +2329,7 @@ flowchart TD
 1. <strong>Безусловная фиксация каждого шага:</strong> В отличие от CPU-профилировщика, который опрашивает стек 100 раз в секунду и не зависит от интенсивности переключений, трассировщик обязан записать событие на <strong>абсолютно каждую</strong> операцию планировщика, каждый <code>select</code>, каждую отправку в канал и каждый системный вызов. На высоконагруженном сервере частота генерации событий легко превышает <strong>2–5 миллионов событий в секунду</strong>!<br />
 2. <strong>Аллокации буферов памяти:</strong> Процессоры <code>P</code> непрерывно заполняют буферы и запрашивают новые у аллокатора. Это порождает дополнительную работу для сборщика мусора, создавая паразитный фон.<br />
 3. <strong>Конкуренция при сбросе:</strong> Передача заполненных буферов от нескольких десятков <code>P</code> в центральную очередь сборщика требует синхронизации через мьютекс, порождая микроконфликты (contention) на многоядерных машинах.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2338,6 +2339,7 @@ flowchart TD
     <p><strong>Катастрофическое искажение latency и GC.</strong> Запуск 30-секундной трассировки в боевом кластере под пиковой нагрузкой способен удвоить время отклика (p99 latency) и искусственно участить срабатывание сборщика мусора из-за миллионов аллокаций самого трассировщика. В результате вы будете профилировать не поведение вашего приложения, а накладные расходы самого инструмента наблюдения! Всегда ограничивайте съемку короткими окнами (3–10 секунд) и сверяйте результаты с внешними метриками Prometheus, собранными в штатном режиме без трейсера.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mekhanika-zapisi-v-kriticheskikh-sektsiyakh-rantayma">Механика записи в критических секциях рантайма</h2>
@@ -2424,6 +2426,7 @@ func ProcessOrder(ctx context.Context, orderID string) {
 <li><strong>Task</strong> (<code>trace.NewTask(ctx, "name")</code>) создаёт логическую единицу работы с уникальным идентификатором. Все последующие регионы, созданные с этим контекстом, будут привязаны к задаче. В интерфейсе <code>go tool trace</code> можно выбрать задачу и увидеть её временную шкалу.</li>
 <li><strong>Region</strong> (<code>trace.StartRegion(ctx, "name")</code>) — именованный отрезок внутри задачи. На диаграмме он отображается как полоса, что позволяет измерить длительность бизнес-операции ("парсинг JSON", "запрос к БД") и сравнить её с системными событиями.</li>
 </ul>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2439,6 +2442,7 @@ func ProcessOrder(ctx context.Context, orderID string) {
 5. На общем таймлайне проверю, не совпал ли всплеск латентности с фазой Stop-The-World сборщика мусора.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="sravnenie-s-drugimi-instrumentami">Сравнение с другими инструментами</h2>
@@ -2495,6 +2499,7 @@ func ProcessOrder(ctx context.Context, orderID string) {
 <hr />
 <h2 id="lovushki-i-ogranicheniya">Ловушки и ограничения</h2>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2504,6 +2509,8 @@ func ProcessOrder(ctx context.Context, orderID string) {
     <p><strong>Переполнение буферов (<code>trace: buffer overflow</code>).</strong> Если темп генерации микрособытий превышает пропускную способность записи в выходной поток <code>io.Writer</code> (например, при медленной записи на диск или сетевой сокет), промежуточные буферы переполняются, и рантайм начинает отбрасывать события. В выводе консоли появляется сообщение: <code>trace: buffer overflow</code>, а на диаграмме таймлайна возникают пустые разорванные интервалы. Решение: уменьшать длительность записи, либо стримить данные в память через предварительно аллоцированный <code>bytes.Buffer</code>.</p>
   </div>
 </aside>
+
+
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
@@ -2515,6 +2522,8 @@ func ProcessOrder(ctx context.Context, orderID string) {
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2524,6 +2533,7 @@ func ProcessOrder(ctx context.Context, orderID string) {
     <p><strong>Неверная интерпретация высокого <code>Scheduler Wait</code>.</strong> Высокое значение <code>Scheduler Wait</code> в отчете горутины не всегда означает глобальную перегрузку CPU. Если в таймлайне дорожки процессоров <code>P</code> окрашены в белый цвет (<code>Idle</code>), но горутины продолжают простаивать в ожидании запуска, проверьте использование <code>runtime.LockOSThread()</code>. Горутина, привязанная к конкретному системному потоку <code>M</code>, не может быть запущена на произвольном <code>P</code> и вынуждена ожидать освобождения именно своего привязанного потока.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mechanical-sympathy-vzaimodeystvie-trassirovshchika-s-zhelezom">Mechanical Sympathy: взаимодействие трассировщика с «железом»</h2>

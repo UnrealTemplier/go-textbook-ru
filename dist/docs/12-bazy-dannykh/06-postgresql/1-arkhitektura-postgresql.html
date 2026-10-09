@@ -2246,6 +2246,7 @@ flowchart TD
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом: Почему независимые процессы, а не потоки?">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2258,10 +2259,12 @@ flowchart TD
   </div>
 </aside>
 
+
 <p>Однако за надежность и простоту отладки приходится платить существенную системную цену:<br />
 * <strong>Накладные расходы <code>fork()</code>:</strong> Системный вызов <code>fork()</code> требует от ядра ОС дублирования таблиц страниц памяти (Page Tables) процесса. Даже с оптимизацией Copy-On-Write (CoW) создание сотен процессов в секунду генерирует огромную нагрузку на подсистему управления памятью Linux.<br />
 * <strong>Переключение контекста (Context Switching):</strong> Переключение контекста между независимыми процессами (смена таблиц страниц в регистре <code>CR3</code>, сброс TLB-кэша процессора) стоит в разы дороже переключения потоков, и несоизмеримо дороже кооперативного планирования горутин Go в пространстве пользователя.<br />
 * <strong>Базовый overhead памяти:</strong> Каждый Backend Process резервирует индивидуальный стек, служебные структуры дескрипторов и локальные буферы (от 5–10 МБ оперативной памяти просто по факту своего существования).</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2272,6 +2275,7 @@ flowchart TD
 <strong>Ответ:</strong> 10 000 активных TCP-подключений трансформируются в 10 000 тяжелых процессов ОС Linux. Планировщик CFS/EEVDF ядра Linux захлебнется в попытках распределить кванты процессорного времени между ними (эффект CPU Thrashing). Более 80% времени процессора будет сгорать впустую на переключениях контекста и инвалидации кэшей процессора (L1/L2/L3), а полезная работа остановится. Сервер быстро исчерпает свободную RAM и упадет по OOM (Out Of Memory). Именно поэтому перед PostgreSQL всегда устанавливают пул соединений: встроенный в приложение <a href="../10-praktika-i-arkhitektura/2-connection-pool.html" class="wikilink">2. Connection pool</a> (ограниченный формулой <code>2 * CPU_Cores + Disk_Spindle_Depth</code>) либо внешний транзакционный прокси вроде <strong>PgBouncer</strong> или <strong>Odyssey</strong>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="arkhitektura-pamyati-postgresql">Архитектура памяти PostgreSQL</h2>
@@ -2339,6 +2343,7 @@ graph TD
 <li><strong><code>shared_buffers</code></strong>: Ключевой кэш страниц с данными (стандартный размер страницы — 8 КБ). PostgreSQL принципиально не читает данные напрямую с блочного устройства при обработке запросов. Сервер запрашивает блок с диска, помещает его в <code>shared_buffers</code>, и лишь оттуда отдает строки клиентскому запросу. Рекомендуемое значение для большинства серверов — около <strong>25% от общего объема RAM</strong>.</li>
 <li><strong><code>wal_buffers</code></strong>: Буфер страниц журнала предзаписи (<a href="../05-tranzaktsii-i-vnutrennosti/8-wal-write-ahead-log.html" class="wikilink">8. WAL. Write Ahead Log</a>). Именно сюда помещаются дельты изменений перед тем, как они будут сброшены на постоянный носитель для обеспечения свойства Durability (буква D в гарантиях ACID).</li>
 </ul>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Двойное буферизирование (Double Buffering)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2350,6 +2355,7 @@ graph TD
 При чтении блок данных с диска сначала попадает в файловый кэш Linux, а затем копируется ядром в <code>shared_buffers</code> PostgreSQL. Это и называется <em>двойным буферизированием</em>. Оставшиеся 70–75% оперативной памяти жизненно необходимы операционной системе, чтобы кэшировать файлы базы данных!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="fonovye-protsessy-background-workers">Фоновые процессы (Background Workers)</h2>

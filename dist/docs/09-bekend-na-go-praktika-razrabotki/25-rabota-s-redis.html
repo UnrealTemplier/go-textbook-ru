@@ -2232,6 +2232,7 @@ flowchart LR
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2241,6 +2242,7 @@ flowchart LR
     <p>Redis однопоточный. Это значит, что одна блокирующая операция (<code>KEYS *</code>, <code>HGETALL</code> на гигантский хеш, сложный Lua-скрипт) останавливает обработку всех остальных клиентов. В Go это особенно критично, так как тысячи горутин могут одновременно ждать ответа от одного зависшего сокета, потребляя память и создавая contention на <code>netpoll</code>.</p>
   </div>
 </aside>
+
 
 <h2 id="2-pul-soedineniy-i-mekhanika-netpoll">2. Пул соединений и механика netpoll</h2>
 
@@ -2290,6 +2292,7 @@ func GetUser(ctx context.Context, rdb *redis.Client, userID int64) (string, erro
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2299,6 +2302,7 @@ func GetUser(ctx context.Context, rdb *redis.Client, userID int64) (string, erro
     <p>При вызове <code>rdb.Get()</code> горутина запрашивает соединение из пула. Если пул пуст, горутина блокируется на канале <code>pool.NewConn()</code>. После получения соединения вызывается <code>net.Conn.Read/Write</code>. Эти методы в Linux используют <code>netpoll</code> (обертка над <code>epoll</code>). Горутина переходит в состояние <code>_Gwaiting</code>, не потребляя тред ОС. Когда сокет готов к чтению/записи, <code>epoll</code> будит горутину, и планировщик перекидывает её в очередь P. Это позволяет одному треду ОС обрабатывать десятки тысяч одновременных Redis-запросов с латентностью &lt; 1 мс.</p>
   </div>
 </aside>
+
 
 <h2 id="3-payplayning-i-multipleksirovanie">3. Пайплайнинг и мультиплексирование</h2>
 
@@ -2334,6 +2338,7 @@ func GetUser(ctx context.Context, rdb *redis.Client, userID int64) (string, erro
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2343,6 +2348,7 @@ func GetUser(ctx context.Context, rdb *redis.Client, userID int64) (string, erro
     <p><code>Pipeline</code> в <code>go-redis</code> <strong>не гарантирует атомарность</strong>. Команды отправляются пакетом, но Redis выполняет их последовательно, не блокируя других клиентов. Если между командами нужна атомарность, используйте <code>MULTI/EXEC</code> (транзакции Redis) или Lua-скрипты (<code>EVAL</code>). Транзакции Redis не откатываются при ошибках выполнения команд (например, <code>WRONGTYPE</code>), а продолжают выполнение, помечая команды как failed.</p>
   </div>
 </aside>
+
 
 <h2 id="4-serializatsiya-allokatsii-i-gc-davlenie">4. Сериализация, аллокации и GC-давление</h2>
 
@@ -2381,6 +2387,7 @@ func GetUser(ctx context.Context, rdb *redis.Client, userID int64) (string, erro
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2391,6 +2398,7 @@ func GetUser(ctx context.Context, rdb *redis.Client, userID int64) (string, erro
   </div>
 </aside>
 
+
 <h2 id="5-lovushki-production-i-antipatterny">5. Ловушки production и антипаттерны</h2>
 
 <ul>
@@ -2399,6 +2407,7 @@ func GetUser(ctx context.Context, rdb *redis.Client, userID int64) (string, erro
 <li><strong><code>KEYS</code> и <code>SCAN</code></strong>: <code>KEYS pattern</code> блокирует Redis O(N). В production запрещен. Используйте <code>SCAN</code> с курсором и <code>COUNT</code>, но помните, что <code>SCAN</code> тоже может нагружать сервер при высокой дельте изменений.</li>
 <li><strong>Memory Fragmentation</strong>: Redis использует <code>jemalloc</code> или системный <code>malloc</code>. При активном удалении ключей возникает фрагментация памяти (<code>mem_fragmentation_ratio &gt; 1.5</code>). Это не лечится на стороне Go, но мониторинг метрик Redis обязателен.</li>
 </ul>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2411,6 +2420,7 @@ func GetUser(ctx context.Context, rdb *redis.Client, userID int64) (string, erro
 <strong>Ответ:</strong> Используйте <code>SET key value NX EX timeout</code> с уникальным значением (request ID) и проверяйте его перед <code>DEL</code>. Никогда не делайте <code>GET + SET</code> или <code>EXPIRE</code> отдельно — это race condition. В production используйте библиотеку <code>github.com/bsm/redislock</code> или <code>go-redsync</code>, которые реализуют корректную проверку владельца и автоматическое продление (watchdog).</p>
   </div>
 </aside>
+
 
 <h2 id="6-sravnenie-s-drugimi-ekosistemami">6. Сравнение с другими экосистемами</h2>
 

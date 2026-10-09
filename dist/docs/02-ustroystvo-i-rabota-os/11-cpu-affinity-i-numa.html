@@ -2226,6 +2226,7 @@
 2. Проверяет права доступа: процессу разрешено менять affinity только себе или дочерним задачам (для произвольных процессов требуется привилегия <code>CAP_SYS_NICE</code>).<br />
 3. Активирует флаг <code>SCHED_AFFINITY</code> в дескрипторе задачи.<br />
 4. Если задача в данный момент исполняется на ядре, не входящем в новую маску, ядро запускает системный поток миграции (<code>migration/N</code>), который принудительно переносит задачу на разрешенное ядро и исключает ее из глобальной межъядерной балансировки нагрузки (<code>load_balance</code>).</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: POSIX API и потоки Go">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2239,6 +2240,7 @@
   </div>
 </aside>
 
+
 <h3 id="utility-i-upravlenie">Утилиты и управление</h3>
 
 <p>В Linux-окружении управлять affinity можно как до старта сервиса, так и в рантайме:</p>
@@ -2248,6 +2250,7 @@
 <li><code>taskset -cp &lt;PID&gt;</code> — просмотр текущей шестнадцатеричной маски affinity процесса.</li>
 <li><code>cgroups v2 cpuset</code> — промышленный стандарт контейнерной изоляции в современных дата-центрах (подробно см. в <a href="52-ogranicheniya-os-ulimit-cgroups-quotas.html" class="wikilink">52. Ограничения ОС. ulimit, cgroups, quotas</a>).</li>
 </ul>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Опасность ручного taskset">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2259,6 +2262,7 @@
 Применение CPU Affinity оправдано <strong>только тогда</strong>, когда вы точно знаете, что сохранение горячего L1/L2/L3-кэша и локальность памяти критичнее эластичного распределения нагрузки.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="kak-planirovshchik-os-rabotaet-s-affinity">Как планировщик ОС работает с Affinity</h2>
@@ -2325,6 +2329,7 @@ flowchart TD
 - <code>MPOL_PREFERRED</code>: Политика по умолчанию. Ядро старается выделить память на локальном NUMA-узле потока. Если узел переполнен, память тихо выделяется на соседних узлах.<br />
 - <code>MPOL_BIND</code>: Жесткая привязка. Память выделяется <strong>только</strong> на перечисленных узлах. Если там нет свободных страниц, процесс не уходит на удаленные узлы.<br />
 - <code>MPOL_INTERLEAVE</code>: Постраничное чередование. Физические страницы распределяются по очереди между узлами (страница 0 на Node 0, страница 1 на Node 1 и т.д.). Идеально для разделяемой памяти, к которой обращаются потоки с разных сокетов.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Аллокаторы памяти и mempolicy">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2335,6 +2340,7 @@ flowchart TD
 <p>Ядро Linux сверяется с текущей <code>mempolicy</code> потока. Если задана политика <code>MPOL_BIND</code> на узел 0, а в оперативной памяти этого узла исчерпан пул свободных страниц, ядро вернет ошибку <code>ENOMEM</code>, даже если соседний сокет Node 1 имеет 256 ГБ абсолютно свободной RAM! Для архитектора это означает: жесткая привязка памяти требует предельно точного расчета лимитов.</p>
   </div>
 </aside>
+
 
 <h3 id="avtomaticheskoe-numa-balansirovanie">Автоматическое NUMA-балансирование</h3>
 
@@ -2396,6 +2402,7 @@ echo $$ &gt; /sys/fs/cgroup/high_perf_service/cgroup.procs
 <li><strong>Topology Manager (<code>topologyManagerPolicy: restricted</code> или <code>single-numa-node</code>):</strong><br />
    Координирует выделение CPU, памяти и PCIe-устройств (например, сетевых карт SR-IOV и GPU). Если ресурсы пода невозможно выделить в рамках одного NUMA-узла, Topology Manager отклонит запуск пода (<code>Pod Admission Failure</code>), защищая приложение от штрафа за межсокетный трафик.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Деплой high-load сервиса на NUMA-ноду">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2412,6 +2419,7 @@ echo $$ &gt; /sys/fs/cgroup/high_perf_service/cgroup.procs
   </div>
 </aside>
 
+
 <hr />
 <h2 id="mechanical-sympathy-vliyanie-na-go-rantaym">Mechanical Sympathy: Влияние на Go-рантайм</h2>
 
@@ -2426,6 +2434,7 @@ echo $$ &gt; /sys/fs/cgroup/high_perf_service/cgroup.procs
 <li><strong>Мониторинг распределения памяти по NUMA-узлам:</strong><br />
    Флага <code>GODEBUG=gcresidency</code> в Go нет (неизвестные ключи <code>GODEBUG</code> рантайм молча игнорирует), поэтому смотрите внешними инструментами ОС, например <code>numastat -p &lt;pid&gt;</code> и <code>/proc/&lt;pid&gt;/numa_maps</code>. Если вы видите резкий перекос (например, GC выполняет 90% работы на ядрах 0–7 и лишь 10% на 8–15), это верный признак того, что куча осела на одном NUMA-узле, а горутины размазаны по разным.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Ловушка раздутого GOMAXPROCS">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2439,6 +2448,7 @@ echo $$ &gt; /sys/fs/cgroup/high_perf_service/cgroup.procs
 <p><em>Проверенная практика:</em> Вместо запуска одного гигантского Go-процесса на 128 ядер на 2-сокетном сервере запустите <strong>два независимых процесса по 64 ядра</strong>, жестко привязав каждый к своему NUMA-узлу через <code>numactl --cpunodebind=0 --membind=0</code>. Выигрыш в чистой производительности может достигать 30–40%!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

@@ -2184,6 +2184,7 @@
 <p><em>«Время, часы и порядок событий в распределенной системе не абсолютны; они лишь артефакт каналов связи, которые мы сами решили построить».</em>  <br />
 — Лесли Лэмпорт, лауреат премии Тьюринга</p>
 </blockquote>
+
 <aside class="callout callout-note" aria-label="Заметка">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">📝</span>
@@ -2193,6 +2194,7 @@
     <p><strong>Связи:</strong> Эта статья развивает темы, начатые в <a href="2-topics-partitions-i-offsets.html" class="wikilink">2. Topics, partitions и offsets</a> и <a href="4-consumer-groups.html" class="wikilink">4. Consumer groups</a>, и закладывает основу для понимания гарантий exactly-once в <a href="6-exactly-once-v-kafka.html" class="wikilink">6. Exactly once в Kafka</a> и паттернов <a href="5-ordering-i-partitioning.html" class="wikilink">5. Ordering и partitioning</a> в распределённых системах.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="pochemu-uporyadochennost-vyzov-v-raspredelyonnykh-sistemakh">Почему упорядоченность — вызов в распределённых системах</h2>
@@ -2362,6 +2364,7 @@ sequenceDiagram
 </figure>
 
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Спасение через Idempotent Producer">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2372,10 +2375,12 @@ sequenceDiagram
   </div>
 </aside>
 
+
 <hr />
 <h2 id="lovushka-izmeneniya-chisla-partitsiy">Ловушка изменения числа партиций</h2>
 
 <p>Добавление новых партиций в топик — операция, которая ломает гарантии порядка по ключу. Формула <code>partition = hash(key) % num_partitions</code> после увеличения $N$ начинает давать совершенно другие результаты, и сообщения с одним и тем же ключом могут «переехать» в другую партицию.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2386,6 +2391,7 @@ sequenceDiagram
 <p><strong>Решение:</strong> Количество партиций топика должно быть заложено на этапе проектирования с запасом на будущий параллелизм (например, исходя из целевого RPS через 2–3 года). Изменение числа партиций — это архитектурный перелом, требующий пересмотра логики консьюмеров и, возможно, миграции данных.</p>
   </div>
 </aside>
+
 
 <p>Если динамическое масштабирование неизбежно, применяют техники:<br />
 - <strong>Двухфазная миграция:</strong> Запись старых ключей продолжается в старые партиции через специальную карту маппинга или кастомный партиционер, пока активные процессы по ним не завершатся.<br />
@@ -2540,6 +2546,7 @@ func processBusinessEvent(r *kgo.Record) {
 </div>
 
 <p>Более того, консьюмер, читающий партицию последовательно, движется по файлу сегментам вперёд, позволяя операционной системе предвыбирать следующие блоки данных в кеш (<strong>Linux kernel read-ahead</strong>). Это даёт устойчивый throughput без провалов, даже при тысячах параллельных потребителей, читающих разные партиции.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2549,6 +2556,7 @@ func processBusinessEvent(r *kgo.Record) {
     <p>Когда консьюмер читает партицию с большим лагом, его запросы могут уходить в старые сегменты, которые уже вытеснены из <code>Page Cache</code>. В этом случае брокер выполняет чтение с диска, но, благодаря линейной структуре сегмента, это всё ещё быстро — последовательное чтение с диска даже на HDD составляет сотни мегабайт в секунду. На современных NVMe-накопителях последовательное чтение достигает 3–7 ГБ/с на накопитель.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="sravnenie-s-rabbitmq-i-tipichnye-sobesedovatelnye-voprosy">Сравнение с RabbitMQ и типичные собеседовательные вопросы</h2>
@@ -2588,6 +2596,7 @@ func processBusinessEvent(r *kgo.Record) {
 </tbody>
 </table></div>
 <hr />
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2599,6 +2608,8 @@ func processBusinessEvent(r *kgo.Record) {
   </div>
 </aside>
 
+
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2609,6 +2620,7 @@ func processBusinessEvent(r *kgo.Record) {
 <strong>Ответ:</strong> Потому что хеш-функция зависит от количества партиций: <code>partition = hash(key) % num_partitions</code>. При увеличении N распределение ключей меняется, и сообщения одной сущности могут уйти в другую партицию. Избежать этого можно, заложив количество партиций с запасом при проектировании, используя составные ключи с учётом всех будущих сущностей и избегая динамического увеличения партиций без миграции состояния консьюмеров.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="zaklyuchenie-i-sleduyushchie-shagi">Заключение и следующие шаги</h2>

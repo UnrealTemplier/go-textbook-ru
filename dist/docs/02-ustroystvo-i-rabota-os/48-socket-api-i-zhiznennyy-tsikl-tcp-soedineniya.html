@@ -2187,7 +2187,7 @@
 <hr />
 <h2 id="vvedenie-sokety-kak-most-mezhdu-prilozheniem-i-setyu">Введение: Сокеты как мост между приложением и сетью</h2>
 
-<p>Для разработчика на Go сетевое программирование начинается с предельно лаконичных конструкций: <code>net.Listen</code>, <code>Listener.Accept</code> или <code>Conn.Read</code>. Мы пишем несколько строк кода и получаем работающий HTTP- или gRPC-сервер, способный обслуживать десятки тысяч клиентов. За этой обманчивой простотой скрывается колоссальный айсберг: пакет <code>&lt;span class="wikilink-unresolved" title="Заметка в разработке"&gt;5. Учебник по Go (Основы и синтаксис)&lt;/span&gt;.net</code> абстрагирует сложнейшие механизмы взаимодействия с ядром Linux, конечный автомат протокола TCP и планировщик горутин.</p>
+<p>Для разработчика на Go сетевое программирование начинается с предельно лаконичных конструкций: <code>net.Listen</code>, <code>Listener.Accept</code> или <code>Conn.Read</code>. Мы пишем несколько строк кода и получаем работающий HTTP- или gRPC-сервер, способный обслуживать десятки тысяч клиентов. За этой обманчивой простотой скрывается колоссальный айсберг: пакет <code>[[5. Учебник по Go (Основы и синтаксис)]].net</code> абстрагирует сложнейшие механизмы взаимодействия с ядром Linux, конечный автомат протокола TCP и планировщик горутин.</p>
 <p>Когда ваше Go-приложение вызывает <code>net.Listen</code> или читает байты через <code>conn.Read()</code>, оно не взаимодействует с физической сетью напрямую. Вы инициируете каскад системных вызовов, аллокаций памяти под ядерные буферы и пробуждений горутин через механизмы мультиплексирования ввода-вывода.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -2284,6 +2284,7 @@ flowchart LR
 <li><code>listen(fd, backlog)</code> — переводит сокет в пассивный режим прослушивания и инициирует очереди ожидания входящих рукопожатий.</li>
 <li><code>accept(fd, ...)</code> — блокирует вызывающий поток (или возвращает ошибку в неблокирующем режиме), пока из очереди установленных соединений не будет извлечен готовый сокет клиента.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом: Двойственная природа сокета в ядре">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2296,6 +2297,7 @@ flowchart LR
 <p>Для протокола TCP ядро выделяет расширенную структуру <code>struct tcp_sock</code>, которая логически наследуется от <code>struct sock</code>. Вся динамика жизненного цикла (конечный автомат состояний: <code>SYN_SENT</code>, <code>ESTABLISHED</code>, <code>FIN_WAIT</code> и др.) фиксируется в поле <code>sk_state</code> внутри <code>struct sock</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="zhiznennyy-tsikl-tcp-soedineniya-3-way-handshake">Жизненный цикл TCP-соединения (3-way handshake)</h2>
@@ -2389,6 +2391,7 @@ flowchart LR
 <li><strong><code>sk_read_queue</code> и <code>sk_write_queue</code></strong>: Очереди пакетов <code>sk_buff</code>, ожидающих вычитывания приложением или отправки в физический драйвер NIC.</li>
 </ul>
 <p>Когда системный вызов <code>accept()</code> возвращает управление в Go, ядро выполняет системную операцию <code>copy_to_user()</code> для заполнения структуры сетевого адреса <code>sockaddr</code>, создает новый дескриптор <code>struct file</code>, инициализирует протокольные таймеры (<code>TCP_TIMEWAIT</code>, <code>TCP_DELACK</code>, таймер повторной передачи RTO) и вызывает функцию <code>sk-&gt;sk_state_change</code> для оповещения подсистемы <code>epoll</code>.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Переполнение Accept Queue и потерянные клиенты">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2401,6 +2404,7 @@ flowchart LR
 В Go <code>backlog</code> через <code>net.ListenConfig</code> не задаётся (поля <code>Backlog</code> нет: пакет <code>net</code> сам читает <code>somaxconn</code> и передаёт его в <code>listen()</code>), поэтому для предотвращения этой проблемы тюнят системный параметр ядра <code>somaxconn</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="go-realizatsiya-net-paket-i-vzaimodeystvie-s-yadrom">Go-реализация: `net` пакет и взаимодействие с ядром</h2>
@@ -2517,6 +2521,7 @@ func handleConn(conn net.Conn) {
 <li>Когда сетевой стек Linux получает пакет, ядро вызывает callback <code>netpollwake</code>. Сетевой поллер извлекает событие в цикле <code>epoll_wait</code> и переводит горутину в очередь выполнения через процедуру <code>runtime.goready</code>.</li>
 <li>Вызов <code>conn.Read()</code> обращается к сисколлу <code>syscall.Read</code> (или векторному <code>readv</code>). Если байты уже присутствуют в ядерном буфере <code>sk-&gt;sk_rmem_alloc</code>, они немедленно копируются в пользовательский слайс за один проход. Если буфер пуст, горутина снова засыпает на дескрипторе в <code>netpoll</code>.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2532,6 +2537,7 @@ func handleConn(conn net.Conn) {
 Это элегантное решение, не требующее ни единого лишнего таймера со стороны ядра Linux!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="lovushki-optimizatsii-i-voprosy-s-sobesedovaniy">Ловушки, оптимизации и вопросы с собеседований</h2>
@@ -2568,6 +2574,7 @@ if tcpConn, ok := conn.(*net.TCPConn); ok {
 <p>В ранних версиях Unix системный вызов <code>accept()</code> возвращал стандартный блокирующий дескриптор. Чтобы подготовить сокет к работе в асинхронном цикле, программист был вынужден выполнять два дополнительных системных вызова <code>fcntl</code>: для установки флагов <code>O_NONBLOCK</code> и <code>FD_CLOEXEC</code>.<br />
 Это создавало опасное окно гонки (Race Condition): если в промежутке между <code>accept</code> и <code>fcntl</code> другой поток вызывал <code>execve</code>, дескриптор сокета утекал в дочерний процесс.<br />
 Современный системный вызов ядра Linux <code>accept4</code> решает проблему атомарно: флаги <code>SOCK_CLOEXEC</code> и <code>SOCK_NONBLOCK</code> применяются непосредственно в момент извлечения сокета из очереди <code>accept_queue</code>.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Ручное закрытие сокетов в `net/http`">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2578,6 +2585,7 @@ if tcpConn, ok := conn.(*net.TCPConn); ok {
 Пакет <code>net/http</code> самостоятельно управляет пулом постоянных соединений Keep-Alive (через <code>http.Transport</code> на клиенте и пул соединений на сервере). Несанкционированное закрытие приведет к гонкам в рантайме, системным ошибкам <code>EBADF</code> (Bad file descriptor) и аварийному сбросу живых запросов.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

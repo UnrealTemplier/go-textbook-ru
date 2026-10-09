@@ -2253,6 +2253,7 @@ flowchart TD
 - <code>veth</code> пары работают как виртуальные перемычки. Пакет, отправленный из Pod, проходит через сетевой стек пода, копируется ядром на хостовый конец <code>veth</code>, попадает в bridge, а затем маршрутизируется в физический сетевой адаптер <code>eth0</code>. Это добавляет <strong>контекстные переключения</strong> и копирование пакетов между namespace.<br />
 - При использовании оверлейных сетей (например, VXLAN в Flannel или Calico VXLAN mode) каждый пакет оборачивается в дополнительную внешнюю UDP-оболочку (Outer IP + Outer UDP + VXLAN Header = 50 байт оверхеда). Это снижает полезный MTU (с 1500 до 1450 байт), вызывает дробление пакетов на CPU и требует включения аппаратных оптимизаций <code>GSO/GRO</code> (Generic Segmentation/Receive Offload) на сетевых картах узлов для разгрузки центрального процессора.<br />
 - Современный CNI <strong>Cilium</strong> заменяет bridge и iptables технологией <strong>eBPF/XDP</strong>, перемещая маршрутизацию пакетов в пространство ядра (kernel space) на уровне сокетов (<code>sockops</code>). Это сокращает задержку (latency) на 30–50% и обеспечивает почти нулевое потребление CPU на сетевом стеке.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2262,6 +2263,7 @@ flowchart TD
     <p>В Linux сетевые namespace изолируют только сетевые ресурсы (интерфейсы, маршруты, таблицы правил, сокеты). Это легковесная структура (около 1-2 КБ памяти), создаваемая через syscall <code>clone(CLONE_NEWNET)</code>. Когда горутина Go открывает сокет в Pod, она фактически работает с файлом дескриптора <code>/proc/&lt;pid&gt;/fd/...</code>, привязанным к этому namespace.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="services-i-kube-proxy-iptables-vs-ipvs">Services и kube-proxy: iptables vs IPVS</h2>
@@ -2308,6 +2310,7 @@ flowchart LR
 <li><strong>iptables (legacy)</strong>: <code>kube-proxy</code> генерирует огромные простыни правил вида <code>iptables -A KUBE-SERVICES -d &lt;ClusterIP&gt; -j KUBE-SVC-...</code>. Каждое входящее соединение последовательно проходит по цепочке правил. При наличии 1 000+ сервисов и 10 000+ подов это создает линейную задержку $O(N)$ на каждый сетевой пакет и чудовищную нагрузку на CPU при частых обновлениях правил.</li>
 <li><strong>IPVS (IP Virtual Server)</strong>: Использует специализированные хеш-таблицы ядра Linux (<code>ip_vs</code>). Поиск целевого пода выполняется за константное время $O(1)$, аналогично высокопроизводительным балансировщикам уровня <code>nginx</code> upstream или <code>HAProxy</code>. Поддерживает промышленные алгоритмы балансировки (least-connections, weighted, round-robin).</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2318,6 +2321,7 @@ flowchart LR
 Решение: <code>sysctl -w net.netfilter.nf_conntrack_max=1048576</code> на всех узлах, а также настройка <code>nf_conntrack_tcp_timeout_established</code> (режим <code>ipvs</code> вместо <code>iptables</code> — вариант, но см. оговорку выше о его статусе).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="ingress-i-vneshnyaya-marshrutizatsiya">Ingress и внешняя маршрутизация</h2>
@@ -2403,6 +2407,7 @@ func createK8sOptimizedClient() *http.Client {
 <p>Go использует <code>epoll</code> (Linux) для асинхронного I/O. В K8s это работает нативно, но overlay-сети (VXLAN, Wireguard) могут вызывать:<br />
 - <strong>Fragmentation</strong>: Если MTU не настроен, пакеты фрагментируются. Сборкой фрагментов занимается ядро, а не Go; но фрагментация повышает вероятность потерь (потеря одного фрагмента означает потерю всего IP-пакета) и ведет к retransmission.<br />
 - <strong>Reordering</strong>: eBPF/Cilium или балансировщики могут переставлять пакеты. Go TCP congestion control (CUBIC) воспринимает это как потерю и снижает window, деградируя throughput.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2415,6 +2420,7 @@ func createK8sOptimizedClient() *http.Client {
 <strong>Ответ:</strong> Netpoller работает на уровне файлового дескриптора сокета. Namespace изолирует сетевой стек, но дескриптор остается валидным. Epoll не знает про namespace, он видит только события ядра. Поэтому производительность не падает, но при пересоздании пода сокет отбрасывается, и Go должен пересоздать listener. Важно использовать <code>SO_REUSEPORT</code> для graceful restart.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

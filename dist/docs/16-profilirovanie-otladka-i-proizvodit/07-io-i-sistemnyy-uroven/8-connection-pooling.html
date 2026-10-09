@@ -2256,6 +2256,7 @@ flowchart TD
 - Количество простаивающих соединений к хосту не превышает установленный лимит <code>MaxIdleConnsPerHost</code>.<br />
 - Соединение не было помечено как разорванное (<code>broken</code>).</p>
 <p>Фоновая горутина с периодичностью <code>IdleConnTimeout</code> обходит неактивные сокеты и закрывает те, чье время простоя превысило порог (по умолчанию <code>IdleConnTimeout = 90s</code>).</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2265,6 +2266,7 @@ flowchart TD
     <p>Структура <code>persistConn</code> содержит собственные каналы <code>writech</code> и фоновые горутины <code>readLoop</code> и <code>writeLoop</code>. Это позволяет <code>http.Transport</code> полностью разделить ввод и вывод, изолировать чтение заголовков и гарантировать корректное закрытие TCP-сокета при возникновении сетевых сбоев. Перед возвращением сокета в пул рантайм обязательно проверяет статус <code>broken</code> — если удаленная сторона успела разорвать связь, соединение немедленно уничтожается.</p>
   </div>
 </aside>
+
 
 <h3 id="klyuchevye-nastroyki-http-transport">Ключевые настройки `http.Transport`</h3>
 
@@ -2288,6 +2290,7 @@ flowchart TD
 </div>
 
 <p>Пример: если у вас 100 горутин одновременно обращаются к одному и тому же хосту с <code>MaxConnsPerHost=10</code>, то ровно 90 горутин будут заблокированы в очереди <code>connsPerHostWait</code>, ожидая освобождения слотов. Это создает искусственное бутылочное горлышко. С другой стороны, неограниченный или чрезмерно большой <code>MaxConnsPerHost</code> способен легко перегрузить и обрушить удаленный сервер лавиной одновременных запросов.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2297,6 +2300,7 @@ flowchart TD
     <p><strong>Катастрофический дефолт <code>MaxIdleConnsPerHost = 2</code>.</strong> В стандартной библиотеке Go поле <code>MaxIdleConnsPerHost</code> по умолчанию равно всего <strong>2</strong>! Если ваш микросервис отправляет к соседнему бэкенду 500 RPS, то пул сможет переиспользовать только 2 соединения. Остальные 498 запросов будут непрерывно открывать новые TCP-сокеты и тут же закрывать их! В результате сервис начинает захлебываться в TCP-рукопожатиях, а сетевой стек ядра заполняется тысячами сокетов в статусе <code>TIME_WAIT</code>. Для высоконагруженных микросервисов значение <code>MaxIdleConnsPerHost</code> обязано составлять не менее 20–100.</p>
   </div>
 </aside>
+
 
 <h2 id="grpc-i-http2-pochemu-pul-nevidim-no-vsyo-ravno-vazhen">gRPC и HTTP/2: почему пул «невидим», но всё равно важен</h2>
 
@@ -2410,6 +2414,7 @@ db.SetConnMaxIdleTime(1 * time.Minute) // Максимальное время п
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2420,6 +2425,7 @@ db.SetConnMaxIdleTime(1 * time.Minute) // Максимальное время п
 <strong>Ответ:</strong> Если <code>SetMaxOpenConns</code> слишком мал, запросы при скачках трафика будут выстраиваться в очередь <code>connRequests</code>, приводя к резкому росту задержки и таймаутам контекста. Если <code>SetMaxOpenConns</code> слишком велик (или равен 0 — без ограничений), тысячи параллельных горутин откроют тысячи соединений к СУБД, что обрушит саму базу данных (исчерпание лимита <code>max_connections</code> в PostgreSQL/MySQL и нехватка памяти под процессы бэкенда). Если же <code>MaxIdleConns</code> установлен намного меньше <code>MaxOpenConns</code>, пул будет постоянно убивать и заново открывать сокеты, порождая паразитный TCP/TLS overhead. Идеальный баланс: <code>MaxIdleConns</code> должен быть близок к <code>MaxOpenConns</code> (например, 20 и 25).</p>
   </div>
 </aside>
+
 
 <h2 id="pul-soedineniy-k-redis-kafka-i-drugim-sistemam">Пул соединений к Redis, Kafka и другим системам</h2>
 
@@ -2451,6 +2457,7 @@ db.SetConnMaxIdleTime(1 * time.Minute) // Максимальное время п
 <p>В клиенте <strong><code>kafka-go</code></strong> от Segmentio архитектура пулинга более прозрачна: параметры <code>MaxAttempts</code>, <code>QueueCapacity</code> и <code>BatchSize</code> позволяют тонко балансировать пакетную отправку и время удержания соединений. Главное системное требование — не превышать лимит брокера <code>max.connections.per.ip</code>.</p>
 <h2 id="problemy-i-lovushki-connection-pooling">Проблемы и ловушки connection pooling</h2>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2460,6 +2467,8 @@ db.SetConnMaxIdleTime(1 * time.Minute) // Максимальное время п
     <p><strong>Stale connections (протухшие соединения).</strong> Балансировщик нагрузки (AWS ALB, Nginx) или удаленная СУБД закрывают неактивные TCP-соединения по собственному таймауту (например, через 60 секунд), отправляя пакет TCP FIN. Если клиентский пул не знает об этом и попытается отправить запрос в протухший сокет, ядро вернет ошибку <code>connection reset by peer</code> или <code>broken pipe</code>. Защита: параметр <code>SetConnMaxIdleTime</code> в клиенте Go всегда должен быть <strong>меньше</strong>, чем серверный таймаут простоя в конфигурации СУБД или балансировщика!</p>
   </div>
 </aside>
+
+
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
@@ -2471,6 +2480,8 @@ db.SetConnMaxIdleTime(1 * time.Minute) // Максимальное время п
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2481,6 +2492,8 @@ db.SetConnMaxIdleTime(1 * time.Minute) // Максимальное время п
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2490,6 +2503,7 @@ db.SetConnMaxIdleTime(1 * time.Minute) // Максимальное время п
     <p><strong>Ограничения на стороне ОС (порты) и исчерпание диапазонов.</strong> Если из-за отключенного пулинга (<code>DisableKeepAlives = true</code> или <code>MaxIdleConnsPerHost = 0</code>) сервис непрерывно открывает и закрывает тысячи сокетов, закрытые сокеты зависают в состоянии ядра <code>TIME_WAIT</code> на 60 секунд (период $2 \times \text{MSL}$). Вскоре в ядре заканчиваются свободные локальные порты из системного диапазона <code>net.ipv4.ip_local_port_range</code> (<code>/proc/sys/net/ipv4/ip_local_port_range</code>), и вызовы <code>connect()</code> начинают падать с ошибкой <code>cannot assign requested address</code>. Пул соединений полностью защищает от этой катастрофы.</p>
   </div>
 </aside>
+
 
 <h2 id="mechanical-sympathy-connection-pool-i-sistema">Mechanical Sympathy: connection pool и система</h2>
 

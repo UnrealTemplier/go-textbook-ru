@@ -2286,6 +2286,7 @@ sequenceDiagram
 1. <strong>Почему именно три?</strong> В пакетных сетях пакеты могут приходить с легкой перестановкой мест (Out-of-Order Delivery) из-за многопутевой маршрутизации ECMP. Один или два дубликата могут быть следствием обычной перестановки. Но три дубликата подряд (порог из RFC 5681) принято считать достаточным признаком реальной потери пакета.<br />
 2. <strong>Мгновенная реакция:</strong> Ядро немедленно переотправляет потерянный сегмент №2, не дожидаясь истечения таймера RTO.<br />
 3. <strong>Fast Recovery:</strong> Окно перегрузки <strong><code>cwnd</code></strong> не сбрасывается в пол, а уменьшается пропорционально (в 2 раза), после чего соединение продолжает работу в режиме предотвращения перегрузки. Пропускная способность канала не проседает.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Математика RTO и алгоритм Jacobson/Karels">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2303,6 +2304,7 @@ $$RTO = SRTT + \max(G, K \times RTTVAR)$$<br />
 Если сеть работает стабильно, RTO держится близко к RTT. Если в сети начинаются скачки задержки (джиттер), RTO адаптивно увеличивается, предотвращая ложные повторные отправки.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="2-exponential-backoff">2. Exponential Backoff</h3>
@@ -2429,6 +2431,7 @@ sequenceDiagram
 <li>Сервер принимает 100 байт. Механизм Delayed ACK ждет второго пакета, чтобы подтвердить оба сразу. Но второй пакет не придет, потому что клиент ждет ACK!</li>
 <li><strong>Взаимная блокировка длится ровно 40 миллисекунд</strong>, пока на сервере не сработает таймер отложенного ACK (около 40 мс). Сервер наконец отправляет пустой ACK, клиент разблокируется и отсылает оставшиеся 200 байт.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: 40-миллисекундный ад в микросервисах">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2439,6 +2442,7 @@ sequenceDiagram
 Вместо ожидаемых 0.5–1 мс на запрос внутри одного дата-центра латентность подпрыгивает до <strong>40+ мс</strong> на ровном месте. Под нагрузкой очереди запросов переполняются, пулы соединений исчерпываются, и система входит в штопор.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="reshenie">Решение</h3>
@@ -2518,6 +2522,7 @@ sequenceDiagram
 1. <strong><code>tcp_keepalive_time</code> (по умолчанию 7200 сек / 2 часа):</strong> Время простоя соединения, после которого ядро отправляет первый контрольный зонд (ACK-сегмент с номером последовательности на 1 меньше ожидаемого).<br />
 2. <strong><code>tcp_keepalive_intvl</code> (по умолчанию 75 сек):</strong> Интервал между повторными зондами, если ответ не был получен.<br />
 3. <strong><code>tcp_keepalive_probes</code> (по умолчанию 9 раз):</strong> Количество безответных зондов перед тем, как ядро принудительно разорвет сокет с системной ошибкой <strong><code>ETIMEDOUT</code></strong>.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Бесполезность дефолтного Keep-Alive за NAT">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2530,6 +2535,7 @@ sequenceDiagram
 Если сокет простаивает 2 часа, NAT-шлюз уже давно разорвал сессию. Контрольный зонд ядра через 7200 секунд просто наткнется на сброс <code>RST</code> от маршрутизатора. Поэтому ядерный дефолт (2 часа) за NAT почти бесполезен — это верно для сокетов, где keep-alive включили, не меняя тайминги (C, Java, Python). <strong>Go так не делает:</strong> для соединений из <code>net.Dial</code>/<code>net.Listen</code> он сам включает keep-alive с периодом простоя 15 с, интервалом 15 с и 9 пробами. Это короче типичных NAT-таймаутов, но при <code>http.DefaultTransport</code> период простоя — 30 с.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="nastroyka-v-go">Настройка в Go</h3>
@@ -2598,6 +2604,7 @@ sequenceDiagram
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-interview" aria-label="Собеседование: TCP Keep-Alive против Application Heartbeat">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2611,6 +2618,7 @@ sequenceDiagram
 Прикладной Heartbeat (gRPC <code>KeepaliveParams</code>, WebSocket Ping/Pong) обрабатывается самим приложением на уровне горутин: если сервис завис, он не вернет PONG, и клиент своевременно разорвет мертвый сокет и переключится на здоровый инстанс.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="go-integratsiya-i-tyuning-v-production">Go-интеграция и тюнинг в production</h2>
@@ -2636,6 +2644,7 @@ sequenceDiagram
 <li><strong>Ограничения TCP Keep-Alive:</strong> Дефолтный таймаут в 2 часа бесполезен в современных облаках из-за агрессивных таймаутов NAT. Требуется явное уменьшение периода через <code>SetKeepAlivePeriod</code> и обязательное внедрение прикладных проверок пульса (Application Heartbeat).</li>
 <li><strong>Роль Go Netpoller:</strong> Среда исполнения Go не дублирует логику TCP, а делегирует ее ядру Linux, переводя горутины в состояние ожидания событий в <code>epoll</code>, обеспечивая масштабирование на сотни тысяч сокетов.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Каверзные вопросы по TCP Retransmission и сокетам">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2646,6 +2655,7 @@ sequenceDiagram
 <strong>Ответ:</strong> Go не реализует собственный TCP-стек на прикладном уровне. Все ретрансмиссии, RTO-таймеры и Fast Retransmit прозрачно выполняет ядро Linux. Приложение на Go блокируется в <code>Read()</code> или <code>Write()</code> до тех пор, пока <code>netpoller</code> не получит системное событие <code>epoll</code>. Настройку параметров TCP можно производить глобально через <code>sysctl</code>, либо для конкретного сокета через вызов <strong><code>syscall.Setsockopt</code></strong> (в Go через <code>Control</code> сокета) с флагами <strong><code>TCP_CONGESTION</code></strong> (для смены алгоритма на BBR или CUBIC) и <strong><code>TCP_RTO_MIN</code></strong>.</p>
   </div>
 </aside>
+
 
 <p>Мы изучили механизмы восстановления и тонкие настройки отдельных TCP-соединений. Но как операционная система управляет глобальным окном перегрузки <code>cwnd</code> на уровне целых магистральных каналов? Какие алгоритмы — классический Reno, кубический CUBIC или революционный BBR от Google — правят современным интернетом?</p>
 <p>В следующей лекции мы детально погрузимся в математику и практику алгоритмов контроля перегрузки в <a href="13-congestion-algorithms-reno-cubic-bbr.html" class="wikilink">13. Congestion Algorithms. Reno, Cubic, BBR</a>.</p>

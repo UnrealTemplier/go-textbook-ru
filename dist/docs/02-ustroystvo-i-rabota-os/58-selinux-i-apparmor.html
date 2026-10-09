@@ -2292,6 +2292,7 @@ flowchart LR
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2302,6 +2303,7 @@ flowchart LR
 <p>В исходниках ядра это выглядит как массив структур <code>security_hook_heads</code>. При инициализации ядра каждый загруженный модуль (SELinux, AppArmor, YAMA и др.) регистрирует свои функции в этих хуках. Проверка происходит на уровне C-указателей, что дает минимальные накладные расходы (~5-10 ns на хук при пропуске).</p>
   </div>
 </aside>
+
 
 <p>Принцип работы предельно прост и надежен: ядро сначала выполняет стандартную проверку DAC (права пользователя, группы и биты <code>rwx</code>). Если DAC запрещает операцию, ядро сразу возвращает ошибку, экономя такты процессора. Но если DAC дает добро, управление передается LSM-хуку. LSM вызывает функции зарегистрированных модулей безопасности, и только при единогласном одобрении системный вызов получает доступ к «железу».</p>
 <h2 id="selinux-konteksty-xattrs-i-politika">SELinux: Контексты, xattrs и политика</h2>
@@ -2446,6 +2448,7 @@ flowchart TD
 
 
 <p>AppArmor хранит профили в каталоге <code>/etc/apparmor.d/</code>. Перед загрузкой в ядро утилита <code>apparmor_parser</code> компилирует текстовый профиль в компактный двоичный детерминированный конечный автомат (DFA — Deterministic Finite Automaton). Это позволяет ядру молниеносно проверять пути файлов при системных вызовах без накладных расходов на чтение расширенных дисковых атрибутов xattr. Именно поэтому AppArmor стал стандартом по умолчанию в дистрибутивах семейства Debian/Ubuntu и средах оркестрации контейнеров вроде Kubernetes.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2456,6 +2459,7 @@ flowchart TD
 <strong>Ответ:</strong> SELinux оперирует контекстами <code>inode</code> (<code>xattr</code>), что обеспечивает наивысшую устойчивость: даже если файл переместить, переименовать или сделать на него жесткую ссылку, контекст сохранится. Однако SELinux требует сложной компиляции меток и глубоких знаний политики. AppArmor опирается на пути в VFS и структуру каталогов, что делает профили предельно простыми для аудита человеком. Для Go-микросервисов и контейнеров (Docker/K8s) AppArmor часто предпочтительнее благодаря простоте отладки и прозрачной изоляции на уровне путей.</p>
   </div>
 </aside>
+
 
 <h2 id="vliyanie-na-go-razrabotku-i-konteynerizatsiyu">Влияние на Go-разработку и контейнеризацию</h2>
 
@@ -2517,6 +2521,7 @@ func main() {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2530,6 +2535,7 @@ func main() {
 2. В продакшене используйте декларативный манифест с точечным добавлением capabilities через <code>--cap-add=SYS_PTRACE</code> или напишите кастомный целевой профиль AppArmor с явным доступом к нужным псевдофайлам в <code>/proc</code>.</p>
   </div>
 </aside>
+
 
 <h2 id="otladka-i-monitoring-mac">Отладка и мониторинг MAC</h2>
 
@@ -2582,6 +2588,7 @@ sequenceDiagram
 </figure>
 
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2592,6 +2599,7 @@ sequenceDiagram
 <strong>Ответ:</strong> В режиме <code>Permissive</code> накладные расходы пренебрежимо малы: ядро просто форматирует и сбрасывает строку лога в буфер кольцевой очереди. В боевом режиме <code>Enforcing</code> каждая проверка прав внутри системного вызова добавляет порядка 10–50 наносекунд процессорного времени на прохождение LSM-хуков и чтение xattr. Для приложений, обрабатывающих сетевой ввод-вывод в памяти, эта задержка незаметна на фоне сетевого RTT. Однако для дискоинтенсивных сервисов, совершающих сотни тысяч системных вызовов к мелким файлам в секунду, оптимизация правил (минимизация правил с ключевым словом <code>deny</code>, группировка прав через <code>include</code> в профилях AppArmor) критически важна для исключения деградации SLA.</p>
   </div>
 </aside>
+
 
 <h2 id="itog">Итог</h2>
 

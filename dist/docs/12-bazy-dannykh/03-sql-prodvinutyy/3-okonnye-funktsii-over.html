@@ -2268,6 +2268,7 @@ flowchart TD
 1. Исполнитель выполняет все предшествующие реляционные операции: сканирование таблиц (<code>Seq Scan</code> или <code>Index Scan</code>), соединения (<code>Hash Join</code>, <code>Nested Loop</code>), фильтрацию по предикатам <code>WHERE</code>, классическую группировку <code>GROUP BY</code> и фильтрацию групп <code>HAVING</code>.<br />
 2. Полученный промежуточный поток кортежей отправляется в узел <strong>Sort</strong>. Данные сортируются сначала по ключам <code>PARTITION BY</code>, а затем внутри партиций — по колонкам <code>ORDER BY</code>. Если в одном запросе используется несколько разных оконных функций с несовпадающими секциями <code>OVER()</code>, оптимизатор вынужден вставлять в план несколько последовательных узлов сортировки, что многократно увеличивает время выполнения.<br />
 3. Узел <code>WindowAgg</code> последовательно сканирует отсортированный поток. Пока значение ключа <code>PARTITION BY</code> остается неизменным, узел удерживает состояние агрегатов текущей партиции. Как только ключ меняется, текущая партиция закрывается, внутренние аккумуляторы сбрасываются, и начинается расчет для следующей группы.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2278,6 +2279,7 @@ flowchart TD
 <p>Однако если партиция оказывается колоссальной (например, <code>PARTITION BY date</code>, где за один день накоплен миллион строк), а внутри нее требуется сортировка <code>ORDER BY created_at</code>, лимита <code>work_mem</code> оказывается недостаточно. PostgreSQL переключается на внешний алгоритм сортировки и начинает сбрасывать промежуточные порции данных на диск во временные файлы (<code>spill to disk</code>).</p>
   </div>
 </aside>
+
 
 <h3 id="mechanical-sympathy-tsena-sortirovki">Mechanical Sympathy: Цена сортировки</h3>
 
@@ -2330,6 +2332,7 @@ FROM orders;
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2341,6 +2344,7 @@ FROM orders;
 - <strong><code>RANGE</code></strong> (поведение по умолчанию!) оперирует <strong>логическими значениями</strong> ключа сортировки. Если во фрейме присутствуют строки-дубликаты с одинаковым значением поля <code>created_at</code>, <code>RANGE</code> включит в окно <strong>все</strong> строки с идентичным таймстемпом разом! В результате для дублирующихся строк нарастающий итог сделает резкий скачок вперед, показав одинаковую суммарную величину для всех записей с одинаковым временем. Чтобы гарантировать детерминированный физический накопительный итог, всегда явно указывайте спецификатор <code>ROWS</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="poryadok-vypolneniya-sql-i-okonnye-funktsii">Порядок выполнения SQL и оконные функции</h2>
@@ -2470,6 +2474,7 @@ func GetRunningTotals(ctx context.Context, db *sqlx.DB, since string) ([]OrderSt
 </div>
 
 <hr />
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2482,6 +2487,7 @@ func GetRunningTotals(ctx context.Context, db *sqlx.DB, since string) ([]OrderSt
 <p>Оконные функции почти всегда требуют обязательной сортировки (Sort), потребляют существенно больше оперативной памяти <code>work_mem</code> и не могут возвращать строки в потоковом режиме, пока текущая партиция не будет отсортирована. Оконные функции оправданы только тогда, когда вам критически необходим доступ к индивидуальным полям исходных записей.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

@@ -2184,6 +2184,7 @@
 <p><em>«Отладка кода вдвое сложнее его написания. Поэтому, если вы пишете код настолько заумно, насколько способны, у вас по определению не хватит ума его отладить».</em>  <br />
 — Брайан Керниган</p>
 </blockquote>
+
 <aside class="callout callout-note" aria-label="Заметка">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">📝</span>
@@ -2193,6 +2194,7 @@
     <p><strong>Связи:</strong> В предыдущих статьях мы построили сложный асинхронный ландшафт: события передаются через <a href="1-pub-sub.html" class="wikilink">1. Pub Sub</a> и <a href="2-work-queue.html" class="wikilink">2. Work Queue</a>, данные дедуплицируются через <a href="6-outbox-pattern.html" class="wikilink">6. Outbox pattern</a> и <a href="7-inbox-pattern.html" class="wikilink">7. Inbox pattern</a>, а саги координируют сервисы в <a href="8-saga-cherez-brokery.html" class="wikilink">8. Saga через брокеры</a> и <a href="9-message-choreography-vs-orchestration.html" class="wikilink">9. Message choreography vs orchestration</a>. Однако когда сообщения начинают асинхронно перепрыгивать через брокеры, отладка превращается в детективное расследование. В этой заключительной лекции подраздела мы разберем <strong>Distributed Tracing (Распределенную трассировку)</strong> в экосистеме OpenTelemetry (OTEL) и рантайме Go, прежде чем перейти к следующему подразделу — <span class="wikilink-unresolved" title="Заметка в разработке">06. Оркестрация процессов/1. Что такое workflow orchestration</span>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="problema-chernogo-yashchika-v-asinkhronnom-mire">Проблема «черного ящика» в асинхронном мире</h2>
@@ -2306,6 +2308,7 @@ flowchart TD
 <p><strong>В Go концепция ThreadLocal отсутствует намеренно.</strong><br />
 Рантайм Go непрерывно переключает и мигрирует миллионы легковесных горутин (<code>g</code>) между небольшим пулом системных потоков ОС (<code>m</code>). Использование потоко-локальной памяти в Go привело бы к фатальному загрязнению контекста между не связанными горутинами.</p>
 <p>Поэтому в Go контекст всегда передается <strong>явно первым аргументом функции</strong> через интерфейс <code>context.Context</code>.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: context.Context в Go">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2317,6 +2320,7 @@ flowchart TD
 Все функции и методы вниз по стеку вызовов, принимающие этот <code>ctx</code>, могут извлечь текущий <code>Span</code> и получить доступ к метаданным трассировки без глобальных мьютексов и блокировок.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="kak-probrosit-traceid-cherez-broker">Как пробросить TraceID через Брокер?</h3>
@@ -2459,6 +2463,7 @@ func ConsumeWithTrace(ctx context.Context, msg *sarama.ConsumerMessage, business
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Потеря контекста при порождении фоновых горутин">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2486,6 +2491,7 @@ func ConsumeWithTrace(ctx context.Context, msg *sarama.ConsumerMessage, business
 Если фоновая операция должна продолжить выполнение даже в случае отмены клиентского HTTP-запроса, используйте стандартный метод Go 1.21+ <code>context.WithoutCancel(ctx)</code>: он сохраняет все значения трассировки (<code>TraceID</code>, спаны), но отвязывает дедлайн отмены!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="vysshiy-pilotazh-batch-processing-i-span-links">Высший пилотаж: Batch Processing и Span Links</h2>
@@ -2570,6 +2576,7 @@ flowchart TD
 - Каждое создание спана вызывает системный вызов получения времени ядра ОС (<code>clock_gettime</code>, оптимизированный через vDSO, но не бесплатный при 100 000 вызовов в секунду);<br />
 - Создание структур спанов порождает аллокации в куче;<br />
 - Сериализация и отправка телеметрии по gRPC/Protobuf в коллектор нагружает сетевой стек.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Стратегии сэмплирования (Sampling)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2582,6 +2589,7 @@ flowchart TD
 2. <strong>Tail-Based Sampling (Сэмплирование на выходе):</strong> Все микросервисы генерируют спаны и отправляют их в локальный агент <strong>OpenTelemetry Collector</strong>, удерживающий трейсы в кольцевом буфере оперативной памяти. Коллектор дожидается завершения всего графа трейса и применяет умный фильтр: если трейс отработал быстро (до 100 мс) со статусом <code>HTTP 200 OK</code>, он сбрасывается из памяти без сохранения на диск. Если же в трейсе зафиксирована ошибка (<code>HTTP 500</code>, паника) или задержка превысила p99-порог (например, &gt; 2 секунд), коллектор сохраняет трейс на диск на 100%. Это идеальный баланс видимости аномалий и экономии хранилища.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog-razdela-patterny-i-arkhitektura">Итог раздела "Паттерны и архитектура"</h2>

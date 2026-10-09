@@ -2230,6 +2230,7 @@ flowchart TD
 <h3 id="faylovye-deskriptory-file-descriptors">Файловые дескрипторы (File Descriptors)</h3>
 <p>В архитектуре UNIX/Linux практически любой ресурс ввода-вывода представлен файловым дескриптором. Каждое входящее TCP-соединение от вашего Go-бэкенда, каждый внутренний межкластерный RPC-канал Erlang и каждый сегмент лога на диске требуют отдельного дескриптора.</p>
 <p>По умолчанию во многих серверных дистрибутивах Linux лимит на количество открытых файлов для процесса (<code>ulimit -n</code>) составляет скромные <code>1024</code>. Для нагруженного брокера очередей это верный путь к аварии.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Исчерпание файловых дескрипторов">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2243,6 +2244,7 @@ flowchart TD
 <p><strong>Решение:</strong> Для production-серверов лимит дескрипторов в конфигурации <code>systemd</code> (<code>LimitNOFILE</code>) или в файле <code>/etc/security/limits.conf</code> обязан быть выставлен минимум в <code>65536</code>, а для высоконагруженных инсталляций — <strong><code>1048576</code></strong>.</p>
   </div>
 </aside>
+
 
 <h3 id="tcp-keepalive-i-heartbeats-borba-s-povisshimi-soedineniyami">TCP Keepalive и Heartbeats: Борьба с повисшими соединениями</h3>
 <p>В облачных средах (особенно при работе в Kubernetes) поды приложений могут внезапно погибать: отстрел по <code>OOM Killer</code>, аварийная перезагрузка пода узлом Kubelet, аппаратный сбой физического гипервизора.</p>
@@ -2293,6 +2295,7 @@ sequenceDiagram
 2. Брокер принудительно перестает считывать входящие байты из сокетов всех издателей (Publishers). Размер окна TCP (TCP Window) на приеме урезается до нуля.<br />
 3. Все клиентские приложения на Go мгновенно <strong>блокируются внутри системного вызова <code>write()</code></strong> ядра Linux при попытке отправить очередное сообщение.<br />
 4. При этом консьюмерам (Consumers) выдача данных не блокируется: брокер намеренно позволяет воркерам вычитывать сообщения из буферов, чтобы вернуть уровень занятой памяти в безопасную зону.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Можно ли задрать High Watermark до 90%?">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2306,6 +2309,7 @@ sequenceDiagram
 Если выставить порог в 90%, при малейшем скачке нагрузки операционная система испытает жесточайший дефицит свободных страниц, придет системный <strong>OOM Killer</strong> и мгновенно уничтожит процесс брокера по <code>SIGKILL</code>. Безопасный максимум для выделенных машин — <strong><code>0.6</code></strong> (60%).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="3-arkhitekturnyy-tyuning-ocheredi-i-shardirovanie">3. Архитектурный тюнинг: Очереди и Шардирование</h2>
@@ -2462,6 +2466,7 @@ func publishBatchFast(ctx context.Context, ch *amqp.Channel, exchange, routingKe
 - Публикуйте сообщения с флагом <code>DeliveryMode = 1 (Transient)</code>.<br />
 - Используйте стандартные <strong>Classic Queues</strong> без персистентности (Quorum Queues по своей природе всегда принудительно пишут данные в Raft WAL и не могут работать чисто in-memory).</p>
 <p>В этом режиме RabbitMQ превращается в феноменально быстрый in-memory маршрутизатор, способный прокачивать сотни тысяч сообщений в секунду на скромном железе.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Размер полезной нагрузки (Payload Size) и паттерн Claim Check">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2476,6 +2481,7 @@ func publishBatchFast(ctx context.Context, ch *amqp.Channel, exchange, routingKe
 <p><strong>Архитектурный стандарт:</strong> Для тяжелых бинарных данных используйте паттерн <strong>Claim Check</strong> — сохраняйте полезную нагрузку в объектное хранилище S3 (<strong>MinIO</strong>, Ceph, AWS S3), а через очередь RabbitMQ передавайте только компактный JSON с идентификатором (ID) и URI файла.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog-razdela-po-rabbitmq">Итог раздела по RabbitMQ</h2>

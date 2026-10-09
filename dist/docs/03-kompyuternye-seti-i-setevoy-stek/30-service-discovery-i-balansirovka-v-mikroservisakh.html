@@ -2283,9 +2283,10 @@ flowchart LR
 <p><strong>Server-Side Discovery</strong>: Клиент обращается к виртуальному адресу (VIP), а балансировщик (L4/L7) маршрутизирует трафик.<br />
    * <em>Плюсы</em>: Прозрачность для клиента, централизованное управление, легкое внедрение mTLS и rate limiting.<br />
    * <em>Минусы</em>: Дополнительный сетевой hop, latency overhead, сложность отладки.<br />
-   * <em>В Go</em>: Работа через <code>&lt;a href="27-proksi-reverse-proxy-i-api-gateway.html" class="wikilink"&gt;27. Прокси, Reverse Proxy и API Gateway&lt;/a&gt;</code> (Envoy, HAProxy, K8s Ingress). Клиент общается с <code>localhost:8080</code> (sidecar) или внешним VIP.</p>
+   * <em>В Go</em>: Работа через <a href="27-proksi-reverse-proxy-i-api-gateway.html" class="wikilink"><code>27. Прокси, Reverse Proxy и API Gateway</code></a> (Envoy, HAProxy, K8s Ingress). Клиент общается с <code>localhost:8080</code> (sidecar) или внешним VIP.</p>
 </li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2297,10 +2298,12 @@ flowchart LR
   </div>
 </aside>
 
+
 <hr />
 <h2 id="dns-kak-bazovyy-mekhanizm-discovery-v-go">DNS как базовый механизм discovery в Go</h2>
 
 <p>Kubernetes и многие облачные провайдеры реализуют SD через DNS. При запросе <code>svc.default.svc.cluster.local</code> CoreDNS для обычного Service возвращает один виртуальный <code>ClusterIP</code> (балансировку между подами затем делает kube-proxy на уровне L4), а список IP подов отдаёт только headless-сервис (<code>clusterIP: None</code>). Go использует встроенный <code>net.Resolver</code> для преобразования имени в IP.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2310,6 +2313,7 @@ flowchart LR
     <p>В стандартной библиотеке Go резолвер <code>net.Resolver</code> <strong>не кэширует</strong> DNS-ответы. Однако в HTTP-микросервисах часто возникает иллюзия «залипания DNS» (<strong>stale DNS</strong>). Это происходит из-за пула постоянных соединений <code>http.Transport</code>: однажды установив TCP-соединение с инстансом по DNS-имени, клиент на Go переиспользует открытый Keep-Alive сокет для последующих HTTP-запросов, вообще не выполняя повторных DNS-запросов! Если целевой pod был пересоздан с новым IP, клиент продолжит отправлять пакеты в старый сокет, пока соединение не закроется или не вернёт ошибку. Важно: <code>IdleConnTimeout</code> закрывает только <em>простаивающие</em> соединения — соединение, по которому идёт постоянный трафик, он не затронет, поэтому тюнинг <code>IdleConnTimeout</code> сам по себе устаревший DNS не лечит. В динамических средах помогают клиентская балансировка (gRPC/xDS), явное закрытие соединений (<code>CloseIdleConnections</code>, <code>Connection: close</code> или graceful shutdown на стороне сервера).</p>
   </div>
 </aside>
+
 
 
 <div class="code-block" data-lang="go">
@@ -2425,6 +2429,7 @@ func (b *ServiceBalancer) NextEndpoint() (string, error) {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2435,6 +2440,7 @@ func (b *ServiceBalancer) NextEndpoint() (string, error) {
 <strong>Ответ:</strong> В высоконагруженном LB мы избегаем блокировок на hot-path. Атомарные операции используют аппаратные инструкции (CMPXCHG на x86), которые работают за несколько тактов CPU и не вызывают переключения контекста или блокировку кэш-линий (cache line bouncing) при низкой конкуренции. Mutex включается только при реальном конфликте, что делает атомики предпочтительными для простых счетчиков.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="health-checks-i-graceful-degradation">Health Checks и graceful degradation</h2>
@@ -2509,6 +2515,7 @@ sequenceDiagram
 </figure>
 
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2522,6 +2529,7 @@ sequenceDiagram
 3. В Kubernetes для клиентской балансировки использовать <code>Headless Service</code> (DNS отдаёт IP подов). Поле <code>publishNotReadyAddresses: true</code> для этого не нужно: оно публикует <em>неготовые</em> адреса (обычно нужно для peer discovery у StatefulSet) и как совет по балансировке вредно.</p>
   </div>
 </aside>
+
 
 <p>Механика работы <code>Transport</code>:<br />
 1. При запросе ищется свободный <code>net.Conn</code> в пуле (<code>idleConn</code>).<br />

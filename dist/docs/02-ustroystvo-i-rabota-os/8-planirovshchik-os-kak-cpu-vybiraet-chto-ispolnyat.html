@@ -2245,6 +2245,7 @@
   - Чем выше приоритет задачи (отрицательный <code>nice</code>, например <code>-5</code>), тем выше ее <code>weight</code>. В результате дробь уменьшается, и ее <code>vruntime</code> растет <strong>медленнее</strong>. Задача дольше остается в левой части дерева и чаще получает процессор!<br />
   - Для задач с низким приоритетом (положительный <code>nice</code>, например <code>+10</code>) <code>weight</code> мал, дробь велика, и <code>vruntime</code> взлетает как ракета, быстро отбрасывая задачу в правую часть очереди.</p>
 <p>CFS также использует системные пороги сглаживания <code>sched_latency_ns</code> (период, за который все готовые задачи должны получить хотя бы один квант, обычно ~6 мс) и <code>sched_min_granularity_ns</code> (минимальный неделимый квант времени задачи на CPU, обычно ~0.75 мс). Это защищает процессор от вырожденного случая, когда сотни задач переключались бы каждую микросекунду, сжигая все ресурсы на Context Switch.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Структуры ядра и EEVDF">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2277,6 +2278,7 @@
 Хотя концепция CFS гениальна, она страдала от компромисса между пропускной способностью (throughput) и временем отклика (latency). В ядре Linux 6.6 Питер Зейлстра перевел класс справедливого планирования (<code>fair_sched_class</code> в <code>kernel/sched/fair.c</code>) на алгоритм <strong>EEVDF</strong>. EEVDF сохраняет понятие <code>vruntime</code>, но добавляет расчет виртуального дедлайна (Virtual Deadline). Если потоку нужно быстро ответить на сетевой пакет (I/O), его дедлайн наступает раньше, и он получает процессор немедленно, даже если его <code>vruntime</code> чуть больше соседей.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="context-switch-chto-proiskhodit-za-kulisami">Context Switch: Что происходит за кулисами</h2>
@@ -2335,6 +2337,7 @@ flowchart TD
 <li><strong>CPU-bound задачи:</strong> Все логические процессоры <code>P</code> непрерывно заняты. Горутины переключаются за десятки наносекунд без участия ядра ОС. Планировщик Linux видит просто стабильный набор из <code>N</code> потоков, равномерно загружающих доступные ядра.</li>
 <li><strong>IO-bound задачи:</strong> Когда горутина блокируется (чтение из сетевого сокета, ожидание канала или системный вызов), рантайм вызывает функцию <code>gopark()</code>. Горутина отцепляется от потока, а освободившийся поток <code>m</code> тут же подхватывает следующую готовую задачу. Если же поток <code>m</code> намертво заблокирован в синхронном системном вызове дискового ввода-вывода (блокирующий <code>syscall</code>), рантайм Go временно отсоединяет от него процессор <code>P</code> и создает (или берет из пула) новый поток <code>m</code> для продолжения работы остальных горутин.</li>
 </ul>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: GOMAXPROCS и CFS Throttling в Kubernetes">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2349,6 +2352,7 @@ flowchart TD
 <em>Решение:</em> Начиная с Go 1.25 рантайм сам учитывает квоту CPU из cgroup и периодически её обновляет (настройки <code>containermaxprocs</code> и <code>updatemaxprocs</code> в <code>GODEBUG</code>), если в <code>go.mod</code> указана версия <code>go 1.25</code> или выше; явный вызов <code>runtime.GOMAXPROCS</code> или переменная <code>GOMAXPROCS</code> это поведение отключают. Для сервисов, собираемых с языковой версией <code>go</code> ниже 1.25 (в <code>go.mod</code>), по-прежнему подключайте <code>go.uber.org/automaxprocs</code> в <code>main.go</code>: он считывает квоты из <code>cgroups v1/v2</code> и корректирует <code>GOMAXPROCS</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="numa-i-migratsiya-potokov">NUMA и миграция потоков</h3>
 
@@ -2367,6 +2371,7 @@ flowchart TD
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2382,6 +2387,7 @@ flowchart TD
 <p>Вызов <code>runtime.LockOSThread()</code> допустим <strong>только</strong> в исключительных сценариях: при интеграции с CGO-библиотеками с Thread-Local Storage (например, OpenGL, графические тулкиты, Cocoa) или при прямой настройке маски ядра через <code>pthread_setaffinity_np</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="praktika-i-otladka">Практика и отладка</h2>

@@ -2193,6 +2193,7 @@
 <h2 id="mechanical-sympathy-kak-baza-proshchaet-nam-oshibki">Mechanical Sympathy: Как база прощает нам ошибки</h2>
 
 <p>Чтобы в полной мере оценить, почему откат транзакции <code>ROLLBACK</code> работает на два порядка быстрее операции <code>TRUNCATE</code>, необходимо заглянуть под капот ядра реляционной СУБД (на примере PostgreSQL).</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: MVCC и WAL">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2206,6 +2207,7 @@
 <p>Когда тестовый сценарий завершается и вызывается <code>ROLLBACK</code>, сервер СУБД не тратит ресурсы на поштучное стирание строк. Он лишь выставляет битовый флаг отмены транзакции в журнале статусов (<code>pg_xact</code>). Память объявляется свободной, а фоновый процесс Autovacuum позже утилизирует «мертвые» строки. Никаких тяжелых табличных блокировок уровня <code>ACCESS EXCLUSIVE</code> не возникает.</p>
   </div>
 </aside>
+
 
 <p>Благодаря механике MVCC сотни параллельных тестов могут одновременно вставлять, изменять и читать записи в одной и той же таблице <code>users</code>, оставаясь в полной взаимной изоляции!</p>
 
@@ -2344,6 +2346,7 @@ func TestUserRepository_Create(t *testing.T) {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2355,6 +2358,7 @@ func TestUserRepository_Create(t *testing.T) {
 До тех пор пока на этой транзакции не будут явно вызваны методы <code>Rollback()</code> или <code>Commit()</code>, это физическое соединение остается заблокированным и недоступным для других горутин. Если инженер забудет завершить транзакцию, соединение безвозвратно «утечет» (Connection Leak). При параллельном прогоне тестов лимит соединений <code>MaxOpenConns</code> быстро исчерпается, что вызовет взаимную блокировку (Deadlock) и зависание всего тестового сьюта. Именно поэтому регистрация <code>Rollback</code> внутри <code>t.Cleanup()</code> является критически важной гарантией стабильности.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="lovushka-vlozhennye-tranzaktsii-nested-transactions">Ловушка: Вложенные транзакции (Nested Transactions)</h2>
@@ -2384,6 +2388,7 @@ func TestUserRepository_Create(t *testing.T) {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2394,6 +2399,7 @@ func TestUserRepository_Create(t *testing.T) {
 <p>Хуже того: когда внутренний код сервиса выполнит вызов <code>tx.Commit()</code>, он физически зафиксирует изменения в общей базе данных на диске, нарушив изоляцию соседних тестов, а последующий тестовый <code>ROLLBACK</code> в блоке <code>t.Cleanup</code> завершится ошибкой <code>sql.ErrTxDone</code>.</p>
   </div>
 </aside>
+
 
 <p><strong>Инженерные стратегии решения проблемы:</strong></p>
 <ol>

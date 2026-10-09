@@ -2224,6 +2224,7 @@ flowchart LR
 *   <strong>Реальное время выполнения</strong> определяется не столько количеством инструкций, сколько количеством промахов мимо кэша (<strong>cache misses</strong>).<br />
 *   <strong>Память</strong> — это не просто абстрактное число занятых мегабайт, это паттерн доступа, выравнивание структур, фрагментация страниц и чудовищное давление на <span class="wikilink-unresolved" title="Заметка в разработке">сборщик мусора (GC)</span>.<br />
 *   <strong>Пространственная локальность данных</strong> часто позволяет простому линейному сканированию массива обогнать сложнейшие сбалансированные деревья поиска с идеальной асимптотикой $O(\log n)$, но разбросанными по куче узлами.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2234,6 +2235,7 @@ flowchart LR
 <p><strong>Ответ:</strong> Слайс размещает элементы в едином непрерывном блоке виртуальной памяти. При запросе первого элемента контроллер памяти загружает не только его, а всю аппаратную <strong>кэш-линию</strong> (cache line, обычно 64 байта). Все соседние элементы автоматически попадают в сверхбыстрый L1-кэш без задержек, а аппаратный префетчер (hardware prefetcher) процессора заранее подтягивает следующие строки. Связный список хранит каждый узел в изолированном объекте кучи. Переход по указателю <code>node.next</code> ведет в непредсказуемый адрес памяти, вызывая постоянные cache miss, задержки в 100+ наносекунд на чтение из RAM и простой исполнительного конвейера CPU.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="prostranstvennaya-slozhnost-v-go-abstraktsiya-vs-realnost">Пространственная сложность в Go: абстракция vs реальность</h2>
@@ -2299,6 +2301,7 @@ type User struct {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2308,6 +2311,7 @@ type User struct {
     <p>Внутренняя структура <code>hmap</code> (подробнее см. <a href="../03-kheshirovanie/5-vnutrennee-ustroystvo-map-v-go.html" class="wikilink">5. Внутреннее устройство map в Go</a>) занимает 48 байт заголовка плюс динамический массив бакетов. Для $n$ элементов в худшем случае выделяется до $O(n)$ дополнительной памяти под цепочки переполнения (<code>overflow buckets</code>). Если в таблице хранятся миллионы ключей, оверхед метаданных выливается в сотни мегабайт, которые <span class="wikilink-unresolved" title="Заметка в разработке">сборщик мусора</span> обязан сканировать на каждой итерации, если типы ключа или значения содержат указатели.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="ierarkhiya-pamyati-i-cache-locality">Иерархия памяти и Cache Locality</h2>
@@ -2451,6 +2455,7 @@ flowchart TD
 *   Сам массив указателей читается последовательно, но каждый указатель ведет в случайную область виртуальной памяти кучи.<br />
 *   Каждый переход <code>*ptr</code> — это лотерея с высоким шансом промаха в L1/L2/L3 кэше.<br />
 *   Конвейер процессора замирает на 200–300 тактов в ожидании ответа контроллера памяти.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2461,6 +2466,7 @@ flowchart TD
 Начинающие Go-разработчики часто по привычке пишут <code>[]*Data</code>, полагая, что передача структур по указателю всегда экономит ресурсы. Но для задач фильтрации, сортировки, поиска и числовой агрегации слайс указателей почти всегда оказывается <strong>в 2–4 раза медленнее</strong> слайса значений из-за краха пространственной локальности. Кроме того, сборщик мусора Go вынужден исследовать каждый такой указатель при проверке живых объектов.</p>
   </div>
 </aside>
+
 
 <h3 id="kogda-ukazateli-vsyo-zhe-nuzhny">Когда указатели всё же нужны</h3>
 
@@ -2527,6 +2533,7 @@ GoodStruct (16 байт):
 </div>
 
 <p>Для массива из 10 миллионов структур разница между <code>BadStruct</code> и <code>GoodStruct</code> составляет <strong>80 мегабайт</strong> бесполезно потраченной оперативной памяти! Это не просто пустая трата RAM: в кэш-линию 64 байта помещается только 2 структуры <code>BadStruct</code> против 4 структур <code>GoodStruct</code>. Плотность полезных данных в кэше падает ровно в два раза.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2551,6 +2558,7 @@ fieldalignment -fix ./...
 <p>Флаг <code>-fix</code> автоматически переставит поля всех структур в проекте в порядке убывания их размера, устранив лишний padding.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="gc-escape-analysis-i-lokalnost">GC, Escape Analysis и локальность</h2>
@@ -2677,6 +2685,7 @@ BenchmarkSumPointers-8     6789    168420 ns/op   0 B/op    0 allocs/op
 <hr />
 <h2 id="intervyu-i-tipichnye-lovushki">Интервью и типичные ловушки</h2>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2691,6 +2700,7 @@ BenchmarkSumPointers-8     6789    168420 ns/op   0 B/op    0 allocs/op
 <strong>Ответ:</strong> <code>sync.Pool</code> возвращает объекты, которые могут быть «холодными» (давно не использовались, вытеснены из кэша) или «тёплыми» (недавно использовались другим тредом/P). При высокой конкуренции объекты мигрируют между локальными пулами (<code>P.local</code>) и глобальным (<code>P.global</code>), что ухудшает локальность. Тем не менее, переиспользование памяти из пула почти всегда быстрее, чем аллокация нового объекта в куче, из-за снижения фрагментации и нагрузки на GC.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

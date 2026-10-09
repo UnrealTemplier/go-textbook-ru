@@ -2227,6 +2227,7 @@ flowchart LR
 * <code>CAP_SYS_PTRACE</code> — право отлаживать другие процессы и читать их виртуальную память через <code>ptrace</code>.<br />
 * <code>CAP_DAC_OVERRIDE</code> — право игнорировать классические файловые разрешения (rwx).</p>
 <p>Когда Go-бинарник запускается в операционной системе, он наследует набор capabilities родительского процесса. Управление ими осуществляется через системные вызовы ядра <code>capget</code> и <code>capset</code>. Однако прямое манипулирование правами из чистого рантайма Go сопряжено с трудностями (требует <code>cgo</code> или <code>unsafe</code> вызовов <code>libc</code>). Поэтому в зрелом продакшене сброс лишних прав выполняется на уровне entrypoint контейнера или специализированных утилит еще до запуска сервиса.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Выполнение `init()` до сброса привилегий">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2239,6 +2240,7 @@ flowchart LR
 Никогда не надейтесь на сброс привилегий внутри самого бинарника Go. Контейнеризируйте сервис и сбрасывайте права суперпользователя на уровне рантайма контейнеров (директива <code>USER 1000:1000</code> в Dockerfile) до передачи управления бинарнику. Чувствительную инициализацию выносите в явные конструкторы, вызываемые под контролем вашего кода.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="bazy-dannykh-i-pul-soedineniy">Базы данных и пул соединений</h2>
@@ -2289,6 +2291,7 @@ func NewDBPool(dsnRead, dsnWrite, dsnAdmin string) (*DBPool, error) {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом: Как пул соединений Go удерживает сессионные привилегии">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2299,6 +2302,7 @@ func NewDBPool(dsnRead, dsnWrite, dsnAdmin string) (*DBPool, error) {
 <p>Сервер PostgreSQL ассоциирует права с открытой сетевой сессией, включая значение переменной <code>current_role</code>. Если соединение удерживается в пуле часами, изменение ролей в базе данных не вступит в силу для этого сокета. Настройка <code>db.SetConnMaxLifetime()</code> принудительно разрывает сокет по истечении лимита времени, закрывая окно рассинхронизации прав.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="uroven-koda-i-rantayma-go">Уровень кода и рантайма Go</h2>
@@ -2433,6 +2437,7 @@ flowchart LR
 <p>Рантайм Go активно использует низкоуровневые системные вызовы ядра: <code>epoll</code>, <code>mmap</code>, <code>madvise</code>, <code>futex</code>, <code>rt_sigaction</code>, <code>clone</code>. Однако веб-сервису абсолютно не нужны вызовы монтирования файловых систем <code>mount</code>, отладки <code>ptrace</code> или <code>socket</code> на создание низкоуровневых сырых сетевых интерфейсов. Наложение Seccomp-профиля гарантирует, что даже если злоумышленник добьется удаленного выполнения кода (RCE), ядро мгновенно пристрелит процесс сигналом <code>SIGKILL</code> при первой попытке вызвать <code>mount</code> или создать несанкционированный сокет.</p>
 <p>Настройка Seccomp обычно задается декларативно в манифесте пода Kubernetes (<code>securityContext.seccompProfile</code>) или через флаг Docker <code>docker run --security-opt seccomp=default.json</code>. Для специфических статических сборок фильтры можно инициализировать через системный вызов <code>prctl</code> с помощью <code>cgo</code> до передачи управления планировщику Go.</p>
 <hr />
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2447,6 +2452,7 @@ flowchart LR
 4. <strong>Инженерный стандарт:</strong> В Dockerfile обязательна директива <code>USER 1000:1000</code> (nonroot), монтирование корневой файловой системы в режиме Read-Only (<code>--read-only</code>) и принудительный сброс всех capabilities ядра через <code>--cap-drop ALL</code>».</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

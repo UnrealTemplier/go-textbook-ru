@@ -2214,6 +2214,7 @@ flowchart LR
 
 <p>В классических push-системах (статистика, старые APM) клиент сам отправляет данные на сервер. Это создает проблемы с backpressure: если сервер метрик тормозит, клиент тратит CPU на буферизацию и retry, замедляя бизнес-логику.</p>
 <p>Prometheus использует <strong>Pull-модель</strong>: сервер самостоятельно скрейпит HTTP-эндпоинт <code>/metrics</code> целевых сервисов с заданным интервалом (обычно 15-60 секунд).</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2223,6 +2224,7 @@ flowchart LR
     <p>Формат экспозиции метрик — это простой текстовый протокол. При вызове <code>GET /metrics</code> рантайм Go итерируется по зарегистрированным метрикам, сериализует их в <code>io.Writer</code> буферами по 4-8 КБ и отправляет клиенту. Никакой сложной маршалинга в JSON, только строки вида <code>http_requests_total{method="GET",status="200"} 15432\n</code>. Это минимизирует аллокации и CPU overhead на стороне сервиса.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="2-tipy-metrik-i-semantika">2. Типы метрик и семантика</h2>
@@ -2273,6 +2275,7 @@ var (
 1. Библиотека находит нужный вектор по комбинации лейблов (использует <code>sync.Map</code> или мьютекс для поиска)<br />
 2. Обновляет внутреннее значение с помощью <code>sync/atomic</code><br />
 3. Возвращает управление горутине</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2282,6 +2285,7 @@ var (
     <p><strong>Кэш-линии и False Sharing</strong>: Атомарные операции быстры, но они вызывают инвалидацию кэш-линий по протоколу MESI. Если несколько горутин на разных ядрах CPU одновременно инкрементируют один и тот же Counter, ядра вынуждены постоянно синхронизировать состояние кэш-линии через системную шину. Это явление называется cache line bouncing. При тысячах RPS на одну метрику задержка записи может вырасти в 5-10 раз. Решение: группировать метрики по доменам и не злоупотреблять общими счетчиками в ultra-low-latency путях.</p>
   </div>
 </aside>
+
 
 <p>Для Histogram запись сложнее: библиотека вычисляет индекс бакета (часто через <code>math.Log</code> или бинарный поиск) и атомарно инкрементирует счетчик конкретного бакета. Это дороже, чем <code>Counter.Inc()</code>, но необходимо для процентилей.</p>
 <hr />
@@ -2379,6 +2383,7 @@ HTTPRequestsTotal.With(prometheus.Labels{
 1. <strong>OOM в сервисе</strong>: Go-процесс расходует гигабайты RAM на хранение лейблов и значений.<br />
 2. <strong>GC Pressure</strong>: Сборщик мусора вынужден сканировать миллионы живых объектов. Это увеличивает паузы STW (Stop-The-World) и снижает пропускную способность.<br />
 3. <strong>Crash Prometheus</strong>: Скрейпер пытается загрузить миллионы временных рядов в свою TSDB, что приводит к OOM на стороне мониторинга.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2391,6 +2396,7 @@ HTTPRequestsTotal.With(prometheus.Labels{
 <strong>Ответ:</strong> Если сервис зарегистрировал тысячи метрик или использует сложные вычисления при сборе (например, итерация по большим слайсам), сериализация ответа займет десятки миллисекунд. Prometheus таймаутит скрейп, данные теряются. Лечение: выносить тяжелые вычисления в фоновые задачи, кэшировать состояния, использовать <code>prometheus.Desc</code> для lazy-вычисления, настраивать <code>EnableOpenMetrics</code> для сжатия и <code>GatherTimeout</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="6-prakticheskie-pravila-ekspluatatsii">6. Практические правила эксплуатации</h2>

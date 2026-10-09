@@ -2284,6 +2284,7 @@
   Ядро генерирует событие готовности <strong>ровно один раз</strong> — в момент физического перехода состояния сокета из «нет данных» в «появились данные». Если приложение прочитало лишь часть данных и снова уснуло в <code>epoll_wait</code>, ядро <strong>не разбудит</strong> его повторно для старых данных! Приложение обязано вычитывать сокет в цикле до тех пор, пока системный вызов <code>read</code> не вернет код ошибки <code>EAGAIN</code> (или <code>EWOULDBLOCK</code>).</li>
 </ul>
 <p><strong>Язык Go использует именно edge-triggered epoll (<code>EPOLLET</code>)</strong>. Это сознательное архитектурное решение команды рантайма: режим ET минимизирует количество вызовов <code>epoll_wait</code> и полностью исключает шум паразитных повторных уведомлений.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2293,6 +2294,7 @@
     <p>Когда входящий Ethernet-фрейм поступает в сетевой адаптер, контроллер по DMA помещает данные в память и инициирует прерывание. Ядро выполняет обработку в контексте softirq и кладет пакет в очередь сокета. После этого ядро вызывает внутреннюю callback-функцию <code>ep_poll_callback()</code>. Она атомарно связывает дескриптор с элементом <code>struct epitem</code> и переносит его в список готовых событий <code>rdllist</code> экземпляра <code>eventpoll</code>. Если какой-то поток уже спал в вызове <code>epoll_wait</code>, ядро пробуждает его (<code>wake_up_locked</code>). Поскольку <code>rdllist</code> — это готовый связный список, извлечение готовых событий выполняется за строгое время $O(1)$.</p>
   </div>
 </aside>
+
 
 <h2 id="kqueue-v-macos-i-bsd">Kqueue в macOS и BSD</h2>
 
@@ -2497,6 +2499,7 @@ sequenceDiagram
 <li><strong>Локальность кэша L1/L2 при обработке softirq:</strong><br />
   Когда сетевой пакет поступает на сетевой адаптер, прерывание обрабатывается на конкретном ядре процессора, определенном маской RSS (Receive Side Scaling). На этом же ядре запускается softirq и выполняется <code>ep_poll_callback()</code>. Если поток рантайма Go M, вызвавший <code>epoll_wait</code>, работает на другом ядре того же или соседнего процессорного сокета (NUMA), структуры событий будут передаваться по шине межъядерного взаимодействия с задержкой в десятки тактов.</li>
 </ul>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2508,6 +2511,8 @@ sequenceDiagram
   </div>
 </aside>
 
+
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2517,6 +2522,7 @@ sequenceDiagram
     <p><strong>Утечка горутин при забытых дедлайнах (<code>SetDeadline</code>).</strong> Если горутина читает из сетевого сокета без установленного таймаута (<code>conn.SetReadDeadline</code>), а удаленный клиент молча оборвал связь (без отправки пакета FIN/RST, например при выдергивании сетевого кабеля), горутина останется припаркована в <code>pollDesc</code> netpoller навечно. Десятки тысяч таких соединений приведут к постепенной утечке памяти сервиса. Всегда задавайте таймауты чтения и контекстные дедлайны!</p>
   </div>
 </aside>
+
 
 <h2 id="zaklyuchenie">Заключение</h2>
 

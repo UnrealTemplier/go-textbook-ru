@@ -2279,6 +2279,7 @@ graph LR
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2288,6 +2289,7 @@ graph LR
     <p>В Go пакет <code>os</code> и <code>syscall</code> работают именно с <code>struct file</code>. Когда вы вызываете <code>file.Read()</code>, Go делает syscall <code>read(fd, buf, len)</code>. Ядро по <code>fd</code> находит <code>struct file</code>, проверяет права, вызывает <code>f_op-&gt;read</code> (указатель на функцию драйвера) и копирует данные из ядра в пользовательскую память.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="upravlenie-deskriptorami-v-go-idiomy-i-lovushki">Управление дескрипторами в Go: Идиомы и ловушки</h2>
@@ -2332,6 +2334,7 @@ func handleRawFD() error {
 - Утечке ресурсов (child держит дескриптор открытым после <code>exec</code>).<br />
 - Конфликтам (несколько процессов пишут в один сокет/лог).<br />
 - Нарушению безопасности (child получает доступ к приватным ресурсам).</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2341,6 +2344,7 @@ func handleRawFD() error {
     <p><strong>Утечка дескрипторов при fork/exec</strong> — одна из самых частых проблем в Go-микросервисах. Если вы используете <code>syscall.Open</code> или <code>net.Listen</code>, всегда проверяйте, поддерживает ли драйвер флаг <code>O_CLOEXEC</code>. В Go 1.11+ большинство функций из <code>os</code> и <code>net</code> устанавливают его автоматически, но низкоуровневые <code>syscall</code> вызовы требуют явного указания.</p>
   </div>
 </aside>
+
 
 
 <div class="code-block" data-lang="go">
@@ -2372,6 +2376,7 @@ func openWithCloexec(path string) (*os.File, error) {
 <li><code>net.Conn</code> — обертка над сокетами. В Go 1.11+ <code>net.Conn</code> реализует <code>io.ReaderAt</code> и <code>io.WriterTo</code> только если underlying FD поддерживает <code>sendfile</code> или <code>splice</code>.</li>
 <li><code>syscall</code> — нулевая абстракция. Используется в <code>netpoller</code> и для <code>epoll</code>/<code>kqueue</code>.</li>
 </ul>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2387,6 +2392,7 @@ Go не гарантирует вызов <code>defer</code> при <code>SIGKIL
   </div>
 </aside>
 
+
 <hr />
 <h2 id="mekhanicheskaya-simpatiya-stoimost-i-optimizatsiya">Механическая симпатия: Стоимость и оптимизация</h2>
 
@@ -2396,6 +2402,7 @@ Go не гарантирует вызов <code>defer</code> при <code>SIGKIL
 Этот путь добавляет <strong>несколько десятков тактов CPU</strong>. В высоконагруженном Go-сервере (10k+ RPS) вызовы <code>os.File</code> могут стать узким местом по сравнению с raw <code>syscall</code> или <code>epoll</code>-циклами.</p>
 <h3 id="2-limity-i-masshtabiruemost">2. Лимиты и масштабируемость</h3>
 <p>Каждый открытый FD потребляет память в ядре (~1-2 КБ на <code>struct file</code> + <code>struct inode</code>). При 100k одновременных соединений (например, WebSocket или gRPC) вы подходите к системному лимиту.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2405,6 +2412,7 @@ Go не гарантирует вызов <code>defer</code> при <code>SIGKIL
     <p><strong>ulimit и Docker/K8s</strong>: В контейнерах лимит FD часто наследуется от хоста или ставится в <code>ulimit -n</code>. Если Go-сервер не закрывает соединения вовремя, он быстро достигнет <code>EMFILE</code> (Too many open files). Всегда мониторьте <code>go sysfs</code> и <code>go goroutines</code> в pprof.</p>
   </div>
 </aside>
+
 
 <h3 id="3-zero-copy-i-fd">3. Zero Copy и FD</h3>
 <p>Понимание FD позволяет использовать <code>splice</code> и <code>sendfile</code> для передачи данных между диском и сетью без копирования в user space. В Go это реализуется через <code>syscall.Sendfile</code> или <code>golang.org/x/sys/unix</code>, что критично для статических файлов или проксирования.</p>
@@ -2418,7 +2426,7 @@ Go не гарантирует вызов <code>defer</code> при <code>SIGKIL
 <li><strong><code>O_CLOEXEC</code> обязателен</strong> при работе с низкоуровневыми syscall и <code>fork/exec</code>.</li>
 <li><strong>Лимиты и overhead</strong> FD напрямую влияют на масштабируемость высоконагруженных Go-серверов.</li>
 </ol>
-<p>Мы разобрали фундаментальный механизм доступа к ресурсам. Но как эти ресурсы передаются между процессами без создания новых соединений? В следующей статье мы погрузимся в <code>&lt;a href="26-pipe-named-pipe-i-perenapravlenie-potokov.html" class="wikilink"&gt;26. Pipe, Named Pipe и перенаправление потоков&lt;/a&gt;</code>, где разберем, как Linux реализует канальную передачу данных и как Go использует это для асинхронного пайплайна.</p>
+<p>Мы разобрали фундаментальный механизм доступа к ресурсам. Но как эти ресурсы передаются между процессами без создания новых соединений? В следующей статье мы погрузимся в <a href="26-pipe-named-pipe-i-perenapravlenie-potokov.html" class="wikilink"><code>26. Pipe, Named Pipe и перенаправление потоков</code></a>, где разберем, как Linux реализует канальную передачу данных и как Go использует это для асинхронного пайплайна.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->

@@ -2189,6 +2189,7 @@
 *   <strong>Выделение ресурсов на стороне СУБД</strong>: в PostgreSQL на каждое входящее соединение ядро форкает отдельный процесс операционной системы (<code>postgres worker process</code>), выделяет сегменты разделяемой памяти, структуры отслеживания транзакций и буферы сортировки (<code>work_mem</code>).</p>
 <p>В высоконагруженной системе, обрабатывающей тысячи сетевых запросов в секунду, создание нового физического сокета на каждый HTTP-запрос привело бы к моментальной деградации: база данных задохнулась бы от переключения контекстов процессов ОС, а бэкенд растратил бы все сокетные дескрипторы.</p>
 <p><strong>Пул соединений (Connection Pool)</strong> — это архитектурный паттерн, при котором клиентское приложение заранее создает и непрерывно поддерживает готовый пул сетевых сокетов, переиспользуя их для миллионов последовательных транзакций. Стандартный пакет <code>database/sql</code> в Go реализует этот паттерн «из коробки», но за кажущейся простотой скрывается сложнейший конкурентный диспетчер.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2198,6 +2199,7 @@
     <p>Пул соединений в Go — это не просто примитивный срез <code>[]net.Conn</code>. Это сложная конкурентная машина состояний, которая синхронно управляет пулом горутин, отслеживает время жизни сокетов, арбитрирует запросы через внутренние каналы синхронизации и взаимодействует с системным планировщиком Go. Понимание того, как работает эта синхронизация, критически важно для отладки проблем с производительностью и предотвращения дедлоков в продакшене.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="arkhitektura-pula-v-databasesql">Архитектура пула в database/sql</h2>
@@ -2271,6 +2273,7 @@ flowchart LR
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2285,6 +2288,7 @@ flowchart LR
 5. Мьютекс освобождается, горутина либо получает соединение, либо ждет в очереди.</p>
   </div>
 </aside>
+
 
 <h3 id="vnutrennie-struktury-db-mu-db-freeconn-db-openerch">Внутренние структуры: db.mu, db.freeConn, db.openerCh</h3>
 
@@ -2319,6 +2323,7 @@ type DB struct {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2330,6 +2335,7 @@ type DB struct {
 <strong>Решение:</strong> Увеличивайте <code>SetMaxIdleConns</code>, чтобы уменьшить частоту операций с пулом. Если соединение есть в <code>idle</code>, его выдача происходит быстрее, чем создание нового. Также используйте адекватные значения <code>SetMaxOpenConns</code>, чтобы ограничить конкуренцию.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mekhanika-vydachi-soedineniy">Механика выдачи соединений</h2>
@@ -2389,6 +2395,7 @@ flowchart TD
 <li><strong>Медленный путь (Slow Path)</strong>: Если <code>freeConn</code> пуст, но лимит не достигнут, увеличивается счетчик <code>numOpen</code> и отправляется сигнал в канал <code>openerCh</code>. Отдельная горутина <code>connectionOpener</code> обрабатывает этот сигнал и асинхронно устанавливает новое соединение.</li>
 <li><strong>Блокировка</strong>: Если лимит <code>maxOpen</code> достигнут, текущая горутина добавляется в очередь <code>connRequests</code> и блокируется. Когда другое соединение возвращается в пул (<code>putConn</code>), оно будит одну из ожидающих горутин.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2399,6 +2406,7 @@ flowchart TD
 <strong>Ответ:</strong> LIFO повышает локальность использования: недавно освобожденное соединение с большей вероятностью еще имеет «теплый» TCP-сокет, активный TLS-сеанс и прогретые буферы ОС. Это снижает вероятность того, что соединение окажется «протухшим» (broken pipe) к моменту повторного использования. FIFO мог бы приводить к тому, что соединения долго лежат в пуле без дела и закрываются сетевым оборудованием.</p>
   </div>
 </aside>
+
 
 <h3 id="blokirovka-pri-ischerpanii-limita">Блокировка при исчерпании лимита</h3>
 
@@ -2422,6 +2430,7 @@ rows, err := db.QueryContext(ctx, &quot;SELECT ...&quot;)
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2433,6 +2442,7 @@ rows, err := db.QueryContext(ctx, &quot;SELECT ...&quot;)
 <strong>Правило:</strong> Всегда устанавливайте таймаут на контекст для операций с БД в продакшене.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="sozdanie-i-zakrytie-soedineniy">Создание и закрытие соединений</h2>
@@ -2479,6 +2489,7 @@ func (db *DB) openNewConnection() {
 <h3 id="rotatsiya-soedineniy-connmaxlifetime">Ротация соединений: ConnMaxLifetime</h3>
 
 <p>Соединения не живут вечно. Параметр <code>SetConnMaxLifetime</code> контролирует максимальное время жизни соединения с момента его создания.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2507,6 +2518,7 @@ func (db *DB) openNewConnection() {
   </div>
 </aside>
 
+
 <hr />
 <h2 id="nastroyka-pula-prakticheskoe-rukovodstvo">Настройка пула: практическое руководство</h2>
 
@@ -2533,6 +2545,7 @@ db.SetMaxOpenConns(50)
 *   <strong>CPU-bound нагрузка</strong>: <code>maxOpen ≈ (CPU cores * 2) + эффективный диск</code><br />
 *   <strong>IO-bound нагрузка</strong> (типичный веб-бэкенд): <code>maxOpen ≈ 50-200</code>, зависит от латентности БД<br />
 *   <strong>Формула Литтла</strong>: <code>MaxConns = QPS * AvgQueryLatency</code> (с запасом 20-30%)</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2543,6 +2556,7 @@ db.SetMaxOpenConns(50)
 <strong>Ответ:</strong> Все запросы к БД будут выполняться строго последовательно. Даже если у вас 1000 горутин, только одна сможет выполнять запрос в любой момент времени. Остальные будут блокироваться в очереди. Это превратит вашу базу данных в последовательное узкое место (serial bottleneck).</p>
   </div>
 </aside>
+
 
 <h3 id="setmaxidleconns-teplye-soedineniya-vs-pamyat">SetMaxIdleConns: теплые соединения vs память</h3>
 
@@ -2646,6 +2660,7 @@ db.SetMaxIdleConns(25) // при maxOpen=50
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2655,6 +2670,7 @@ db.SetMaxIdleConns(25) // при maxOpen=50
     <p>Метод <code>db.Stats()</code> использует атомарные операции для чтения счетчиков (<code>atomic.LoadInt64</code>), поэтому он безопасен для вызова из любой горутины и не блокирует работу пула. Однако частый вызов (чаще 1 раза в секунду) может создавать небольшой оверхед из-за атомарных операций и аллокации структуры <code>DBStats</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="interpretatsiya-metrik-waitcount-waitduration-idle">Интерпретация метрик: waitCount, waitDuration, idle</h3>
 
@@ -2741,6 +2757,7 @@ func safeQuery(ctx context.Context, db *sql.DB, query string) error {
 
 <h3 id="utechki-soedineniy-rows-close-tx-rollback">Утечки соединений: rows.Close(), tx.Rollback()</h3>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2780,6 +2797,7 @@ err = tx.Commit()
   </div>
 </aside>
 
+
 <h3 id="dolgie-zaprosy-i-blokirovka-pula">Долгие запросы и блокировка пула</h3>
 
 <p>Один медленный запрос может «заблокировать» одно соединение из пула на все время выполнения. Если таких запросов много, пул быстро исчерпается.</p>
@@ -2796,6 +2814,7 @@ err = tx.Commit()
 *   3 пакета для TCP handshake (SYN, SYN-ACK, ACK)<br />
 *   4-7 пакетов для TLS handshake (ClientHello, ServerHello, Certificate, KeyExchange...)<br />
 *   Системные вызовы <code>socket()</code>, <code>connect()</code>, <code>write()</code>, <code>read()</code></p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2806,6 +2825,7 @@ err = tx.Commit()
 <p><strong>Оптимизация:</strong> Держите достаточное количество <code>idle</code> соединений, чтобы минимизировать частоту <code>connect()</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="vliyanie-na-gc-i-allokatsii">Влияние на GC и аллокации</h3>
 
@@ -2828,6 +2848,7 @@ err = tx.Commit()
 <h3 id="tcp-keepalive-i-taymauty-na-urovne-os">TCP keepalive и таймауты на уровне ОС</h3>
 
 <p>По умолчанию драйверы включают TCP keepalive (обычно 30-60 секунд). Это важно для обнаружения «мертвых» соединений, которые были закрыты сетевым оборудованием, но приложение об этом не знает.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2838,6 +2859,7 @@ err = tx.Commit()
 <strong>Ответ:</strong> Промежуточное сетевое оборудование (файрволы, NAT, балансировщики) часто имеет таймауты неактивных TCP-соединений (обычно 5-15 минут). Если соединение простаивает дольше, оно молча закрывается на уровне сети. Приложение узнает об этом только при следующей попытке записи/чтения, получив ошибку <code>broken pipe</code> или <code>connection reset</code>. Именно поэтому <code>ConnMaxLifetime</code> должен быть меньше таймаутов сетевого оборудования.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="sravnenie-podkhodov-pul-v-go-vs-drugie-yazyki">Сравнение подходов: пул в Go vs другие языки</h2>
@@ -2873,6 +2895,7 @@ err = tx.Commit()
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2882,6 +2905,7 @@ err = tx.Commit()
     <p>Пул в Go выигрывает за счет нативной поддержки конкурентности (горутины) и отсутствия GIL. Однако он проигрывает специализированным пулам вроде HikariCP в «сырой» скорости выдачи соединения из-за использования мьютексов вместо <code>Unsafe</code>-оптимизаций. Для 99% приложений разница незаметна, но в экстремальных бенчмарках это может иметь значение.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="cheklist-dlya-prodakshena">Чеклист для продакшена</h2>

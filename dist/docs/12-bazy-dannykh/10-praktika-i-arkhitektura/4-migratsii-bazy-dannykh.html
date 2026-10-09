@@ -2192,6 +2192,7 @@
 *   Механику блокировок, генерации WAL и влияние на диск при изменении больших таблиц.<br />
 *   Паттерны Zero-Downtime развертывания: Expand-Contract, <code>CONCURRENTLY</code> и пакетная обработка.<br />
 *   Типичные ловушки, антипаттерны и вопросы с хардовых собеседований.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2201,6 +2202,7 @@
     <p>Система миграций работает поверх двух фундаментальных концепций СУБД: <strong>каталога схемы</strong> (где хранятся метаданные о таблицах и индексах) и <strong>журнала транзакций (WAL/redo log)</strong>. Любое изменение схемы, даже простое <code>ADD COLUMN</code>, требует обновления системных таблиц и генерации записей в WAL, чтобы гарантировать восстановление после сбоя. Понимание этой цены — ключ к написанию безопасных миграций.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="1-arkhitektura-mekhanizma-migratsiy">1. Архитектура механизма миграций</h2>
@@ -2272,6 +2274,7 @@ flowchart TD
 <li><strong>dirty</strong>: Флаг, указывающий на частичное выполнение. Если <code>dirty = TRUE</code>, дальнейшие миграции блокируются до ручного вмешательства.</li>
 <li><strong>applied_at</strong>: Аудит времени применения.</li>
 </ul>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2283,6 +2286,7 @@ flowchart TD
 <strong>Решение:</strong> Внимательно читайте логи, исправляйте SQL, вручную сбрасывайте флаг или откатывайте частично примененные изменения. Никогда не игнорируйте <code>dirty</code> в продакшене.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="2-pod-kapotom-tranzaktsii-ddl-blokirovki-i-povedenie-subd">2. Под капотом: Транзакции, DDL-блокировки и поведение СУБД</h2>
@@ -2308,6 +2312,7 @@ COMMIT;
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2318,9 +2323,11 @@ COMMIT;
   </div>
 </aside>
 
+
 <h3 id="mysql-imlisit-kommity">MySQL: Имлисит-коммиты</h3>
 
 <p>В MySQL (движок InnoDB) большинство DDL-команд <strong>не поддерживают транзакции</strong>. Выполнение <code>ALTER TABLE</code> автоматически завершает текущую транзакцию (<code>COMMIT</code>) и применяет изменения немедленно. Если скрипт упадет на второй команде, первая уже применится и не откатится.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2331,6 +2338,7 @@ COMMIT;
 <strong>Ответ:</strong> Полную атомарность на уровне нескольких DDL-команд в MySQL получить невозможно. Приходится проектировать миграции так, чтобы каждая из них была идемпотентной и безопасной по отдельности, либо использовать инструменты, которые имитируют откат через компенсирующие <code>ALTER TABLE ... DROP</code>-команды. В <code>pressly/goose</code> для этого есть поддержка Go-миграций, где можно явно вызвать <code>Rollback</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="3-idiomaticheskaya-integratsiya-v-go">3. Идиоматическая интеграция в Go</h2>
@@ -2397,6 +2405,7 @@ func RunMigrations(dsn string) error {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2406,6 +2415,7 @@ func RunMigrations(dsn string) error {
     <p><code>m.Up()</code> блокирующая операция. Она поочередно считывает файлы из <code>embed.FS</code>, выполняет их через <code>*sql.DB</code> и обновляет <code>schema_migrations</code>. Если вы вызываете <code>RunMigrations()</code> в <code>main()</code> при старте сервиса, ваш процесс не начнет обслуживать HTTP-трафик, пока все миграции не завершатся. В микросервисной архитектуре это часто выносят в отдельный Job или init-контейнер.</p>
   </div>
 </aside>
+
 
 <h3 id="3-2-go-migratsii-dlya-slozhnoy-logiki">3.2. Go-миграции для сложной логики</h3>
 
@@ -2496,6 +2506,7 @@ flowchart LR
 <li><strong>Deploy v3</strong>: Приложение перестает писать в <code>name</code>.</li>
 <li><strong>Миграция</strong>: <code>ALTER TABLE users DROP COLUMN name</code>.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2507,6 +2518,7 @@ flowchart LR
 <strong>Решение:</strong> Используйте <code>CREATE INDEX CONCURRENTLY idx ON users(column)</code>. Он не блокирует запись, но работает в 2-3 прохода и требует больше времени. В миграциях это обязательно!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="5-mechanical-sympathy-disk-wal-i-nagruzka-pri-migratsiyakh">5. Mechanical Sympathy: Диск, WAL и нагрузка при миграциях</h2>
@@ -2527,6 +2539,7 @@ flowchart LR
 *   Генерируете огромный объем WAL.<br />
 *   Заставляете <code>VACUUM</code> в будущем чистить 10 млн мертвых кортежей.<br />
 *   <strong>Влияние на кэш:</strong> При массовой записи вы вымываете полезные данные из <code>shared_buffers</code> и Page Cache ОС, что замедляет обычные пользовательские запросы.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2537,6 +2550,7 @@ flowchart LR
 <strong>Ответ:</strong> В современных PostgreSQL (11+) <code>ADD COLUMN ... DEFAULT</code> не вызывает переписывание таблицы, если значение статическое. Метаданные просто обновляются в системном каталоге. Однако если вы обновляете существующие строки (<code>UPDATE table SET col = val</code>), это уже DML-операция. Её нужно выполнять пакетами (например, по 1000-5000 строк) с задержкой между пачками, чтобы не перегрузить WAL и не вызвать <code>disk full</code> из-за генерации временных файлов.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="6-tipichnye-oshibki-i-antipatterny">6. Типичные ошибки и антипаттерны</h2>

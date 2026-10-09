@@ -2184,6 +2184,7 @@
 <p>Классическая реляционная теория баз данных, сформулированная Эдгаром Коддом, бескомпромиссна: фундаментом модели является первая нормальная форма (<a href="../01-vvedenie-i-fundament/10-pervaya-normalnaya-forma-1nf.html" class="wikilink">10. Первая нормальная форма 1NF</a>), требующая абсолютной атомарности значений в каждой ячейке строки. Никаких списков, никаких повторяющихся групп. Если у сущности «статья» есть несколько меток (тегов), академический канон обязывает создать отдельную таблицу связей <code>article_tags</code> и соединять данные через классический <code>JOIN</code> (<a href="../02-sql-bazovyy/6-join-inner-left-right.html" class="wikilink">6. JOIN. INNER, LEFT, RIGHT</a>).</p>
 <p>Однако в реальных высоконагруженных промышленных системах догматическая нормализация нередко превращается в главный инфраструктурный затор (Bottleneck). Каждый <code>JOIN</code> требует вычислений на CPU сервера базы данных. Но что еще критичнее — при соединении отношений «один-ко-многим» (1:M) реляционный движок дублирует поля родительской сущности на каждой строке дочерней записи, в разы раздувая сетевой трафик (Network IO) и нагрузку на сетевые сокеты приложений.</p>
 <p>Современные зрелые СУБД (в первую очередь PostgreSQL и колоночная ClickHouse) предлагают прагматичный инженерный выход — <strong>нативные массивы</strong>. Массивы позволяют хранить однородные множества значений прямо в ячейке таблицы, осознанно нарушая 1NF ради радикального сокращения I/O, уменьшения сетевого оверхеда и упрощения архитектуры.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Массивы vs JSONB">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2197,6 +2198,7 @@
 3. На стороне Go массив напрямую отображается в нативные срезы (slices) языка без промежуточной десериализации. Если вам требуется простой список идентификаторов, тегов или статусов — всегда выбирайте нативные массивы, а не <code>JSONB</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="bazovyy-sintaksis-i-operatory-na-primere-postgresql">Базовый синтаксис и операторы (на примере PostgreSQL)</h2>
@@ -2283,6 +2285,7 @@ CREATE INDEX idx_articles_tags ON articles USING GIN (tags);
 
 <p><strong>Mechanical Sympathy: Как GIN устроен изнутри?</strong><br />
 В отличие от B-Tree, где каждой строке таблицы соответствует один ключ в индексе, GIN «разворачивает» массив на атомарные составляющие. Для каждого уникального значения (например, строки <code>'golang'</code>) создается узел в поисковом B-дереве, а в листовой странице хранится компактный сжатый список ссылок — <strong>Posting List</strong> (список идентификаторов строк таблицы — TID, где данный тег встречается). Операторы <code>@&gt;</code> и <code>&amp;&amp;</code> выполняют пересечение и объединение битовых масок этих списков на уровне регистров CPU с колоссальной скоростью.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: GIN и цена записи">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2293,6 +2296,7 @@ CREATE INDEX idx_articles_tags ON articles USING GIN (tags);
 <p>В высокоинтенсивных на запись таблицах (Write-Heavy) GIN-индекс может легко стать главным узким местом по блокировкам и дисковому вводу-выводу. Для смягчения этой нагрузки в PostgreSQL предусмотрен механизм отложенного накопления <strong>Fast Update</strong>: изменения сначала буферизуются во временном плоском списке и лишь затем пачками сбрасываются в основное дерево GIN. Но фундаментальное правило неизменно: за высокую скорость поиска по массивам приходится расплачиваться снижением пропускной способности вставок.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="magiya-transformatsiy-unnest-i-arrayagg">Магия трансформаций: UNNEST и ARRAY_AGG</h2>
@@ -2444,6 +2448,7 @@ func GetArticle(ctx context.Context, db *sql.DB, id int64) (Article, error) {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование: pgx vs lib/pq">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2455,6 +2460,7 @@ func GetArticle(ctx context.Context, db *sql.DB, id int64) (Article, error) {
 <p>В отличие от <code>lib/pq</code>, драйвер <code>pgx</code> обладает глубокой нативной поддержкой бинарного протокола PostgreSQL: он позволяет напрямую передавать срезы Go в качестве параметров (<code>WHERE id = ANY($1)</code>) и сканировать колонки массивов прямо в стандартные срезы <code>[]string</code> или <code>[]int64</code> без каких-либо сторонних адаптеров вроде <code>pq.Array</code>. Это полностью устраняет промежуточные аллокации в куче (Heap) и снижает нагрузку на Garbage Collector Go. Подробнее об этом читайте в <a href="../10-praktika-i-arkhitektura/1-rabota-s-bd-v-go-database-sql.html" class="wikilink">1. Работа с БД в Go. database/sql</a>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="toast-tsena-bolshikh-massivov">TOAST: Цена больших массивов</h2>

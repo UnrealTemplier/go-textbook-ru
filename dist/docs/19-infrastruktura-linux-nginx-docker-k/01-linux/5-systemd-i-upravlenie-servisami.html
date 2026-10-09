@@ -2303,6 +2303,7 @@ WantedBy=multi-user.target
 <li><code>LimitNOFILE=65536</code>: снимает стандартное ограничение ядра на 1024 открытых файловых дескриптора. Для Go-сервера, обслуживающего тысячи одновременных TCP-соединений (keep-alive, базы данных, gRPC-каналы), дефолтный лимит означает мгновенную ошибку <code>socket: too many open files</code>.</li>
 <li><code>NoNewPrivileges=true</code>, <code>ProtectSystem=strict</code>, <code>PrivateTmp=true</code>: на уровне ядра блокируют повышение привилегий через SUID, монтируют системные каталоги (<code>/usr</code>, <code>/boot</code>, <code>/etc</code>) в режиме Read-Only и создают изолированный каталог <code>/tmp</code> в отдельном пространстве имен.</li>
 </ul>
+
 <aside class="callout callout-warning" aria-label="Ловушка: Директива `Restart=always` против `Restart=on-failure`">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2313,6 +2314,7 @@ WantedBy=multi-user.target
 <p>Если же приложение завершается с кодом <code>0</code> (<code>os.Exit(0)</code>), Systemd при <code>Restart=on-failure</code> справедливо решит, что задача успешно выполнена, и не будет инициировать рестарт. Применяйте <code>Restart=on-failure</code>: перезапуск произойдет только при аварийном завершении по сигналу (<code>SIGSEGV</code>, <code>SIGABRT</code>) или ненулевом коде возврата (<code>exit code != 0</code>).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="3-typenotify-idealnyy-graceful-startup-bez-poteri-zaprosov">3. Type=notify: Идеальный Graceful Startup без потери запросов</h2>
@@ -2524,6 +2526,7 @@ WantedBy=sockets.target
 
 <p>Systemd опирается на подсистему контрольных групп ядра (<strong>Cgroups</strong>). Директива <code>MemoryMax=512M</code> в unit-файле создаст Cgroup, и ядро Linux убьет ваш Go-процесс (OOM Kill), если он превысит 512 МБ.</p>
 <p>Но есть нюанс. До версии Go 1.19 сборщик мусора (GC) не знал о лимитах Cgroups. Он видел всю оперативную память хоста и думал: "Памяти еще вагон, можно не торопиться с очисткой". В итоге процесс аллоцировал память до упора и получал SIGKILL.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2533,6 +2536,7 @@ WantedBy=sockets.target
     <p>Начиная с Go 1.19, рантайм научился читать лимиты Cgroups (файл <code>memory.max</code> в cgroupv2). Это значение автоматически используется для настройки <code>GOMEMLIMIT</code>. Если вы вручную прописываете <code>MemoryMax</code> в Systemd, GC Go будет стараться удержать heap в пределах этого лимита, чаще запуская циклы очистки. Это спасает от OOM Kill, но может увеличить нагрузку на CPU (о чем мы говорили в разделе профилирования). Если вы не используете Systemd/Cgroups, вы можете задать лимит вручную через переменную окружения <code>GOMEMLIMIT=512MiB</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="6-zhurnalirovanie-journald-i-strukturirovannye-logi">6. Журналирование (Journald) и Структурированные логи</h2>
@@ -2589,6 +2593,7 @@ func main() {
 <hr />
 <h2 id="7-tonkosti-graceful-shutdown-i-signaly">7. Тонкости Graceful Shutdown и сигналы</h2>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2600,6 +2605,7 @@ func main() {
 <p>При <code>KillMode=mixed</code> (рекомендуется): <code>SIGTERM</code> отправляется только главному процессу (Control Group). Если процесс не завершится за <code>TimeoutStopSec</code> (обычно 90с по умолчанию), Systemd отправит <code>SIGKILL</code> всей Cgroup. Ваш код на Go должен успеть завершить HTTP-обработчики и закрыть БД за это время. В Go <code>http.Server.Shutdown</code> как раз и нужен для того, чтобы процесс завершился до жесткого <code>SIGKILL</code> от Systemd. Если время остановки велико, вы можете настроить <code>TimeoutStopSec=30</code> или увеличить <code>TimeoutStopSec=30s</code> в unit-файле.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

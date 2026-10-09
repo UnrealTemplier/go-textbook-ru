@@ -2264,6 +2264,7 @@ func startRefill(bucket *Bucket) {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Смерть от горутин">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2274,11 +2275,13 @@ func startRefill(bucket *Bucket) {
   </div>
 </aside>
 
+
 <p><strong>Идиоматичное решение (Lazy Evaluation):</strong><br />
 Официальный пакет <code>golang.org/x/time/rate</code> не использует ни одной фоновой горутины. Он использует <strong>ленивое вычисление</strong>. </p>
 <p>Структура хранит только текущее количество токенов и <code>last_updated</code> (время последнего запроса).<br />
 Когда приходит новый запрос, пакет берет <code>time.Now()</code>, вычисляет <code>delta = now - last_updated</code>, умножает это на скорость пополнения (<code>Rate</code>) и прибавляет результат к текущему количеству токенов.</p>
 <p>Это чистая математика (операции с плавающей точкой или целыми числами), выполняющаяся за наносекунды с алгоритмической сложностью $O(1)$ по времени и памяти.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Monotonic Clocks">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2288,6 +2291,7 @@ func startRefill(bucket *Bucket) {
     <p>При вычислении разницы времени в Go используется Монотонные часы (Monotonic Clock), а не настенные (Wall Clock). Если системный администратор или NTP-сервер переведут время на сервере на час назад, Wall Clock изменится, и наивный алгоритм выдаст отрицательную дельту (заблокировав клиента на час). <code>time.Now()</code> в Go возвращает время с монотонным смещением (от момента старта ОС), которое всегда идет только вперед, защищая ваш лимитер от временных аномалий.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="raspredelennyy-rate-limiting-bol-mikroservisov">Распределенный Rate Limiting: Боль микросервисов</h2>
@@ -2303,6 +2307,7 @@ func startRefill(bucket *Bucket) {
 3. Pod 1 вычисляет 10 - 1 = 9 и делает <code>SET ip_123 9</code>.<br />
 4. Pod 2 вычисляет 10 - 1 = 9 и делает <code>SET ip_123 9</code>.</p>
 <p><strong>Итог:</strong> Обработано 2 запроса, но списан только 1 токен. Это классическое состояние гонки (Lost Update).</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2313,6 +2318,7 @@ func startRefill(bucket *Bucket) {
 <p><strong>Ответ:</strong> Использовать <strong>Lua-скрипты</strong>. Redis выполняет Lua-скрипты атомарно (в один поток). Наш Go-сервис отправляет Lua-скрипт и нужные параметры (IP, текущее время). Redis внутри себя атомарно читает старое значение, вычисляет дельту по времени (lazy evaluation), обновляет ключи и возвращает <code>true/false</code> (пропустить запрос или нет). Никакая другая команда не может вклиниться в процесс выполнения Lua-скрипта.</p>
   </div>
 </aside>
+
 
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -2388,6 +2394,7 @@ func getVisitor(ip string) *rate.Limiter {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Безлимитный рост Map">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2399,6 +2406,7 @@ func getVisitor(ip string) *rate.Limiter {
 <p><strong>Решение:</strong> Использовать пакеты LRU-кэша (например, <code>hashicorp/golang-lru</code>), которые автоматически вытесняют старые элементы, либо запускать отдельную фоновую горутину-уборщика, которая раз в минуту сканирует мапу и удаляет объекты, у которых <code>last_seen</code> больше часа назад.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

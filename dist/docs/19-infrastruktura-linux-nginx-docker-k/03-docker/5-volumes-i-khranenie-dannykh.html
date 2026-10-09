@@ -2205,6 +2205,7 @@
 1. Ядро сканирует стопку слоев сверху вниз, проверяя наличие файла <code>app.log</code>.<br />
 2. Если файл отсутствует, он создается с нуля в рабочем слое Upper Layer.<br />
 3. Если же файл уже присутствовал в одном из слоев образа (например, конфиг по умолчанию) и приложение пытается выполнить дозапись, активируется механизм <strong>Copy-on-Write (CoW)</strong>: ядро Linux полностью копирует весь файл из неизменяемого нижнего слоя в верхний рабочий слой, и только затем применяет модификацию.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Деградация IOPS и фрагментация диска на OverlayFS">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2217,6 +2218,7 @@
 <p><strong>Золотое правило:</strong> Никогда не храните базы данных, очереди сообщений или интенсивные логи в слое контейнера. Любой реальный I/O обязан выноситься в специально смонтированные тома.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="2-arkhitektura-khranilishch-docker-volumes-bind-mounts-i-tmpfs">2. Архитектура хранилищ Docker: Volumes, Bind Mounts и tmpfs</h2>
@@ -2271,6 +2273,7 @@ docker run -d -v my-go-data:/app/data my-go-image
 </div>
 
 <p>Docker выделяет на хосте выделенный каталог (по умолчанию <code>/var/lib/docker/volumes/&lt;volume_name&gt;/_data</code>) и монтирует его непосредственно в контейнер.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Нативная скорость через bind mount">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2282,6 +2285,7 @@ docker run -d -v my-go-data:/app/data my-go-image
 <p>В оркестраторах (Kubernetes) концептуальным аналогом томов являются абстракции <strong>PersistentVolume (PV)</strong> и <strong>PersistentVolumeClaim (PVC)</strong>.</p>
   </div>
 </aside>
+
 
 <h3 id="2-pryamoe-montirovanie-katalogov-bind-mounts">2. Прямое монтирование каталогов (Bind Mounts)</h3>
 <p><strong>Bind Mount</strong> позволяет примонтировать абсолютно любой существующий файл или директорию с хоста в произвольную точку файловой системы контейнера:</p>
@@ -2328,6 +2332,7 @@ docker run -d -v my-go-data:/app/data my-go-image
 
 <p>В экосистеме Go огромной популярностью пользуются встраиваемые бессерверные базы данных (<strong>Embedded Databases</strong>): SQLite (как в CGO-версии, так и в современных чистых Go-портах вроде <code>modernc.org/sqlite</code>), BadgerDB и BoltDB. Они не требуют развертывания отдельного сервера баз данных и хранят все структуры прямо в единственном файле.</p>
 <p>Однако при их запуске внутри контейнеров инженеры регулярно сталкиваются с фатальными ошибками: <code>database is locked</code>, паникой повреждения страниц или сбоем ядра <code>SIGBUS: bus error</code>.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Логика flock() поверх OverlayFS и NFS">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2343,6 +2348,7 @@ docker run -d -v my-go-data:/app/data my-go-image
   </div>
 </aside>
 
+
 <hr />
 <h2 id="4-problema-prav-dostupa-mapping-uidgid-i-oshibka-permission-denied">4. Проблема прав доступа: Маппинг UID/GID и ошибка Permission Denied</h2>
 
@@ -2354,6 +2360,7 @@ docker run -d -v my-go-data:/app/data my-go-image
 <li>При попытке Go-процесса создать файл в точке монтирования <code>/app/data</code> ядро Linux сверяет права: процесс с EUID 10001 пытается писать в каталог владельца UID 0 с правами <code>drwxr-xr-x</code>. Ядро мгновенно блокирует операцию с ошибкой <code>EACCES</code> (Permission Denied).</li>
 </ol>
 <p>Аналогично при использовании Bind Mount (<code>-v /host/dir:/app/dir</code>): если файлы на хосте принадлежат локальному пользователю разработчика с UID 1000, а процесс внутри контейнера работает под UID 2000, Go-сервис даже не сможет прочитать собственный конфигурационный файл.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Способы разрешения конфликтов UID/GID при работе с томами">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2367,6 +2374,7 @@ docker run -d -v my-go-data:/app/data my-go-image
 3. <strong>Активация User Namespaces (<code>userns-remap</code>):</strong> Настройка демона Docker, при которой пользователь <code>root</code> внутри контейнера автоматически транслируется ядром в непривилегированного пользователя на хосте, устраняя конфликты владельцев.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

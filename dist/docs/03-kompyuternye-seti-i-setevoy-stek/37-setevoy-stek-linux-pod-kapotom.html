@@ -2249,6 +2249,7 @@ flowchart TD
 <li><strong>Socket Layer</strong>: Создает или находит соответствующую структуру <code>struct sock</code>, связывает ее с файловым дескриптором процесса, вызывает <code>copy_to_user</code> или <code>splice</code> для передачи полезных данных в <code>User Space</code>.</li>
 <li><strong>User Space</strong>: Пользовательское приложение на Go читает данные через вызовы <code>read()</code>/<code>recv()</code> или асинхронный мультиплексор <code>epoll</code>.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2258,6 +2259,7 @@ flowchart TD
     <p>Каждый пакет в ядре Linux инкапсулируется в структуру <code>sk_buff</code> (socket buffer). Это сердце сетевого стека. Она хранит указатели на заголовки (<code>mac_header</code>, <code>nh</code>, <code>th</code>), данные, метаданные (<code>cb[]</code>), ссылку на сокет (<code>sk</code>) и устройство (<code>dev</code>). Аллокация <code>sk_buff</code> происходит в slab-кэш памяти (обычно <code>kmalloc-256</code> или <code>kmalloc-512</code>), что делает её быстрой, но чувствительной к фрагментации кэша CPU.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="klyuchevye-struktury-dannykh-yadra">Ключевые структуры данных ядра</h2>
@@ -2310,6 +2312,7 @@ head            data                            tail                    end
 * <code>sk_backlog</code> — вспомогательная очередь для пакетов, поступающих во время выполнения системного вызова <code>accept()</code> или когда сокет временно заблокирован пользовательским контекстом.<br />
 * <code>sk_sleep</code> — очередь ожидания (wait queue) для перевода вызвавшего процесса или треда в спящий режим при блокирующем чтении/записи.<br />
 * <code>sk_receive_queue</code> / <code>sk_write_queue</code> — очереди входящих и исходящих пакетов <code>sk_buff</code>.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2319,6 +2322,7 @@ head            data                            tail                    end
     <p>В Go <code>net.Conn</code> не является прямым эквивалентом <code>struct sock</code>. Go использует <code>netpoll</code> (epoll/kqueue) для асинхронного чтения. Когда <code>epoll</code> сигнализирует о готовности, Go вызывает <code>recvmsg()</code> или <code>read()</code>. Сокет в Go неблокирующий: если данные еще не пришли в <code>sk_receive_queue</code>, ядро сразу возвращает <code>EAGAIN</code>, а горутина паркуется в netpoller (блокирующее ожидание в ядре характерно для обычных C-программ с блокирующими сокетами).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="sistemnye-vyzovy-i-zhiznennyy-tsikl-soketa">Системные вызовы и жизненный цикл сокета</h2>
@@ -2367,6 +2371,7 @@ sequenceDiagram
 <li><code>accept()</code> → В многопоточной модели Go блокируется в <code>epoll_wait</code> или вызывает неблокирующий <code>accept4()</code>. При прохождении полного рукопожатия (<code>SYN</code> → <code>SYN-ACK</code> → <code>ACK</code>) ядро создает новый дочерний <code>struct sock</code> и помещает его в <code>accept queue</code>.</li>
 <li><code>epoll_ctl(EPOLL_CTL_ADD, fd, EPOLLIN|EPOLLOUT|EPOLLRDHUP|EPOLLET, &amp;ev)</code> (регистрация выполняется один раз) → Регистрирует сокет в красно-черном дереве <code>epoll</code> ядра. При появлении данных драйвер вызывает callback <code>ep_poll_callback()</code>.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2377,6 +2382,7 @@ sequenceDiagram
 <strong>Ответ:</strong> Ядро отбрасывает новые <code>SYN</code>-пакеты или начинает использовать <code>syncookies</code> (если включены). В Go это может привести к <code>dial timeout</code> или <code>connection refused</code>. Для решения увеличивают <code>net.core.somaxconn</code> и <code>net.ipv4.tcp_max_syn_backlog</code>, а также, если нужно распределить <code>accept</code> между несколькими слушателями, открывают несколько listener'ов с <code>SO_REUSEPORT</code> (Go сам эту опцию не включает; ядро распределяет входящие соединения между сокетами, а не между горутинами).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="io-multipleksirovanie-epoll-pod-kapotom">I/O мультиплексирование: epoll под капотом</h2>
@@ -2389,6 +2395,7 @@ sequenceDiagram
    * <code>EPOLLET</code> (Edge-Triggered): Уведомление генерируется <strong>только в момент фронта изменения состояния</strong> (поступление новой порции данных в пустой буфер). Рантайм Go использует именно Edge-Triggered режим (с самых первых версий) для минимизации context switches; вычитывать сокет в цикле до <code>EAGAIN</code> вам в коде не нужно: <code>Read</code> делает один <code>read</code>, а если вернулся <code>EAGAIN</code> — ждёт события через netpoller; цикл «до <code>EAGAIN</code>» обязателен лишь при ручной работе с <code>epoll</code> (например, через собственные <code>syscalls</code>).<br />
    * <code>EPOLLIN</code> (Level-Triggered): Уведомление генерируется непрерывно до тех пор, пока в буфере сокета остается хотя бы один непрочитанный байт. Этот режим безопаснее для новичков, но порождает шквал лишних системных вызовов и переключений контекста.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2398,6 +2405,7 @@ sequenceDiagram
     <p>При использовании <code>EPOLLET</code> в Go, если вы прочитали часть данных и вернулись в <code>epoll_wait</code>, событие не сгенерируется снова, пока не придет новый пакет. Go решает это внутренним состоянием <code>netpoller</code>, но при кастомных <code>syscalls</code> или <code>io_uring</code> это частая причина "зависания" соединений.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="zero-copy-i-obkhod-kopirovaniya-pamyati">Zero-Copy и обход копирования памяти</h2>
@@ -2449,6 +2457,7 @@ flowchart LR
 <li><strong><code>splice()</code></strong>: Соединяет два произвольных файловых дескриптора (например, сокет и файл или два сокета) через кольцо буферов <code>pipe</code> ядра Linux. Байты перемещаются через память ядра без захода в пространство пользователя.</li>
 <li><strong><code>io_uring</code></strong>: Современный асинхронный интерфейс пакетного ввода-вывода Linux (начиная с ядер 5.1+), позволяющий предварительно регистрировать сокетные буферы (<code>fixed buffers</code>) и очереди <code>Submission/Completion Queue</code>. Ядро и приложение взаимодействуют через кольцевой буфер в общей разделяемой памяти, полностью ликвидируя оверхед классических системных вызовов.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2458,6 +2467,7 @@ flowchart LR
     <p><code>Zero-Copy</code> не означает отсутствие копирования. Он означает отсутствие копирования <em>между ядром и User Space</em>. Данные все равно копируются через <code>DMA</code> из NIC в <code>page cache</code>, а затем в <code>sk_buff</code>. Однако это устраняет накладные расходы на контекстные переключения и аллокации пользовательских буферов.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="integratsiya-s-go-netpoll-i-proizvoditelnost">Интеграция с Go: netpoll и производительность</h2>
@@ -2535,6 +2545,7 @@ func tuneConnection(conn *net.TCPConn) {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2545,6 +2556,7 @@ func tuneConnection(conn *net.TCPConn) {
 <strong>Ответ:</strong> Алгоритм Нагла (Nagle) объединяет мелкие пакеты для экономии bandwidth. В высоконагруженном бэкенде это добавляет задержку (до 40-200ms). <code>TCP_NODELAY</code> отключает буферизацию, отправляя пакеты сразу. Для RPC и HTTP/2 это стандартная практика, а в Go вызывать <code>SetNoDelay(true)</code> вручную не нужно: <code>net</code> ставит <code>TCP_NODELAY=1</code> на все TCP-соединения по умолчанию (отключить его можно, вызвав <code>SetNoDelay(false)</code>).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

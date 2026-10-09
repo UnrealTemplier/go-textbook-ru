@@ -2192,6 +2192,7 @@
 *   Процедуры аварийного переключения (failover) и отката (failback): автоматизация, кворумы, предотвращение расщепления мозга (split-brain).<br />
 *   Тестирование восстановления: почему «бэкап без проверки восстановления — это не бэкап».<br />
 *   Типичные ловушки, антипаттерны и каверзные вопросы с хардовых собеседований.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2201,6 +2202,7 @@
     <p>Аварийное восстановление упирается в фундаментальный закон хранения данных: <strong>любая копия данных — это задержка</strong>. Синхронная репликация гарантирует нулевой RPO, но увеличивает латентность записи на 1 RTT до самой удаленной реплики. Асинхронная репликация дает низкую задержку, но допускает потерю данных при сбое. Инженер должен явно выбирать компромисс между доступностью, согласованностью и производительностью, а не надеяться, что «СУБД сама разберется».</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="fundamentalnye-metriki-rpo-rto-rlo">Фундаментальные метрики: RPO, RTO, RLO</h2>
@@ -2275,6 +2277,7 @@ flowchart LR
 </figure>
 
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2285,6 +2288,7 @@ flowchart LR
 <strong>Ответ:</strong> Теоретически — нет, практически — крайне дорого и сложно. RPO=0 требует синхронной репликации, которая увеличивает латентность записи и создает единую точку отказа при сетевом разделении. RTO=0 требует мгновенного автоматического переключения, которое рискует расщеплением мозга (split-brain) при нестабильной сети. На практике выбирают баланс: например, RPO=5 секунд (асинхронная реплика + частая архивация WAL) и RTO=30 секунд (автоматический failover с кворумом).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="strategii-rezervnogo-kopirovaniya-polnye-inkrementalnye-snapshoty">Стратегии резервного копирования: Полные, инкрементальные, снапшоты</h2>
@@ -2326,6 +2330,7 @@ flowchart LR
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2341,6 +2346,7 @@ flowchart LR
   </div>
 </aside>
 
+
 <h3 id="inkrementalnye-bekapy-i-deduplikatsiya">Инкрементальные бэкапы и дедупликация</h3>
 
 <p>Полный бэкап 1 ТБ базы каждый день — это 30 ТБ в месяц и огромные окна резервирования. Инкрементальные стратегии экономят место и время:</p>
@@ -2349,6 +2355,7 @@ flowchart LR
 <li><strong>Дедупликация на уровне блоков</strong>: Инструменты вроде <code>borgbackup</code>, <code>restic</code>, <code>pgbackrest</code> разбивают данные на чанки, хешируют их и хранят только уникальные. Повторяющиеся блоки (например, неизмененные страницы БД) не дублируются.</li>
 <li><strong>Copy-on-Write снапшоты</strong>: Файловые системы ZFS/Btrfs создают снапшоты мгновенно, копируя только измененные блоки при записи.</li>
 </ul>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2360,6 +2367,7 @@ flowchart LR
 <strong>Решение:</strong> Регулярно создавайте новые полные бэкапы (например, раз в неделю), храните инкрементальные цепочки в нескольких независимых хранилищах, и обязательно валидируйте восстановление хотя бы одного бэкапа из каждой цепочки еженедельно.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="point-in-time-recovery-mekhanika-wal-i-arkhivatsii">Point-in-Time Recovery: Механика WAL и архивации</h2>
@@ -2407,6 +2415,7 @@ flowchart TD
 <li><strong>WAL archiving</strong>: Каждый завершенный сегмент WAL (16 МБ по умолчанию) копируется в надежное хранилище через <code>archive_command</code>.</li>
 <li><strong>Recovery</strong>: При восстановлении СУБД загружает base backup, затем последовательно применяет WAL-сегменты, останавливаясь на заданном времени, транзакции или метке.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2416,6 +2425,7 @@ flowchart TD
     <p>WAL-сегменты — это бинарный журнал изменений на уровне страниц. При replay СУБД не выполняет высокоуровневый SQL, а применяет низкоуровневые операции: «записать байты по смещению Х в странице У». Это делает восстановление быстрым и надежным, но также означает, что коррупция на уровне страниц в base backup может распространиться на всё восстановление. Поэтому критически важно проверять целостность бэкапов через <code>pg_verifybackup</code> или <code>pg_checksums</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="nastroyka-arkhivatsii-i-vosstanovlenie">Настройка архивации и восстановление</h3>
 
@@ -2441,6 +2451,7 @@ recovery_target_action = promote       # После восстановления
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2452,6 +2463,7 @@ recovery_target_action = promote       # После восстановления
 <strong>Решение:</strong> Мониторьте <code>pg_stat_archiver</code> на предмет <code>failed_count</code>, настройте алерты на ошибки архивации, используйте надежные транспортные механизмы с ретраями (например, <code>wal-g</code> с экспоненциальной задержкой).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="idiomatichnaya-realizatsiya-agentov-bekapa-v-go">Идиоматичная реализация агентов бэкапа в Go</h2>
@@ -2586,6 +2598,7 @@ func (ba *BackupAgent) uploadWithRetry(ctx context.Context, localPath, s3Key str
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2595,6 +2608,7 @@ func (ba *BackupAgent) uploadWithRetry(ctx context.Context, localPath, s3Key str
     <p>При загрузке больших файлов в S3 через <code>PutObject</code> Go-драйвер AWS буферизует данные в памяти перед отправкой. Для файлов &gt;100 МБ это создает давление на GC. Оптимизация: используйте <code>s3manager.Uploader</code> с <code>PartSize</code>, который разбивает файл на части и загружает их параллельно через multipart upload. Это снижает пиковые аллокации и ускоряет загрузку за счет параллелизма.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="protsedury-avariynogo-pereklyucheniya-failover-i-failback">Процедуры аварийного переключения: Failover и Failback</h2>
@@ -2642,6 +2656,7 @@ flowchart TD
 <li><strong>Кворум</strong>: Чтобы избежать split-brain, переключение требует подтверждения от большинства узлов (например, 2 из 3 в кластере Patroni).</li>
 <li><strong>Переключение трафика</strong>: Обновление DNS (с низким TTL), перенастройка HAProxy, или обновление endpoint в Kubernetes Service.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2654,6 +2669,7 @@ flowchart TD
   </div>
 </aside>
 
+
 <h3 id="failback-vozvrat-k-normalnoy-konfiguratsii">Failback: Возврат к нормальной конфигурации</h3>
 
 <p>После устранения причины сбоя старый мастер нужно вернуть в строй. Это не просто «запустить сервер».</p>
@@ -2663,6 +2679,7 @@ flowchart TD
 <li><strong>Синхронизация до нулевого лага</strong>.</li>
 <li><strong>Плановое переключение обратно</strong> (или оставление новой топологии, если она стабильнее).</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2673,6 +2690,7 @@ flowchart TD
 <strong>Ответ:</strong> Прямое копирование файлов (<code>rsync</code>, <code>scp</code>) не учитывает транзакции, которые могли быть зафиксированы на новом мастере после момента сбоя. Это приведет к потере данных или коррупции. Единственный безопасный способ — настроить старого мастера как реплику нового, дать ему догнать лаг, и только затем выполнять плановое переключение ролей.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="testirovanie-vosstanovleniya-pochemu-bekap-bez-proverki-eto-ne-bekap">Тестирование восстановления: Почему «бэкап без проверки — это не бэкап»</h2>
@@ -2743,6 +2761,7 @@ func TestPITRRecovery(t *testing.T) {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2756,6 +2775,7 @@ func TestPITRRecovery(t *testing.T) {
 <strong>Оптимизация:</strong> Используйте быстрые SSD для временного хранилища восстановления, настройте <code>wal_replay_sync_method = open_sync</code> для более эффективного <code>fsync</code>, и параллелизуйте восстановление таблиц, если СУБД поддерживает (например, <code>pg_restore -j</code>).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="lovushki-antipatterny-i-voprosy-s-sobesedovaniy">Ловушки, антипаттерны и вопросы с собеседований</h2>
@@ -2798,6 +2818,7 @@ func TestPITRRecovery(t *testing.T) {
 </ul>
 </li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2815,6 +2836,7 @@ func TestPITRRecovery(t *testing.T) {
 Ключевые риски: время загрузки больших бэкапов из облака (используйте VPC endpoint для S3), совместимость версий СУБД, наличие достаточного дискового пространства.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

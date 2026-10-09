@@ -2188,6 +2188,7 @@
 <h2 id="binarnyy-log-binlog-istochnik-istiny">Бинарный лог (Binlog): Источник истины</h2>
 
 <p>Прежде чем данные полетят по сетевому кабелю между дата-центрами, нам нужно ответить на фундаментальный вопрос: <em>в каком именно виде изменения фиксируются на диске для передачи?</em></p>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Redo Log против Binlog">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2200,6 +2201,7 @@
 * <strong>Binlog (Binary Log)</strong> принадлежит верхнему уровню сервера (<strong>Server Layer / SQL Layer</strong>). Это логический журнал, не зависящий от конкретного движка хранения (он с одинаковым успехом логирует операции и для InnoDB, и для MyISAM, и для Memory). Binlog описывает изменения данных на уровне SQL-команд или строковых образов. Он необходим для репликации между версиями и узлами, а также для восстановления на произвольный момент времени (<strong>Point-in-Time Recovery</strong>).</p>
   </div>
 </aside>
+
 
 <p>Чтобы активировать репликацию, на мастере должен быть включен флаг <code>log_bin</code>. Любая транзакция, модифицирующая данные (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>, <code>ALTER</code>), в момент коммита атомарно регистрируется в файлах бинарного журнала.</p>
 <h3 id="formaty-binlog-evolyutsiya-i-kompromissy">Форматы Binlog: Эволюция и компромиссы</h3>
@@ -2216,6 +2218,7 @@
 <li><strong>Mixed (Смешанный режим):</strong><br />
    MySQL по умолчанию использует Statement-формат, но если парсер встречает недетерминированную конструкцию (вызовы функций <code>UUID()</code>, использование триггеров или временных таблиц), он автоматически переключает текущую запись в Row-формат.</li>
 </ol>
+
 <aside class="callout callout-important" aria-label="Стандарт современного продакшена">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚡</span>
@@ -2225,6 +2228,7 @@
     <p>Начиная с версии MySQL 5.7.7, дефолтным, безальтернативным и промышленным стандартом является <strong>Row-Based Replication (ROW)</strong>. В связке с параметром <code>binlog_row_image=minimal</code> MySQL пишет в After-Image только реально измененные колонки, что существенно сокращает избыточность логов без потери надежности.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="arkhitektura-i-potoki-replikatsii-mekhanika-pod-kapotom">Архитектура и потоки репликации: Механика под капотом</h2>
@@ -2286,6 +2290,7 @@ flowchart LR
 <h2 id="problema-otstavaniya-replication-lag-i-mnogopotochnyy-applier-mts">Проблема отставания (Replication Lag) и многопоточный Applier (MTS)</h2>
 
 <p>Исторически ахиллесовой пятой репликации MySQL был тот факт, что <strong>SQL Thread на реплике работал в один-единственный поток</strong>.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Бутылочное горлышко реплики">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2297,6 +2302,7 @@ flowchart LR
 <p>Результат: реплика начинает стремительно отставать от мастера. Метрика <code>Seconds_Behind_Master</code> улетает в космос (минуты или часы), запросы на чтение выдают безнадежно устаревшую информацию, а при внезапной смерти мастера переключение на реплику грозит потерей свежих данных!</p>
   </div>
 </aside>
+
 
 <h3 id="spasenie-cherez-mechanical-sympathy-mts-i-logical-clock">Спасение через Mechanical Sympathy: MTS и Logical Clock</h3>
 
@@ -2361,6 +2367,7 @@ sequenceDiagram
 <p>Мастер ждет, пока хотя бы одна подключенная полусинхронная реплика не примет пакет данных и не запишет его в свой Relay Log.<br />
 * <strong>Плюсы:</strong> Нулевая потеря данных (<strong>RPO = 0</strong>). При падении мастера гарантируется, что хотя бы на одной реплике есть точная копия всех подтвержденных клиенту транзакций.<br />
 * <strong>Минусы:</strong> Задержка ответа клиенту на запись возрастает ровно на сетевой Round-Trip Time (RTT) до реплики плюс время вызова <code>fsync</code> Relay Log на стороне реплики.</p>
+
 <aside class="callout callout-important" aria-label="Эволюция Semi-Sync: AFTER_COMMIT против AFTER_SYNC">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚡</span>
@@ -2371,6 +2378,7 @@ sequenceDiagram
 В современном MySQL стандартом является режим <code>rpl_semi_sync_master_wait_point = AFTER_SYNC</code>: мастер записывает Binlog, отправляет его реплике, получает подтверждение (ACK) и <strong>только после этого</strong> открывает видимость данных в InnoDB и возвращает <code>OK</code> пользователю. Это полностью устраняет фантомные подтверждения.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="gtid-globalnye-identifikatory-tranzaktsiy">GTID: Глобальные идентификаторы транзакций</h2>
@@ -2414,6 +2422,7 @@ sequenceDiagram
 
 <p>В архитектуре Go-микросервисов масштабирование чтения реализуется разделением потоков запросов (<strong>Read/Write Splitting</strong>): все модифицирующие операции (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>) уходят на Master, а тяжелые выборки (<code>SELECT</code>) балансируются по пулу реплик.</p>
 <p>Однако асинхронная природа репликаций создает классическую проблему консистентности:</p>
+
 <aside class="callout callout-info" aria-label="Под капотом: Аномалия Read-After-Write">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2430,6 +2439,7 @@ sequenceDiagram
 </ol>
   </div>
 </aside>
+
 
 <h3 id="idiomatichnyy-pul-s-marshrutizatsiey-zaprosov-v-go">Идиоматичный пул с маршрутизацией запросов в Go</h3>
 

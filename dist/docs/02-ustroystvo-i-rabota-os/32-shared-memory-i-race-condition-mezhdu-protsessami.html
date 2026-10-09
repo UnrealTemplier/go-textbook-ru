@@ -2227,6 +2227,7 @@ flowchart TD
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2236,6 +2237,7 @@ flowchart TD
     <p>Общая память реализуется на уровне виртуальной памяти. Когда процесс вызывает <code>mmap()</code>, ядро выделяет виртуальные страницы, но <strong>Page Table Entry (PTE)</strong> указывает на один и тот же <strong>Page Frame Number (PFN)</strong> в физической RAM. Никакого копирования данных не происходит — только дублирование записей в таблицах страниц. Процессы могут монтировать этот сегмент даже по совершенно разным виртуальным адресам, но обращаться они будут к одним и тем же транзисторам DRAM!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="kak-os-realizuet-obshchuyu-pamyat">Как ОС реализует общую память</h2>
@@ -2295,6 +2297,7 @@ func main() {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2305,6 +2308,7 @@ func main() {
 <p>При установке <code>MAP_PRIVATE</code> ядро создаст для пишущего процесса отдельную копию страницы в тот самый момент, когда он попытается совершить первую запись. Вы будете писать в изолированный дубликат, наивно полагая, что делитесь данными со вторым процессом!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="koren-zla-race-conditions-i-data-races">Корень зла: Race Conditions и Data Races</h2>
@@ -2368,6 +2372,7 @@ sequenceDiagram
 - <strong>POSIX Semaphores</strong> (<code>sem_open</code>, <code>sem_wait</code>, <code>sem_post</code>) — работают с общей памятью или как именованные объекты. Именованный семафор виден всем процессам в системе через путь в файловой системе.<br />
 - <strong>Futexes</strong> — низкоуровневый примитив Linux, сочетающий блокировку в User Space с системным вызовом только при конфликте. Fast Userspace Mutex позволяет захватывать свободную блокировку за считанные наносекунды с помощью атомарной инструкции CPU, не беспокоя ядро.<br />
 - <strong>Atomic Operations</strong> — инструкции процессора (<code>LOCK XADD</code>, <code>CMPXCHG</code>), гарантирующие атомарность на уровне шины/кэша. Аппаратный блок управления кэшем удерживает строку кэша в эксклюзивном владении на время выполнения всей операции Read-Modify-Write.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2378,6 +2383,7 @@ sequenceDiagram
 <p><strong>Ответ:</strong> <code>sync.Mutex</code> использует атомарные операции над памятью внутри текущего адресного пространства. Он не создает именованных объектов в ядре. Второй процесс просто не увидит состояние мьютекса, так как его виртуальная память выделена отдельно. Для cross-process нужны именованные семафоры (<code>sem_open</code>) или futex-подобные механизмы, либо <code>futex</code> через <code>cgo</code>/<code>syscall</code>. В рантайме Go внутренний семафор <code>runtime.semaRoot</code> привязан к локальному переносу горутин внутри планировщика процесса и совершенно не осведомлен о существовании других процессов ОС.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="mechanical-sympathy-kesh-mesi-i-false-sharing">Mechanical Sympathy: Кэш, MESI и False Sharing</h2>
@@ -2454,6 +2460,7 @@ type SafeCounter struct {
 1. <strong>Горутины внутри одного процесса</strong> действительно делят память. <code>sync.Mutex</code>, <code>atomic</code> пакет и <code>unsafe.Pointer</code> работают быстро, но требуют дисциплины.<br />
 2. <strong>Cross-process shared memory</strong> в Go поддерживается через <code>syscall.Mmap</code> или <code>golang.org/x/sys/unix</code>. Однако синхронизация требует внешних примитивов (<code>semaphore</code>, <code>futex</code>).<br />
 3. <strong>Race Detector</strong> (<code>go run -race</code>) внедряет Instrumentation на этапе компиляции и отслеживает все чтения/записи. Он работает только в рамках одного процесса. Для cross-process отладки нужны <code>valgrind</code> или <code>helgrind</code>.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2468,6 +2475,7 @@ type SafeCounter struct {
 В таких случаях используют <code>unsafe.Pointer</code>, выравнивание по кэш-лайну, атомарные операции и иногда <code>cgo</code> для POSIX семафоров.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="lovushki-i-tipichnye-voprosy-na-intervyu">Ловушки и типичные вопросы на интервью</h2>
@@ -2511,7 +2519,7 @@ type SafeCounter struct {
 <li>В Go общая память используется точечно, в обход классической философии языка, когда производительность критична. В остальных случаях каналы и <code>context</code> остаются идиоматичным выбором.</li>
 <li>Межпроцессная синхронизация требует внешних инструментов ОС: именованных семафоров (<code>sem_open</code>), фьютексов (<code>futex</code>) или аппаратно поддержанных атомарных инструкций с барьерами памяти.</li>
 </ol>
-<p>В следующей статье мы разберем, как именно ОС реализует примитивы синхронизации, которые мы упоминали: <code>&lt;a href="33-mutex-semaphore-spinlock-na-urovne-os.html" class="wikilink"&gt;33. Mutex, Semaphore, Spinlock на уровне ОС&lt;/a&gt;</code>, чтобы закрыть гештальт по аппаратным и программным механизмам блокировок.</p>
+<p>В следующей статье мы разберем, как именно ОС реализует примитивы синхронизации, которые мы упоминали: <a href="33-mutex-semaphore-spinlock-na-urovne-os.html" class="wikilink"><code>33. Mutex, Semaphore, Spinlock на уровне ОС</code></a>, чтобы закрыть гештальт по аппаратным и программным механизмам блокировок.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->

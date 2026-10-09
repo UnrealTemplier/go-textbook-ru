@@ -2224,6 +2224,7 @@ graph TD
 </figure>
 
 
+
 <aside class="callout callout-note" aria-label="Заметка">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">📝</span>
@@ -2233,6 +2234,7 @@ graph TD
     <p><strong>ASLR (Address Space Layout Randomization):</strong> В реальных современных системах адреса сегментов не привязаны намертво к одним и тем же константам. В целях безопасности ядро Linux случайным образом смещает базовые адреса стека, кучи, <code>mmap</code> и исполняемого кода при каждом запуске, чтобы злоумышленник не мог воспользоваться фиксированными адресами для атак типа buffer overflow и ROP-цепочек (Return-Oriented Programming).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="2-klassicheskie-segmenty-pamyati-elf-binarnika">🔬 2. Классические сегменты памяти ELF-бинарника</h2>
@@ -2353,6 +2355,7 @@ sequenceDiagram
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2362,6 +2365,7 @@ sequenceDiagram
     <p>Структура стека горутины в рантайме: <code>g.stack</code>, <code>g.stackguard0</code>, <code>g.stackguard1</code>. При переполнении вызывается <code>runtime.morestack_noctxt</code>, который берёт новый блок из пулов стеков рантайма (а не делает отдельный <code>mmap</code>), копирует текущий стек в новую область и обновляет <code>g.stack</code>. Это дорого, поэтому Go-разработчики стараются минимизировать рекурсию и большие локальные массивы в горутинах.</p>
   </div>
 </aside>
+
 
 <p>Во время сборки мусора (GC) рантайм анализирует глубину использования стека горутины: если горутина использовала много памяти во время тяжелой обработки, а затем освободила ее, рантайм Go может <strong>сжать стек вдвое</strong>, возвращая память обратно в пул аллокатора.</p>
 <hr />
@@ -2418,6 +2422,7 @@ flowchart TD
 </figure>
 
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2427,6 +2432,7 @@ flowchart TD
     <p>Не доверяйте <code>make([]int, 1000000)</code> в цикле. Если слайс "убегает" в замыкание или возвращается, компилятор выделит его в heap. В горячем пути это создаст миллион аллокаций, нагружая GC. Используйте <code>sync.Pool</code> или заранее выделенные буферы.</p>
   </div>
 </aside>
+
 
 <h3 id="3-tlb-i-fragmentation-fragmentatsiya-pamyati">3. TLB и fragmentation (фрагментация памяти)</h3>
 <p>Чем больше виртуальных страниц использует heap, тем чаще происходит <strong>TLB miss</strong> (Translation Lookaside Buffer miss). Процессор должен читать Page Table из RAM для маппинга виртуального адреса в физический. Go-аллокатор (mcentral/mheap) группирует объекты в <code>span</code>'ы по 64-512 КБ, чтобы минимизировать количество записей в Page Table и улучшить локальность.</p>
@@ -2467,6 +2473,7 @@ flowchart TD
 </table></div>
 <h3 id="mekhanizm-fonovogo-vozvrata-pamyati-scavenger-i-madvise">Механизм фонового возврата памяти: scavenger и madvise</h3>
 <p>Память ядру возвращает не <code>sysmon</code>, а отдельная фоновая горутина рантайма — scavenger (<code>bgscavenge</code>); <code>sysmon</code> лишь будит её при необходимости. Она вызывает <code>madvise</code> с флагом <code>MADV_DONTNEED</code> (на Linux это значение по умолчанию), сообщая ядру, что физическая страница больше не нужна. Отображение при этом <strong>сохраняется</strong>: виртуальное адресное пространство остаётся занятым, а при следующем обращении к этой странице ядро подставляет свежую обнулённую физическую страницу (zero-fill, а не повторный <code>mmap</code>). Это экономит RAM в долгоживущих сервисах.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2481,6 +2488,7 @@ flowchart TD
 4. Избежает race condition'ов между <code>brk</code> и <code>mmap</code> в многопоточных программах (glibc malloc имеет внутренние мьютексы, Go их не нужен для heap).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="6-podvodnye-kamni-i-voprosy-na-sobesedovaniyakh">🥊 6. Подводные камни и вопросы на собеседованиях</h2>
@@ -2499,7 +2507,7 @@ flowchart TD
 2. <strong>Heap</strong> в Go — это огромная <code>mmap</code>-область, управляемая собственным аллокатором через <code>span</code>'ы, что дает контроль над фрагментацией и конкурентным GC.<br />
 3. <strong>Stack</strong> горутины динамичен (2KB -&gt; grows), хранится в куче рантайма; переполнение ловит проверка в прологе функции (<code>stackguard0</code>), а не guard page.<br />
 4. <strong>Mechanical Sympathy</strong> требует внимания к выравнианию, локальности данных и стоимости аллокаций (stack vs heap).</p>
-<p>Понимание этой карты позволяет писать код, который уважает кэш-линии процессора, минимизирует GC-паузы и корректно взаимодействует с системными вызовами. В следующей статье мы опустимся на уровень регистров процессора и разберем, как именно данные, аргументы и адреса возврата укладываются в кадр функции: <code>&lt;a href="20-stek-vyzovov-i-stek-kadra-funktsii.html" class="wikilink"&gt;20. Стек вызовов и стек кадра функции&lt;/a&gt;</code>.</p>
+<p>Понимание этой карты позволяет писать код, который уважает кэш-линии процессора, минимизирует GC-паузы и корректно взаимодействует с системными вызовами. В следующей статье мы опустимся на уровень регистров процессора и разберем, как именно данные, аргументы и адреса возврата укладываются в кадр функции: <a href="20-stek-vyzovov-i-stek-kadra-funktsii.html" class="wikilink"><code>20. Стек вызовов и стек кадра функции</code></a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->

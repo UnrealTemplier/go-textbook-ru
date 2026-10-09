@@ -2213,6 +2213,7 @@ if err != nil {
 1. <strong>Катастрофический Head-of-line blocking:</strong> На целых 10 секунд весь сервис <strong>полностью перестает вычитывать сообщения из очереди</strong>. Легковесные, валидные сообщения, не требующие обращения к внешнему шлюзу, окажутся намертво заблокированными за уснувшими задачами.<br />
 2. <strong>Иллюзия планировщика:</strong> Хотя функция <code>time.Sleep</code> в Go не блокирует поток операционной системы (сущность <code>M</code> в рантайме <code>G-M-P</code>, а лишь переводит горутину <code>G</code> в режим ожидания таймера), с точки зрения брокера RabbitMQ вы удерживаете структуру <code>amqp.Delivery</code> в памяти и не возвращаете <code>Ack</code>.<br />
 3. Сообщения зависают в брокере в статусе <code>Unacked</code>, раздувая потребление RAM и создавая риск аварийного срабатывания Flow Control.</p>
+
 <aside class="callout callout-important" aria-label="Важно">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚡</span>
@@ -2223,6 +2224,7 @@ if err != nil {
 Потребитель обязан завершить работу с сообщением и вернуть результат брокеру (<code>Ack</code> или <code>Nack</code>) <strong>максимально быстро</strong>. Никаких искусственных пауз внутри цикла обработки! Любая задержка (Delay) обязана реализовываться <strong>на стороне инфраструктуры брокера</strong>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="2-pattern-ttl-dlx-ocheredi-ozhidaniya-wait-queues">2. Паттерн: TTL + DLX (Очереди ожидания / Wait Queues)</h2>
@@ -2287,6 +2289,7 @@ flowchart TD
 1. На всю очередь целиком через аргумент <code>x-message-ttl</code>.<br />
 2. Индивидуально для каждого отдельного сообщения через свойство <code>Expiration</code> при вызове <code>ch.Publish(...)</code>.</p>
 <p>Казалось бы: почему бы не использовать одну общую очередь ожидания и выставлять индивидуальный заголовок <code>Expiration</code> равным $5\text{ с}$, $25\text{ с}$, $125\text{ с}$? </p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Head-of-Line (HoL) Blocking при индивидуальном TTL">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2299,6 +2302,7 @@ flowchart TD
 Если в очередь ожидания сначала попало сообщение Msg 1 с таймером <code>TTL = 1 час</code>, а следом за ним прилетело сообщение Msg 2 с таймером <code>TTL = 1 секунда</code>, <strong>Msg 2 НЕ выйдет из очереди через 1 секунду!</strong> Оно будет намертво заблокировано за Msg 1 и выйдет только через 60 минут, когда Msg 1 наконец умрет. Это классический <strong>Head-of-Line (HoL) Blocking</strong>.</p>
   </div>
 </aside>
+
 
 <h3 id="arkhitekturnoe-reshenie-mnogourovnevye-ocheredi-zaderzhki">Архитектурное решение: Многоуровневые очереди задержки</h3>
 <p>Чтобы обойти блокировку головы очереди, для построения экспоненциальной задержки (Exponential Backoff) создают <strong>серию очередей с фиксированным TTL</strong>:<br />
@@ -2346,6 +2350,7 @@ graph LR
 <li>Обменник «замораживает» сообщение у себя и удерживает его до истечения таймера.</li>
 <li>По истечении времени обменник вычисляет маршрут и перекладывает сообщение в целевую очередь.</li>
 </ol>
+
 <aside class="callout callout-info" aria-label="Под капотом: Mnesia и пределы масштабирования плагина">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2360,10 +2365,12 @@ graph LR
   </div>
 </aside>
 
+
 <hr />
 <h2 id="realizatsiya-exponential-backoff-na-go">Реализация Exponential Backoff на Go</h2>
 
 <p>Ниже приведен эталонный пример реализации функции повторной обработки с нарастающей задержкой (Exponential Backoff), использованием кастомного заголовка <code>x-retry-count</code> и безопасным сбросом в постоянную DLQ при превышении лимита попыток.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование: Почему x-retry-count лучше, чем массив x-death?">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2376,6 +2383,7 @@ graph LR
 2. Парсинг структуры <code>x-death</code> из <code>amqp.Table</code> в Go требует разбора вложенных срезов, маппинга интерфейсов и рефлексии. Это порождает паразитные аллокации памяти в куче. Простой целочисленный заголовок <code>int32</code> извлекается мгновенно за $O(1)$ без накладных расходов.</p>
   </div>
 </aside>
+
 
 
 <div class="code-block" data-lang="go">

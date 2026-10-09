@@ -2184,6 +2184,7 @@
 <p>В инженерной культуре Bell Labs всегда господствовало убеждение: программа, внутреннее состояние которой невозможно легко исследовать во время работы, подобна закрытому черному ящику. Когда система развернута на сотнях серверов под реальной нагрузкой, традиционные отладчики вроде GDB становятся бесполезными — они останавливают процесс и вызывают каскадный сбой всей распределенной архитектуры.</p>
 <p>Пакеты <code>net/http/pprof</code> и <code>expvar</code> предоставляют встроенный механизм наблюдаемости (observability) и отладки production-систем. Они позволяют извлекать метрики состояния рантайма, профилировать CPU, память и блокировки без перезапуска приложения или внедрения внешних агентов. Интеграция этих инструментов в стандартную библиотеку отражает философию Go: диагностика должна быть доступна из коробки, но разработчик несет полную ответственность за защиту этих эндпоинтов от несанкционированного доступа.</p>
 <p>Для инженера уровня Senior понимание <code>pprof</code> и <code>expvar</code> — это не просто умение открыть <code>http://localhost:6060</code>, а способность программно собирать дампы, настраивать частоту сэмплирования под нагрузку и интерпретировать результаты с учетом Mechanical Sympathy (влияние профилирования на кэш-линии, GC и планировщик).</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2193,6 +2194,7 @@
     <p><code>net/http/pprof</code> регистрирует HTTP-роуты через побочный эффект в функции <code>init()</code>. Простого импорта <code>_ "net/http/pprof"</code> достаточно, чтобы эндпоинты <code>/debug/pprof/...</code> появились на <code>DefaultServeMux</code>. Это сделано для удобства, но создает скрытую зависимость: если вы не используете <code>http.ListenAndServe</code> на default-мультиплексоре, профилировщик останется недоступным. Всегда явно привязывайте <code>pprof</code> к админскому <code>http.ServeMux</code> или отдельному порту.</p>
   </div>
 </aside>
+
 
 <h2 id="under-the-hood-nethttppprof-semplirovanie-i-rantaym-instrumentatsiya">Under the hood. net/http/pprof: Сэмплирование и рантайм-инструментация</h2>
 
@@ -2253,6 +2255,7 @@ flowchart TD
 <p><code>expvar</code> предоставляет простой способ экспортировать скалярные метрики в формате JSON. Внутренне это структура <code>expvar.Map</code>, защищенная <code>sync.Mutex</code>, содержащая <code>map[string]expvar.Var</code>.</p>
 <p>При вызове <code>expvar.Publish("my_counter", counter)</code> значение регистрируется в глобальном реестре. Эндпоинт <code>/debug/vars</code> итерирует карту, вызывает метод <code>String()</code> у каждого значения и собирает JSON-ответ.</p>
 <p><strong>Критическое ограничение:</strong> <code>expvar</code> не поддерживает гистограммы, квантили, сложную агрегацию или теги. Он предназначен только для монотонных счетчиков (<code>expvar.Int</code>) и гаужей. Метод <code>String()</code> аллоцирует новую строку на каждый запрос <code>/debug/vars</code>, что при высокой частоте опроса мониторингом создает фоновое давление на GC.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2263,6 +2266,7 @@ flowchart TD
 Метод <code>expvar.Map.Set()</code> блокирует глобальный мьютекс. Если вы обновляете метрики в горячем цикле (тысячи раз в секунду), вы создадите contention, который замедлит не только сбор метрик, но и другие горутины, пытающиеся обновить или прочитать <code>expvar</code>. Для высокочастотных метрик используйте атомарные счетчики <code>atomic.Int64</code> и экспортируйте их в <code>expvar</code> только по запросу или через кэшированный снэпшот.</p>
   </div>
 </aside>
+
 
 <h2 id="mechanical-sympathy-tsena-profilirovaniya-i-allokatsii">Mechanical Sympathy: Цена профилирования и аллокации</h2>
 
@@ -2348,6 +2352,7 @@ flowchart TD
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2360,6 +2365,7 @@ flowchart TD
 <strong>Ответ:</strong> <code>expvar</code> экспортирует данные в JSON, который требует парсинга на стороне сборщика метрик. Он не поддерживает эффективный binary-протокол (как Prometheus protobuf), не имеет встроенных меток/тегов и аллоцирует память на каждый запрос. Для production используйте <code>prometheus/client_golang</code> или OpenTelemetry, которые оптимизированы под pull/push модели и zero-copy экспорт.</p>
   </div>
 </aside>
+
 
 <h2 id="sravnenie-s-ekosistemami-drugikh-yazykov">Сравнение с экосистемами других языков</h2>
 

@@ -2279,6 +2279,7 @@ sequenceDiagram
 <li><strong>Преимущества:</strong> Практически нулевая задержка (единицы миллисекунд), минимальная нагрузка на базу (чтение WAL — это потоковый обмен), естественная упорядоченность сообщений в порядке коммита.</li>
 <li><strong>Недостатки:</strong> Требует развёртывания дополнительной инфраструктуры (Debezium, Kafka Connect), настройки репликационных слотов, усложняет эксплуатацию.</li>
 </ul>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2288,6 +2289,7 @@ sequenceDiagram
     <p>При CDC используется <code>pgoutput</code> — плагин логической репликации, который читает изменения из WAL (см. <a href="../05-tranzaktsii-i-vnutrennosti/8-wal-write-ahead-log.html" class="wikilink">8. WAL. Write Ahead Log</a>) и преобразует их в сообщения. Потребитель (Debezium) подключается через репликационный протокол, создаёт репликационный слот с <code>RESERVE WAL</code>, что гарантирует, что WAL-сегменты не удалятся, пока изменения не дойдут до потребителя. С точки зрения Mechanical Sympathy, это последовательное чтение журнала с диска — операция <code>pread</code>, не затрагивающая B-Tree индексы и практически не создающая contention с основными транзакциями.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="realizatsiya-na-go-polling-izdatel">Реализация на Go: Polling-издатель</h2>
@@ -2424,6 +2426,7 @@ func (p *OutboxPublisher) processBatch(ctx context.Context) {
 - Дисковый ввод-вывод: если outbox таблица не в кэше PostgreSQL, потребуется <code>pread</code> для чтения страниц. Даже с пустым outbox’ом запрос <code>SELECT ... LIMIT 100</code> может затронуть индекс и страницы heap. При частом опросе это увеличивает статистические счётчики активности, но при индексе на <code>id</code> нагрузка минимальна.<br />
 - На высоких частотах (10+ опросов в секунду) база начинает тратить заметный процент CPU на обслуживание пустых запросов, особенно в облачных инстансах с лимитированными IOPS.</p>
 <p><strong>CDC</strong> читает WAL: это последовательный поток с диска, аналогичный чтению лог-файла. Ядро ОС предвыбирает блоки, CPU занят лишь распаковкой и сериализацией. Нагрузка на базу на порядки ниже. Однако требуется мониторинг лага репликации: если потребитель отстанет, WAL начнёт расти, что грозит переполнением диска (см. <a href="../05-tranzaktsii-i-vnutrennosti/8-wal-write-ahead-log.html" class="wikilink">8. WAL. Write Ahead Log</a>).</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2434,6 +2437,7 @@ func (p *OutboxPublisher) processBatch(ctx context.Context) {
 <strong>Ответ:</strong> Если допустима задержка 100-500 мс и нет желания поднимать Debezium/Kafka Connect, выбор — polling. Он прост, легко мониторится и отлаживается. Если критична субсекундная задержка или объём сообщений &gt; 10 000 в секунду, оправдан CDC. На собеседовании Senior-позиции оценят знание обоих подходов и осознание trade-off между эксплуатационной сложностью и latency.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="garantii-dostavki-i-idempotentnost">Гарантии доставки и идемпотентность</h2>

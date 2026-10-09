@@ -2306,6 +2306,7 @@ sequenceDiagram
 3.  <strong>Формирование структуры ELF:</strong> Ядро формирует стандартный исполняемый файл формата <code>ELF Core Dump</code>, содержащий сегменты <code>PT_LOAD</code> и информационные секции <code>PT_NOTE</code>.</p>
 <p><strong>Важный нюанс производительности и безопасности:</strong><br />
 Запись дампа выполняется в контексте пространства ядра. Если процесс занимал десятки гигабайт в оперативной памяти, а диск перегружен или работает по медленной сети (NFS), операция сброса дампа может затянуться на десятки секунд. Все это время физические страницы памяти остаются занятыми, что может спровоцировать системный OOM-killer (<code>OOM</code>) для соседних сервисов, если память сервера исчерпана.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2316,6 +2317,7 @@ sequenceDiagram
 Если переменная <code>kernel.core_pattern</code> настроена на конвейерную обработку, а системный сервис-приемник (<code>systemd-coredump</code> или <code>abrt</code>) дал сбой, перегружен по памяти или не имеет свободного места на диске, ядро молча оборвет пайп, и дамп будет потерян навсегда. В продакшене регулярно проверяйте статус системных журналов <code>coredumpctl</code>. Вторая по распространенности причина отсутствия дампов — жесткий лимит окружения: если в конфигурации systemd-юнита не задано <code>LimitCORE=infinity</code>, значение <code>ulimit -c</code> по умолчанию равно <code>0</code>, что полностью блокирует создание дампов ядром.</p>
   </div>
 </aside>
+
 
 <h2 id="chto-vnutri-core-dump-fayla">Что внутри Core Dump файла?</h2>
 
@@ -2374,6 +2376,7 @@ flowchart TD
 *   <code>NT_SIGINFO</code>: Хранит детальную причину крушения: номер сигнала (<code>SIGSEGV</code>, <code>SIGBUS</code>, <code>SIGABRT</code>), код причины (например, <code>SEGV_MAPERR</code> — обращение по немаппированному адресу) и сам сбойный адрес памяти (fault address).<br />
 *   <code>NT_FILE</code>: Таблица маппинга адресов виртуальной памяти на физические файлы на диске (для сегментов памяти, разделяемых библиотек и файлов, открытых через системный вызов <code>mmap</code>).<br />
 *   <strong>Срезы тредов ОС:</strong> Включают все системные потоки ядра. В контексте среды исполнения Go это системные потоки <code>M</code> (Machine), привязанные к логическим процессорам <code>P</code> (Processor), и их системные стеки.</p>
+
 <aside class="callout callout-important" aria-label="Важнейший нюанс Go-разработки">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚡</span>
@@ -2383,6 +2386,7 @@ flowchart TD
     <p>Файл Core Dump сохраняет физическую память системных потоков ОС и их машинные стеки. Но горутины в Go — это структуры уровня пространства пользователя! Стеки горутин (<code>stacks</code>) динамически размещаются рантаймом в общей куче (<code>heap</code>). В дампе памяти <strong>нет готовой таблицы горутин</strong> в понятном для ядра виде. Чтобы превратить набор байтов дампа в осмысленный список горутин <code>G</code>, отладчик должен обладать логикой парсинга внутренних структур Go Runtime.</p>
   </div>
 </aside>
+
 
 <h2 id="go-runtime-vs-core-dump">Go Runtime vs Core Dump</h2>
 
@@ -2447,6 +2451,7 @@ flowchart TD
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2456,6 +2461,7 @@ flowchart TD
     <p>Начиная с версии Go 1.11, рантайм хранит дескрипторы горутин в управляемой куче. При возникновении <code>SIGSEGV</code> диспетчер сигналов рантайма пытается инициализировать специальную процедуру <code>sigpanic</code>, которая раскручивает стек через <code>runtime.gopanic</code>. Но если повреждена куча, стек системного потока <code>g0</code> или глобальная таблица дескрипторов горутин, сам рантайм мгновенно терпит крах. В этот момент управление возвращается ядру Linux, и Core Dump становится единственным в мире источником истины, способным показать истинную картину катастрофы.</p>
   </div>
 </aside>
+
 
 <h2 id="analiz-padeniy-praktika-i-instrumenty">Анализ падений: Практика и инструменты</h2>
 
@@ -2514,6 +2520,7 @@ gdb -c core.myapp.12345 ./bin/myapp
 <li><code>pstack &lt;pid&gt;</code> или извлечение <code>bt</code> из дампа: утилита <code>pstack core</code> позволяет моментально распечатать стеки всех физических потоков без запуска интерактивной сессии отладчика.</li>
 <li><code>crash</code>: системный отладчик ядра, используемый в ситуациях, когда упал не прикладной сервис, а само ядро Linux (генерация аварийного дампа ядра <code>vmcore</code>).</li>
 </ul>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2526,6 +2533,7 @@ gdb -c core.myapp.12345 ./bin/myapp
 2. <strong>Утечка памяти (Memory Leak):</strong> Дамп позволяет обнаружить утечку памяти. Отладчик Delve (<code>dlv core</code>; команды <code>heap</code> у него нет), GDB или утилита <code>golang.org/x/debug/cmd/viewcore</code> позволяют инспектировать глобальную кучу <code>runtime.mheap</code>. Анализируя распределение блоков <code>mspan</code> и центральных кэшей <code>mcentral</code>, можно вычислить, какие именно структуры занимают гигабайты адресного пространства (например, бесконечно растущий срез или неудаленные записи в <code>map</code>).</p>
   </div>
 </aside>
+
 
 <h2 id="lovushki-i-osobennosti-v-prodakshene">Ловушки и особенности в продакшене</h2>
 

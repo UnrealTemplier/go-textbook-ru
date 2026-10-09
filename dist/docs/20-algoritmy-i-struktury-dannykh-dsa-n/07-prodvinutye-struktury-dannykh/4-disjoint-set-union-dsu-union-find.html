@@ -2197,6 +2197,7 @@ $$O(\alpha(n))$$</p>
 <p>где $\alpha$ — обратная функция Аккермана. Функция $\alpha(n)$ растет столь медленно, что для любого мыслимого физического объема данных во Вселенной (вплоть до <code>10^18</code> элементов) ее значение строго ограничено:<br />
 <code>α(n) ≤ 4</code></p>
 <p>Это делает DSU асимптотически одной из быстрейших структур данных в Computer Science, однако ее реальная производительность на физическом кремнии всецело определяется компактностью представления в памяти рантайма Go.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2207,6 +2208,7 @@ $$O(\alpha(n))$$</p>
 <strong>Ответ:</strong> Обратная функция Аккермана растет настолько медленно, что даже для астрономического числа <code>n = 10^100</code> ее значение равно 5. Математически это не абсолютно строгий $O(1)$, так как глубина шагов зависит от перестройки высоты дерева при вызове сжатия путей. Но для любых инженерных ограничений (вплоть до <code>10^18</code> элементов) она ведет себя как константа. В практических бенчмарках и production-метриках DSU стабильно демонстрирует чистую $O(1)$ латентность после первичной волны сжатия путей.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="1-algoritmicheskoe-yadro-szhatie-putey-i-obedinenie-po-rangu">1. Алгоритмическое ядро: сжатие путей и объединение по рангу</h2>
@@ -2380,6 +2382,7 @@ func (d *DSU) Union(x, y int) (bool, error) {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-tip" aria-label="Итерация против рекурсии">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">💡</span>
@@ -2389,6 +2392,7 @@ func (d *DSU) Union(x, y int) (bool, error) {
     <p>Итеративный <code>Find</code> в Go принципиально надежнее рекурсивного: он не расходует стек горутины (начальный стек всего 2 КБ), исключает риск переполнения стека (Stack Overflow) до фазы сжатия и компилируется в плотный ассемблерный цикл без создания стековых фреймов.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="3-mechanical-sympathy-kesh-gc-i-rantaym">3. Mechanical Sympathy: кэш, GC и рантайм</h2>
@@ -2403,6 +2407,7 @@ func (d *DSU) Union(x, y int) (bool, error) {
 - Сборщик мусора Go видит два больших непрерывных span'а. Фаза <code>mark</code> проходит по ним за счёт векторизованных инструкций, проверяя скаляры (в которых нет указателей).<br />
 - Нулевое дробление памяти. Нет миллионов мелких объектов, которые фрагментируют кучу и увеличивают время <code>STW</code>.<br />
 - Если DSU создается в обработчике HTTP-запроса и возвращается наружу, компилятор при <code>Escape Analysis</code> честно аллоцирует его в кучу. Для hot-path сервисов используйте <code>sync.Pool</code> для переиспользования экземпляров DSU фиксированного размера.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2414,6 +2419,7 @@ func (d *DSU) Union(x, y int) (bool, error) {
 Кроме того, стандартная библиотека Go использует знаковый <code>int</code> для срезов (<code>len(slice)</code>), поэтому выбор <code>int</code> устраняет паразитные приведения типов и снижает риск ошибок проверки границ.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="4-konkurentnost-v-go-shardirovanie-protiv-myuteksov">4. Конкурентность в Go: шардирование против мьютексов</h2>
@@ -2462,6 +2468,7 @@ flowchart TD
 <li><strong>Read-Only Snapshots (Copy-On-Write):</strong> Если операции <code>Union</code> происходят редко, а <code>Find</code> выполняются непрерывно, обновление структуры организуется через создание новой копии с последующей атомарной подменой указателя через <code>atomic.Pointer[DSU]</code>. Читатели получают абсолютно lock-free доступ.</li>
 <li><strong>Атомики для ячеек <code>parent</code>:</strong> Использование атомарных типов (<code>atomic.Int32</code>) теоретически возможно, но алгоритм <code>Find</code> требует одновременного чтения двух указателей и цикла <code>CAS</code>. При высокой конкуренции это приводит к катастрофическому Livelock. Шардирование на практике всегда обеспечивает больший throughput.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2474,8 +2481,10 @@ flowchart TD
   </div>
 </aside>
 
+
 <hr />
 <h2 id="5-lovushki-i-voprosy-s-sobesedovaniy">5. Ловушки и вопросы с собеседований</h2>
+
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -2493,6 +2502,7 @@ flowchart TD
 <strong>Ответ:</strong> Граф смежности требует полного обхода графа (BFS/DFS) за время $O(V + E)$ и не поддерживает инкрементального добавления ребер без повторного пересчета. DSU функционирует потоково: каждое новое ребро добавляется через <code>Union(u, v)</code> за $O(\alpha(n))$, а связность проверяется за $O(1)$. Для статических графов предпочтительны BFS/DFS, для динамических потоков ребер — DSU.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="itog">Итог</h2>

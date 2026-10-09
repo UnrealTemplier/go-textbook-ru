@@ -2256,6 +2256,7 @@ flowchart TD
 <li><strong>HashAggregate (Хэш-дедупликация в оперативной памяти):</strong> Если индекса нет, но объем данных умеренный, СУБД читает строки потоком и строит хэш-таблицу в оперативной памяти (в пределах лимита <code>work_mem</code>). Встречая уже существующий хэш ключа, процессор отбрасывает дубликат. Метод отрабатывает за время $O(N)$, но расходует память.</li>
 <li><strong>Sort / Unique (Внешняя сортировка и слияние):</strong> Если уникальных комбинаций слишком много и хэш-таблица не помещается в <code>work_mem</code>, СУБД вынуждена активировать тяжелую внешнюю сортировку слиянием (<strong>External Sort</strong> со сбросом чанков во временные файлы на диск — <strong>Spill to Disk</strong>). После сортировки исполнитель применяет узел <code>Unique</code> (вы его увидите в плане <a href="../04-indeksy-i-proizvoditelnost/10-plan-vypolneniya-zaprosa-explain.html" class="wikilink">10. План выполнения запроса. EXPLAIN</a>): движок линейно считывает отсортированный массив и отбрасывает смежные идентичные строки. Это колоссальный удар по дисковой подсистеме и процессору.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: DISTINCT по нескольким колонкам">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2281,6 +2282,7 @@ flowchart TD
 Конструкция <code>DISTINCT</code> в данном случае не отфильтрует ни одной строки, но заставит базу данных впустую сжигать такты CPU и выделять оперативную память под построение бесполезной хэш-таблицы.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="arkhitekturnoe-prestuplenie-distinct-kak-kostyl-dlya-join">Архитектурное преступление: DISTINCT как костыль для JOIN</h2>
@@ -2360,6 +2362,7 @@ ORDER BY user_id, created_at DESC;
 <p><strong>Как этот механизм работает на аппаратном уровне:</strong><br />
 1. СУБД упорядочивает кортежи: сначала по ключу группировки <code>user_id</code>, а затем внутри группы — по времени создания <code>created_at DESC</code> (самые свежие строки идут первыми).<br />
 2. Оператор <code>DISTINCT ON (user_id)</code> потоком сканирует отсортированный массив. Встречая новый <code>user_id</code>, база берет первую же строку (с максимальной датой), отдает ее в результат, а все последующие строки с этим же <code>user_id</code> моментально отбрасывает.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2372,6 +2375,7 @@ ORDER BY user_id, created_at DESC;
 2. Если указать <code>ORDER BY user_id</code>, но забыть уточнить вторичную сортировку (<code>created_at DESC</code>), СУБД вернет <strong>случайную, недетерминированную строку</strong> для каждого пользователя, так как физический порядок страниц на диске не гарантирован. Для получения стабильного результата сортировка обязана быть строго определена.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="bekend-na-go-gde-luchshe-udalyat-dublikaty">Бэкенд на Go: Где лучше удалять дубликаты?</h2>

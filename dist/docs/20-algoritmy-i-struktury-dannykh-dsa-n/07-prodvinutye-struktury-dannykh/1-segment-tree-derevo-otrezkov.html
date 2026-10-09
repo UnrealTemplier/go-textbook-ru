@@ -2194,6 +2194,7 @@
 - Построение интерактивных аналитических витрин с быстрой фильтрацией диапазона <code>WHERE timestamp BETWEEN</code> без дорогостоящих Full-Scan запросов к реляционной СУБД.<br />
 - Реализация гибких алгоритмов динамического rate-limiting для защитных API-шлюзов.</p>
 <p>Главное достоинство дерева отрезков — способность отвечать на диапазонные запросы <code>Query(l, r)</code> и производить точечные обновления <code>Update(i, value)</code> за строго логарифмическое время $O(\log n)$ при линейном расходе оперативной памяти $O(n)$. В отличие от наивного сканирования среза за <code>O(n)</code>, дерево отрезков гарантирует детерминированную микросекундную задержку (SLA) даже при многократном росте объема накопленных данных.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2204,6 +2205,7 @@
 <strong>Ответ:</strong> Префиксные суммы обеспечивают $O(1)$ на чтение, но требуют $O(n)$ на каждое точечное обновление — для системы с частой записью это приведет к перегрузке CPU. Fenwick Tree (BIT) выполняет чтение и запись за $O(\log n)$, при этом занимает вдвое меньше памяти и обладает идеальной локальностью кэша, однако поддерживает только обратимые операции (сложение, вычитание, XOR). Если в будущем бизнес-требования расширятся до вычисления <code>min/max</code>, НОД (GCD) или матричных произведений на отрезке, дерево отрезков (Segment Tree) останется единственным надежным выбором. В исходной же постановке (чистые суммы и интенсивная запись) оптимально выбрать Fenwick Tree.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="1-matematicheskaya-osnova-i-neyavnoe-predstavlenie-v-pamyati">1. Математическая основа и неявное представление в памяти</h2>
@@ -2446,6 +2448,7 @@ func (st *SegmentTree[T]) Query(l, r int) T {
 <p>В приведенном коде компилятор Go выявляет, что срез <code>tree</code> переживает локальный фрейм функции (или его емкость превышает стековый лимит), размещая структуру в куче (<code>escape to heap</code>). </p>
 <p>Однако ключевое инженерное преимущество плоского дерева отрезков состоит в том, что оно порождает <strong>ровно одну монолитную аллокацию</strong>, а не миллионы разрозненных мелких объектов. При сканировании памяти сборщик мусора Go обрабатывает непрерывный буфер с помощью высокопроизводительных векторных инструкций ядра (таких как <code>rep movsb</code> при копировании и плотной трассировки битмапы типов). </p>
 <p>Для систем с экстремальной нагрузкой буфер среза <code>tree</code> можно легко переиспользовать через <code>sync.Pool</code>, заполняя его нейтральными значениями <code>identity</code> перед возвратом.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2456,6 +2459,7 @@ func (st *SegmentTree[T]) Query(l, r int) T {
 Если же параметром <code>T</code> выступают примитивные скалярные типы (<code>int</code>, <code>float64</code>, <code>uint64</code>) или компактные структуры без указателей (<code>struct</code> без полей-указателей), компилятор помечает срез флагом <code>noscan</code>. В этом случае GC мгновенно пропускает весь мегабайтный массив, снижая длительность фазы STW до нуля!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="4-lenivaya-korrektsiya-lazy-propagation-kogda-ne-stoit-riskovat">4. Ленивая коррекция (Lazy Propagation): когда не стоит рисковать</h2>
@@ -2469,6 +2473,7 @@ func (st *SegmentTree[T]) Query(l, r int) T {
 - Периодическая фоновая пакетная пересборка <code>Build</code> по снапшоту данных.<br />
 - Корневая декомпозиция (Chunked Array): разбиение диапазона на блоки размера $\sqrt{n}$, где обновление блока выполняется за <code>O(sqrt(n))</code> без сложных отложенных деревьев.<br />
 - Применение <a href="2-fenwick-tree-binarnoe-indeksnoe-derevo.html" class="wikilink">2. Fenwick tree - бинарное индексное дерево</a>: для префиксных агрегаций диапазонная модификация элегантно сводится к двум точечным обновлениям граничных индексов.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2496,8 +2501,10 @@ result := st.Query(start, end + 1)
   </div>
 </aside>
 
+
 <hr />
 <h2 id="5-lovushki-i-voprosy-s-sobesedovaniy">5. Ловушки и вопросы с собеседований</h2>
+
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -2513,6 +2520,7 @@ result := st.Query(start, end + 1)
 <strong>Ответ:</strong> Итеративное Segment Tree не является структурой lock-free. В простейшем сценарии используется <code>sync.RWMutex</code> (чтение <code>Query</code> под <code>RLock()</code>, модификация <code>Set</code> под <code>Lock()</code>). При сверхвысокой частоте конкурентных записей применяется <strong>шардирование (Range Sharding)</strong>: весь диапазон ключей разбивается на $M$ независимых сегментов, каждый из которых обслуживается отдельным инстансом <code>SegmentTree</code> со своим независимым мьютексом <code>Mutex</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="6-sravnenie-s-alternativami">6. Сравнение с альтернативами</h2>

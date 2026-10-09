@@ -2191,6 +2191,7 @@
 *   Эволюцию схемы событий: upcasters, версионирование и толерантное чтение.<br />
 *   Влияние на рантайм Go: аллокации при реплее миллионов событий, давление на GC и оптимизации через <code>sync.Pool</code>.<br />
 *   Типичные ловушки, вопросы с хардовых собеседований и сравнение с другими экосистемами.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2200,6 +2201,7 @@
     <p>В реляционных СУБД данные хранятся в B-Tree структурах, оптимизированных под случайный доступ и быстрые обновления. Event Sourcing превращает хранилище в логически аналогичный WAL (Write Ahead Log), но на уровне приложения. Это кардинально меняет паттерн доступа к диску: вместо тысяч случайных <code>read/write</code> на 4 КБ страницах система выполняет крупные последовательные операции. Понимание этого сдвига критично для настройки I/O планировщика ОС, параметров файловой системы и выбора движка хранения.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="1-arkhitektura-khranilishcha-sobytiy-i-pattern-append-only">1. Архитектура хранилища событий и паттерн Append-Only</h2>
@@ -2246,6 +2248,7 @@ flowchart TD
 <li><strong>Global Sequence</strong>: Глобальный счетчик всех событий в системе. Используется для шардирования, репликации и проекций.</li>
 <li><strong>Snapshots</strong>: Периодические снимки состояния агрегата, позволяющие не реплеить историю с самого начала.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2256,6 +2259,7 @@ flowchart TD
 События в ES — это исторические факты. Их <strong>нельзя</strong> редактировать или удалять после фиксации. Если допущена ошибка в бизнес-логике, вы записываете компенсационное событие (<code>TransactionCorrected</code>), но оригинал остается в логе навсегда. Попытка <code>UPDATE</code> или <code>DELETE</code> в хранилище событий разрушает аудит и ломает все существующие проекции.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="2-pod-kapotom-mekhanika-posledovatelnoy-zapisi-i-io">2. Под капотом: Механика последовательной записи и IO</h2>
@@ -2272,6 +2276,7 @@ flowchart TD
 *   ОС (через Page Cache в Linux) буферизует запись последовательно.<br />
 *   <code>fsync</code> сбрасывает данные на диск одним непрерывным блоком.<br />
 *   Сложность записи <code>O(1)</code>, независимо от размера базы.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2281,6 +2286,7 @@ flowchart TD
     <p>Современные SSD и NVMe драйверы оптимизированы под последовательные запросы. При случайных <code>4KB</code> записях контроллер диска выполняет больше операций <code>garbage collection</code> и <code>wear leveling</code>, что снижает срок службы и увеличивает задержки. При последовательном потоке событий диск работает в режиме конвейера, пропускная способность ограничена только шиной PCIe и скоростью хоста, а не механикой ячеек памяти.</p>
   </div>
 </aside>
+
 
 <h3 id="faylovye-deskriptory-i-oappend">Файловые дескрипторы и O_APPEND</h3>
 
@@ -2417,6 +2423,7 @@ func LoadAggregate(ctx context.Context, db *sql.DB, streamID string, snapshotLoa
 </code></pre>
 </div>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2427,6 +2434,7 @@ func LoadAggregate(ctx context.Context, db *sql.DB, streamID string, snapshotLoa
 <strong>Ответ:</strong> <code>FOR UPDATE</code> здесь используется не для пессимистичной блокировки всей таблицы, а для создания точки сериализации транзакций в PostgreSQL. Он гарантирует, что две параллельные транзакции, пытающиеся записать в один <code>stream_id</code>, не пройдут проверку версии одновременно. Вторая транзакция заблокируется на <code>SELECT ... FOR UPDATE</code>, дождется коммита первой, перечитает версию, увидит несоответствие и вернет ошибку конфликта. Это дешевле, чем <code>SERIALIZABLE</code>, и надежнее, чем чистый <code>SELECT</code> без блокировки.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="4-evolyutsiya-skhemy-sobytiy-i-upcasters">4. Эволюция схемы событий и Upcasters</h2>
@@ -2471,6 +2479,7 @@ func UpcastEvent(ev StoredEvent) (interface{}, error) {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2481,6 +2490,7 @@ func UpcastEvent(ev StoredEvent) (interface{}, error) {
 В Go легко хранить события как <code>interface{}</code> или <code>map[string]any</code>. Это ведет к потере безопасности типов и сложному рефакторингу. Лучшая практика: хранить <code>Payload</code> как <code>[]byte</code> (обычно JSON или Protobuf), а десериализацию выносить в строго типизированные обработчики с явным маппингом версий. Никогда не полагайтесь на <code>reflection</code> для парсинга исторических событий в продакшене — это медленно и нестабильно при миграции схем.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="5-proizvoditelnost-pamyat-i-gc-pri-replee">5. Производительность, память и GC при реплее</h2>
@@ -2494,6 +2504,7 @@ func UpcastEvent(ev StoredEvent) (interface{}, error) {
 2.  <strong>Компактная сериализация</strong>: Используйте Protobuf или Avro вместо JSON. Они создают меньше аллокаций и имеют предсказуемый размер.<br />
 3.  <strong>Пакетное чтение</strong>: Вместо <code>SELECT ... ORDER BY version</code> для каждого агрегата, используйте курсоры или <code>pgx.CopyFrom</code>-подобные механизмы для пакетной загрузки событий нескольких агрегатов, затем группируйте их в памяти.<br />
 4.  <strong>Снапшоты как барьер для GC</strong>: Настраивайте создание снапшотов каждые <code>N</code> событий или <code>T</code> времени. Это сокращает длину цепочки реплея и, соответственно, количество объектов, живущих в памяти одновременно.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2503,6 +2514,7 @@ func UpcastEvent(ev StoredEvent) (interface{}, error) {
     <p>При <code>rows.Scan(&amp;[]byte)</code> Go аллоцирует новый слайс для каждой строки. Если вы используете <code>pgx</code> в режиме <code>Rows.Next()</code>, можно получить прямой доступ к внутреннему буферу драйвера через <code>conn.PgConn().ReadBuffer()</code> (в unsafe-режиме), что позволяет парсить данные с нулевым копированием (<code>zero-copy</code>). Однако это требует глубокого понимания жизненного цикла буфера: данные валидны только до вызова следующего <code>Next()</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="6-lovushki-antipatterny-i-voprosy-s-sobesedovaniy">6. Ловушки, антипаттерны и вопросы с собеседований</h2>
@@ -2538,6 +2550,7 @@ func UpcastEvent(ev StoredEvent) (interface{}, error) {
 </ul>
 </li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2548,6 +2561,7 @@ func UpcastEvent(ev StoredEvent) (interface{}, error) {
 <strong>Ответ:</strong> В распределенных системах true exactly-once невозможен без глобальных блокировок, которые убивают производительность. На практике используется <strong>at-least-once с идемпотентностью проекции</strong>. Проекция хранит <code>last_processed_global_sequence</code> или <code>processed_event_ids</code>. При рестарте или дубликатах она проверяет этот чекпоинт. Если событие уже применено, оно игнорируется. Комбинация <code>outbox</code> на стороне записи и идемпотентного потребителя на стороне чтения дает детерминированный результат, неотличимый от exactly-once.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="7-sravnenie-podkhodov-i-vybor-steka">7. Сравнение подходов и выбор стека</h2>

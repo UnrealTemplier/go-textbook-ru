@@ -2184,6 +2184,7 @@
 <p>В высоконагруженных распределенных системах создание нового TCP-соединения для каждого отдельного HTTP-запроса — это непростительное расточительство аппаратных ресурсов. Чтобы передать крошечный JSON-документ размером в полкилобайта, процессор и сетевая карта вынуждены тратить сотни микросекунд на тройное рукопожатие TCP (SYN, SYN-ACK, ACK), тяжеловесный обмен сертификатами и криптографический расчет сессионных ключей TLS 1.3. При тысячах запросов в секунду такой подход неминуемо ведет к латентным задержкам, перегрузке сетевого стека и исчерпанию файловых дескрипторов.</p>
 <p>Пакет <code>net/http</code> решает эту фундаментальную проблему через <code>http.Transport</code> — мощный, потокобезопасный диспетчер соединений, который абстрагирует пулинг, управление Keep-Alive, TLS-рукопожатия и прозрачное переключение протоколов.</p>
 <p>Понимание внутренней механики <code>Transport</code> критически важно для инженера уровня Senior. Дефолтные настройки (<code>MaxIdleConnsPerHost: 2</code>) часто становятся невидимым bottleneck'ом в продакшене, а неправильная работа с пулом соединений приводит к утечкам FD, <code>TIME_WAIT</code> штормам и каскадным отказам микросервисов.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2193,6 +2194,7 @@
     <p><code>http.Transport</code> <strong>потокобезопасен</strong>. Вы должны создавать один экземпляр на всё приложение и переиспользовать его. Внутренние структуры пула (<code>connPool</code>, <code>dialing</code>, <code>idleConnCh</code>) защищены мьютексами и атомарными операциями. Создание нового <code>Transport</code> на каждый запрос уничтожает преимущества кеширования и генерирует нагрузку на сборщик мусора.</p>
   </div>
 </aside>
+
 
 <h3 id="1-under-the-hood-struktura-transport-i-persistconn">1. Under the hood: Структура Transport и persistConn</h3>
 
@@ -2269,6 +2271,7 @@ flowchart TD
 </figure>
 
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2279,6 +2282,7 @@ flowchart TD
 Если вы вызываете <code>resp, _ := client.Do(req)</code> и игнорируете <code>resp.Body</code>, соединение <strong>никогда не вернется в пул</strong>. <code>Transport</code> не может определить конец ответа и вынужден закрыть сокет, чтобы не смешивать данные следующего запроса. Всегда закрывайте тело: <code>defer resp.Body.Close()</code> или читайте до EOF: <code>io.Copy(io.Discard, resp.Body)</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="3-keep-alive-i-tcp-sostoyaniya">3. Keep-Alive и TCP-состояния</h3>
 
@@ -2291,6 +2295,7 @@ flowchart TD
 <p>Логика пула кардинально меняется в зависимости от версии протокола:<br />
 * <strong>HTTP/1.1</strong>: Одно соединение обрабатывает <strong>один запрос за раз</strong>. Чтобы обслуживать 100 одновременных запросов к одному хосту, пул должен держать до 100 соединений. Лимит <code>MaxIdleConnsPerHost</code> (по умолчанию 2) быстро вызывает очередь <code>dialing</code>.<br />
 * <strong>HTTP/2</strong>: Использует <code>http2.Transport</code>, который мультиплексирует множество стримов (запросов) по <strong>одному</strong> TCP-соединению. Внутренний пул Go всё равно создает соединения, но их количество кратно меньше. <code>http2.ConfigureTransports</code> настраивает пул под специфику мультиплексирования, увеличивая <code>MaxIdleConns</code> и <code>MaxConnsPerHost</code>.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2300,6 +2305,7 @@ flowchart TD
     <p>Go автоматически выбирает HTTP/2, если сервер поддерживает ALPN (Application-Layer Protocol Negotiation) при TLS-рукопожатии. Если вы видите <code>http: TLS handshake timeout</code> или <code>EOF</code> при HTTP/2, чаще всего проблема в несовместимости прокси или настройках <code>http2.Transport</code>.</p>
   </div>
 </aside>
+
 
 <h3 id="5-mechanical-sympathy-faylovye-deskriptory-pamyat-i-tyuning">5. Mechanical Sympathy: Файловые дескрипторы, память и тюнинг</h3>
 
@@ -2379,6 +2385,7 @@ var client = &amp;http.Client{
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2391,6 +2398,7 @@ var client = &amp;http.Client{
 <strong>Ответ:</strong> Стандартный <code>*http.Transport</code> не предоставляет публичного API для инспекции пула idle-соединений (метода <code>GetIdleConns</code> не существует). Для мониторинга используют хуки <code>httptrace.ClientTrace</code> (<code>GotConn</code>, <code>PutIdleConn</code>), кастомную обертку над <code>net.Dialer</code> / <code>DialContext</code> либо сетевую телеметрию ОС (eBPF, <code>ss</code>, <code>netstat</code>).</p>
   </div>
 </aside>
+
 
 <h2 id="itog">Итог</h2>
 

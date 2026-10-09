@@ -2199,6 +2199,7 @@
 <p>Современный фреймворк <strong>gRPC</strong> (разработанный Google на базе внутренней системы Stubby и переданный в CNCF) не пытается спрятать сетевую реальность. Напротив, он вооружает инженера строгими инструментами управления сетью: обязательными контекстами (<code>context.Context</code>), дедлайнами, отменой запросов, двунаправленным потоковым вещанием и бинарным сжатием.</p>
 <p>В отличие от REST, где контракт часто описывается в OpenAPI, а данные передаются в текстовом JSON, gRPC ставит во главу угла строгую типизацию, бинарную сериализацию и бидирекциональную потоковую передачу.</p>
 <p>Для Go-разработчика gRPC — это не просто "быстрый протокол", а способ управления жизненным циклом соединений и контекстом на уровне рантайма. В отличие от C# или Java, где рантайм часто управляет десериализацией через reflection, Go использует сгенерированный код (<code>protoc-gen-go</code>). Это позволяет компилятору эффективно проводить escape analysis, минимизировать аллокации в куче и избегать накладных расходов на reflection в hot paths.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2209,6 +2210,7 @@
 <strong>Ответ:</strong> gRPC идеален для внутренней коммуникации микросервисов с высокой частотой вызовов, строгим контрактом, необходимостью стриминга или низкой задержкой. REST/JSON лучше для публичных API, кэширования на L7-прокси и кроссплатформенной совместимости. gRPC не заменяет REST, а дополняет его в рамках polyglot-архитектуры.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="protocol-buffers-schema-first-i-serializatsiya">Protocol Buffers: Schema-first и сериализация</h2>
@@ -2278,6 +2280,7 @@ flowchart LR
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2287,6 +2290,7 @@ flowchart LR
     <p>Protobuf использует Variable-Length Quantity (VLQ) для кодирования целых чисел. Меньшие значения занимают меньше байт на wire format. Это напрямую влияет на размер пакета, нагрузку на L1/L2 кэш CPU при десериализации и пропускную способность сети. Go-генератор создает структуры с точными полями, соответствующими wire format, что дает zero-allocation path для hot paths.</p>
   </div>
 </aside>
+
 
 <p><strong>Эволюция схем и совместимость:</strong><br />
 1. Поля в proto имеют номера. Порядок не важен, но номер — нет.<br />
@@ -2336,6 +2340,7 @@ flowchart TD
 <li><strong>Bidirectional Streaming RPC (N:M):</strong> Обе стороны независимо шлют сообщения в полнодуплексном режиме через единый логический поток.</li>
 </ol>
 <p>В Go streaming реализуется через интерфейс <code>grpc.Stream</code> и внутренние структуры <code>transport.Stream</code>. Данные не буферируются в памяти целиком для серверного стриминга — они читаются чанками. Для клиентского и двунаправленного стриминга используются горутины, управляемые контекстом.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2345,6 +2350,7 @@ flowchart TD
     <p>Закрытие стрима в Go не освобождает память автоматически. Если вы не прочитаете все данные до <code>io.EOF</code> или не отмените контекст, буферы в <code>transport.Stream</code> останутся в памяти, что приведет к утечкам и росту RSS процесса.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="pod-kapotom-grpc-http2-i-go-rantaym">Под капотом: gRPC, HTTP/2 и Go-рантайм</h2>
@@ -2388,7 +2394,8 @@ sequenceDiagram
 
 <h3 id="multiplexing-i-http2">Multiplexing и HTTP/2</h3>
 
-<p>В отличие от <code>&lt;a href="10-tcp-ustroystvo-garantii-i-zhiznennyy-tsikl-soedineni.html" class="wikilink"&gt;10. TCP. Устройство, гарантии и жизненный цикл соединения&lt;/a&gt;</code> с его блокировкой на уровне транспортного слоя, gRPC использует бинарные фреймы и multiplexing. Несколько потоков данных (<code>Stream</code>) передаются по одному TCP-соединению без заголовочных накладных расходов на каждое сообщение.</p>
+<p>В отличие от <a href="10-tcp-ustroystvo-garantii-i-zhiznennyy-tsikl-soedineni.html" class="wikilink"><code>10. TCP. Устройство, гарантии и жизненный цикл соединения</code></a> с его блокировкой на уровне транспортного слоя, gRPC использует бинарные фреймы и multiplexing. Несколько потоков данных (<code>Stream</code>) передаются по одному TCP-соединению без заголовочных накладных расходов на каждое сообщение.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2398,6 +2405,7 @@ sequenceDiagram
     <p><code>grpc-go</code> использует кастомный dialer и connection pool (keepalive). Когда <code>transport.Stream</code> ждет данных от сети, он регистрирует readiness в <code>netpoller</code> (epoll/kqueue) и передает управление планировщику Go. Как только сокет готов, горутина возобновляется без блокировки M.</p>
   </div>
 </aside>
+
 
 <h3 id="upravlenie-kontekstom-i-otmena">Управление контекстом и отмена</h3>
 
@@ -2463,6 +2471,7 @@ return &lt;-done
 <h3 id="backpressure-i-flow-control">Backpressure и Flow Control</h3>
 
 <p>HTTP/2 реализует flow control через окна размером в байты. <code>grpc-go</code> уважает эти окна, но может буферизовать данные в Go-буферах, если приложение читает медленнее, чем пишет. Для контроля используются <code>grpc.MaxCallRecvMsgSize</code> и <code>grpc.MaxCallSendMsgSize</code>.</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2473,6 +2482,7 @@ return &lt;-done
 <strong>Ответ:</strong> На уровне TCP HLB есть (один потерянный пакет блокирует весь поток). gRPC переводит HLB на уровень HTTP/2: блокируется только конкретный <code>Stream</code>, а остальные продолжают работать. Однако, если один <code>Stream</code> блокируется на уровне приложения (например, ожидает ответа от БД), он все равно занимает место в окне flow control, что может замедлить другие потоки на том же соединении.</p>
   </div>
 </aside>
+
 
 <h3 id="sravnenie-podkhodov">Сравнение подходов</h3>
 
@@ -2523,6 +2533,7 @@ return &lt;-done
 <li><strong>Правильная работа с <code>grpc.Dial</code>:</strong> Использование <code>grpc.WithBlock()</code> в production убьет инициализацию приложения при недоступности БД. Всегда используйте таймауты или async dial. В актуальных версиях <code>grpc-go</code> для создания клиента рекомендуется <code>grpc.NewClient</code> (он подключается лениво, и <code>WithBlock</code> не нужен); <code>grpc.Dial</code> оставлен для совместимости.</li>
 <li><strong>TLS Handshake:</strong> gRPC требует TLS по умолчанию. Внутренние сервисы могут использовать <code>grpc.WithTransportCredentials(insecure.NewCredentials())</code> для dev, но в prod обязательно mTLS.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2533,12 +2544,13 @@ return &lt;-done
   </div>
 </aside>
 
+
 <h3 id="voprosy-na-sobesedovanii-middlesenior">Вопросы на собеседовании (Middle+/Senior)</h3>
 
 <ul>
 <li><strong>Как gRPC реализует cancellation?</strong> Контекст транслируется в HTTP/2 фрейм <code>RST_STREAM</code> с кодом <code>CANCEL</code>. Сервер должен проверять <code>ctx.Err()</code> или читать из <code>ctx.Done()</code>.</li>
 <li><strong>Почему Protobuf быстрее JSON?</strong> Нет парсера строк, нет выделения памяти под ключи объектов, VLQ-кодирование, бинарный формат.</li>
-<li><strong>Как избежать HLB в gRPC?</strong> Использовать несколько TCP-соединений (<code>grpc.WithInitialConnWindowSize</code>, пулинг), или перейти на <code>&lt;a href="23-http-3-i-quic-pochemu-budushchee-ukhodit-ot-tcp.html" class="wikilink"&gt;23. HTTP 3 и QUIC. Почему будущее уходит от TCP&lt;/a&gt;</code> (QUIC решает HLB на транспортном уровне).</li>
+<li><strong>Как избежать HLB в gRPC?</strong> Использовать несколько TCP-соединений (<code>grpc.WithInitialConnWindowSize</code>, пулинг), или перейти на <a href="23-http-3-i-quic-pochemu-budushchee-ukhodit-ot-tcp.html" class="wikilink"><code>23. HTTP 3 и QUIC. Почему будущее уходит от TCP</code></a> (QUIC решает HLB на транспортном уровне).</li>
 <li><strong>Как профилировать gRPC-сервис?</strong> <code>pprof</code> по CPU/Memory + <code>grpc-go</code> internal metrics (<code>grpc_server_started_count</code>, <code>grpc_server_handled_count</code>). Используйте <code>grpc-go</code> tracing для анализа задержек внутри <code>transport</code>.</li>
 </ul>
 <hr />

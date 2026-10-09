@@ -2185,6 +2185,7 @@
 <p>Пакет <code>database/sql</code> в Go решает эту задачу с классической элегантностью Bell Labs: он отделяет <strong>интерфейс доступа к данным</strong> от <strong>конкретной реализации сетевого протокола</strong>. </p>
 <p><code>database/sql</code> — это не драйвер для базы данных, а стандартизированная абстракция и высоконадежный менеджер пула соединений. Он предоставляет унифицированный API для выполнения запросов, транзакций и сканирования результатов в структуры Go. Вся специфика конкретной СУБД (бинарные протоколы проводов, кодирование типов, TLS-аутентификация) вынесена во внешние пакеты-драйверы, реализующие интерфейс <code>database/sql/driver</code>.</p>
 <p>Для профессионального бэкенд-инженера глубокое понимание <code>database/sql</code> выходит далеко за рамки тривиальных вызовов <code>Exec</code> и <code>Query</code>. Это знание того, как устроена координация горутин внутри пула, как база данных реагирует на отмену запросов через <code>context.Context</code>, как не исчерпать файловые дескрипторы операционной системы и почему неправильная конфигурация пула способна парализовать высоконагруженный кластер каскадным отказом.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2194,6 +2195,7 @@
     <p>Пакет <code>database/sql</code> не содержит ни строчки кода для разбора бинарных пакетов PostgreSQL или MySQL. Он полагается на интерфейс <code>driver.Driver</code>, который регистрируется драйвером через побочный эффект в функции <code>init()</code> стороннего пакета (например, <code>_ "github.com/lib/pq"</code> или <code>_ "github.com/go-sql-driver/mysql"</code>). При вызове <code>sql.Open()</code> рантайм лишь проверяет, что драйвер с указанным именем зарегистрирован, и валидирует DSN (Data Source Name). Сама структура <code>sql.DB</code> <strong>не открывает сетевое соединение сразу</strong>. Подключение происходит лениво (lazy-connect), в момент выполнения первого реального запроса.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="1-under-the-hood-sql-db-kak-menedzher-pula">1. Under the hood: `sql.DB` как менеджер пула</h3>
@@ -2341,6 +2343,7 @@ func getUserByID(ctx context.Context, db *sql.DB, id int64) (*User, error) {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2352,6 +2355,7 @@ func getUserByID(ctx context.Context, db *sql.DB, id int64) (*User, error) {
 <p>Если вы выйдете из функции из-за ошибки в середине цикла обработки, не вызвав <code>rows.Close()</code>, соединение <strong>никогда не вернется в пул</strong>. При регулярном повторении ошибки пул свободных соединений будет исчерпан за считанные минуты, и все последующие запросы к базе намертво повиснут в состоянии deadlock. Всегда ставьте <code>defer rows.Close()</code> сразу после успешной проверки <code>err == nil</code>!</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="4-kontekst-i-upravlenie-vremenem-zhizni">4. Контекст и управление временем жизни</h3>
@@ -2394,6 +2398,7 @@ func getUserByID(ctx context.Context, db *sql.DB, id int64) (*User, error) {
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2407,6 +2412,7 @@ func getUserByID(ctx context.Context, db *sql.DB, id int64) (*User, error) {
 <strong>Ответ:</strong> Подготовка выражения на стороне сервера БД требует выделения дескриптора стейтмента в памяти СУБД. В пуле из 50 соединений подготовленный запрос пришлось бы подготавливать на каждом из 50 сокетов отдельно. Автоматическое кеширование всех запросов привело бы к колоссальному расходу оперативной памяти на сервере базы данных и проблемам инвалидации планов выполнения при изменении схемы данных. Go дает разработчику явный контроль: метод <code>db.Prepare()</code> создает стейтмент, автоматически пересоздаваемый на нужном соединении при необходимости.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="5-sravnenie-s-ekosistemami-drugikh-yazykov">5. Сравнение с экосистемами других языков</h3>

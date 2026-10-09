@@ -2184,6 +2184,7 @@
 <p><em>«В распределенных системах есть только две сложные проблемы: 2. Доставка ровно один раз (exactly-once); 1. Гарантированный порядок; 2. Доставка ровно один раз (exactly-once)».</em>  <br />
 — Инженерный фольклор</p>
 </blockquote>
+
 <aside class="callout callout-note" aria-label="Заметка">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">📝</span>
@@ -2193,6 +2194,7 @@
     <p><strong>Связи:</strong> Эта статья опирается на фундамент <a href="../01-fundament-asinkhronnosti/4-modeli-dostavki-at-most-once-at-least-once-exactly-on.html" class="wikilink">4. Модели доставки. At most once, at least once, exactly once</a> и <a href="../01-fundament-asinkhronnosti/10-idempotency-v-message-processing.html" class="wikilink">10. Idempotency в message processing</a>, соединяет продюсера (<a href="3-producer-i-consumer.html" class="wikilink">3. Producer и consumer</a>) и консьюмера (<a href="4-consumer-groups.html" class="wikilink">4. Consumer groups</a>) с гарантиями порядка (<a href="5-ordering-i-partitioning.html" class="wikilink">5. Ordering и partitioning</a>) и подводит к деталям хранения (<a href="7-kafka-storage-pod-kapotom.html" class="wikilink">7. Kafka storage под капотом</a>).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="tri-grani-garantiy-dostavki">Три грани гарантий доставки</h2>
@@ -2303,6 +2305,7 @@ sequenceDiagram
    - Если пришедший <code>Sequence Number &gt; LastSequenceNumber + 1</code> — брокер обнаруживает пропуск сообщений и возвращает фатальную ошибку <code>OutOfOrderSequenceException</code>.</li>
 </ol>
 <p>Таким образом, даже если продюсер повторит отправку батча несколько раз, брокер запишет его ровно один раз — в пределах одной сессии Producer ID. Эта гарантия действует <strong>на одну партицию</strong> и <strong>на время жизни продюсера</strong> (PID живёт до перезапуска продюсера или истечения срока неактивности <code>transactional.id.timeout.ms</code>).</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2312,6 +2315,7 @@ sequenceDiagram
     <p>Продюсер хранит sequence numbers в оперативной памяти, а не в распределенном логе. При падении или перезапуске процесса продюсера PID теряется и назначается новый, поэтому идемпотентность без транзакций не переживает крах продюсера. Для сквозной exactly-once между топиками или перезапусками нужны транзакции.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="tranzaktsii-atomarnaya-zapis-v-neskolko-partitsiy">Транзакции: атомарная запись в несколько партиций</h2>
@@ -2512,6 +2516,7 @@ sequenceDiagram
 <li>Offset входного топика коммитится <strong>внутри той же транзакции</strong> (через специальный API <code>sendOffsetsToTransaction</code>).</li>
 <li>Транзакция коммитится (<code>commitTransaction()</code>). Теперь и результат, и факт обработки становятся видимы атомарно.</li>
 </ol>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Границы применимости">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2521,6 +2526,7 @@ sequenceDiagram
     <p>Exactly-once <strong>не распространяется на внешние сайд-эффекты</strong>. Если внутри транзакции происходит запись в PostgreSQL или вызов HTTP API, Kafka не откатит эти операции при аборте. Для этого потребуется распределённая транзакция с использованием паттернов <a href="../05-patterny-i-arkhitektura/8-saga-cherez-brokery.html" class="wikilink">8. Saga через брокеры</a> или координация через <a href="../06-orkestratsiya-protsessov/2-temporal-arkhitektura-i-kontseptsii.html" class="wikilink">2. Temporal. Архитектура и концепции</a>. Не путайте exactly-once внутри Kafka с глобальной exactly-once всей системы.</p>
   </div>
 </aside>
+
 
 <p>Если ваш консьюмер пишет в PostgreSQL или MongoDB, транзакции Kafka не спасут внешнюю базу от дубликатов при сбоях. Для внешних баз данных правильное решение — комбинация <strong>Идемпотентного потребителя</strong> (<a href="../07-praktika/4-idempotent-handlers.html" class="wikilink">4. Idempotent handlers</a>), паттерна <strong>Transactional Outbox</strong> (<a href="../05-patterny-i-arkhitektura/6-outbox-pattern.html" class="wikilink">6. Outbox pattern</a>) и уникальных констрейнтов в БД.</p>
 <hr />
@@ -2542,6 +2548,7 @@ sequenceDiagram
 <hr />
 <h2 id="voprosy-dlya-sobesedovaniya">Вопросы для собеседования</h2>
 
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2553,6 +2560,8 @@ sequenceDiagram
   </div>
 </aside>
 
+
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2563,6 +2572,7 @@ sequenceDiagram
 <strong>Ответ:</strong> Exactly-once гарантируется только внутри операций, охватываемых транзакцией Kafka: чтение offset'ов и запись в выходные топики. Внешние системы (PostgreSQL, Redis) не участвуют в транзакции Kafka. Для атомарности между Kafka и БД применяют Outbox Pattern (<a href="../05-patterny-i-arkhitektura/6-outbox-pattern.html" class="wikilink">6. Outbox pattern</a>) или Saga (<a href="../05-patterny-i-arkhitektura/8-saga-cherez-brokery.html" class="wikilink">8. Saga через брокеры</a>), либо используют Temporal (<a href="../06-orkestratsiya-protsessov/2-temporal-arkhitektura-i-kontseptsii.html" class="wikilink">2. Temporal. Архитектура и концепции</a>) для оркестрации распределённых транзакций.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="zaklyuchenie-i-dalneyshie-shagi">Заключение и дальнейшие шаги</h2>

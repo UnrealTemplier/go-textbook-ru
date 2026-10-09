@@ -2231,6 +2231,7 @@ func main() {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2240,6 +2241,7 @@ func main() {
     <p><code>sql.Open</code> не проверяет доступность БД. Если сервер СУБД выключен, сетевой кабель перерезан или в пароле допущена ошибка, <code>sql.Open</code> вернет <code>nil</code> ошибку и валидный указатель <code>*sql.DB</code>. Физическое сетевое соединение устанавливается лениво, только при первом вызове <code>Ping()</code>, <code>Query()</code> или <code>Exec()</code>. Если ваш сервис запустится в Kubernetes без предварительного <code>db.PingContext(ctx)</code>, он начнет принимать пользовательский трафик и мгновенно отдавать пятисотые ошибки. Всегда вызывайте <code>db.PingContext(ctx)</code> на этапе инициализации!</p>
   </div>
 </aside>
+
 
 <h2 id="pod-kapotom-pul-soedineniy-i-mekhanika-sql-db">Под капотом. Пул соединений и механика `sql.DB`</h2>
 
@@ -2297,6 +2299,7 @@ flowchart TD
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2306,6 +2309,7 @@ flowchart TD
     <p>Для ожидания соединений в пуле <code>database/sql</code> используются буферизованные каналы (<code>chan connRequest</code>), а не <code>sync.Cond</code>. Это фундаментальное архитектурное решение: <code>sync.Cond.Wait()</code> принципиально невозможно прервать по сигналу <code>context.Context</code>. Канальная модель позволяет горутине мгновенно прервать ожидание соединения при истечении таймаута контекста (<code>case &lt;-ctx.Done():</code>) и корректно удалить свой запрос из очереди ожидания. При освобождении соединения вызывается <code>putConnDBLocked()</code>, передавая сокет первому ожидающему запросу прямо через его канал.</p>
   </div>
 </aside>
+
 
 <h2 id="idiomatichnyy-pattern-zaprosov">Идиоматичный паттерн запросов</h2>
 
@@ -2392,6 +2396,7 @@ func GetUser(ctx context.Context, db *sql.DB, id int64) (*User, error) {
 <li><strong>Кэш-линии и пул</strong>: <code>sync.Mutex</code> защиты пула концентрирует все горутины на одном адресе памяти. При 5000+ RPS происходит cache line bouncing. Решение: увеличение <code>MaxIdleConns</code>, использование пулов уровня ОС (pgBouncer) или шардирование запросов на уровне приложения.</li>
 <li><strong>Escape Analysis</strong>: Контекст <code>ctx</code> передается по ссылке, но сам <code>ctx</code> и его значения часто аллоцируются. Короткоживущие запросы создают давление на молодое поколение GC. Минимизация цепочек <code>context.WithValue</code> внутри цикла запросов критична.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2404,6 +2409,7 @@ func GetUser(ctx context.Context, db *sql.DB, id int64) (*User, error) {
 <strong>Ответ:</strong> <code>ConnMaxIdleTime</code> — максимальное время, которое соединение может простаивать в пуле перед закрытием. Оптимизирует потребление памяти. <code>ConnMaxLifetime</code> — абсолютный срок жизни соединения, даже если оно активно. Критично для балансировщиков (pgBouncer, HAProxy) и облачных БД (AWS RDS, Cloud SQL), которые принудительно обрывают соединения старше определенного времени, чтобы сбросить состояние.</p>
   </div>
 </aside>
+
 
 <h2 id="lovushki-i-antipatterny">Ловушки и антипаттерны</h2>
 

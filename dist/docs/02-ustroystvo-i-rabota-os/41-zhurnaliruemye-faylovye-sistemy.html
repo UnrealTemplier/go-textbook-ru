@@ -2181,7 +2181,7 @@
           <div class="article-markdown">
             <h2 id="problema-soglasovannosti-i-tsena-smerti-diska">Проблема согласованности и цена «смерти» диска</h2>
 
-<p>В предыдущей статье мы подробно исследовали, как VFS связывает текстовые пути с физическими блоками через структуры <code>&lt;a href="40-ustroystvo-faylovykh-sistem-inode-dentry-superblock.html" class="wikilink"&gt;40. Устройство файловых систем. inode, dentry, superblock&lt;/a&gt;</code>. Но здесь кроется фундаментальная инженерная дилемма: современные накопители оснащены собственными энергозависимыми буферами, а операционная система активно применяет отложенную запись через <code>&lt;a href="42-buferizatsiya-io-i-page-cache.html" class="wikilink"&gt;42. Буферизация IO и Page Cache&lt;/a&gt;</code>. </p>
+<p>В предыдущей статье мы подробно исследовали, как VFS связывает текстовые пути с физическими блоками через структуры <a href="40-ustroystvo-faylovykh-sistem-inode-dentry-superblock.html" class="wikilink"><code>40. Устройство файловых систем. inode, dentry, superblock</code></a>. Но здесь кроется фундаментальная инженерная дилемма: современные накопители оснащены собственными энергозависимыми буферами, а операционная система активно применяет отложенную запись через <a href="42-buferizatsiya-io-i-page-cache.html" class="wikilink"><code>42. Буферизация IO и Page Cache</code></a>. </p>
 <p>Когда в приложении на Go вы вызываете метод <code>Write()</code> (или <code>os.WriteFile</code>), байты данных не попадают на физический диск мгновенно. Они оседают в Page Cache ядра Linux, а затем выталкиваются на накопитель в произвольном порядке, продиктованном оптимизациями планировщика ввода-вывода (I/O scheduler).</p>
 <p>Что произойдет, если в момент сложной дисковой операции — например, когда ядро успело обновить указатель в структуре <code>inode</code>, но еще не записало физический блок с новыми данными — внезапно пропадет питание сервера?</p>
 <p>Файловая система окажется в катастрофическом <strong>несогласованном состоянии (Inconsistent State)</strong>:<br />
@@ -2236,6 +2236,7 @@ flowchart TD
 2. Транзакция последовательно записывается в конец журнала.<br />
 3. Только после успешной фиксации записи в журнале (Journal Commit) файловая система разрешает перенос изменений в основные таблицы метаданных и блоков.<br />
 4. При аварийном рестарте серверу больше не нужно сканировать весь диск: ядро просто проигрывает журнал (Journal Replay) за пару сотен миллисекунд!</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2246,6 +2247,7 @@ flowchart TD
 <p>При чтении он парсит эту последовательность и применяет изменения к <code>inode</code> и <code>dentry</code> кэшу. Журнал имеет фиксированный размер и работает как кольцевой буфер (ring buffer): старые транзакции, изменения которых уже надежно записаны в основное дерево ФС (фаза Checkpointing), помечаются свободными и перезаписываются новыми.</p>
   </div>
 </aside>
+
 
 <hr />
 <h3 id="osnovnye-rezhimy-zhurnalirovaniya">Основные режимы журналирования</h3>
@@ -2352,6 +2354,7 @@ flowchart TD
 </figure>
 
 
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2363,6 +2366,7 @@ flowchart TD
 <p>Ядро Linux отправляет контроллеру команду <strong><code>FLUSH</code></strong> или выставляет <strong><code>WRITE BARRIER</code></strong> через подсистемы <code>libata</code> или <code>nvme</code>, принуждая диск строго соблюдать очередность. Некоторые администраторы в погоне за красивыми бенчмарками монтируют файловые системы с параметром <code>barrier=0</code>. Это дает видимый прирост скорости на графиках, но превращает продакшн-сервер в пороховую бочку: первый же сбой питания гарантированно разрушит файловую систему.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="vliyanie-na-bekend-i-go-fsync-i-durability">Влияние на бэкенд и Go: fsync и durability</h2>
@@ -2421,6 +2425,7 @@ func writeWithDsync(path string, data []byte) error {
 <li><strong>Write Amplification (износ накопителя):</strong> Журналируемая ФС записывает транзакцию дважды, расходуя ресурс ячеек NAND Flash.</li>
 <li><strong>Идиома пакетной фиксации (Group Commit):</strong> Если ваш сервис вызывает <code>Sync()</code> на каждый входящий HTTP-запрос, производительность сервера рухнет до нескольких сотен запросов в секунду. Промышленные движки на Go (например, BadgerDB, etcd, CockroachDB) никогда не сбрасывают диск вслепую: они накапливают пачку транзакций от сотен горутин в памяти и сбрасывают их одним общим вызовом <code>file.Sync()</code>.</li>
 </ol>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2433,6 +2438,7 @@ func writeWithDsync(path string, data []byte) error {
 <p>Собственный WAL-журнал базы данных оптимизирован под логику движка: он хранит компактные дельты изменений, понимает семантику фиксации (<code>commit()</code>) и обеспечивает согласованность данных на уровне бизнес-логики (<strong>Crash Consistency</strong>), используя файловую систему лишь как надежное хранилище байт.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="sravnenie-podkhodov-go-vs-klassicheskie-oop-yazyki">Сравнение подходов: Go vs Классические ООП-языки</h2>
@@ -2451,7 +2457,7 @@ func writeWithDsync(path string, data []byte) error {
 <li><strong>Write Barrier:</strong> Критически важная аппаратная команда <code>FLUSH</code>, запрещающая контроллеру диска переставлять порядок записи страниц в энергонезависимую память. Отключение барьеров (<code>barrier=0</code>) категорически недопустимо в продакшене.</li>
 <li><strong>Оптимизация fsync в Go:</strong> Системный вызов <code>os.File.Sync()</code> (или <code>syscall.Fsync()</code>) физически блокирует поток. Для максимальной производительности объединяйте транзакции в пакеты (Group Commit) или используйте <code>fdatasync()</code>.</li>
 </ol>
-<p>Мы подробно изучили, как файловые системы защищают метаданные от катастроф. Но что происходит, когда эти данные только начинают свой путь в оперативной памяти? В следующей лекции мы погрузимся в самый производительный компонент ядра ОС: <code>&lt;a href="42-buferizatsiya-io-i-page-cache.html" class="wikilink"&gt;42. Буферизация IO и Page Cache&lt;/a&gt;</code>.</p>
+<p>Мы подробно изучили, как файловые системы защищают метаданные от катастроф. Но что происходит, когда эти данные только начинают свой путь в оперативной памяти? В следующей лекции мы погрузимся в самый производительный компонент ядра ОС: <a href="42-buferizatsiya-io-i-page-cache.html" class="wikilink"><code>42. Буферизация IO и Page Cache</code></a>.</p>
           </div>
 
           <!-- Навигация Предыдущая / Следующая статья -->

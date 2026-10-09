@@ -2185,6 +2185,7 @@
 <p>В ранних версиях языка пакет <code>syscall</code> входил в стандартную библиотеку и предоставлял прямой доступ к системным вызовам Linux, macOS, Windows и других ОС. Однако с развитием платформы авторы Go приняли бескомпромиссное архитектурное решение: <strong>заморозить пакет <code>syscall</code></strong> и перенести все низкоуровневые интерфейсы ядра в суб-репозиторий <code>golang.org/x/sys</code> (в частности, пакет <code>golang.org/x/sys/unix</code> для POSIX-систем).</p>
 <p>Это решение было продиктовано обещанием обратной совместимости Go 1. Стандартная библиотека Go гарантирует неизменность API на десятилетия вперед. В то же время ядро Linux и операционные системы развиваются стремительно: появляются новые вызовы (<code>io_uring</code>, <code>epoll</code>, <code>fanotify</code>, интерфейсы <code>bpf</code>, <code>cgroups v2</code>, протоколы <code>netlink</code>), меняются флаги и форматы структур. Фиксация этих изменчивых структур внутри стандартной библиотеки связала бы руки инженерам.</p>
 <p>Для разработчика системного уровня понимание этой эволюции обязательно. Прямой системный вызов — это прыжок из безопасного пространства пользователя (Ring 3) в привилегированный режим ядра (Ring 0). В Ring 0 нет сборщика мусора, нет проверки границ массивов и нет дружелюбных паник: любая ошибка в указателе или повреждение регистров ведут к немедленному падению процесса или зависанию ядра. Пакет <code>golang.org/x/sys/unix</code> сегодня является золотым отраслевым стандартом для создания контейнерных рантаймов, высокопроизводительных сетевых прокси, драйверов и системных утилит.</p>
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2195,6 +2196,7 @@
 <p>Процессор аппаратно переключается из непривилегированного режима пользователя (Ring 3) в режим ядра (Ring 0), подменяет указатель стека на стек ядра, проверяет права и передает управление диспетчеру прерываний ОС. После выполнения ядро загружает результат или отрицательный код ошибки в регистр <code>RAX</code> и возвращает управление в User Space инструкцией <code>SYSRET</code>. Рантайм Go проверяет значение <code>RAX</code> и автоматически преобразует отрицательные коды в типизированную ошибку <code>unix.Errno</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="1-pod-kapotom-mekhanika-sistemnogo-vyzova-v-rantayme">1. Под капотом: Механика системного вызова в рантайме</h2>
@@ -2279,6 +2281,7 @@ flowchart TD
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2290,6 +2293,7 @@ flowchart TD
 <p>Попытка передать дескриптор <code>syscall.FD</code> в функцию, принимающую <code>unix.FD</code>, или смешивание обработчиков сигналов <code>syscall.SIGINT</code> с типами <code>unix.Signal</code> приводят либо к ошибкам компиляции, либо (что значительно опаснее) к неявным ошибкам кастинга памяти через <code>uintptr</code>. В новых модулях и библиотеках полностью исключайте импорт устаревшего <code>syscall</code>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="3-mechanical-sympathy-blokirovki-kesh-i-tsena-pereklyucheniya">3. Mechanical Sympathy: Блокировки, кэш и цена переключения</h2>
@@ -2416,6 +2420,7 @@ func createNonblockingSocketAndEpoll() (int, error) {
 </code></pre>
 </div>
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2425,6 +2430,7 @@ func createNonblockingSocketAndEpoll() (int, error) {
     <p>Почему функция <code>unix.FcntlInt</code> принимает тип <code>uintptr</code>? В низкоуровневых системных вызовах дескрипторы и указатели на структуры передаются напрямую в 64-битные регистры процессора. Использование <code>uintptr</code> сообщает компилятору и сборщику мусора, что это целочисленное значение архитектурного размера (64 бита), которое не является указателем на объект в управляемой куче Go. Сборщик мусора игнорирует его при сканировании и не устанавливает барьеры записи (write barriers).</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="5-lovushki-i-khardkornye-voprosy-s-sobesedovaniy">5. Ловушки и хардкорные вопросы с собеседований</h2>
@@ -2465,6 +2471,7 @@ func createNonblockingSocketAndEpoll() (int, error) {
 </tr>
 </tbody>
 </table></div>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2477,6 +2484,7 @@ func createNonblockingSocketAndEpoll() (int, error) {
 <strong>Ответ:</strong> Пакет компилирует константы для минимальной поддерживаемой версии ядра и предоставляет безопасные структуры. Для проверки наличия специфических системных вызовов в рантайме инженер может запросить версию ядра через системный вызов <code>unix.Uname</code>. Если системный вызов не поддерживается ядром хоста, ядро возвращает ошибку <code>unix.ENOSYS</code> (<code>unix.Unimplemented</code>) или <code>unix.EPERM</code>. Библиотека не прячет ошибки ядра, оставляя право на graceful degradation приложению.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="6-sravnenie-s-ekosistemami-drugikh-yazykov">6. Сравнение с экосистемами других языков</h2>

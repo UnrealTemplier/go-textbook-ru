@@ -2184,6 +2184,7 @@
 <p><em>«Секрет построения масштабных систем заключается не в создании гигантской машины, а в координации множества мелких независимых воркеров так, чтобы они не наступали друг другу на пятки».</em>  <br />
 — Брайан Керниган</p>
 </blockquote>
+
 <aside class="callout callout-note" aria-label="Заметка">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">📝</span>
@@ -2193,6 +2194,7 @@
     <p><strong>Связи:</strong> Эта статья продолжает темы, заложенные в <a href="2-topics-partitions-i-offsets.html" class="wikilink">2. Topics, partitions и offsets</a> и <a href="3-producer-i-consumer.html" class="wikilink">3. Producer и consumer</a>. Мы переходим от индивидуальных клиентов к координированной групповой обработке — ключевому механизму масштабирования и отказоустойчивости потребления в Kafka.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="chto-takoe-consumer-group-i-zachem-ona-nuzhna">Что такое Consumer Group и зачем она нужна</h2>
@@ -2347,6 +2349,7 @@ flowchart TD
 </figure>
 
 
+
 <aside class="callout callout-info" aria-label="Под капотом">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -2356,6 +2359,7 @@ flowchart TD
     <p>Протокол Consumer Group — это серия RPC-запросов поверх бинарного протокола Kafka (Kafka wire protocol). Каждый консьюмер поддерживает постоянное TCP-соединение с координатором (heartbeat-ы и коммиты) и отдельные соединения с брокерами, содержащими назначенные ему партиции (fetch-запросы). В Go-клиентах, например <code>franz-go</code>, эти соединения управляются пулом горутин, каждая из которых обслуживает одно TCP-соединение с неблокирующим циклом чтения/записи. Делегирование расчета распределения клиенту-лидеру — гениальный архитектурный ход: если вам потребуется нестандартная логика распределения (например, с учетом доступных ресурсов CPU или географической зоны AZ), вам не нужно перекомпилировать брокеры Kafka — достаточно реализовать собственный плагин распределения на клиенте!</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="rebalansirovka-tsentralnyy-mekhanizm-zhivuchesti">Ребалансировка: центральный механизм живучести</h2>
@@ -2376,6 +2380,7 @@ flowchart TD
 <p>Помимо heartbeat-ов, существует <code>max.poll.interval.ms</code> (по умолчанию 5 минут) — максимальное время между двумя вызовами <code>Poll</code>. Если консьюмер не вызывает Poll дольше этого интервала, он считается «зависшим» и покидает группу, даже если heartbeat-ы продолжают приходить.</p>
 <p>Зачем нужен этот второй таймер? Представьте ситуацию: приложение попало в бесконечный цикл обработки, заблокировалось на deadlock в мьютексе или ждет ответа от зависшей сторонней базы данных. Фоновая горутина исправно шлет heartbeat-ы («я жива!»), но прикладная логика стоит. Если бы Kafka ориентировалась только на heartbeat, партиции «зависшего» воркера замерли бы навечно. </p>
 <p>Таймаут <code>max.poll.interval.ms</code> служит строгим сторожевым таймером (watchdog): не успел забрать следующую порцию за 5 минут — отдай партиции здоровым коллегам.</p>
+
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -2385,6 +2390,7 @@ flowchart TD
     <p>В Go-приложениях нельзя выполнять медленные синхронные операции внутри цикла, вызывающего <code>Poll</code> (например, транзакцию в БД с длительным ожиданием). Это может привести к превышению <code>max.poll.interval.ms</code> и бесконечным ребалансировкам. Решение: передавать полученные сообщения в worker-пул или отдельные горутины, немедленно возвращаясь к <code>Poll</code>, как показано в предыдущей статье <a href="3-producer-i-consumer.html" class="wikilink">3. Producer и consumer</a>.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="strategii-raspredeleniya-partitsiy-partition-assignment-strategies">Стратегии распределения партиций (Partition Assignment Strategies)</h2>
@@ -2513,6 +2519,7 @@ sequenceDiagram
 <h2 id="prakticheskie-vyvody-i-sobesedovanie">Практические выводы и собеседование</h2>
 
 <p>Consumer Group — обязательная тема на собеседованиях уровня Middle+ и Senior. Типовые вопросы:</p>
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2523,6 +2530,8 @@ sequenceDiagram
 <strong>Ответ:</strong> По истечении <code>max.poll.interval.ms</code> (по умолчанию 5 минут) координатор исключает зависшего консьюмера из группы и инициирует ребалансировку. Его партиции перераспределяются между оставшимися членами. Heartbeat-ы при этом могут продолжать приходить — это два независимых механизма контроля живости.</p>
   </div>
 </aside>
+
+
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -2535,6 +2544,8 @@ sequenceDiagram
   </div>
 </aside>
 
+
+
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -2545,6 +2556,7 @@ sequenceDiagram
 <strong>Ответ:</strong> В протоколе <code>Eager</code> все участники группы отзывают 100% своих партиций и полностью останавливают чтение данных (Stop-the-World) на всё время перераспределения. В <code>Cooperative Sticky</code> ребалансировка выполняется инкрементально в два раунда: воркеры продолжают вычитывать неизменившиеся партиции, а отзываются только те конкретные партиции, которые физически перемещаются на другой узел. Простой потока обработки сводится к нулю.</p>
   </div>
 </aside>
+
 
 <hr />
 <h2 id="zaklyuchenie-i-dalneyshie-shagi">Заключение и дальнейшие шаги</h2>
