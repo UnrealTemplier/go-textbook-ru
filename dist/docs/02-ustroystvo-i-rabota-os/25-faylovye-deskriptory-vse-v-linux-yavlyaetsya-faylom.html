@@ -315,7 +315,6 @@
 
           <div class="article-markdown">
             <h2 id="filosofiya-vsyo-est-fayl-i-zachem-eto-go-razrabotchiku">Философия «Всё есть файл» и зачем это Go-разработчику</h2>
-
 <p>В Unix-подобных системах (включая Linux) действует фундаментальная абстракция: <strong>любое устройство, ресурс или канал связи представляется как файл</strong>. Сетевой сокет, пайп, терминал, диск, <code>/dev/null</code> или <code>/dev/zero</code> — всё это для ядра и пользовательских программ является файлами.</p>
 <blockquote>
 <p><em>"Одним из самых гениальных упрощений Кена Томпсона и Денниса Ритчи в Bell Labs было решение отказаться от специализированных API для каждого вида оборудования. Лента, перфокарта, терминал или файл на диске — для программиста всё это просто непрерывный поток байтов с четырьмя базовыми операциями: открыть, прочитать, записать, закрыть."</em></p>
@@ -323,7 +322,6 @@
 <p>Для Go-разработчика это не просто историческая данность, а ключ к пониманию работы <code>io.Reader</code> / <code>io.Writer</code>, сетевого стека и асинхронного <code>IO</code>. Понимание файловой модели позволяет писать предсказуемый код, избегать утечек ресурсов и эффективно работать с системными лимитами. Интерфейсы <code>io.Reader</code> и <code>io.Writer</code> в стандартной библиотеке Go являются прямым концептуальным наследником этой полувековой философии Unix.</p>
 <hr />
 <h2 id="chto-takoe-faylovyy-deskriptor-fd-pod-kapotom">Что такое файловый дескриптор (FD) «под капотом»</h2>
-
 <p>Файловый дескриптор (File Descriptor, FD) — это <strong>не указатель на файл</strong> и не структура данных. Это <strong>маленькое целое число</strong> (обычно <code>int32</code>), которое служит индексом в таблице открытых файлов текущего процесса.</p>
 <p>Представьте номерок в гардеробе театра: сам по себе пластиковый жетон с цифрой <code>42</code> не греет вас в мороз. Но когда вы отдаете номерок гардеробщику (ядру ОС), он заглядывает в ячейку #42 гардеробной стойки (таблицу дескрипторов процесса), находит вешалку (структуру файла в ядре) и выдает ваше пальто (данные с диска или из сети).</p>
 <p>По умолчанию каждому процессу при рождении достаются три стандартных номерка:<br />
@@ -366,7 +364,6 @@ flowchart TD
 <p><strong>Ключевой момент:</strong> Таблица FD — это простой массив указателей. Поиск свободного дескриптора работает за <strong>O(1)</strong> или <strong>O(log N)</strong> в зависимости от реализации, что делает открытие файлов крайне быстрым. Однако при большом количестве открытых дескрипторов ядро может использовать bitmaps или RB-деревья для оптимизации поиска.</p>
 <hr />
 <h2 id="vfs-magiya-unifikatsii-resursov">VFS: Магия унификации ресурсов</h2>
-
 <p>Чтобы абстракция «всё есть файл» работала, ядро использует <strong>VFS (Virtual File System)</strong> — слой виртуальной файловой системы. VFS предоставляет единый интерфейс <code>read</code>, <code>write</code>, <code>close</code>, <code>lseek</code> для любых ресурсов.</p>
 <p>В ядре Linux каждый открытый ресурс описывается тремя уровнями:<br />
 1. <strong>FD (индекс в таблице процесса)</strong> — локальный для процесса.<br />
@@ -428,9 +425,8 @@ graph LR
 
 <hr />
 <h2 id="upravlenie-deskriptorami-v-go-idiomy-i-lovushki">Управление дескрипторами в Go: Идиомы и ловушки</h2>
-
 <p>Go предоставляет высокоуровневый обертку <code>os.File</code>, но под капотом это просто обертка над FD. Понимание того, как Go управляет дескрипторами, критично для production-кода.</p>
-<h3 id="1-os-newfile-i-ruchnoe-upravlenie">1. `os.NewFile` и ручное управление</h3>
+<h3 id="1-os-newfile-i-ruchnoe-upravlenie">1. <code>os.NewFile</code> и ручное управление</h3>
 <p>Если вы работаете с низкоуровневыми API (например, получаете FD из <code>syscall</code> или <code>net.Conn</code>), вы должны явно создать Go-обертку:</p>
 
 <div class="code-block" data-lang="go">
@@ -464,7 +460,7 @@ func handleRawFD() error {
 </code></pre>
 </div>
 
-<h3 id="2-ocloexec-i-predotvrashchenie-utechek">2. `O_CLOEXEC` и предотвращение утечек</h3>
+<h3 id="2-ocloexec-i-predotvrashchenie-utechek">2. <code>O_CLOEXEC</code> и предотвращение утечек</h3>
 <p>При вызове <code>exec.Command</code> или <code>fork()</code> дочерний процесс наследует таблицу FD родителя. Если вы открыли сокет или файл без флага <code>O_CLOEXEC</code>, он автоматически откроется в дочернем процессе, что может привести к:<br />
 - Утечке ресурсов (child держит дескриптор открытым после <code>exec</code>).<br />
 - Конфликтам (несколько процессов пишут в один сокет/лог).<br />
@@ -505,7 +501,7 @@ func openWithCloexec(path string) (*os.File, error) {
 </code></pre>
 </div>
 
-<h3 id="3-os-file-vs-net-conn-vs-raw-syscall">3. `os.File` vs `net.Conn` vs raw `syscall`</h3>
+<h3 id="3-os-file-vs-net-conn-vs-raw-syscall">3. <code>os.File</code> vs <code>net.Conn</code> vs raw <code>syscall</code></h3>
 <ul>
 <li><code>os.File</code> — оптимизирован для <code>read/write</code> с буферизацией, поддерживает <code>io.Reader/Writer</code>, <code>io.Seeker</code>.</li>
 <li><code>net.Conn</code> — обертка над сокетами. В Go 1.11+ <code>net.Conn</code> реализует <code>io.ReaderAt</code> и <code>io.WriterTo</code> только если underlying FD поддерживает <code>sendfile</code> или <code>splice</code>.</li>
@@ -530,7 +526,6 @@ Go не гарантирует вызов <code>defer</code> при <code>SIGKIL
 
 <hr />
 <h2 id="mekhanicheskaya-simpatiya-stoimost-i-optimizatsiya">Механическая симпатия: Стоимость и оптимизация</h2>
-
 <h3 id="1-poisk-fd-i-vfs-overhead">1. Поиск FD и VFS overhead</h3>
 <p>Каждый <code>read</code>/<code>write</code> проходит через:<br />
 <code>User Space -&gt; Syscall -&gt; files_struct lookup -&gt; struct file validation -&gt; VFS dispatch -&gt; Driver</code><br />
@@ -553,7 +548,6 @@ Go не гарантирует вызов <code>defer</code> при <code>SIGKIL
 <p>Понимание FD позволяет использовать <code>splice</code> и <code>sendfile</code> для передачи данных между диском и сетью без копирования в user space. В Go это реализуется через <code>syscall.Sendfile</code> или <code>golang.org/x/sys/unix</code>, что критично для статических файлов или проксирования.</p>
 <hr />
 <h2 id="itogi">Итоги</h2>
-
 <ol>
 <li><strong>FD — это индекс</strong>, а не указатель. Таблица дескрипторов работает за O(1).</li>
 <li><strong>VFS унифицирует</strong> диск, сеть, пайпы и терминалы под единый интерфейс <code>read/write/close</code>.</li>

@@ -308,14 +308,12 @@
 <p>Разберем, как выстроить надежный контур наблюдаемости в Kubernetes, не разорившись на ресурсах и не потеряв контроль над поведением сервисов.</p>
 <hr />
 <h2 id="dinamicheskiy-mir-kubernetes">Динамический мир Kubernetes</h2>
-
 <p>Kubernetes создает принципиально новые вызовы для системной инженерии:<br />
 1. <strong>Эфемерность:</strong> Жизненный цикл пода измеряется часами или днями. Попытка мониторить под как отдельный «хост» приводит к взрывному раздуванию временных рядов (Series Churn).<br />
 2. <strong>Многоуровневость (Multi-Tenancy):</strong> В одном физическом кластере соседствуют десятки изолированных неймспейсов (Namespaces), делящие общий пул процессоров и памяти.<br />
 3. <strong>Виртуализация ресурсов (Cgroups):</strong> Рантайм приложения изолирован механизмом Linux cgroups, что напрямую влияет на поведение сборщика мусора Go и планировщика операционной системы.</p>
 <hr />
 <h2 id="arkhitektura-observability-v-k8s">Архитектура Observability в K8s</h2>
-
 <p>Классический подход «Push» (агент внутри приложения отправляет метрики) в K8s менее популярен, чем подход <strong>Pull</strong> с использованием <strong>Prometheus Operator</strong>.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -356,7 +354,6 @@ flowchart TD
 
 
 <h3 id="prometheus-operator">Prometheus Operator</h3>
-
 <p>Это стандарт де-факто для мониторинга в K8s. Вместо того чтобы вручную править конфиг <code>prometheus.yml</code> и перезагружать контейнер при каждом добавлении нового сервиса, Operator делает это автоматически.</p>
 <ul>
 <li><strong>CRD (Custom Resource Definition):</strong> Вы создаете ресурс <code>ServiceMonitor</code>, который говорит: «Следи за всеми сервисами, у которых есть лейбл <code>app=backend</code>».</li>
@@ -365,16 +362,13 @@ flowchart TD
 <p>Prometheus Operator непрерывно отслеживает Kubernetes API и автоматически генерирует конфиг скрейпинга для ядра Prometheus при любом изменении подов или сервисов.</p>
 <hr />
 <h2 id="logirovanie-sidecar-vs-daemonset">Логирование: Sidecar vs DaemonSet</h2>
-
 <p>В статье <a href="../03-logirovanie/4-tsentralizovannye-logi.html" class="wikilink">4. Централизованные логи</a> мы определили, что приложения должны писать в <code>stdout</code>. В K8s вопрос в том, <em>кто</em> эти логи забирает.</p>
 <h3 id="1-daemonset-agent-on-node">1. DaemonSet (Agent on Node)</h3>
-
 <p>На каждой ноде кластера запускается один под-агент (например, Promtail или Fluent Bit).<br />
 *   <strong>Принцип:</strong> Агент монтирует директорию <code>/var/log</code> с хоста, читает файлы контейнеров и отправляет в Loki.<br />
 *   <strong>Плюсы:</strong> Эффективно. Не потребляет ресурсы приложения. Один процесс на ноду.<br />
 *   <strong>Минусы:</strong> Нельзя парсить логи приложений по-разному на уровне приложения (конфиг общий).</p>
 <h3 id="2-sidecar-agent-in-pod">2. Sidecar (Agent in Pod)</h3>
-
 <p>В каждый под вашего приложения добавляется второй контейнер — логгер.<br />
 *   <strong>Принцип:</strong> Оба контейнера монтируют общий <code>emptyDir</code> volume. Приложение пишет в файл, sidecar читает и отправляет.<br />
 *   <strong>Плюсы:</strong> Максимальная гибкость (каждый микросервис может иметь свой формат/токен).<br />
@@ -394,7 +388,6 @@ flowchart TD
 
 <hr />
 <h2 id="under-the-hood-container-metrics-cadvisor">Under the Hood: Container Metrics (cAdvisor)</h2>
-
 <p>Kubernetes сам по себе предоставляет метрики через Metrics Server, но для детального Observability мы используем <code>cAdvisor</code> (встроен в Kubelet).</p>
 <p>Go-разработчику метрики, которые вы видите в Grafana (CPU, Memory Usage), — это не то, что показывает <code>top</code> внутри контейнера.</p>
 <ul>
@@ -417,7 +410,6 @@ Go GC не знает о лимитах контейнера (cgroups) до ве
 
 <hr />
 <h2 id="cost-and-scale-cardinality-v-k8s">Cost and Scale: Cardinality в K8s</h2>
-
 <p>В Kubernetes проблема кардинальности (обсуждавшаяся в статье <a href="../01-osnovy/4-cardinality-i-stoimost-metrik.html" class="wikilink">4. Cardinality и стоимость метрик</a>) обостряется.</p>
 <p>Если вы добавите лейбл <code>pod_name</code> в метрику, а потом сделаете <code>RollingUpdate</code> деплоя, K8s создаст новые поды с новыми именами.<br />
 Prometheus будет создавать новые временные ряды для каждого нового пода. Старые ряды будут «гнить» (stale), но занимать место.</p>
@@ -426,7 +418,6 @@ Prometheus будет создавать новые временные ряды 
 Никогда не используйте лейблы, которые меняются при редеплое (<code>pod_name</code>, <code>container_id</code>, <code>instance_ip</code>) в метриках высокого кардинальности. Используйте статические лейблы (<code>deployment</code>, <code>service</code>, <code>namespace</code>).</p>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Prometheus Operator</strong> — стандарт управления мониторингом в K8s через CRD (<code>ServiceMonitor</code>).</li>
 <li><strong>DaemonSet</strong> — эффективный способ сбора логов с нод.</li>

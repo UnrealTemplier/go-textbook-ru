@@ -314,7 +314,6 @@
 <p>Для многих разработчиков Kubernetes выглядит непостижимым «черным ящиком», пугающим сотнями строк конфигурационных YAML-файлов. Однако Kubernetes целиком написан на языке <strong>Go</strong>. Вся его внутренняя архитектура является образцовым воплощением классической философии Go: конкурентность, декларативность, реактивная обработка событий и общение компонентов через очереди вместо блокировок. Глубокое понимание устройства Control Plane и Worker-нод — обязательный рубеж для перехода на уровень Senior и Staff/Lead инженера.</p>
 <hr />
 <h2 id="1-filosofiya-kubernetes-deklarativnoe-sostoyanie-i-tsikly-soglasovaniya">1. Философия Kubernetes: Декларативное состояние и циклы согласования</h2>
-
 <p>Ключевой сдвиг ментальной парадигмы при переходе к K8s — отказ от императивного управления в пользу <strong>декларативного подхода (Declarative State)</strong>.</p>
 <p>В традиционных скриптах развертывания (Bash, Ansible) мы отдаем императивные команды: <em>«Скачай образ, останови старый процесс, запусти новый на порту 8080»</em>. Если на промежуточном шаге моргнет сеть, скрипт упадет в непредсказуемом состоянии.</p>
 <p>В Kubernetes вы не приказываете кластеру, <em>что именно делать</em>. Вы декларируете, <strong>каким должен быть желаемый финальный результат (Desired State)</strong>:</p>
@@ -357,7 +356,6 @@ flowchart LR
 
 <hr />
 <h2 id="2-control-plane-mozg-i-komandnyy-punkt-klastera">2. Control Plane: Мозг и командный пункт кластера</h2>
-
 <p>Слой управления (<strong>Control Plane</strong>, исторически называемый Master) отвечает за принятие глобальных решений в кластере: планирование подов, реакцию на сбои и хранение конфигураций. В продакшене все компоненты Control Plane резервируются на 3 или 5 независимых серверах.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -397,12 +395,12 @@ flowchart TD
 </figure>
 
 
-<h3 id="1-kube-apiserver-edinaya-tochka-vkhoda">1. `kube-apiserver` (Единая точка входа)</h3>
+<h3 id="1-kube-apiserver-edinaya-tochka-vkhoda">1. <code>kube-apiserver</code> (Единая точка входа)</h3>
 <p>Центральный нервный узел всей системы. Это высокопроизводительный HTTP/REST сервер на Go. <br />
 * Единственный компонент кластера, который имеет право напрямую читать и писать в базу данных <code>etcd</code>.<br />
 * Все остальные участники (включая утилиту <code>kubectl</code>, планировщик, контроллеры и агенты на нодах) взаимодействуют строго с API Server по защищенному протоколу HTTPS с двусторонней аутентификацией (mTLS).<br />
 * Выполняет валидацию манифестов (Schema Validation), аутентификацию (JWT, токены, сертификаты), авторизацию (RBAC) и запуск мутирующих и валидирующих хуков (<strong>Admission Webhooks</strong>).</p>
-<h3 id="2-etcd-pamyat-klastera">2. `etcd` (Память кластера)</h3>
+<h3 id="2-etcd-pamyat-klastera">2. <code>etcd</code> (Память кластера)</h3>
 <p>Высоконадежное распределенное key-value хранилище, написанное на Go. Оно реализует строгий алгоритм консенсуса <strong>Raft</strong>, обеспечивающий устойчивость к разделению сети (Network Partitions). В <code>etcd</code> хранится абсолютно всё состояние кластера: описания подов, сервисов, секреты, роли доступа и текущие сетевые эндпоинты.</p>
 
 <aside class="callout callout-info" aria-label="Под капотом: Дисковый I/O и библиотека Bbolt в etcd">
@@ -419,28 +417,27 @@ flowchart TD
 </aside>
 
 
-<h3 id="3-kube-scheduler-planirovshchik">3. `kube-scheduler` (Планировщик)</h3>
+<h3 id="3-kube-scheduler-planirovshchik">3. <code>kube-scheduler</code> (Планировщик)</h3>
 <p>Интеллектуальный диспетчер, написанный на Go. Он непрерывно мониторит API Server в поисках вновь созданных Подов, у которых поле <code>nodeName</code> пустое (статус <code>Pending</code>).<br />
 Планировщик анализирует ресурсы:<br />
 1. <strong>Фильтрация (Predicates):</strong> Отсекает ноды, на которых недостаточно свободной памяти или CPU (<code>requests</code>), либо нарушены правила <code>nodeSelector</code>, <code>taints/tolerations</code> и ограничения affinity/anti-affinity.<br />
 2. <strong>Скоринг (Priorities):</strong> Ранжирует подходящие ноды по специальной оценочной шкале (например, равномерность распределения реплик одного сервиса по разным стойкам и зонам доступности).<br />
 3. <strong>Биндинг (Binding):</strong> Планировщик <em>не запускает</em> контейнер сам! Он лишь отправляет в API Server команду связать Под с выбранной нодой.</p>
-<h3 id="4-kube-controller-manager-menedzher-kontrollerov">4. `kube-controller-manager` (Менеджер контроллеров)</h3>
+<h3 id="4-kube-controller-manager-menedzher-kontrollerov">4. <code>kube-controller-manager</code> (Менеджер контроллеров)</h3>
 <p>Монолитный Go-бинарник, объединяющий десятки параллельных циклов согласования (Reconciliation Loops):<br />
 * <strong>Deployment Controller:</strong> Следит за обновлениями образов и организует стратегии выкатки (Rolling Updates).<br />
 * <strong>ReplicaSet Controller:</strong> Следит за тем, чтобы количество живых реплик пода строго соответствовало спецификации <code>replicas</code>.<br />
 * <strong>Node Controller:</strong> Реагирует на потерю связи с серверами: если нода не отвечает более 5 минут, инициирует аварийное выселение (Eviction) всех запущенных на ней подов.</p>
 <hr />
 <h2 id="3-worker-nodes-muskuly-klastera">3. Worker Nodes: Мускулы кластера</h2>
-
 <p>Воркер-ноды — это физические серверы или виртуальные машины, на которых непосредственно исполняется полезная нагрузка — ваши Go-микросервисы.</p>
-<h3 id="1-kubelet-khostovyy-agent">1. `kubelet` (Хостовый агент)</h3>
+<h3 id="1-kubelet-khostovyy-agent">1. <code>kubelet</code> (Хостовый агент)</h3>
 <p>Главный агент Kubernetes на каждом сервере, написанный на Go. Kubelet отвечает за реальную жизнь подов на конкретной ноде:<br />
 * Отслеживает в API Server поды, назначенные на его ноду.<br />
 * Общается со средой исполнения контейнеров через интерфейс <strong>CRI (Container Runtime Interface)</strong> по протоколу gRPC.<br />
 * Монтирует тома и пробрасывает секреты из <code>ConfigMap</code> и <code>Secret</code>.<br />
 * Регулярно запускает проверки жизнеспособности подов (<strong>Liveness, Readiness и Startup Probes</strong>), перезапуская зависшие контейнеры.</p>
-<h3 id="2-kube-proxy-setevoy-dispetcher">2. `kube-proxy` (Сетевой диспетчер)</h3>
+<h3 id="2-kube-proxy-setevoy-dispetcher">2. <code>kube-proxy</code> (Сетевой диспетчер)</h3>
 <p>Сетевой компонент, обеспечивающий абстракцию <strong>Kubernetes Service</strong>. Он отвечает за то, чтобы запросы на стабильный виртуальный IP-адрес сервиса (ClusterIP) равномерно балансировались между эфемерными IP-адресами реальных подов.</p>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Производительность iptables против IPVS в kube-proxy">
@@ -463,7 +460,6 @@ flowchart TD
 <p>Низкоуровневый программный комплекс, управляющий контейнерами на ноде. С версии Kubernetes 1.24 поддержка монолитного Docker Engine была официально исключена (Dockershim removed). Стандартом де-факто стал легковесный рантайм <strong>containerd</strong> (или <strong>CRI-O</strong>), который взаимодействует с Kubelet через строгий интерфейс OCI.</p>
 <hr />
 <h2 id="4-mekhanika-sinkhronizatsii-pattern-list-watch-i-informers-v-go">4. Механика синхронизации: Паттерн List-Watch и Informers в Go</h2>
-
 <p>Каким образом тысячи распределенных агентов (Kubelet, Scheduler, Controllers) мгновенно узнают об изменениях манифестов в <code>kube-apiserver</code>, не убивая базу данных <code>etcd</code> постоянным поллингом?</p>
 <p>Kubernetes решает эту задачу с помощью изящного архитектурного паттерна <strong>List-Watch</strong>:</p>
 <ol>
@@ -528,7 +524,6 @@ sequenceDiagram
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Декларативное управление:</strong> Kubernetes непрерывно приводит Current State системы к Desired State с помощью Reconciliation Loops.</li>
 <li><strong>Control Plane:</strong> <code>kube-apiserver</code> выступает единственным фасадом к <code>etcd</code>, планировщик <code>kube-scheduler</code> находит оптимальные ноды, а <code>kube-controller-manager</code> управляет жизненным циклом ресурсов.</li>

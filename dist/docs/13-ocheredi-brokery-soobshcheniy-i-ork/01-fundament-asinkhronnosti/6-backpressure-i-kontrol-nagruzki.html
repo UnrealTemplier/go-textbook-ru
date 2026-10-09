@@ -362,11 +362,9 @@
 <p>Архитектурный механизм, позволяющий нижестоящему узлу (потребителю) заявить вышестоящему (поставщику): <em>«Притормози, я захлебываюсь!»</em>, называется <strong>Backpressure (Обратное давление)</strong>.</p>
 <hr />
 <h2 id="backpressure-iskusstvo-govorit-khvatit">Backpressure: Искусство говорить «Хватит»</h2>
-
 <p>Любая распределенная система, лишенная обратной связи между консьюмером и продюсером, в момент перегрузки ведет себя как труба без крана. Чтобы понять, почему консьюмер не может «просто работать быстрее», необходимо изучить физику процессов внутри сервера.</p>
 <hr />
 <h2 id="1-mechanical-sympathy-anatomiya-peregruzki">1. Mechanical Sympathy: Анатомия перегрузки</h2>
-
 <p>Давайте проследим, как выглядит отсутствие Backpressure на уровне кремния, операционной системы и рантайма языка Go:</p>
 
 <div class="code-block" data-lang="ascii">
@@ -423,10 +421,8 @@
 
 <hr />
 <h2 id="2-backpressure-vnutri-go-patterny-zashchity-protsessa">2. Backpressure внутри Go: Паттерны защиты процесса</h2>
-
 <p>Прежде чем настраивать кластер брокера, необходимо гарантировать внутреннюю стабильность самого Go-процесса. Фундаментальный закон надежности: <strong>Число одновременно выполняемых тяжелых операций должно быть строго детерминировано и ограничено</strong>.</p>
 <h3 id="sposob-1-worker-pool-i-ogranichennye-buferizovannye-kanaly">Способ 1: Worker Pool и ограниченные буферизованные каналы</h3>
-
 <p>Классический паттерн пула воркеров с фиксированным числом исполнителей:</p>
 
 <div class="code-block" data-lang="go">
@@ -494,8 +490,7 @@ func (d *Dispatcher) Submit(ctx context.Context, msg []byte) error {
 </div>
 
 <p>Когда все воркеры заняты, а емкость канала исчерпана, попытка отправки <code>tasks &lt;- msg</code> <strong>естественным образом блокирует горутину</strong>, читающую сообщения из брокера. Чтение из сети прекращается, заполняется сокетный буфер ОС, и TCP-окно принудительно останавливает брокер!</p>
-<h3 id="sposob-2-vzveshennye-semafory-xsyncsemaphore">Способ 2: Взвешенные семафоры (`x/sync/semaphore`)</h3>
-
+<h3 id="sposob-2-vzveshennye-semafory-xsyncsemaphore">Способ 2: Взвешенные семафоры (<code>x/sync/semaphore</code>)</h3>
 <p>Если логика вызова не укладывается в схему очередей каналов, для ограничения параллелизма используется официальный пакет <code>golang.org/x/sync/semaphore</code> (<code>x/sync/semaphore</code>):</p>
 
 <div class="code-block" data-lang="go">
@@ -547,7 +542,6 @@ func (c *SemConsumer) Handle(ctx context.Context, msg []byte) error {
 
 <hr />
 <h2 id="3-backpressure-v-raspredelennykh-brokerakh-push-vs-pull">3. Backpressure в распределенных брокерах: Push vs Pull</h2>
-
 <p>Защита консьюмера в оперативной памяти — это только половина дела. Как поведет себя сам брокер, когда консьюмер замедлит чтение? Ответ зависит от фундаментальной архитектурной парадигмы брокера: <strong>Push</strong> или <strong>Pull</strong>.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -585,7 +579,6 @@ flowchart TD
 
 
 <h3 id="rabbitmq-i-model-push-kovarstvo-neupravlyaemogo-potoka">RabbitMQ и модель Push: Коварство неуправляемого потока</h3>
-
 <p>RabbitMQ по умолчанию работает в модели <strong>Push</strong>: брокер берет на себя инициативу и активно «выталкивает» сообщения в открытый TCP-сокет подключенного консьюмера с максимальной скоростью сетевой карты.</p>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Смерть консьюмера без настройки QoS">
@@ -606,7 +599,6 @@ flowchart TD
 <p><strong>Что происходит, если начинает переполняться сам RabbitMQ?</strong><br />
 В брокере срабатывают <strong>Memory/Disk Alarms</strong>: если объем свободной оперативной памяти или дискового пространства падает ниже критического порога (по умолчанию 40% RAM), RabbitMQ <strong>перестает вычитывать сокеты продюсеров</strong>. TCP-окно продюсера захлопывается, и горутины, публикующие события в Go API, блокируются при вызове <code>Publish</code>. Нагрузка останавливается на самом входе в систему!</p>
 <h3 id="apache-kafka-i-model-pull-estestvennyy-immunitet-k-peregruzke">Apache Kafka и модель Pull: Естественный иммунитет к перегрузке</h3>
-
 <p>Apache Kafka использует диаметрально противоположный подход: философию <strong>Dumb Broker / Smart Consumer</strong>. Брокер Kafka никогда ничего не проталкивает клиентам по собственной инициативе.</p>
 <p>Консьюмер в Kafka работает по модели <strong>Pull (Вытягивание)</strong>:<br />
 1. Go-сервис сам инициирует сетевой запрос <code>Poll(timeout)</code>: <em>«Брокер, отдай мне очередную порцию данных размером не более 1 МБ»</em>.<br />
@@ -633,7 +625,6 @@ flowchart TD
 
 <hr />
 <h2 id="4-strategii-sbrosa-nagruzki-load-shedding">4. Стратегии сброса нагрузки (Load Shedding)</h2>
-
 <p>Когда поток трафика в разы превосходит физические возможности инфраструктуры, одного Backpressure становится недостаточно. Если в очереди RabbitMQ накопилось 10 миллионов сообщений, а каждое из них — это одноразовый SMS-код для входа в банк со сроком жизни 2 минуты, разгребать эту очередь через 3 часа бессмысленно: коды уже устарели.</p>
 <p>В критических ситуациях в архитектуру внедряется <strong>Load Shedding (Сброс балласта)</strong> — осознанный отказ от части сообщений ради выживания ядра системы:</p>
 
@@ -668,7 +659,6 @@ flowchart LR
 </ol>
 <hr />
 <h2 id="rezyume">Резюме</h2>
-
 <ol>
 <li><strong>Без Backpressure любая распределенная система обречена на падение по OOM</strong> в момент первого же нештатного всплеска нагрузки.</li>
 <li><strong>В рантайме Go</strong> конкурентность обязана быть жестко ограничена через пулы воркеров с буферизованными каналами (<code>tasks &lt;- msg</code>) или семафоры <code>x/sync/semaphore</code>.</li>

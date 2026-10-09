@@ -321,7 +321,6 @@
 </blockquote>
 <hr />
 <h2 id="vvedenie">Введение</h2>
-
 <p>В кругах бэкенд-разработчиков и системных администраторов ходит полушутливое, но выстраданное кровью правило: если в распределенной системе происходит странный, трудноуловимый сбой — проверьте DNS. </p>
 <p>Для большинства прикладных программистов разрешение доменных имен (Domain Name System) представляется чем-то элементарным: «превращение строчки <code>api.example.com</code> в IP-адрес <code>93.184.216.34</code>». Мы пишем <code>http.Get("https://api.example.com")</code> и не задумываемся, что DNS — это самый первый, самый незаметный и зачастую самый узкий сетевой этап в жизненном цикле любого запроса.</p>
 <p>Задержки DNS, промахи мимо кэша, последовательные тайм-ауты в libc и неочевидные правила подстановки поисковых доменов способны превратить 2-миллисекундный микросервисный вызов в пятисекундную катастрофу (tail-latency).</p>
@@ -369,7 +368,6 @@ flowchart TD
 
 <hr />
 <h2 id="arkhitektura-dns-razresheniya-v-os">Архитектура DNS-разрешения в ОС</h2>
-
 <p>В операционных системах семейства Linux разрешение символических имен не происходит по волшебству. Это детерминированный конвейер, управляемый конфигурационным файлом <code>/etc/resolv.conf</code> и подсистемой переключения служб имен <strong>NSS (Name Service Switch)</strong> через файл <code>/etc/nsswitch.conf</code>.</p>
 <p>Конфигурационный файл <code>/etc/resolv.conf</code> служит единой точкой правды для DNS-клиентов в стандарте POSIX:</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
@@ -453,10 +451,9 @@ flowchart LR
 
 
 <hr />
-<h2 id="libc-i-getaddrinfo-klassicheskiy-podkhod">libc и `getaddrinfo`: Классический подход</h2>
-
+<h2 id="libc-i-getaddrinfo-klassicheskiy-podkhod">libc и <code>getaddrinfo</code>: Классический подход</h2>
 <p>Когда программа на C/C++, Java или Python выполняет сетевое подключение, она обращается к библиотечной функции libc: <code>getaddrinfo()</code>.</p>
-<h3 id="konveyer-vypolneniya-getaddrinfo">Конвейер выполнения `getaddrinfo()`:</h3>
+<h3 id="konveyer-vypolneniya-getaddrinfo">Конвейер выполнения <code>getaddrinfo()</code>:</h3>
 <ol>
 <li>Обращается к файлу <code>/etc/hosts</code>. Если IP найден локально — поиск завершается без сетевых пакетов.</li>
 <li>Проверяет настройки <code>nsswitch.conf</code> (модули files, dns, mdns4).</li>
@@ -483,13 +480,11 @@ flowchart LR
 
 
 <hr />
-<h2 id="go-rezolver-netgo-netcgo-i-net-resolver">Go-резолвер: `netgo`, `netcgo` и `net.Resolver`</h2>
-
+<h2 id="go-rezolver-netgo-netcgo-i-net-resolver">Go-резолвер: <code>netgo</code>, <code>netcgo</code> и <code>net.Resolver</code></h2>
 <p>Создатели Go стремились к созданию самодостаточных, статически скомпилированных бинарников без динамических связей с libc. Кроме того, блокирующий характер <code>getaddrinfo()</code> плохо вязался с легковесной моделью горутин и <code>netpoller</code>.</p>
 <p>Это решало проблемы с утечками памяти в стандартном <code>net/http</code> и блокировками системных потоков при <code>CGO_ENABLED=1</code>. Так родился встроенный резолвер <strong><code>netgo</code></strong> — полноценный DNS-клиент, написанный целиком на Go.</p>
 <hr />
 <h3 id="rezhimy-raboty">Режимы работы</h3>
-
 <p>Поведение рантайма Go контролируется тегами сборки и переменной окружения <code>GODEBUG=netdns=...</code>:</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
@@ -513,8 +508,7 @@ flowchart LR
 </tbody>
 </table></div>
 <hr />
-<h3 id="kak-rabotaet-netgo">Как работает `netgo`</h3>
-
+<h3 id="kak-rabotaet-netgo">Как работает <code>netgo</code></h3>
 <p>Встроенный резолвер <code>netgo</code> самостоятельно читает и парсит <code>/etc/resolv.conf</code>, но принципиально отличается от классического libc:</p>
 <ol>
 <li><strong>Последовательный опрос серверов с собственными таймаутами:</strong> Если в конфигурации указано несколько <code>nameserver</code>, Go перебирает их <strong>по очереди</strong> (в цикле по числу попыток и по списку серверов), а не запрашивает все сразу. Параллельно идут лишь запросы разных типов (A и AAAA). Таймаут на каждую попытку и число попыток берутся из <code>resolv.conf</code> (<code>timeout</code>, <code>attempts</code>), поэтому зависание первого сервера задержит ответ, но не заблокирует его навсегда.</li>
@@ -593,7 +587,6 @@ func main() {
 
 <hr />
 <h2 id="mechanical-sympathy-set-kesh-i-blokirovki">Mechanical Sympathy: Сеть, кэш и блокировки</h2>
-
 <p>Разрешение DNS с точки зрения системного программирования и ресурсов процессора:</p>
 <ol>
 <li><strong>UDP-дейтаграмма (DNS Query):</strong> Размер стандартного запроса составляет всего 50–70 байт. Пакет уходит через сисколл <code>sendto()</code>, проходит через подсистему маршрутизации ядра <code>ip_output()</code> и летит в сетевую карту. Ответ вычитывается через <code>recvfrom()</code>. В Go под капотом создается сокет <code>net.UDPConn</code>, а данные читаются методом <code>ReadFromUDP()</code>.</li>
@@ -653,7 +646,6 @@ sequenceDiagram
 
 <hr />
 <h2 id="itogi">Итоги</h2>
-
 <ol>
 <li><strong>OS vs Go</strong>: Классический libc (<code>getaddrinfo</code>) опрашивает серверы последовательно (с ожиданием таймаута при сбое), кэширует конфигурацию и блокирует системные потоки. Встроенный резолвер Go (<strong><code>netgo</code></strong>) тоже опрашивает серверы последовательно, но запросы A и AAAA отправляет параллельно, интегрируется с <code>netpoller</code> и не зависит от динамических библиотек.</li>
 <li><strong>Системный конвейер</strong>: DNS-резолвинг на уровне ядра — это быстрый обмен легковесными UDP-дейтаграммами через <code>socket</code>, <code>sendto</code>, <code>recvfrom</code>. В случае усечения ответа (флаг <code>TC</code>) повторный запрос по TCP делает сам резолвер (libc или Go), а не ядро.</li>

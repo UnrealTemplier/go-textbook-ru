@@ -301,7 +301,6 @@
 <p>В современных облачных и контейнерных средах эта модель полностью мертва.</p>
 <hr />
 <h2 id="1-smert-perimetra-arkhitektura-zero-trust">1. Смерть периметра: Архитектура Zero Trust</h2>
-
 <p>Почему концепция «Замка и рва» потерпела сокрушительный крах в современной индустрии?</p>
 <ol>
 <li><strong>Уязвимости класса SSRF (Server-Side Request Forgery):</strong> Злоумышленник находит брешь в безобидном внутреннем сервисе конвертации изображений или генерации PDF (например, передавая <code>http://169.254.169.254/</code> для кражи метаданных AWS). Получив возможность выполнять запросы от лица одного пода, хакер оказывается внутри вашего «неприступного замка».</li>
@@ -315,7 +314,6 @@
 <p>Технологическим фундаментом для реализации Zero Trust в межсервисном общении является <strong>mTLS (Mutual TLS — Взаимный TLS)</strong>.</p>
 <hr />
 <h2 id="2-anatomiya-mtls-dvustoronnee-rukopozhatie">2. Анатомия mTLS: Двустороннее рукопожатие</h2>
-
 <p>Классический веб-протокол TLS (HTTPS), с которым мы ежедневно взаимодействуем в браузере — это <strong>односторонняя аутентификация</strong>. </p>
 <p>Когда браузер открывает соединение с <code>google.com</code>:<br />
 1. Браузер (Клиент) проверяет сертификат Сервера, сверяет доменное имя и цепочку доверия до глобального центра сертификации (DigiCert, Let's Encrypt). Клиент убеждается: <em>«Я действительно говорю с Google, а не с мошенником»</em>.<br />
@@ -370,11 +368,9 @@ sequenceDiagram
 </ol>
 <hr />
 <h2 id="3-idiomatichnyy-go-nastroyka-mtls-v-rantayme">3. Идиоматичный Go: Настройка mTLS в рантайме</h2>
-
 <p>Стандартная библиотека языка Go содержит пакет <code>crypto/tls</code>, который по праву считается одним из лучших и безопасных TLS-движков в мире. Вам не требуется ставить Nginx перед каждым сервисом — Go поддерживает mTLS прямо в рантайме.</p>
 <p>Для функционирования mTLS в закрытой инфраструктуре разворачивается собственный <strong>Внутренний Центр Сертификации (Internal CA — Certificate Authority)</strong>. Корневой сертификат этого CA (<code>ca.crt</code>) выступает гарантом доверия и подписывает сертификаты всех серверов и клиентов.</p>
 <h3 id="1-kod-servera-go-server">1. Код Сервера (Go Server)</h3>
-
 <p>Сервер настраивается так, чтобы жестко требовать и валидировать сертификат клиента через директиву <code>tls.RequireAndVerifyClientCert</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -443,7 +439,6 @@ func main() {
 </div>
 
 <h3 id="2-kod-klienta-go-client">2. Код Клиента (Go Client)</h3>
-
 <p>Стандартный <code>http.DefaultClient</code> в Go не отправляет сертификаты клиента. Чтобы клиент мог пройти рукопожатие, мы обязаны предоставить пару <code>client.crt</code> / <code>client.key</code> и явно настроить <code>http.Transport</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -491,7 +486,6 @@ func main() {
 <hr />
 <h2 id="4-mechanical-sympathy-proizvoditelnost-mtls">4. Mechanical Sympathy: Производительность mTLS</h2>
 
-
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: «Смерть от рукопожатий» (Handshake Death)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -506,7 +500,6 @@ func main() {
 
 
 <h3 id="kak-eta-problema-reshaetsya-na-urovne-arkhitektury">Как эта проблема решается на уровне архитектуры?</h3>
-
 <ol>
 <li><strong>Пул соединений и мультиплексирование (Connection Pooling):</strong><br />
    Именно поэтому в межсервисной архитектуре связка <strong>mTLS + gRPC</strong> (<a href="16-grpc-osnovy.html" class="wikilink">16. gRPC. Основы</a>) стала абсолютным стандартом. Клиент выполняет тяжелое асимметричное рукопожатие mTLS <strong>ровно один раз</strong> при старте приложения, устанавливая единый долгоживущий сокет <a href="16-grpc-osnovy.html" class="wikilink">HTTP/2</a>. Все последующие миллионы RPC-запросов летят через этот сокет, шифруясь потоковым симметричным алгоритмом <strong>AES-GCM</strong>.</li>
@@ -517,7 +510,6 @@ func main() {
 </ol>
 <hr />
 <h2 id="5-avtorizatsiya-na-urovne-sertifikatov-spiffe">5. Авторизация на уровне сертификатов (SPIFFE)</h2>
-
 <p>mTLS гарантирует идеальную Аутентификацию (AuthN) — мы точно знаем, что к нам подключился валидный сервис из нашего кластера. Но как организовать <strong>Авторизацию (AuthZ)</strong>? Как сервис заказов поймет, что пришедший сертификат принадлежит именно сервису биллинга, а не сервису рекомендаций, которому запрещено вызывать финансовые методы?</p>
 <p>Индустриальным стандартом идентификации микросервисов в облачных средах стала спецификация <strong>SPIFFE (Secure Production Identity Framework for Everyone)</strong>.</p>
 <p>SPIFFE кодирует криптографическую идентичность сервиса в виде стандартизированного URI (SPIFFE ID), который зашивается в расширение <code>SAN</code> (Subject Alternative Name) сертификата X.509:</p>
@@ -577,7 +569,6 @@ func main() {
 <hr />
 <h2 id="6-problema-rotatsii-sertifikatov-i-service-mesh">6. Проблема ротации сертификатов и Service Mesh</h2>
 
-
 <aside class="callout callout-interview" aria-label="Собеседование: Бесшовная ротация сертификатов в Go">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -628,7 +619,6 @@ flowchart LR
 
 
 <h3 id="pochemu-enterprise-perekhodit-na-service-mesh">Почему Enterprise переходит на Service Mesh?</h3>
-
 <p>В кластере из 100 микросервисов на разных языках (Go, Java, Python, Node.js) поддерживать ручную ротацию сертификатов, следить за отзывом ключей (CRL/OCSP) и реализовывать парсинг SPIFFE в коде каждого сервиса превращается в эксплуатационный кошмар.</p>
 <p>Поэтому индустрия делегирует mTLS инфраструктурному уровню — <strong>Service Mesh (Istio, Linkerd, Consul)</strong>:<br />
 1. Ваше Go-приложение полностью освобождается от криптографии, не расходует память на хранение сертификатов и не нагружает сборщик мусора (GC). Оно слушает обычный <code>http.ListenAndServe(":8080", nil)</code> и отправляет запросы на условный <code>http://billing-service</code> без шифрования в коде.<br />
@@ -638,7 +628,6 @@ flowchart LR
 5. На принимающей стороне Sidecar снимает mTLS-оболочку и отдает чистый локальный HTTP в микросервис.</p>
 <hr />
 <h2 id="7-itog">7. Итог</h2>
-
 <ol>
 <li><strong>mTLS</strong> — главный практический инструмент реализации концепции <strong>Zero Trust</strong>. Он уничтожает наивную веру в безопасность закрытого периметра сети и защищает кластер от атак SSRF, прослушивания и компрометации соседних нод.</li>
 <li>В отличие от одностороннего TLS, mTLS принудительно требует от клиента предъявления и подтверждения сертификата на этапе сетевого хэндшейка.</li>

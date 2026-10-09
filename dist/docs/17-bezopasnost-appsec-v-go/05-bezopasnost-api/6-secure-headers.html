@@ -327,7 +327,6 @@
 
           <div class="article-markdown">
             <h2 id="http-zagolovki-kak-politiki-bezopasnosti-na-granitse-doveriya">HTTP-заголовки как политики безопасности на границе доверия</h2>
-
 <p>В повседневной веб-разработке легко поддаться иллюзии, будто сервер обладает абсолютной властью над тем, как будут отображаться и исполняться его данные. Однако как только HTTP-пакет ответа покидает сетевой интерфейс и сокет закрывается, данные попадают во враждебную и неконтролируемую среду — удаленный браузер пользователя.</p>
 <p>Как серверная система может принудительно заставить браузер соблюдать строгие правила гигиены?</p>
 <p>Ответом служат <strong>Secure HTTP Headers (Заголовки безопасности HTTP)</strong>. Это не декоративные метаданные для отладки, а декларативные директивы операционной системы браузера. Браузер парсит эти директивы в момент получения первого сетевого фрейма ответа и применяет жесткие ограничения <em>до</em> того, как начнется рендеринг DOM-дерева или исполнение JavaScript.</p>
@@ -369,7 +368,6 @@ flowchart TD
 
 <hr />
 <h2 id="klyuchevye-zagolovki-i-mekhanizm-enforcement">Ключевые заголовки и механизм enforcement</h2>
-
 <p>Каждый заголовок решает узкую задачу изоляции клиентского окружения:</p>
 <ol>
 <li><strong><code>Strict-Transport-Security (HSTS)</code>:</strong><br />
@@ -401,7 +399,6 @@ flowchart TD
 
 <hr />
 <h2 id="pod-kapotom-http2-hpack-bufio-i-syscall-write">Под капотом: HTTP/2 HPACK, bufio и syscall write</h2>
-
 <p>В Go обработка заголовков возложена на пакет <code>net/http</code>. При каждом вызове <code>w.Header().Set(key, value)</code> рантайм манипулирует структурой <code>http.Header</code>, которая под капотом является картой <code>map[string][]string</code>.</p>
 <p>В высоконагруженных шлюзах это порождает скрытую цену:<br />
 1. <strong>Аллокации в куче на каждый запрос:</strong><br />
@@ -411,7 +408,6 @@ flowchart TD
 3. <strong>Буферизация <code>bufio.Writer</code> и системные вызовы:</strong><br />
    Заголовки ответа сериализуются во внутренний буфер <code>bufio.Writer</code> структуры <code>*http.response</code>. Вызов <code>next.ServeHTTP(w, r)</code> не отправляет данные в сокет немедленно. Буфер сбрасывается в ядро через системный вызов <code>syscall.Write</code> (в Linux) или <code>WriteFile</code> (в Windows) только в момент первого вызова <code>w.WriteHeader()</code> или <code>w.Write()</code>. Любая попытка изменить заголовки <em>после</em> первой записи тела ответа будет проигнорирована Go-сервером или приведет к предупреждению в логах.</p>
 <h3 id="idiomatichnyy-pattern-pul-predvychislennykh-zagolovkov">Идиоматичный паттерн: Пул предвычисленных заголовков</h3>
-
 <p>Чтобы избежать лавинообразных аллокаций памяти в куче, в высоконагруженных Go-сервисах предкомпилируют базовый набор заголовков один раз через <code>sync.Once</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -468,7 +464,6 @@ func SecureHeadersMiddleware(next http.Handler) http.Handler {
 
 <hr />
 <h2 id="lovushki-i-arkhitekturnye-riski-gotchas">Ловушки и архитектурные риски (Gotchas)</h2>
-
 <ol>
 <li><strong>CSP <code>unsafe-inline</code> и динамические Nonce:</strong><br />
    Использование директивы <code>'unsafe-inline'</code> в секции <code>script-src</code> полностью умножает на ноль всю пользу CSP, позволяя злоумышленнику беспрепятственно выполнять внедренный JS-код. Единственный правильный путь для динамических приложений — генерация криптографически стойкого <code>nonce</code> на каждый HTTP-запрос с помощью <code>crypto/rand</code> и передача его в заголовке <code>script-src 'nonce-...';</code> и теге <code>&lt;script nonce="..."&gt;</code>. Помните: кэширование HTML-страниц с CSP ломает эту защиту, так как nonce обязан быть одноразовым!</li>
@@ -498,7 +493,6 @@ func SecureHeadersMiddleware(next http.Handler) http.Handler {
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Декларативная изоляция:</strong> Secure HTTP Headers — это директивы безопасности для песочницы браузера, применяемые до начала отрисовки страницы и выполнения пользовательского кода.</li>
 <li><strong>Отказ от легаси:</strong> Устаревшие заголовки <code>X-XSS-Protection</code> и <code>X-Frame-Options</code> вытеснены современными и гранулярными стандартами <code>CSP</code> (<code>frame-ancestors</code>), <code>Permissions-Policy</code> и <code>Referrer-Policy</code>.</li>

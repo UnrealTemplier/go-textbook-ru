@@ -443,7 +443,6 @@
 <p><strong>Covering индекс (покрывающий индекс)</strong> доводит идею ускорения до логического финала: он сохраняет <strong>все столбцы</strong>, запрошенные клиентом, прямо внутри листовых страниц самого индекса. В этом случае СУБД удовлетворяет запрос полностью из структуры индекса, вообще не прикасаясь к физической таблице на диске. В плане выполнения такой запрос превращается в священный грааль оптимизации чтения — <strong>Index Only Scan</strong>.</p>
 <hr />
 <h3 id="kak-eto-rabotaet-dannye-v-listyakh">Как это работает: данные в листьях</h3>
-
 <p>Обычный B-Tree индекс (<a href="2-b-tree-indeks-pod-kapotom.html" class="wikilink">2. B Tree индекс под капотом</a>) хранит в своих узлах только индексированные столбцы и физический указатель на строку (кортеж <code>(key, ctid)</code> в PostgreSQL).</p>
 <p>Когда вашему запросу требуются столбцы, отсутствующие в ключе индекса, база данных выполняет двухэтапную работу:<br />
 1. Спускается по B-Tree и находит адреса подходящих строк в листьях.<br />
@@ -523,7 +522,6 @@ flowchart TD
 
 <hr />
 <h3 id="index-only-scan-i-visibility-map">Index Only Scan и visibility map</h3>
-
 <p>Казалось бы, если все данные лежат в индексе, физическая таблица больше не нужна вовсе? В мире PostgreSQL это не совсем так из-за архитектуры многоверсионности MVCC (<a href="../05-tranzaktsii-i-vnutrennosti/7-mvcc-multi-version-concurrency-control.html" class="wikilink">7. MVCC. Multi Version Concurrency Control</a>).</p>
 <p>В PostgreSQL заголовки строк с метаданными транзакций (<code>xmin</code>, <code>xmax</code>, биты фиксации <code>t_infomask</code>) хранятся <strong>только в страницах таблицы (Heap)</strong>. В записях B-Tree индекса информации о видимости транзакций нет. Если бы движок слепо брал данные из индекса, он мог бы вернуть строку, удаленную секунду назад другой транзакцией, или еще не зафиксированную строку.</p>
 <p>Как же PostgreSQL умудряется выполнять <code>Index Only Scan</code> без чтения заголовка строки из таблицы? Ответ кроется в <strong>карте видимости (Visibility Map)</strong>.</p>
@@ -602,7 +600,6 @@ flowchart TD
 
 <hr />
 <h3 id="innodb-i-pokryvayushchie-indeksy">InnoDB и покрывающие индексы</h3>
-
 <p>В MySQL и хранилище InnoDB архитектура принципиально иная. Там таблица физически организована как кластерный индекс (<strong>Clustered Index</strong>, где первичный ключ является B+Tree деревом, а в листовых страницах лежат полные строки таблицы).</p>
 <ul>
 <li><strong>Первичный ключ:</strong> поиск по <code>PRIMARY KEY</code> в InnoDB — это всегда абсолютный покрывающий индекс по определению, так как сама строка живет в листе дерева.</li>
@@ -628,7 +625,6 @@ SELECT name FROM users WHERE email = 'bob@example.com';
 
 <hr />
 <h3 id="mechanical-sympathy-gde-vyigrysh">Mechanical Sympathy: где выигрыш</h3>
-
 <p>С точки зрения кремния и накопителей данных, покрывающий индекс превращает самый худший для накопителей режим — <strong>хаотичный случайный доступ (Random I/O)</strong> — в <strong>последовательное поточное чтение (Sequential Read)</strong> либо в чистую выборку из кэша RAM:</p>
 <ol>
 <li><strong>Пропускная способность NVMe/SSD:</strong><br />
@@ -640,7 +636,6 @@ SELECT name FROM users WHERE email = 'bob@example.com';
 </ol>
 <hr />
 <h3 id="prakticheskiy-primer-s-go">Практический пример с Go</h3>
-
 <p>Рассмотрим реальный микросервис каталога пользователей или сессий. Типичная задача: вывод списка активных пользователей с email и именем:</p>
 
 <div class="code-block" data-lang="sql">
@@ -762,7 +757,6 @@ func GetRecentActiveUsers(ctx context.Context, db *sql.DB, limit int) ([]UserSum
 <hr />
 <h3 id="kompromissy-i-lovushki">Компромиссы и ловушки</h3>
 
-
 <aside class="callout callout-info" aria-label="Под капотом: Размер страницы и расщепление узлов (Page Splits)">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -792,7 +786,6 @@ func GetRecentActiveUsers(ctx context.Context, db *sql.DB, limit int) ([]UserSum
 
 <hr />
 <h3 id="sravnenie-s-alternativami">Сравнение с альтернативами</h3>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -823,7 +816,6 @@ func GetRecentActiveUsers(ctx context.Context, db *sql.DB, limit int) ([]UserSum
 <p>Секция <code>INCLUDE</code> идеальна для уникальных ограничений: вы можете потребовать уникальности только по полю <code>email</code>, но при этом прикрепить к листовым записям <code>name</code> и <code>created_at</code> для мгновенных выборок профиля пользователя.</p>
 <hr />
 <h3 id="kogda-covering-indeks-neobkhodim">Когда covering индекс необходим</h3>
-
 <ul>
 <li><strong>Узкие высоконагруженные запросы:</strong> эндпоинты авторизации по логину/email, проверки баланса счета, валидация JWT-токенов или API-ключей, где задержка измеряется микросекундами.</li>
 <li><strong>Диапазонные отчеты и агрегации:</strong> аналитические запросы за временной интервал (<code>WHERE created_at BETWEEN ...</code>), где считывание сотен тысяч строк из последовательных листьев индекса на порядки быстрее чтения разрозненных страниц таблицы.</li>
@@ -831,7 +823,6 @@ func GetRecentActiveUsers(ctx context.Context, db *sql.DB, limit int) ([]UserSum
 </ul>
 <hr />
 <h3 id="zaklyuchenie">Заключение</h3>
-
 <p>Covering индекс — это инженерный инструмент ювелирной точности. Он смещает вычислительный баланс с дорогого случайного дискового доступа на потоковое чтение из оперативной памяти, доводя эффективность запросов в PostgreSQL и MySQL до абсолютного предела.</p>
 <p>Однако за эту скорость приходится платить памятью и накладными расходами на запись. Настоящий мастер проектирования баз данных применяет покрывающие индексы точечно — для самых критичных путей исполнения системы, где каждая сэкономленная миллисекунда превращается в спасенные серверные ресурсы.</p>
 <p>В следующей статье мы познакомимся с еще более тонким инструментом экономии ресурсов — <a href="7-partial-indeks.html" class="wikilink">7. Partial индекс</a>, который индексирует не всю таблицу целиком, а только строго заданное подмножество строк.</p>

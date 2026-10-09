@@ -300,7 +300,6 @@
 
           <div class="article-markdown">
             <h2 id="filosofiya-gorutina-na-zapros-i-production-ready-standart">Философия «горутина на запрос» и production-ready стандарт</h2>
-
 <p>В классической серверной инженерии проектирование HTTP-серверов долгое время упиралось в компромисс между двумя крайностями. С одной стороны находились тяжеловесные пулы потоков операционной системы (Apache prefork, классический Java Tomcat), где на каждый входящий запрос выделялся тред с мегабайтным стеком, что вызывало жестокий кризис памяти C10K при десятках тысяч клиентов. С другой стороны стояли однопоточные event-loop архитектуры (Node.js, Nginx, Python asyncio), заставлявшие разработчика выворачивать код наизнанку через колбэки и мучительные конечные автоматы.</p>
 <p>Пакет <code>net/http</code> в Go предложил миру третий, несравненно более гармоничный путь. Это не просто обертка над сокетами. Это высокоуровневая, production-ready реализация протоколов HTTP/1.1 и HTTP/2 (поддержка HTTP/3 развивается в пакете <code>x/net/http3</code>), спроектированная вокруг модели «одна горутина на одно соединение». В отличие от асинхронных event-loop подходов (Node.js, Python asyncio) или пулов потоков (Java Tomcat), Go делегирует управление конкурентностью планировщику рантайма. Это позволяет писать синхронно выглядящий код, который под капотом выполняется асинхронно через <code>netpoller</code>, не блокируя системные треды и масштабируясь до сотен тысяч одновременных соединений.</p>
 <p>Для инженера уровня Senior понимание <code>net_http</code> означает умение управлять ресурсами процесса: предотвращать утечки горутин из-за неотмененных запросов, корректно настраивать таймауты на всех уровнях и использовать пулы соединений для минимизации TCP-handshake overhead.</p>
@@ -317,9 +316,7 @@
 
 
 <h2 id="1-under-the-hood-server-routing-i-zhiznennyy-tsikl-zaprosa">1. Under the hood: Сервер, роутинг и жизненный цикл запроса</h2>
-
 <h3 id="evolyutsiya-servemux-go-1-22">Эволюция ServeMux (Go 1.22+)</h3>
-
 <p>До Go 1.22 <code>http.ServeMux</code> поддерживал только точное совпадение путей и префиксов, из-за чего разработчики были вынуждены подключать тяжелые внешние библиотеки (<code>chi</code>, <code>gorilla/mux</code>). Начиная с Go 1.22, встроенный роутер претерпел фундаментальную модернизацию и получил возможности, покрывающие 95% потребностей веб-сервисов:<br />
 * Методы в маршрутах: <code>GET /users/{id}</code><br />
 * Переменные в путях: <code>PathValue(r, "id")</code><br />
@@ -365,10 +362,8 @@ flowchart TD
 
 
 <h3 id="kontekst-i-otmena">Контекст и отмена</h3>
-
 <p><code>r.Context()</code> содержит <code>http.responseContext</code>, который привязан к <code>conn</code>. При обрыве TCP-соединения (FIN/RST) или таймауте <code>ReadTimeout</code>, контекст закрывается. Все операции внутри хендлера, использующие <code>ctx</code>, мгновенно прерываются. Это фундаментальная часть graceful shutdown и защиты от slowloris-атак.</p>
 <h2 id="2-mekhanika-http-client-po-umolchaniyu-opasno">2. Механика http.Client: По умолчанию опасно</h2>
-
 <p><code>http.Client</code> — это stateless-обертка над <code>http.Transport</code>. По умолчанию он <strong>не имеет таймаутов</strong>. Это означает, что при зависании целевого сервера или сетевой проблеме, горутина навсегда останется в состоянии ожидания.</p>
 
 <div class="code-block" data-lang="go">
@@ -398,12 +393,9 @@ var defaultClient = &amp;http.Client{
 
 <p><code>http.Transport</code> управляет пулом соединений. Он поддерживает HTTP/1.1 Keep-Alive и HTTP/2 Multiplexing. При повторном запросе на тот же хост, Transport переиспользует существующий <code>net.Conn</code>, экономя время на DNS, TCP handshake и TLS negotiation.</p>
 <h2 id="3-mechanical-sympathy-allokatsii-bufery-i-upravlenie-pamyatyu">3. Mechanical Sympathy: Аллокации, буферы и управление памятью</h2>
-
 <h3 id="puly-buferov-v-transport">Пулы буферов в Transport</h3>
-
 <p><code>http.Transport</code> использует <code>sync.Pool</code> для буферов <code>bufio.ReadWriter</code> размером 4 КБ. При активном соединении горутина берет буфер из пула, читает ответ, парсит JSON и возвращает буфер. Это минимизирует давление на GC при тысячах RPS.</p>
 <h3 id="allokatsii-tela-zaprosa">Аллокации тела запроса</h3>
-
 <p><code>io.ReadAll(r.Body)</code> всегда аллоцирует новый <code>[]byte</code> в куче. Если вы читаете большие payload (например, &gt;1MB файлы), это вызывает скачки <code>heap_in_use</code>. Для стриминга используйте <code>io.Copy</code> или прямую передачу <code>io.Reader</code> в парсеры:</p>
 
 <div class="code-block" data-lang="go">
@@ -420,12 +412,9 @@ err := json.NewDecoder(r.Body).Decode(&amp;payload)
 </div>
 
 <h3 id="vliyanie-na-cpu-cache">Влияние на CPU Cache</h3>
-
 <p>Обработка HTTP-запроса — это линейный проход по памяти. <code>http.ServeMux</code> маршрутизация и <code>json.Unmarshal</code> работают последовательно, что улучшает prefetching. Однако создание замыканий в middleware цепочке (<code>func next http.Handler { return http.HandlerFunc(...) }</code>) генерирует аллокации замыканий в куче. Для высоконагруженных шлюзов (&gt;50k RPS) предпочтительна flat-структура без вложенных замыканий или кодогенерация роутеров.</p>
 <h2 id="4-idiomy-i-patterny-dlya-production">4. Идиомы и паттерны для Production</h2>
-
 <h3 id="graceful-shutdown">Graceful Shutdown</h3>
-
 <p>Сервер должен корректно завершать активные запросы при получении SIGTERM.</p>
 
 <div class="code-block" data-lang="go">
@@ -463,7 +452,6 @@ err := json.NewDecoder(r.Body).Decode(&amp;payload)
 </div>
 
 <h3 id="middleware-chain">Middleware Chain</h3>
-
 <p>Используйте явное оборачивание для логирования, метрик и восстановления после паник:</p>
 
 <div class="code-block" data-lang="go">
@@ -491,7 +479,6 @@ err := json.NewDecoder(r.Body).Decode(&amp;payload)
 </div>
 
 <h2 id="5-lovushki-i-khardkornye-voprosy-s-sobesedovaniy">5. Ловушки и хардкорные вопросы с собеседований</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -544,7 +531,6 @@ err := json.NewDecoder(r.Body).Decode(&amp;payload)
 
 
 <h2 id="6-sravnenie-s-ekosistemami">6. Сравнение с экосистемами</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -577,7 +563,6 @@ err := json.NewDecoder(r.Body).Decode(&amp;payload)
 </tbody>
 </table></div>
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><code>net_http</code> использует модель «горутина на соединение», интегрированную с <code>netpoller</code>. Это устраняет callback hell и event-loop сложность.</li>
 <li>Никогда не используйте <code>http.Get()</code> без <code>http.Client</code> и <code>Timeout</code>. Настройте <code>Transport</code> с <code>MaxIdleConns</code> и <code>IdleConnTimeout</code>.</li>

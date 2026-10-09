@@ -302,12 +302,10 @@
 <p>В этой главе мы разберем базовые операции сериализации и десериализации, изучим управление полями через структурные теги, разберем потоковую обработку через <code>Encoder</code>/<code>Decoder</code>, исследуем причины медлительности стандартного парсера и познакомимся с альтернативами на базе SIMD и кодогенерации.</p>
 <hr />
 <h2 id="bazovye-operatsii-marshal-i-unmarshal">Базовые операции: Marshal и Unmarshal</h2>
-
 <p>В терминологии Go вместо понятий «сериализация» и «десериализация» приняты лаконичные глаголы:<br />
 - <strong><code>Marshal</code></strong> — упаковка структуры Go в срез байтов JSON (<code>Struct -&gt; []byte</code>).<br />
 - <strong><code>Unmarshal</code></strong> — распаковка среза байтов JSON в конкретную структуру Go (<code>[]byte -&gt; Struct</code>).</p>
-<h3 id="unmarshal-json-struct">Unmarshal: JSON -> Struct</h3>
-
+<h3 id="unmarshal-json-struct">Unmarshal: JSON -&gt; Struct</h3>
 <p>Чтобы парсер смог наполнить поля структуры данными, должны соблюдаться два ключевых условия:<br />
 1. Поля обязаны быть <strong>экспортируемыми</strong> (начинаться с заглавной буквы), иначе рефлексия рантайма их проигнорирует.<br />
 2. В функцию <code>json.Unmarshal</code> необходимо передать <strong>указатель</strong> на структуру, иначе метод заполнит локальную копию на стеке, которая мгновенно исчезнет.</p>
@@ -350,8 +348,7 @@ func main() {
 </code></pre>
 </div>
 
-<h3 id="marshal-struct-json">Marshal: Struct -> JSON</h3>
-
+<h3 id="marshal-struct-json">Marshal: Struct -&gt; JSON</h3>
 <p>Упаковка структуры в срез байтов выполняется вызовом <code>json.Marshal</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -375,7 +372,6 @@ fmt.Println(string(jsonData)) // {&quot;id&quot;:2,&quot;name&quot;:&quot;Bob&qu
 
 <hr />
 <h2 id="strukturnye-tegi-struct-tags">Структурные теги (Struct Tags)</h2>
-
 <p>В языке Go имена полей структур пишутся в <code>CamelCase</code> с заглавной буквы. В мире JSON доминируют другие соглашения: <code>snake_case</code> или <code>lowerCamelCase</code>. Для сопоставления ключей JSON с полями структур в Go используются <strong>структурные теги (Struct Tags)</strong> — строковые литералы в обратных кавычках, считываемые рантаймом через механизм рефлексии:</p>
 
 <div class="code-block" data-lang="go">
@@ -412,9 +408,8 @@ fmt.Println(string(jsonData)) // {&quot;id&quot;:2,&quot;name&quot;:&quot;Bob&qu
 
 <hr />
 <h2 id="proizvolnye-dannye-any-i-json-rawmessage">Произвольные данные: any и json.RawMessage</h2>
-
 <p>Что делать, если точная схема входящего JSON заранее неизвестна, или полезная нагрузка зависит от типа входящего события?</p>
-<h3 id="1-mapstringany-byvshiy-mapstringinterface">1. `map[string]any` (бывший `map[string]interface{}`)</h3>
+<h3 id="1-mapstringany-byvshiy-mapstringinterface">1. <code>map[string]any</code> (бывший <code>map[string]interface{}</code>)</h3>
 <p>Это классический путь для полностью динамического разбора. Однако вы платите за него потерей типобезопасности и лавиной аллокаций памяти в куче:</p>
 
 <div class="code-block" data-lang="go">
@@ -434,8 +429,7 @@ num, ok := data[&quot;num&quot;].(float64) // Внимание: JSON числа 
 </div>
 
 <p>Обратите внимание: поскольку спецификация JSON не разделяет целые и вещественные числа, стандартный парсер Go при разборе в <code>any</code> всегда преобразует любые числовые литералы в тип <code>float64</code>!</p>
-<h3 id="2-json-rawmessage-otlozhennyy-parsing">2. `json.RawMessage`: Отложенный парсинг</h3>
-
+<h3 id="2-json-rawmessage-otlozhennyy-parsing">2. <code>json.RawMessage</code>: Отложенный парсинг</h3>
 <p><code>json.RawMessage</code> — один из самых элегантных приемов в арсенале бэкенд-инженера. По своей сути <code>RawMessage</code> — это просто псевдоним над срезом байтов <code>type RawMessage []byte</code>, который реализует интерфейсы <code>json.Marshaler</code> и <code>json.Unmarshaler</code>.</p>
 <p>При десериализации парсер не пытается разобрать содержимое <code>json.RawMessage</code>, а сохраняет исходные байты в нетронутом виде:</p>
 
@@ -479,7 +473,6 @@ if env.Type == &quot;user_created&quot; {
 
 <hr />
 <h2 id="potokovaya-rabota-encoder-i-decoder">Потоковая работа: Encoder и Decoder</h2>
-
 <p>Функции <code>json.Marshal</code> и <code>json.Unmarshal</code> оперируют монолитными срезами памяти <code>[]byte</code>. Если в ваш сервис по HTTP поступает JSON-документ размером в сотни мегабайт, попытка вычитать его целиком через <code>os.ReadFile</code> или <code>io.ReadAll</code> приведет к мгновенному взлету потребления памяти и срабатыванию OOM Killer.</p>
 <p>Для потоковой работы пакет предоставляет типы <code>json.Encoder</code> и <code>json.Decoder</code>. Они работают напрямую с фундаментальными абстракциями <code>io.Reader</code> и <code>io.Writer</code>, детально изученными в главе <a href="29-rabota-s-faylami-i-io.html" class="wikilink">29. Работа с файлами и IO</a>:</p>
 
@@ -530,7 +523,6 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
 
 <hr />
 <h2 id="mechanical-sympathy-refleksiya-i-allokatsii">Mechanical Sympathy: Рефлексия и аллокации</h2>
-
 <p>Почему стандартный пакет <code>encoding/json</code> регулярно критикуют за невысокую скорость работы по сравнению с аналогами на C++ или Rust?</p>
 <p>Взглянем на внутреннюю механику работы <code>Unmarshal</code>:</p>
 
@@ -578,7 +570,6 @@ flowchart TD
 </ol>
 <hr />
 <h2 id="proizvoditelnost-kodogeneratsiya-i-simd">Производительность: Кодогенерация и SIMD</h2>
-
 <p>Как высоконагруженные Go-сервисы (обрабатывающие от десятков тысяч запросов в секунду) обходят ограничения стандартного парсера?</p>
 <p>Решение заключается в <strong>переносе работы с этапа выполнения на этап компиляции</strong>:</p>
 <ul>
@@ -602,7 +593,6 @@ flowchart TD
 
 <hr />
 <h2 id="html-ekranirovanie-syurpriz-dlya-rest-api">HTML-экранирование: Сюрприз для REST API</h2>
-
 <p>В стандартном пакете <code>encoding/json</code> заложена скрытая особенность, нередко ставящая в тупик бэкенд-разработчиков.</p>
 <p>По умолчанию метод <code>json.Marshal</code> экранирует специальные символы <code>&lt;</code>, <code>&gt;</code> и <code>&amp;</code>, заменяя их на Unicode-последовательности <code>\u003c</code>, <code>\u003e</code>, <code>\u0026</code>. Это было сделано из соображений безопасности: чтобы сформированный JSON можно было без риска внедрять внутрь HTML-страниц без опасности возникновения XSS-уязвимостей.</p>
 <p>Однако при создании классических REST API такое поведение искажает строковые данные в ответах. Изменить эту настройку в функции <code>Marshal</code> невозможно. Единственный корректный способ отключить экранирование — использовать <code>Encoder</code>:</p>
@@ -636,7 +626,6 @@ enc.Encode(data)
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Статическая дисциплина:</strong> В Go сериализация опирается на строгую типизацию структур и явные структурные теги.</li>
 <li><strong>Потоковый ввод-вывод:</strong> Используйте <code>json.NewEncoder</code> и <code>json.NewDecoder</code> для сетевого ввода-вывода, избегая раздувания промежуточных буферов в оперативной памяти.</li>

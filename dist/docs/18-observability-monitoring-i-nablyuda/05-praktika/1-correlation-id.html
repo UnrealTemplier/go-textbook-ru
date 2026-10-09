@@ -309,19 +309,16 @@
 <p>Настоящая наблюдаемость начинается тогда, когда все три столпа намертво сшиты воедино. Главным связующим звеном и универсальным первичным ключом этой интеграции выступает <strong>Correlation ID</strong> (в современном облачном мире — <strong>Trace ID</strong>).</p>
 <hr />
 <h2 id="svyazuyushchiy-element-observability">Связующий элемент Observability</h2>
-
 <p>В распределенных системах, где один запрос порождает каскад вызовов между микросервисами, базами данных и очередями, Correlation ID (часто совпадающий с Trace ID) выступает в роли первичного ключа, позволяющего собрать пазл из разрозненных данных.</p>
 <p>Без него распределенная система подобна городу без названий улиц и номеров домов: найти конкретную посылку среди миллионов отправлений становится статистически невозможно.</p>
 <hr />
 <h2 id="trace-id-kak-novyy-standart-correlation-id">Trace ID как новый стандарт Correlation ID</h2>
-
 <p>Исторически Correlation ID и Trace ID были разными понятиями:<br />
 *   <strong>Correlation ID:</strong> Идентификатор бизнес-операции, передаваемый через HTTP-заголовки (например, <code>X-Request-ID</code>), чтобы связать логи.<br />
 *   <strong>Trace ID:</strong> Идентификатор технического трейса, понятный системам APM (Jaeger, Zipkin).</p>
 <p>С появлением стандарта <strong>OpenTelemetry</strong> и W3C Trace Context, эти понятия слились. Теперь <strong>Trace ID</strong> является основным Correlation ID. Это уникальный 128-битный идентификатор, который генерируется в самом начале пути запроса и путешествует с ним до самого конца.</p>
 <hr />
 <h2 id="arkhitektura-svyazyvaniya-dannykh">Архитектура связывания данных</h2>
-
 <p>В зрелой системе Observability поток телеметрии образует замкнутый треугольник взаимных ссылок:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -360,7 +357,6 @@ flowchart TD
 
 
 <h3 id="svyaz-komponentov">Связь компонентов:</h3>
-
 <ol>
 <li><strong>Logs:</strong> Каждая запись лога содержит поле <code>trace_id</code>.</li>
 <li><strong>Metrics:</strong> Метрики могут содержать Exemplars (ссылки на конкретные трейсы).</li>
@@ -372,10 +368,8 @@ flowchart TD
 *   В трейсе увидели span с ошибкой -&gt; перешли к логам по этому Trace ID (Logs).</p>
 <hr />
 <h2 id="realizatsiya-v-go-opentelemetry-slog">Реализация в Go (OpenTelemetry + slog)</h2>
-
 <p>В современных версиях Go (1.21+) связка <code>context</code> и логгера позволяет автоматизировать этот процесс.</p>
 <h3 id="shag-1-middleware-dlya-izvlecheniyageneratsii-id">Шаг 1: Middleware для извлечения/генерации ID</h3>
-
 <p>Мы используем промежуточное ПО, чтобы убедиться, что контекст трассировки всегда доступен.</p>
 
 <div class="code-block" data-lang="go">
@@ -414,7 +408,6 @@ func tracingMiddleware(next http.Handler) http.Handler {
 </div>
 
 <h3 id="shag-2-avtomaticheskaya-zapis-trace-id-v-logi">Шаг 2: Автоматическая запись Trace ID в логи</h3>
-
 <p>Нам нужен хендлер для <code>slog</code>, который умеет извлекать Trace ID из контекста. Это делается через кастомный обработчик или middleware для логгера.</p>
 
 <div class="code-block" data-lang="go">
@@ -467,7 +460,6 @@ OpenTelemetry уже хранит SpanContext в <code>context.Context</code> п
 
 <hr />
 <h2 id="svyaz-s-metrikami-exemplars">Связь с метриками: Exemplars</h2>
-
 <p>Exemplars — это "изюминка" Prometheus, о которой часто забывают. Это возможность прикрепить Trace ID к метрике в момент её записи.</p>
 <p>В стандарте OpenMetrics замер гистограммы может сопровождаться комментарием:</p>
 
@@ -503,7 +495,6 @@ httpDuration.WithLabelValues(&quot;/api&quot;).ObserveWithExemplar(duration, map
 <p>В интерфейсе Prometheus/Grafana вы увидите, что рядом с точкой на графике есть ссылка на Trace ID. Это превращает график метрик в "кликабельную карту" инцидентов.</p>
 <hr />
 <h2 id="mechanical-sympathy-stoimost-svyazyvaniya">Mechanical Sympathy: Стоимость связывания</h2>
-
 <ol>
 <li><strong>Извлечение ID:</strong> <code>trace.SpanContextFromContext(ctx)</code> — это очень дешевая операция (несколько наносекунд), так как это просто приведение типа интерфейса.</li>
 <li><strong>Логирование:</strong> Добавление атрибута в <code>slog</code> стоит недорого (аллокация строки). Критически важно использовать <strong>JSON Handler</strong>, чтобы поле <code>trace_id</code> было отдельным ключом, а не частью сообщения. Это позволяет Loki проиндексировать его и искать мгновенно.</li>
@@ -525,7 +516,6 @@ httpDuration.WithLabelValues(&quot;/api&quot;).ObserveWithExemplar(duration, map
 <p><code>trace.Link</code> позволяет создать новый корневой трейс для асинхронного фонового процесса, сохранив слабую связь со спаном-инициатором, не ломая родительский жизненный цикл.</p>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Correlation ID = Trace ID</strong> в современном мире OpenTelemetry.</li>
 <li>Автоматизируйте инъекцию Trace ID в логи через Middleware. Не передавайте его вручную в параметрах функций.</li>

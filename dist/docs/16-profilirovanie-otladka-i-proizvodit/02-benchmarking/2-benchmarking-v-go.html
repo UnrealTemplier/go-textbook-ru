@@ -402,15 +402,13 @@
 
           <div class="article-markdown">
             <h2 id="vvedenie-benchmark-kak-pervyy-shag-izmereniya">Введение: бенчмарк как первый шаг измерения</h2>
-
 <p>В <a href="1-pochemu-nelzya-optimizirovat-bez-izmereniy.html" class="wikilink">1. Почему нельзя оптимизировать без измерений</a> мы сформулировали железную аксиому инженерного проектирования: <strong>любая оптимизация без объективных цифр — это самообман</strong>.</p>
 <p>Но как именно добыть эти цифры? В мире C/C++ разработчикам десятилетиями приходилось вручную подключать сторонние библиотеки вроде Google Benchmark, оборачивать вызовы в функции замера тактов процессора <code>rdtsc</code> и бороться с плавающими ошибками системных таймеров.<br />
 Создатели языка Go подошли к вопросу с фундаментальной инженерной основательностью: инструмент бенчмаркинга встроен непосредственно в стандартную библиотеку и инструментарий компилятора (<code>testing</code> и <code>go test -bench</code>).</p>
 <p>Вам не нужны внешние зависимости. Одной командой в консоли Go-разработчик запускает изолированное измерение скорости алгоритма, автоматически калибрует число итераций, снимает профили выделения оперативной памяти и подключает профилировщики процессора (<code>pprof</code>).</p>
 <p>Эта статья — исчерпывающее практическое руководство по написанию, запуску и интерпретации бенчмарков в Go. Мы разберем синтаксис, анатомию вывода консоли, управление таймерами, параллельные измерения и ключевые правила, отделяющие надежные инженерные замеры от фальшивых иллюзий. А глубокие детали внутренней кухни (алгоритм геометрической прогрессии подбора <code>b.N</code>, устройство таймеров ОС) мы продолжим изучать в <a href="3-go-test-bench-pod-kapotom.html" class="wikilink">3. go test -bench под капотом</a>.</p>
 <hr />
-<h2 id="osnovy-funktsiya-benchmark">Основы: функция `Benchmark`</h2>
-
+<h2 id="osnovy-funktsiya-benchmark">Основы: функция <code>Benchmark</code></h2>
 <p>Бенчмарк в Go — это специальная функция с сигнатурой:</p>
 
 <div class="code-block" data-lang="go">
@@ -431,7 +429,6 @@
 3. Функция принимает единственный аргумент — указатель на управляющую структуру <code>*testing.B</code>.</p>
 <p>Структура <code>*testing.B</code> управляет жизненным циклом замера: отсчитывает кванты времени, задает количество повторений через поле <code>b.N</code> и собирает статистику аллокаций.</p>
 <h3 id="klassicheskiy-shablon-benchmarka">Классический шаблон бенчмарка</h3>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -512,8 +509,7 @@ ok      stringbench 1.245s
 
 
 <hr />
-<h2 id="adaptivnyy-podbor-b-n">Адаптивный подбор `b.N`</h2>
-
+<h2 id="adaptivnyy-podbor-b-n">Адаптивный подбор <code>b.N</code></h2>
 <p>Почему разработчик никогда не должен задавать количество повторений цикла вручную? Потому что код исполняется на совершенно разном железе: от скромного Raspberry Pi до 128-ядерного сервера AMD EPYC.</p>
 <p>Фреймворк Go использует <strong>адаптивный алгоритм калибровки</strong>:<br />
 1. Сначала тестовый раннер запускает функцию с $b.N = 1$.<br />
@@ -569,7 +565,6 @@ flowchart TD
 
 <hr />
 <h2 id="taymery-upravlenie-izmeryaemym-intervalom">Таймеры: управление измеряемым интервалом</h2>
-
 <p>Очень часто до начала измеряемой операции требуется провести тяжелую подготовку: выделить большой массив, распарсить конфигурационный файл или инициализировать структуры данных. Если включить эту подготовку в замер, результаты будут безнадежно испорчены.</p>
 <p>Структура <code>*testing.B</code> предоставляет три фундаментальных метода управления секундомером:</p>
 
@@ -608,7 +603,6 @@ flowchart LR
 <li><strong><code>b.StartTimer()</code></strong>: возобновляет учет времени.</li>
 </ul>
 <h3 id="prakticheskiy-primer-ispolzovaniya-taymerov">Практический пример использования таймеров</h3>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -686,8 +680,7 @@ func BenchmarkSliceAppend(b *testing.B) {
 
 
 <hr />
-<h2 id="parallelnye-benchmarki-runparallel">Параллельные бенчмарки: `RunParallel`</h2>
-
+<h2 id="parallelnye-benchmarki-runparallel">Параллельные бенчмарки: <code>RunParallel</code></h2>
 <p>Обычный бенчмарк с циклом <code>for i := 0; i &lt; b.N</code> выполняется строго в одной горутине на одном процессорном ядре. Но реальный серверный бэкенд на Go конкурентен!<br />
 Как измерить поведение разделяемых структур данных под перекрестным огнем сотен параллельных горутин? Как обнаружить конкуренцию за мьютексы (Lock Contention) или ложное разделение кэш-линий (<strong>False Sharing</strong>, см. <a href="../06-konkurentnost/8-false-sharing.html" class="wikilink">8. False sharing</a>)?</p>
 <p>Для этого <code>testing.B</code> предоставляет высокоэффективный метод <code>b.RunParallel</code>:</p>
@@ -721,8 +714,7 @@ func BenchmarkParallelAdd(b *testing.B) {
 </code></pre>
 </div>
 
-<h3 id="kak-ustroen-pb-next-pod-kapotom">Как устроен `pb.Next()` под капотом</h3>
-
+<h3 id="kak-ustroen-pb-next-pod-kapotom">Как устроен <code>pb.Next()</code> под капотом</h3>
 <p>Внутри <code>b.RunParallel</code>:<br />
 1. Фреймворк запускает количество горутин, равное <code>GOMAXPROCS</code> (числу ядер).<br />
 2. Общее число итераций $b.N$ делится между всеми горутинами.<br />
@@ -760,8 +752,7 @@ b.SetParallelism(10) // На 8-ядерной машине будет запущ
 
 
 <hr />
-<h2 id="subbenchmarki-b-run">Суббенчмарки: `b.Run`</h2>
-
+<h2 id="subbenchmarki-b-run">Суббенчмарки: <code>b.Run</code></h2>
 <p>Для структурирования измерений и проведения сравнительного анализа вариантов (Table-Driven Benchmarks) используется метод <code>b.Run</code>. Он позволяет запускать именованные изолированные под-бенчмарки внутри одной функции:</p>
 
 <div class="code-block" data-lang="go">
@@ -827,8 +818,7 @@ BenchmarkConcat/Builder-8       10000000           120 ns/op          32 B/op   
 - Можно точечно отфильтровать запуск через флаг <code>-bench</code>:<br />
 <code>go test -bench=BenchmarkConcat/Builder</code> (запустит только ветку <code>Builder</code>).</p>
 <hr />
-<h2 id="metriki-allokatsiy-benchmem-i-reportallocs">Метрики аллокаций: `-benchmem` и `ReportAllocs`</h2>
-
+<h2 id="metriki-allokatsiy-benchmem-i-reportallocs">Метрики аллокаций: <code>-benchmem</code> и <code>ReportAllocs</code></h2>
 <p>Скорость вычислений в Go неразрывно связана с управлением памятью. Любая аллокация в куче стоит от 20 до 50 наносекунд в момент создания и многократно дороже — когда сборщик мусора вынужден сканировать и утилизировать этот объект (<a href="../01-fundament/7-tail-latency-i-pochemu-ona-vazhna.html" class="wikilink">7. Tail latency и почему она важна</a>).</p>
 <p>Чтобы видеть скрытую стоимость памяти, бенчмарки всегда запускаются с флагом <code>-benchmem</code>, либо активируются в коде через метод <code>b.ReportAllocs()</code>:</p>
 
@@ -856,7 +846,6 @@ BenchmarkConcat/Builder-8       10000000           120 ns/op          32 B/op   
 <p>Инженерное правило: <strong>сокращение <code>allocs/op</code> до нуля — самый надежный способ стабилизировать p99 latency высоконагруженного сервиса</strong>.</p>
 <hr />
 <h2 id="kak-izbezhat-myortvogo-koda-i-obmana-izmereniy">Как избежать «мёртвого кода» и обмана измерений</h2>
-
 <p>Современный компилятор Go оснащен мощными оптимизаторами: устранением мертвого кода (<strong>Dead Code Elimination</strong>) и сверткой констант (<strong>Constant Folding</strong>).</p>
 <p>Если функция не имеет побочных эффектов (не пишет в файлы, сокеты или глобальные переменные), а возвращаемое ею значение нигде не читается, оптимизатор компилятора Go вправе <strong>полностью вырезать вызов функции из машинного кода</strong>.</p>
 <p>Посмотрим на классическую ошибку новичка:</p>
@@ -880,7 +869,6 @@ func BenchmarkSumBroken(b *testing.B) {
 
 <p>Результат такого бенчмарка покажет фантастические <code>0.23 ns/op</code> — время пустого регистрационного цикла <code>DEC/JNZ</code>. Разработчик радуется мнимой «сверхзвуковой скорости», а в реальности код даже не запускался!</p>
 <h3 id="kanonicheskoe-reshenie-eksport-cherez-paketnuyu-peremennuyu">Каноническое решение: экспорт через пакетную переменную</h3>
-
 <p>Чтобы гарантировать, что компилятор не удалит вычисления, результат функции необходимо сохранить в переменную уровня пакета:</p>
 
 <div class="code-block" data-lang="go">
@@ -912,8 +900,7 @@ func BenchmarkSum(b *testing.B) {
 
 <p>Альтернативный подход — использовать функцию <code>runtime.KeepAlive(&amp;result)</code>, которая принудительно сообщает компилятору и сборщику мусора, что объект остается достижимым вплоть до этой точки. Подробный разбор всех ловушек компилятора представлен в <a href="4-podvodnye-kamni-benchmark-testov.html" class="wikilink">4. Подводные камни benchmark тестов</a>.</p>
 <hr />
-<h2 id="flagi-bench-i-okruzhenie">Флаги `-bench` и окружение</h2>
-
+<h2 id="flagi-bench-i-okruzhenie">Флаги <code>-bench</code> и окружение</h2>
 <p>Каждый Senior Go-инженер обязан знать ключевые флаги утилиты тестирования:</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
@@ -992,14 +979,12 @@ func BenchmarkSum(b *testing.B) {
 
 <hr />
 <h2 id="stabilizatsiya-i-povtoryaemost">Стабилизация и повторяемость</h2>
-
 <p>Одиночный запуск бенчмарка в консоли <strong>ничего не доказывает</strong>. Разброс между двумя последовательными нажатиями Enter на рабочем ноутбуке может достигать 15–25%!<br />
 Причины аппаратной нестабильности:<br />
 - Фоновые процессы операционной системы (браузер, Slack, индексация диска).<br />
 - Динамическое масштабирование частоты процессора (Intel Turbo Boost, AMD Core Performance Boost).<br />
 - Термальный троттлинг (Thermal Throttling): при нагреве процессор сбрасывает частоту, и десятый прогон работает медленнее первого.</p>
 <h3 id="zolotoy-standart-stabilizatsii">Золотой стандарт стабилизации:</h3>
-
 <ol>
 <li><strong>Многократные повторы (<code>-count=10</code>):</strong> запускайте серию из минимум 10 прогонов.</li>
 <li><strong>Математический анализ через <code>benchstat</code>:</strong> используйте официальную утилиту статистического анализа (<code>golang.org/x/perf/cmd/benchstat</code>). Она рассчитывает доверительные интервалы и критерий Манна-Уитни, подтверждая реальность ускорения.</li>
@@ -1011,7 +996,6 @@ func BenchmarkSum(b *testing.B) {
 <p>Детальные протоколы стабилизации изложены в <a href="6-stabilizatsiya-rezultatov.html" class="wikilink">6. Стабилизация результатов</a>.</p>
 <hr />
 <h2 id="mechanical-sympathy-vliyanie-okruzheniya-na-benchmark">Mechanical Sympathy: влияние окружения на бенчмарк</h2>
-
 <p>Исполнение бенчмарка подчиняется законам микроархитектуры:<br />
 - <strong>Шум от сборщика мусора:</strong> Если тестируемый код активно выделяет память, сборщик мусора Go может включиться прямо в середине измерительного цикла, исказив результаты единичных итераций.<br />
 - <strong>Ложное разделение (False Sharing):</strong> Если параллельный бенчмарк оперирует разделяемыми структурами без 64-байтного паддинга (<a href="../06-konkurentnost/8-false-sharing.html" class="wikilink">8. False sharing</a>), вы увидите пессимистичную картину, вызванную аппаратным трафиком когерентности MESI между ядрами.<br />
@@ -1021,7 +1005,6 @@ func BenchmarkSum(b *testing.B) {
 <p>Флаг сборки <code>-gcflags="-N -l"</code> отключает инлайнинг и оптимизации. Он полезен для отладки в delve, но <strong>категорически запрещен</strong> при боевом бенчмаркинге, так как превращает замер в бессмыслицу.</p>
 <hr />
 <h2 id="benchmark-v-cicd-zashchita-ot-regressiy">Бенчмарк в CI/CD: защита от регрессий</h2>
-
 <p>Бенчмарк, запущенный один раз на ноутбуке разработчика, быстро забывается. Профессиональные команды превращают бенчмарки в <strong>автоматический барьер качества (Quality Gate)</strong> в пайплайнах CI/CD (<a href="../10-highload/5-performance-regression-detection.html" class="wikilink">5. Performance regression detection</a>):</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -1067,7 +1050,6 @@ flowchart LR
 </ol>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ul>
 <li>Встроенный фреймворк <code>go test -bench</code> — эталонный инструмент разработчика Go, сочетающий автоматическую калибровку $b.N$, замеры памяти и профилирование.</li>
 <li><strong>Управление временем:</strong> метод <code>b.ResetTimer()</code> исключает подготовку из измерений, а пара <code>StopTimer</code>/<code>StartTimer</code> изолирует фоновые операции.</li>

@@ -301,7 +301,6 @@
 
           <div class="article-markdown">
             <h2 id="istoricheskiy-kontekst-i-dekatalizatsiya">Исторический контекст и декатализация</h2>
-
 <blockquote>
 <p><em>«Правило простоты: проектируйте простоту изначально; добавляйте сложность только тогда, когда без неё не обойтись».</em>  <br />
 — Философия Unix</p>
@@ -379,8 +378,7 @@ flowchart TD
 
 
 <hr />
-<h2 id="1-pochemu-paket-ioioutil-ischez-iz-rekomendatsiy">1. Почему пакет `io/ioutil` исчез из рекомендаций</h2>
-
+<h2 id="1-pochemu-paket-ioioutil-ischez-iz-rekomendatsiy">1. Почему пакет <code>io/ioutil</code> исчез из рекомендаций</h2>
 <p>Основная причина — грубое нарушение границы ответственности (Separation of Concerns). <code>ioutil</code> содержал функции, которые по своей природе относятся к принципиально разным слоям абстракции компьютерной системы:</p>
 <ul>
 <li><strong>Потоковые операции (<code>ReadAll</code>, <code>NopCloser</code>)</strong> логичнее живут в пакете <code>io</code>, так как работают с абстрактными интерфейсами <code>io.Reader</code> и <code>io.Writer</code>. Им абсолютно всё равно, откуда текут байты — из сетевого сокета, криптографического генератора, памяти или сжатого архива.</li>
@@ -389,7 +387,6 @@ flowchart TD
 <p>Разнесение функций устранило двойственность, упростило поиск в документации пакетов, уменьшило когнитивную нагрузку на инженера и позволило компилятору строже проверять типы аргументов, исключая использование пакетов не по назначению.</p>
 <hr />
 <h2 id="2-karta-migratsii-i-logika-perenosa">2. Карта миграции и логика переноса</h2>
-
 <p>Каждая функция из <code>ioutil</code> нашла своё естественное место в обновленной экосистеме. Ниже приведена точная матрица соответствий.</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
@@ -452,7 +449,6 @@ flowchart TD
 
 <hr />
 <h2 id="3-under-the-hood-evolyutsiya-raboty-s-faylovoy-sistemoy">3. Under the hood: Эволюция работы с файловой системой</h2>
-
 <p>Наиболее значительное архитектурное изменение коснулось обхода каталогов (<code>ReadDir</code>). Старый <code>ioutil.ReadDir</code> возвращал срез <code>[]os.FileInfo</code>. Чтобы сконструировать <code>os.FileInfo</code>, рантайм Go был вынужден выполнять немедленный системный вызов <code>stat()</code> для <strong>каждого</strong> файла в директории. </p>
 <p>Представьте каталог с 50 000 файлов: ядру ОС приходилось 50 000 раз искать метаданные в структурах inode и дергать дисковую подсистему. В современных ОС системный вызов <code>stat</code> дорог, а на сетевых файловых системах (NFS, SMB, CIFS) или при работе в контейнерах с OverlayFS он превращался в катастрофическую задержку ввода-вывода (I/O latency).</p>
 <p>Новый <code>os.ReadDir</code> возвращает <code>[]fs.DirEntry</code>. Это предельно лёгкая структура интерфейса, которая кэширует базовые метаданные, полученные напрямую от ядра ОС во время чтения содержимого каталога (из системного вызова <code>getdents64</code> в Linux).</p>
@@ -514,7 +510,6 @@ flowchart LR
 <p>Ключевое преимущество <code>fs.DirEntry</code> — <strong>ленивая загрузка тяжёлых метаданных</strong>. Если вам нужно только отфильтровать файлы по расширению или найти подкаталоги, системный вызов <code>stat</code> никогда не вызывается. Информация об имени и базовом типе уже получена из буфера <code>getdents64</code>. Это сокращает время обхода директорий в десятки и сотни раз.</p>
 <hr />
 <h2 id="4-mechanical-sympathy-optimizatsiya-allokatsiy-i-sistemnykh-vyzovov">4. Mechanical Sympathy: Оптимизация аллокаций и системных вызовов</h2>
-
 <p>Миграция на <code>os.ReadFile</code> и <code>os.WriteFile</code> несёт прямую выгоду для производительности на уровне оперативной памяти и тактов CPU.</p>
 <h3 id="predvaritelnoe-vydelenie-pamyati-pre-allocation">Предварительное выделение памяти (Pre-allocation)</h3>
 <p>Функция <code>io.ReadAll</code> работает «вслепую»: она не знает, сколько байт передаст ей <code>io.Reader</code>. Поэтому она читает чанками фиксированного размера (по 512 байт, затем удваивая буфер) и растёт через <code>append</code>, вызывая повторяющуюся реаллокацию и копирование памяти по мере заполнения буфера:</p>
@@ -555,7 +550,6 @@ flowchart LR
 <p>Между <code>os.Create</code> и <code>os.Chmod</code> образуется временное окно гонки (Time-of-Check to Time-of-Use, TOCTOU), в течение которого другой процесс в системе может прочитать файл с конфиденциальными секретами или токенами доступа. <code>os.WriteFile</code> атомарно передает режим доступа в системный вызов <code>open(2)</code> / <code>openat(2)</code>.</p>
 <hr />
 <h2 id="5-lovushki-i-voprosy-s-sobesedovaniy">5. Ловушки и вопросы с собеседований</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -604,7 +598,6 @@ flowchart LR
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong><code>io/ioutil</code> устарел.</strong> Мигрируйте на пакеты <code>io</code> и <code>os</code>. Это канонический стандарт начиная с Go 1.16+.</li>
 <li><strong><code>os.ReadDir</code> + <code>fs.DirEntry</code> = производительность.</strong> Ленивый <code>stat</code> и кэшированные метаданные ядра (<code>getdents64</code>) экономят сотни тысяч системных вызовов на обход директорий.</li>

@@ -355,7 +355,6 @@
 <p><em>«В теории нет никакой разницы между теорией и практикой. На практике же эта разница колоссальна — особенно когда по сокету прилетает RST, а планировщик Go пытается припарковать десять тысяч горутин.»</em></p>
 </blockquote>
 <h2 id="integratsiya-brokerov-soobshcheniy-v-go-prilozheniya">Интеграция брокеров сообщений в Go-приложения</h2>
-
 <p>В теоретических главах нашего учебника мы обстоятельно разобрали архитектурные принципы распределенных очередей: от протоколов AMQP в <a href="../02-rabbitmq/1-rabbitmq-arkhitektura-i-kontseptsii.html" class="wikilink">RabbitMQ</a> и шардированных партиций в <a href="../03-kafka/1-kafka-arkhitektura-i-model-log-based-sistemy.html" class="wikilink">Kafka</a> до сверхлегкого протокола <a href="../04-nats/1-nats-legkovesnyy-broker.html" class="wikilink">NATS</a>.</p>
 <p>На диаграммах в архитектурных документах всё выглядит гладко и стройно: сервисы публикуют события, брокеры раскладывают их по полочкам, а консьюмеры слаженно разбирают задачи. Однако реальная инженерная разработка бэкенда на языке Go начинается там, где кончается идеальный мир.</p>
 <p>В продакшене работа с брокерами сообщений — это непрекращающаяся битва за стабильность:<br />
@@ -366,7 +365,6 @@
 <p>В этой практической главе мы заложим надежный фундамент работы с тремя главными брокерами современности с позиций <strong>Mechanical Sympathy</strong> и бескомпромиссных стандартов production-кода.</p>
 <hr />
 <h2 id="arkhitekturnyy-sloy-zachem-nuzhen-client-wrapper">Архитектурный слой: Зачем нужен Client Wrapper</h2>
-
 <p>Самый распространенный антипаттерн, с которым регулярно сталкиваются технические лидеры при аудите микросервисов — <strong>просачивание низкоуровневых SDK брокеров в слой предметной области (Domain &amp; Service Layer)</strong>.</p>
 <p>Когда разработчик напрямую в бизнес-структуре вызывает методы специфических библиотек (<code>amqp091-go</code>, <code>confluent-kafka-go</code> или <code>nats.go</code>), проект моментально оказывается заложником чужих сигнатур:<br />
 1. Чтобы отправить сообщение в RabbitMQ, нужно открыть логический <code>Channel</code> и вызвать <code>Publish()</code>.<br />
@@ -430,9 +428,7 @@ flowchart LR
 <p><strong>Решение по чистой архитектуре:</strong> Мы изолируем сторонние библиотеки за узким доменным интерфейсом <code>Publisher</code>. Бизнес-код оперирует абстрактной структурой <code>Message</code>, а платформенные адаптеры транслируют ее в сетевые вызовы. Это делает юнит-тестирование тривиальным (интерфейс мокается в памяти за 5 строк), а инфраструктурные адаптеры тестируются интеграционными тестами через Testcontainers.</p>
 <hr />
 <h2 id="rabota-s-rabbitmq-v-go">Работа с RabbitMQ в Go</h2>
-
-<h3 id="pod-kapotom-amqp091-go-i-tcp-soedineniya">Под капотом: `amqp091-go` и TCP-соединения</h3>
-
+<h3 id="pod-kapotom-amqp091-go-i-tcp-soedineniya">Под капотом: <code>amqp091-go</code> и TCP-соединения</h3>
 <p>Официальный клиент сообщества <code>github.com/rabbitmq/amqp091-go</code> работает по бинарному протоколу AMQP 0-9-1 поверх сырого сетевого сокета TCP. Ключевая концепция протокола — <strong>мультиплексирование каналов (AMQP Channels)</strong> поверх одного физического соединения.</p>
 
 <aside class="callout callout-info" aria-label="Под капотом">
@@ -450,7 +446,6 @@ flowchart LR
 
 <hr />
 <h3 id="pravilnaya-struktura-podklyucheniya">Правильная структура подключения</h3>
-
 <p>Ниже представлен production-шаблон надежного издателя RabbitMQ с поддержкой мониторинга обрыва сети и режима подтверждения доставки (Publisher Confirms):</p>
 
 <div class="code-block" data-lang="go">
@@ -583,9 +578,7 @@ func (p *RabbitPublisher) Publish(ctx context.Context, exchange, routingKey stri
 
 <hr />
 <h2 id="rabota-s-kafka-v-go">Работа с Kafka в Go</h2>
-
-<h3 id="pod-kapotom-confluent-kafka-go-i-sarama">Под капотом: `confluent-kafka-go` и `sarama`</h3>
-
+<h3 id="pod-kapotom-confluent-kafka-go-i-sarama">Под капотом: <code>confluent-kafka-go</code> и <code>sarama</code></h3>
 <p>В инженерном сообществе Go при работе с Apache Kafka существуют две доминирующие библиотеки. Выбор между ними — классический архитектурный компромисс между производительностью и чистотой рантайма.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -622,12 +615,12 @@ flowchart TD
 </figure>
 
 
-<h4 id="1-sarama-github-comibmsarama-chistyy-go">1. `sarama` (`github.com/IBM/sarama`) — Чистый Go</h4>
+<h4 id="1-sarama-github-comibmsarama-chistyy-go">1. <code>sarama</code> (<code>github.com/IBM/sarama</code>) — Чистый Go</h4>
 <ul>
 <li><strong>Преимущества:</strong> 100% чистый Go-код без CGO. Простая кросс-компиляция под любые архитектуры (ARM, x86), сборка ультракомпактных Docker-образов на базе <code>scratch</code> или Alpine. Полная прозрачность для профилировщика <code>pprof</code> и детектора гонок <code>go test -race</code>.</li>
 <li><strong>Недостатки:</strong> Скорость сериализации протокола чуть ниже C-библиотек; отставание по внедрению новейших экспериментальных фич протокола Kafka.</li>
 </ul>
-<h4 id="2-confluent-kafka-go-cgo-obertka-nad-librdkafka">2. `confluent-kafka-go` — CGO-обертка над `librdkafka`</h4>
+<h4 id="2-confluent-kafka-go-cgo-obertka-nad-librdkafka">2. <code>confluent-kafka-go</code> — CGO-обертка над <code>librdkafka</code></h4>
 <ul>
 <li><strong>Преимущества:</strong> Максимальная производительность сетевого ввода-вывода, эталонная реализация от создателей Kafka, аппаратная оптимизация вызовов.</li>
 <li><strong>Недостатки:</strong> <strong>CGO</strong>. Сборка бинарника требует наличия заголовочных файлов <code>librdkafka</code> в системе сборщика. Потребление памяти внутри C-библиотеки не контролируется сборщиком мусора Go GC. При сбоях стек вызовов ломается на границе C и Go, что затрудняет анализ дампов памяти.</li>
@@ -647,7 +640,6 @@ flowchart TD
 
 <hr />
 <h3 id="proizvoditel-na-sarama-idiomatichnyy-podkhod">Производитель на Sarama: Идиоматичный подход</h3>
-
 <p>Фундаментальное свойство Kafka-издателя: он <strong>глубоко асинхронен</strong>. Когда вызывается метод отправки, сообщение не летит в провод мгновенно — оно буферизуется во внутренней очереди продюсера, группируясь в крупные батчи по времени ожидания (<code>linger.ms</code>) или размеру пачки (<code>Flush.Bytes</code>).</p>
 
 <div class="code-block" data-lang="go">
@@ -741,9 +733,7 @@ func (p *KafkaProducer) Close() error {
 
 <hr />
 <h2 id="rabota-s-nats-v-go">Работа с NATS в Go</h2>
-
 <h3 id="pod-kapotom-legkovesnost-i-netpoll">Под капотом: Легковесность и Netpoll</h3>
-
 <p>Клиент <code>github.com/nats-io/nats.go</code> — яркий образец высокоэффективного Go-инжиниринга. В отличие от тяжеловесных драйверов других систем, он создавался с глубоким пониманием архитектуры компилятора и рантайма Go.</p>
 
 <aside class="callout callout-info" aria-label="Под капотом">
@@ -760,7 +750,6 @@ func (p *KafkaProducer) Close() error {
 
 <hr />
 <h3 id="jetstream-publikatsiya-s-garantiyami">JetStream: Публикация с гарантиями</h3>
-
 <p>Подсистема <a href="../04-nats/2-core-nats-vs-jetstream.html" class="wikilink">JetStream</a> привносит в легковесный NATS персистентность уровня распределенного журнала сообщений. Здесь нет привычных очередей: сообщения публикуются в темы — <strong><code>Subject</code></strong> (с поддержкой масок <code>*</code> и <code>&gt;</code>) и сохраняются в персистентный стрим (<strong><code>Stream</code></strong>).</p>
 
 <div class="code-block" data-lang="go">
@@ -837,7 +826,6 @@ func (p *NATSPublisher) Close() error {
 
 <hr />
 <h2 id="mechanical-sympathy-setevoy-stek-i-allokatsii">Mechanical Sympathy: Сетевой стек и Аллокации</h2>
-
 <p>Когда прикладной код на Go выполняет отправку сообщения, на пути от пользовательской структуры данных до сетевой карты (NIC) разворачивается многоуровневый процесс:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -878,7 +866,6 @@ flowchart TD
 3. <strong>Заполнение сокета ядра:</strong> Если сеть перегружена, а буфер сокета (Socket Buffer) переполнен, механизм <code>epoll</code> блокирует горутину до момента освобождения места в окне отправки TCP.</p>
 <hr />
 <h2 id="universalnyy-interfeys-publikatsii">Универсальный интерфейс публикации</h2>
-
 <p>Сведем рассмотренные подходы к канонической чистой архитектуре:</p>
 
 <div class="code-block" data-lang="go">
@@ -914,7 +901,6 @@ type Publisher interface {
 - Бизнес-логика остается кристально чистой и ничего не знает о сетевом транспорте.</p>
 <hr />
 <h2 id="itogi">Итоги</h2>
-
 <ol>
 <li><strong>Изолируйте брокеры:</strong> Никогда не используйте SDK очередей напрямую в бизнес-слое. Абстрагируйте транспорт за узким интерфейсом <code>Publisher</code>.</li>
 <li><strong>RabbitMQ требует активного супервизора:</strong> Обрыв сетевого сокета моментально уничтожает все AMQP-каналы. Библиотека <code>amqp091-go</code> не умеет восстанавливать соединение самостоятельно — пишите надежный стейт-машин супервизор.</li>

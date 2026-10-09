@@ -296,7 +296,6 @@
 
           <div class="article-markdown">
             <h2 id="pochemu-tcp-stal-uzkim-mestom">Почему TCP стал узким местом</h2>
-
 <p>Исторически веб-стек строился на связке <code>TCP + TLS + HTTP/1.1/2</code>. На протяжении более чем четырех десятилетий протокол TCP (Transmission Control Protocol) служил незыблемым фундаментом цифровой цивилизации. Он обеспечивает гарантированную доставку и упорядоченность, но эта гарантия имеет высокую цену: <strong>Head-of-Line (HoL) blocking</strong> на транспортном уровне. Если в потоке данных теряется один пакет, ядро ОС блокирует чтение всех последующих до его повторной передачи.</p>
 <p>В чем суть проблемы?<br />
 Представьте себе службу доставки, которая везет вам собрание сочинений из десяти томов. Если курьер уронил в лужу третий том и поехал за заменой, правила TCP категорически запрещают вам прикасаться к томам с четвертого по десятый, даже если они уже лежат у вас на столе и вам срочно нужен десятый том. Ядро операционной системы держит полученные байты в буфере приема (<code>receive buffer</code>) и не отдает их приложению, пока дыра в последовательности порядковых номеров (<code>Sequence Numbers</code>) не будет залатана.</p>
@@ -359,7 +358,6 @@ flowchart TD
 
 <hr />
 <h2 id="quic-arkhitektura-poverkh-udp">QUIC: Архитектура поверх UDP</h2>
-
 <p>Единственным способом обойти окостенение интернета было спрятать всю сложную транспортную логику внутрь простого и везде проходимого протокола — <strong>UDP</strong> (подробно разобранного в статье <a href="14-udp-kogda-nenadezhnyy-transport-luchshe-tcp.html" class="wikilink">14. UDP. Когда ненадежный транспорт лучше TCP</a>).</p>
 <p><strong>QUIC (Quick UDP Internet Connections)</strong> — это протокол уровня 4, разработанный Google и стандартизированный как IETF RFC 9000. Его главная философская идея: перенести мультиплексирование, контроль перегрузок и шифрование в <strong>user-space</strong>, убрав ядро ОС из критического пути.</p>
 <p>QUIC работает поверх <code>UDP</code> (см. <a href="14-udp-kogda-nenadezhnyy-transport-luchshe-tcp.html" class="wikilink">14. UDP. Когда ненадежный транспорт лучше TCP</a>). Это позволяет:<br />
@@ -402,10 +400,8 @@ flowchart TD
 
 <hr />
 <h2 id="pod-kapotom-kak-go-realizuet-quic">Под капотом: Как Go реализует QUIC</h2>
-
 <p>В стандартной библиотеке Go (<code>net/http</code>) нативная поддержка HTTP/3 «из коробки» отсутствует (в <code>crypto/tls</code> предоставлены лишь низкоуровневые хуки для QUIC). Стандартом де-факто в экосистеме Go является библиотека <code>github.com/quic-go/quic-go</code> и пакет <code>github.com/quic-go/quic-go/http3</code>.</p>
 <h3 id="1-user-space-vs-kernel-space">1. User-Space vs Kernel-Space</h3>
-
 <p>В отличие от TCP, где ядро управляет буферами, окнами и таймерами, <code>quic-go</code> реализует весь стек в user-space:<br />
 - <strong>Loss Recovery</strong>: Алгоритм отслеживает последовательные номера пакетов. При потере определяется, какой пакет не дошел, и инициируется ретрансмиссия без блокировки остальных потоков.<br />
 - <strong>Congestion Control</strong>: Алгоритмы контроля перегрузки (по умолчанию в <code>quic-go</code> — NewReno-совместимый режим с Cubic-вариантом; BBR в <code>quic-go</code> нет) реализованы прямо в Go. Нет вызовов <code>setsockopt</code> для ядра. Алгоритм работает на уровне Go-планировщика, что дает предсказуемость в Kubernetes-нодах.<br />
@@ -442,8 +438,7 @@ sequenceDiagram
 </figure>
 
 
-<h3 id="2-memory-scheduler-sympathy">2. Memory & Scheduler Sympathy</h3>
-
+<h3 id="2-memory-scheduler-sympathy">2. Memory &amp; Scheduler Sympathy</h3>
 <p><code>quic-go</code> интенсивно работает с памятью. Каждый UDP-пакет парсится, распаковывается TLS, маршрутизируется по <code>StreamID</code>. Без оптимизаций это породит тысячи аллокаций на запрос.<br />
 - Используется <code>sync.Pool</code> для буферов <code>[]byte</code> и заголовков пакетов. Escape-анализ показывает, что при высокой нагрузке (10k+ RPS) буферы уходят в кучу, но пул снижает давление на GC на 60-70%.<br />
 - Планировщик Go (<code>runtime.scheduler</code>) маппит goroutines, обрабатывающие streams, на OS threads (M-P-G). <code>netpoller</code> (epoll на Linux, kqueue на macOS/BSD) асинхронно опрашивает UDP-сокеты. Нет блокирующих syscalls <code>read</code>/<code>write</code>, только <code>recvfrom</code>/<code>sendto</code> с флагом <code>MSG_DONTWAIT</code> или <code>epoll_wait</code>.</p>
@@ -462,9 +457,7 @@ sequenceDiagram
 
 <hr />
 <h2 id="klyuchevye-mekhanizmy-i-optimizatsii">Ключевые механизмы и оптимизации</h2>
-
 <h3 id="1-bystroe-ustanovlenie-soedineniya-0-rtt-1-rtt">1. Быстрое установление соединения (0-RTT / 1-RTT)</h3>
-
 <p>В классическом стеке TCP + TLS 1.2 клиенту требовалось от 2 до 3 RTT (Round-Trip Time), прежде чем отправить первый байт полезных данных HTTP:<br />
 1. <code>SYN</code> ↔ <code>SYN-ACK</code> (1 RTT TCP).<br />
 2. <code>ClientHello</code> ↔ <code>ServerHello</code> (1 RTT TLS).<br />
@@ -515,14 +508,11 @@ sequenceDiagram
 
 
 <h3 id="2-multipleksirovanie-na-transportnom-urovne">2. Мультиплексирование на транспортном уровне</h3>
-
 <p>Каждый stream имеет независимый <code>StreamID</code>. Потеря пакета в stream 0 не влияет на stream 1. Это решает проблему HoL-блокировки, характерную для <a href="10-tcp-ustroystvo-garantii-i-zhiznennyy-tsikl-soedineni.html" class="wikilink"><code>10. TCP. Устройство, гарантии и жизненный цикл соединения</code></a>. Если в потоке передачи аудиофайла потерян UDP-пакет, ядро и рантайм продолжают бесперебойно передавать байты критического потока управления.</p>
 <h3 id="3-ustoychivost-k-nat-i-mobilnosti">3. Устойчивость к NAT и мобильности</h3>
-
 <p>QUIC использует <code>Connection ID</code> вместо связки <code>IP:Port</code>. Это позволяет клиентам менять сеть без разрыва соединения. Для миграции соединения используются <code>PATH_CHALLENGE</code>/<code>PATH_RESPONSE</code>. Механизма <code>UDP hole punching</code> (ICE/STUN) в <code>quic-go</code> нет; при необходимости обхода NAT его реализуют отдельно.</p>
 <hr />
 <h2 id="praktika-v-go-podderzhka-http3">Практика в Go: Поддержка HTTP/3</h2>
-
 <p>Для включения HTTP/3 в Go-сервере или клиенте используется пакет <code>github.com/quic-go/quic-go/http3</code> (пакет <code>golang.org/x/net/http3</code> существует, но сейчас это заготовка без публичного API, непригодная для production).</p>
 
 <div class="code-block" data-lang="go">
@@ -582,7 +572,6 @@ func main() {
 
 <hr />
 <h2 id="lovushki-i-voprosy-na-sobesedovaniyakh">Ловушки и вопросы на собеседованиях</h2>
-
 <ol>
 <li>
 <p><strong>Когда HTTP/3 НЕ нужен?</strong><br />
@@ -606,7 +595,6 @@ func main() {
 </ol>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <p>HTTP/3 переносит мультиплексирование и контроль перегрузок из ядра ОС в user-space, решая фундаментальную проблему HoL-блокировки TCP. Для Go-разработчика это означает:<br />
 - Использование <code>github.com/quic-go/quic-go/http3</code> (в стандартной библиотеке и <code>golang.org/x/net/http3</code> готового HTTP/3 пока нет).<br />
 - Понимание работы <code>netpoller</code> с UDP и <code>sync.Pool</code> для пакетов.<br />

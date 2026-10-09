@@ -413,11 +413,9 @@
 <p>В <a href="2-cpu-profiling-v-go.html" class="wikilink">2. CPU profiling в Go</a> мы освоили основы чтения показателей <code>flat</code> и <code>cum</code>, а во <a href="3-flamegraph.html" class="wikilink">3. Flamegraph</a> научились визуализировать стек вызовов. В этой лекции мы превратим разрозненные наблюдения в строгую, повторяемую методологию — <strong>Top Functions Analysis</strong>. Мы построим полную классификацию типовых симптомов рантайма Go, разберем пошаговый алгоритм расследования и научимся находить корень проблемы за считанные минуты.</p>
 <hr />
 <h2 id="zachem-sistemno-analizirovat-top-funktsii">Зачем системно анализировать top-функции</h2>
-
 <p>Системный анализ верхних строк отчета профилировщика предотвращает хаотичные и бесполезные попытки оптимизировать код вслепую. Мы не бросаемся на первую попавшуюся строку, а методично отделяем симптомы от первопричины.</p>
 <hr />
 <h2 id="dva-vzglyada-flat-protiv-cum">Два взгляда: flat против cum</h2>
-
 <p>Фундамент любого числового анализа профилей — четкое разделение ответственности между собственным и кумулятивным временем:</p>
 
 <div class="code-block" data-lang="text">
@@ -491,7 +489,6 @@
 
 <hr />
 <h2 id="metodologiya-analiza-top-funktsiy">Методология анализа top-функций</h2>
-
 <p>Системный анализ отчета <code>top</code> выполняется по строгому четырехшаговому алгоритму:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -530,7 +527,7 @@ flowchart TD
 - Сервис находится под стабильной боевой или синтетической нагрузкой (на холостом ходу в <code>top</code> будут видны только системные функции ожидания: <code>runtime.gopark</code>, <code>netpoll</code>, <code>findrunnable</code>).<br />
 - Длительность записи составляет <strong>не менее 30 секунд</strong> (защита от случайных микровыбросов).<br />
 - Частота сэмплирования зафиксирована на стандартных <strong>100 Гц</strong>.</p>
-<h3 id="shag-2-pervichnyy-osmotr-top-cum">Шаг 2. Первичный осмотр: `top -cum`</h3>
+<h3 id="shag-2-pervichnyy-osmotr-top-cum">Шаг 2. Первичный осмотр: <code>top -cum</code></h3>
 <p>Запускаем <code>go tool pprof</code> и сортируем список по убыванию кумулятивного времени:</p>
 
 <div class="code-block" data-lang="bash">
@@ -592,7 +589,6 @@ Dropped 40 nodes (cum &lt;= 0.02s)
 <p>Теперь мы исследуем листовые функции с максимальным значением <code>flat</code>. Большинство из них принадлежит рантайму Go. Опытный инженер классифицирует их по типам затрат и применяет соответствующий протокол лечения.</p>
 <hr />
 <h2 id="klassifikatsiya-goryachikh-funktsiy-i-strategiya-deystviy">Классификация «горячих» функций и стратегия действий</h2>
-
 <p>Все типовые обитатели вершины отчета <code>top</code> делятся на <strong>8 фундаментальных классов</strong>:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -631,8 +627,7 @@ flowchart LR
 
 
 <hr />
-<h3 id="klass-1-funktsii-rantayma-allokatsii-mallocgc-newobject">Класс 1: Функции рантайма — аллокации (`mallocgc`, `newobject`)</h3>
-
+<h3 id="klass-1-funktsii-rantayma-allokatsii-mallocgc-newobject">Класс 1: Функции рантайма — аллокации (<code>mallocgc</code>, <code>newobject</code>)</h3>
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> Высокий <code>flat</code> у <code>runtime.mallocgc</code>, <code>runtime.newobject</code>.</li>
 <li><strong>Физическая первопричина:</strong> Программа непрерывно создает короткоживущие объекты в динамической куче (Heap), перегружая потоковые кэши <code>mcache</code> и заставляя рантайм тратить такты на поиск свободных span-блоков и фоновую маркировку GC (<a href="../04-memory-profiling/5-pprof-memory-profile.html" class="wikilink">5. pprof memory profile</a>).</li>
@@ -642,8 +637,7 @@ flowchart LR
   3. Внедрить пул буферов <code>sync.Pool</code> (<a href="../09-prakticheskie-optimizatsii/2-sync-pool.html" class="wikilink">2. sync Pool</a>) или перейти на структуры с фиксированным размером (<a href="../09-prakticheskie-optimizatsii/1-umenshenie-allokatsiy.html" class="wikilink">1. Уменьшение аллокаций</a>).</li>
 </ul>
 <hr />
-<h3 id="klass-2-kopirovanie-pamyati-memmove-duffcopy-memclrnoheappointers">Класс 2: Копирование памяти (`memmove`, `duffcopy`, `memclrNoHeapPointers`)</h3>
-
+<h3 id="klass-2-kopirovanie-pamyati-memmove-duffcopy-memclrnoheappointers">Класс 2: Копирование памяти (<code>memmove</code>, <code>duffcopy</code>, <code>memclrNoHeapPointers</code>)</h3>
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> Доминирование <code>runtime.memmove</code>, <code>runtime.duffcopy</code>, <code>runtime.memclrNoHeapPointers</code>.</li>
 <li><strong>Физическая первопричина:</strong> Процессор тратит колоссальное количество тактов на тупое перекладывание байт из одной области памяти в другую. Это происходит при передаче тяжелых структур по значению, конкатенации строк, динамическом расширении срезов или заполнении структур нулями.</li>
@@ -667,8 +661,7 @@ flowchart LR
 
 
 <hr />
-<h3 id="klass-3-blokirovki-i-ozhidaniya-lock-unlock-semacquire">Класс 3: Блокировки и ожидания (`lock`, `unlock`, `semacquire`)</h3>
-
+<h3 id="klass-3-blokirovki-i-ozhidaniya-lock-unlock-semacquire">Класс 3: Блокировки и ожидания (<code>lock</code>, <code>unlock</code>, <code>semacquire</code>)</h3>
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> Появление <code>runtime.lock</code>, <code>runtime.unlock</code>, <code>runtime.semacquire</code>, операций <code>sync.Mutex</code> (<code>sync.(*Mutex).Lock</code>).</li>
 <li><strong>Физическая первопричина:</strong> Жесткий <strong>Lock Contention</strong>. Ядра процессора конкурируют за общие мьютексы рантайма (аллокатор, планировщик) или пользовательские примитивы синхронизации. Процессор тратит такты на атомарные инструкции <code>CMPXCHG</code>, спинлоки рантайма и системные вызовы ядра <code>futex</code>.</li>
@@ -679,8 +672,7 @@ flowchart LR
   4. Проверить код на False Sharing (<a href="../06-konkurentnost/8-false-sharing.html" class="wikilink">8. False sharing</a>), разнеся счетчики по разным 64-байтным кэш-линиям.</li>
 </ul>
 <hr />
-<h3 id="klass-4-cgo-cgocall-asmcgocall">Класс 4: CGO (`cgocall`, `asmcgocall`)</h3>
-
+<h3 id="klass-4-cgo-cgocall-asmcgocall">Класс 4: CGO (<code>cgocall</code>, <code>asmcgocall</code>)</h3>
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> Заметное присутствие <code>runtime.cgocall</code>, <code>runtime.asmcgocall</code>.</li>
 <li><strong>Физическая первопричина:</strong> Слишком гранулярные FFI-вызовы в код на C/C++. Каждый переход требует смены стека, переключения ABI, сохранения регистров и вызова <code>entersyscall</code> (<a href="../07-io-i-sistemnyy-uroven/1-sistemnye-vyzovy-i-ikh-stoimost.html" class="wikilink">1. Системные вызовы и их стоимость</a>).</li>
@@ -689,8 +681,7 @@ flowchart LR
   2. Переписать узкий участок на чистый Go.</li>
 </ul>
 <hr />
-<h3 id="klass-5-operatsii-s-mapami-mapaccess-mapassign-growwork">Класс 5: Операции с мапами (`mapaccess`, `mapassign`, `growWork`)</h3>
-
+<h3 id="klass-5-operatsii-s-mapami-mapaccess-mapassign-growwork">Класс 5: Операции с мапами (<code>mapaccess</code>, <code>mapassign</code>, <code>growWork</code>)</h3>
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> Функции <code>runtime.mapaccess1_fast64</code> (или аналоги), <code>runtime.mapassign</code>, <code>runtime.growWork</code>.</li>
 <li><strong>Физическая первопричина:</strong> Массовые обращения к хэш-таблицам. Если в топе виден <code>runtime.growWork</code> — мапа динамически растет под нагрузкой, непрерывно аллоцируя новые бакеты и эвакуируя старые элементы.</li>
@@ -700,8 +691,7 @@ flowchart LR
   3. При критических нагрузках применять плоские структуры данных или специализированные алгоритмы (<span class="wikilink-unresolved" title="Заметка в разработке">20. Алгоритмы и структуры данных (DSA) на Go</span>).</li>
 </ul>
 <hr />
-<h3 id="klass-6-rost-slaysov-growslice">Класс 6: Рост слайсов (`growslice`)</h3>
-
+<h3 id="klass-6-rost-slaysov-growslice">Класс 6: Рост слайсов (<code>growslice</code>)</h3>
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> <code>runtime.growslice</code>.</li>
 <li><strong>Физическая первопричина:</strong> Вызовы <code>append()</code> к срезам с нулевой начальной емкостью. При каждом переполнении емкость удваивается, вызывая вызов аллокатора и <code>runtime.memmove</code>.</li>
@@ -711,7 +701,6 @@ flowchart LR
 </ul>
 <hr />
 <h3 id="klass-7-serializatsiya-deserializatsiya">Класс 7: Сериализация / десериализация</h3>
-
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> <code>encoding/json.Unmarshal</code>, <code>encoding/json.Marshal</code>, <code>xml.Decode</code>, <code>protobuf.Marshal</code>.</li>
 <li><strong>Физическая первопричина:</strong> Рефлексия <code>reflect</code>, парсинг текстовых представлений, боксинг интерфейсов.</li>
@@ -722,7 +711,6 @@ flowchart LR
 </ul>
 <hr />
 <h3 id="klass-8-regulyarnye-vyrazheniya">Класс 8: Регулярные выражения</h3>
-
 <ul>
 <li><strong>Симптомы в <code>top</code>:</strong> <code>regexp.(*Regexp).FindAllString</code>, <code>regexp.(*Regexp).Find</code>, <code>regexp.(*Regexp).doExecute</code>.</li>
 <li><strong>Физическая первопричина:</strong> Компиляция регулярного выражения на лету внутри цикла или тяжелый обход автомата NFA.</li>
@@ -732,7 +720,6 @@ flowchart LR
 </ul>
 <hr />
 <h2 id="protsess-analiza-algoritmicheskiy-podkhod">Процесс анализа: алгоритмический подход</h2>
-
 <p>Сводная матрица принятия решений Senior-инженера:</p>
 
 <div class="code-block" data-lang="text">
@@ -763,7 +750,6 @@ flowchart LR
 
 <hr />
 <h2 id="primer-sistemnogo-analiza">Пример системного анализа</h2>
-
 <p>Разберем завершенный клинический пример расследования реального микросервиса:</p>
 
 <div class="code-block" data-lang="text">
@@ -802,7 +788,6 @@ flowchart LR
 </ol>
 <hr />
 <h2 id="mechanical-sympathy-chitaem-mezhdu-strok">Mechanical Sympathy: читаем между строк</h2>
-
 <p>Опытный инженер читает названия системных функций как индикаторы кремниевой микроархитектуры:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -857,7 +842,6 @@ flowchart TD
 </ol>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Top functions анализ — это доказательная медицина:</strong> Мы не угадываем узкие места, а последовательно декомпозируем затраты времени от диспетчеров (<code>top -cum</code>) к исполнителям (<code>top -flat</code>).</li>
 <li><strong><code>flat</code> против <code>cum</code>:</strong> <code>cum</code> определяет стратегическое направление оптимизации, а <code>flat</code> указывает точный адрес сгорания процессорных тактов.</li>

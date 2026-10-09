@@ -300,7 +300,6 @@
 
           <div class="article-markdown">
             <h2 id="filosofiya-povtornogo-ispolzovaniya-soedineniy">Философия повторного использования соединений</h2>
-
 <p>В высоконагруженных распределенных системах создание нового TCP-соединения для каждого отдельного HTTP-запроса — это непростительное расточительство аппаратных ресурсов. Чтобы передать крошечный JSON-документ размером в полкилобайта, процессор и сетевая карта вынуждены тратить сотни микросекунд на тройное рукопожатие TCP (SYN, SYN-ACK, ACK), тяжеловесный обмен сертификатами и криптографический расчет сессионных ключей TLS 1.3. При тысячах запросов в секунду такой подход неминуемо ведет к латентным задержкам, перегрузке сетевого стека и исчерпанию файловых дескрипторов.</p>
 <p>Пакет <code>net/http</code> решает эту фундаментальную проблему через <code>http.Transport</code> — мощный, потокобезопасный диспетчер соединений, который абстрагирует пулинг, управление Keep-Alive, TLS-рукопожатия и прозрачное переключение протоколов.</p>
 <p>Понимание внутренней механики <code>Transport</code> критически важно для инженера уровня Senior. Дефолтные настройки (<code>MaxIdleConnsPerHost: 2</code>) часто становятся невидимым bottleneck'ом в продакшене, а неправильная работа с пулом соединений приводит к утечкам FD, <code>TIME_WAIT</code> штормам и каскадным отказам микросервисов.</p>
@@ -317,7 +316,6 @@
 
 
 <h3 id="1-under-the-hood-struktura-transport-i-persistconn">1. Under the hood: Структура Transport и persistConn</h3>
-
 <p>При вызове <code>client.Do(req)</code> запрос попадает в <code>Transport.roundTrip()</code>. Ключевая абстракция — <code>persistConn</code> (persistent connection). Это обертка над <code>net.Conn</code>, управляющая состоянием соединения, чтением/записью через <code>bufio</code>, обработкой <code>Connection: keep-alive</code> и сигнализацией пулу о освобождении ресурса.</p>
 <p>Внутренний пул (<code>http.connPool</code>) управляет двумя типами очередей:<br />
 1. <strong>Idle Connections</strong>: Свободные, готовые к повторному использованию соединения.<br />
@@ -347,7 +345,6 @@ type connPool struct {
 3. Если нет — проверяет <code>dialing</code>. Если уже идет установка, горутина блокируется на канале и ждет завершения handshake.<br />
 4. Если нет активных диалов — создает новый через <code>dialConn()</code>.</p>
 <h3 id="2-mekhanika-connection-pool-ot-zaprosa-do-pula">2. Механика Connection Pool: От запроса до пула</h3>
-
 <p>Когда ответ получен, <code>Transport</code> не закрывает сокет сразу. Он проверяет заголовки сервера:<br />
 * Если <code>Connection: keep-alive</code> (или HTTP/1.1 без <code>Connection: close</code>) — сокет помечается как idle и кладется в пул.<br />
 * Если сервер вернул <code>Connection: close</code> или тело прочитано не полностью — сокет закрывается принудительно.</p>
@@ -405,13 +402,11 @@ flowchart TD
 
 
 <h3 id="3-keep-alive-i-tcp-sostoyaniya">3. Keep-Alive и TCP-состояния</h3>
-
 <p>HTTP Keep-Alive — это протокольная договоренность. На уровне ядра ОС она поддерживается через TCP-сокеты и опцию <code>SO_KEEPALIVE</code>.<br />
 * <strong>HTTP уровень</strong>: Заголовок <code>Connection: keep-alive</code> разрешает переиспользование сокета для последующих запросов.<br />
 * <strong>TCP уровень</strong>: <code>SO_KEEPALIVE</code> отправляет пустые пакеты каждые 2 часа (по умолчанию в Linux) для обнаружения разорванных соединений. В Go <code>Transport</code> включает <code>SetKeepAlive(true)</code> и <code>SetKeepAlivePeriod(3 * time.Minute)</code> по умолчанию.</p>
 <p>При закрытии пулом соединения (по таймауту <code>IdleConnTimeout</code>) происходит вызов <code>conn.Close()</code>. Ядро ОС переводит сокет в состояние <code>FIN_WAIT2</code>, а затем <code>TIME_WAIT</code> (обычно 60 секунд в Linux). Это не проблема для пула, но если вы создаете тысячи одноразовых соединений без Keep-Alive, <code>TIME_WAIT</code> быстро исчерпает лимит локальных портов (<code>net.ipv4.ip_local_port_range</code>).</p>
 <h3 id="4-http1-1-vs-http2-multipleksirovanie-pula">4. HTTP/1.1 vs HTTP/2: Мультиплексирование пула</h3>
-
 <p>Логика пула кардинально меняется в зависимости от версии протокола:<br />
 * <strong>HTTP/1.1</strong>: Одно соединение обрабатывает <strong>один запрос за раз</strong>. Чтобы обслуживать 100 одновременных запросов к одному хосту, пул должен держать до 100 соединений. Лимит <code>MaxIdleConnsPerHost</code> (по умолчанию 2) быстро вызывает очередь <code>dialing</code>.<br />
 * <strong>HTTP/2</strong>: Использует <code>http2.Transport</code>, который мультиплексирует множество стримов (запросов) по <strong>одному</strong> TCP-соединению. Внутренний пул Go всё равно создает соединения, но их количество кратно меньше. <code>http2.ConfigureTransports</code> настраивает пул под специфику мультиплексирования, увеличивая <code>MaxIdleConns</code> и <code>MaxConnsPerHost</code>.</p>
@@ -428,7 +423,6 @@ flowchart TD
 
 
 <h3 id="5-mechanical-sympathy-faylovye-deskriptory-pamyat-i-tyuning">5. Mechanical Sympathy: Файловые дескрипторы, память и тюнинг</h3>
-
 <p>Каждое активное или idle-соединение потребляет ресурсы:<br />
 1. <strong>File Descriptor</strong>: 1 FD на сокет. Лимит <code>ulimit -n</code> должен быть настроен с запасом.<br />
 2. <strong>Kernel Memory</strong>: Каждому TCP-сокету ядро выделяет буферы чтения/записи (<code>skbuff</code>), структуры <code>sock</code> и таймеры. Idle-соединение держит эти ресурсы занятыми до закрытия.<br />
@@ -468,7 +462,6 @@ var client = &amp;http.Client{
 </div>
 
 <h3 id="6-lovushki-i-voprosy-s-sobesedovaniy">6. Ловушки и вопросы с собеседований</h3>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -521,7 +514,6 @@ var client = &amp;http.Client{
 
 
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><code>http.Transport</code> — единый, потокобезопасный диспетчер. Создавайте его один раз и передавайте по зависимостям.</li>
 <li>Пул соединений использует логику <code>idle -&gt; dialing -&gt; new</code>. <code>MaxIdleConnsPerHost</code> по умолчанию равен 2, что требует увеличения для продакшена.</li>

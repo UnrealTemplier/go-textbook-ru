@@ -307,7 +307,6 @@
 
           <div class="article-markdown">
             <h2 id="opredelenie-i-vazhnost">Определение и важность</h2>
-
 <p>В реальном мире сетей и распределённых систем абсолютной надёжности не существует. Сетевой кабель может быть повреждён, Wi-Fi соединение смартфона может оборваться ровно в тот момент, когда сервер уже списал деньги, но ещё не успел отправить клиенту HTTP-ответ <code>200 OK</code>. Получив сетевой таймаут (<code>i/o timeout</code>), клиентский браузер, мобильное приложение или вышестоящий сервис неизбежно выполнит повторную попытку (retry).</p>
 <p>Если сервер спроектирован наивно, повторный запрос приведёт к повторному списанию баланса. Чтобы этого не произошло, распределённая система обязана обладать свойством <strong>идемпотентности</strong>.</p>
 <p>В математике унарная операция называется идемпотентной, если её повторное применение к результату не меняет значения:<br />
@@ -322,7 +321,6 @@ $$f(f(x)) = f(x)$$</p>
 - <strong>Хранилищ событий (Event Store)</strong>: предотвращение дублирования записей в цепочке событий (<a href="24-event-sourcing-khranenie-sobytiy-vmesto-sostoyaniya.html" class="wikilink">24. Event Sourcing. Хранение событий вместо состояния</a>).</p>
 <hr />
 <h3 id="exactly-once-semantika">Exactly-Once семантика</h3>
-
 <p>В индустрии распределённых вычислений много спорят о так называемой гарантии <strong>Exactly-Once Processing</strong> (обработка ровно один раз).</p>
 <p>По законам физики и теории распределённых систем (доказанной в парадоксе двух генералов), <strong>невозможно гарантировать доставку сообщения по ненадежной сети ровно один раз</strong> без риска потери сообщения. Поэтому, когда инженеры говорят об Exactly-Once, они имеют в виду <strong>эффективную семантику exactly-once (Effective Exactly-Once)</strong>: транспортная сеть доставляет сообщение как минимум один раз (<code>at-least-once</code>), но принимающая сторона (обработчик в Go) обладает свойством <strong>идемпотентности</strong>, нейтрализующим дубликаты.</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
@@ -357,7 +355,6 @@ $$f(f(x)) = f(x)$$</p>
 </table></div>
 <hr />
 <h3 id="realizatsiya-idempotentnosti-v-go">Реализация идемпотентности в Go</h3>
-
 <p>Идемпотентность — это не бесплатная абстракция. Она всегда требует сохранения дополнительного состояния и строгой атомарности. В практике Go-разработки выделяют четыре фундаментальных паттерна.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -395,7 +392,6 @@ flowchart TD
 
 <hr />
 <h4 id="1-idempotentnyy-klyuch-idempotency-key">1. Идемпотентный ключ (Idempotency Key)</h4>
-
 <p>Стандартом де-факто для платёжных и финансовых API (впервые популяризированным Stripe) является заголовок запроса <code>Idempotency-Key</code> (обычно UUID v4).</p>
 <p>Клиент генерирует уникальный ключ перед отправкой команды. Сервер сохраняет этот ключ и связывает его с результатом выполнения операции.</p>
 <h5>Защита от состояния гонки (Concurrent Race)</h5>
@@ -554,7 +550,6 @@ func (h *PaymentHandler) executeBusinessLogic(ctx context.Context, r *http.Reque
 
 <hr />
 <h4 id="2-unikalnye-ogranicheniya-bazy-dannykh">2. Уникальные ограничения базы данных</h4>
-
 <p>Если сущность предметной области естественным образом содержит естественный или суррогатный уникальный ключ (например, <code>OrderID</code> или <code>invoice_number</code>), идемпотентность достигается на уровне констрейнтов реляционной СУБД:</p>
 
 <div class="code-block" data-lang="go">
@@ -594,7 +589,6 @@ func isUniqueViolation(err error) bool {
 
 <hr />
 <h4 id="3-versionirovanie-i-optimisticheskaya-blokirovka">3. Версионирование и оптимистическая блокировка</h4>
-
 <p>В системах с архитектурой Event Sourcing (<a href="24-event-sourcing-khranenie-sobytiy-vmesto-sostoyaniya.html" class="wikilink">24. Event Sourcing. Хранение событий вместо состояния</a>) идемпотентность агрегата достигается через составной первичный ключ <code>(aggregate_id, version)</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -620,7 +614,6 @@ func (es *EventStore) Append(ctx context.Context, aggID string, version int, eve
 <p>Если одно и то же событие публикуется или обрабатывается дважды, база данных молча проигнорирует дубликат благодаря <code>ON CONFLICT DO NOTHING</code>.</p>
 <hr />
 <h4 id="4-deduplikatsiya-v-brokerakh-soobshcheniy">4. Дедупликация в брокерах сообщений</h4>
-
 <p>Современные распределённые брокеры сообщений (в первую очередь Apache Kafka) имеют встроенные механизмы дедупликации:</p>
 <ol>
 <li><strong>Idempotent Producer</strong>:<br />
@@ -631,7 +624,6 @@ func (es *EventStore) Append(ctx context.Context, aggID string, version int, eve
 <p>В Go надежный контур всегда комбинирует дедупликацию брокера с идемпотентной бизнес-обработкой в коде консьюмера, так как гарантии брокера защищают лишь транспортный канал, но не спасают от ошибок внутри пользовательского сервиса.</p>
 <hr />
 <h3 id="mechanical-sympathy-idempotentnost-i-rantaym-go">Mechanical Sympathy: идемпотентность и рантайм Go</h3>
-
 <p>Давайте проанализируем стоимость идемпотентности с точки зрения аппаратных ресурсов:</p>
 <ol>
 <li><strong>Дисковый и сетевой налог на состояние</strong>:<br />
@@ -645,10 +637,8 @@ func (es *EventStore) Append(ctx context.Context, aggID string, version int, eve
 </ol>
 <hr />
 <h3 id="exactly-once-v-kafka-na-go">Exactly-Once в Kafka на Go</h3>
-
 <p>В Go работа с транзакционным API Kafka реализуется с помощью библиотек <code>segmentio/kafka-go</code> или официального <code>confluent-kafka-go</code>.</p>
 <h4 id="idempotentnyy-prodyuser">Идемпотентный продюсер</h4>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -671,7 +661,6 @@ defer producer.Close()
 </div>
 
 <h4 id="tranzaktsionnyy-konsyumer">Транзакционный консьюмер</h4>
-
 <p>При чтении транзакционных топиков консьюмер обязан игнорировать сообщения, относящиеся к прерванным (aborted) транзакциям, используя уровень изоляции <code>ReadCommitted</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -721,7 +710,6 @@ for {
 
 <hr />
 <h3 id="svyaz-s-drugimi-patternami">Связь с другими паттернами</h3>
-
 <p>Идемпотентность — это связующий клей распределённой архитектуры:</p>
 <ul>
 <li><strong>Saga</strong> (<a href="26-saga-pattern-orkestratsiya-i-khoreografiya.html" class="wikilink">26. Saga Pattern. Оркестрация и хореография</a>):<br />
@@ -735,7 +723,6 @@ for {
 </ul>
 <hr />
 <h3 id="idempotentnost-i-ux">Идемпотентность и UX</h3>
-
 <p>Надёжная идемпотентность начинается в интерфейсе пользователя (UX):</p>
 <ol>
 <li><strong>Генерация ключа на клиенте</strong>:<br />
@@ -769,7 +756,6 @@ for {
 
 <hr />
 <h3 id="itog">Итог</h3>
-
 <p>Идемпотентность — это фундаментальный мост между иллюзией абсолютной надёжности и суровой реальностью распределённых сетей. Никакие брокеры сообщений и облачные платформы не спасут систему от дубликатов, если код сервисов не готов к повторному исполнению команд.</p>
 <p>Владение паттерном <code>Idempotency-Key</code>, понимание механики <code>ON CONFLICT</code> в SQL и дисциплина идемпотентных консьюмеров превращают хрупкий микросервисный зоопарк в несокрушимую распределённую систему.</p>
 <p>Теперь, когда мы освоили согласованность, транзакции и надёжность доставки, настало время взглянуть на производительность: как ускорить сервисы в десятки раз с помощью кэширования, не наступив на грабли инвалидации? Разбираемся в следующей главе: <a href="28-keshirovanie-cache-aside-write-through-write-back.html" class="wikilink">28. Кэширование. Cache Aside, Write Through, Write Back</a>.</p>

@@ -298,10 +298,8 @@
             <p>В 2009 году Сальваторе Санфилиппо (antirez) создал Redis, руководствуясь принципом предельного минимализма: вместо того чтобы усложнять базу данных тяжелыми транзакционными блокировками и распределенными потоками, он построил однопоточный сервер структур данных в оперативной памяти вокруг неблокирующего цикла событий (event loop на базе системного селектора <code>epoll</code>). </p>
 <p>Результат оказался ошеломляющим: операции над хеш-таблицами, списками и множествами стали выполняться за доли миллисекунды. Но в этом же кроется и фундаментальная опасность. Если в кодовой базе Go разработчик запускает тяжелую O(N) команду, однопоточный цикл событий Redis замирает, и тысячи легких горутин вашего бэкенда мгновенно выстраиваются в мертвую очередь к перегруженному сокету.</p>
 <h2 id="filosofiya-raboty-s-redis-v-go">Философия работы с Redis в Go</h2>
-
 <p>Redis — это не просто in-memory key-value хранилище. Это однопоточный сервер событий (event loop), управляющий сложными структурами данных (strings, hashes, lists, sets, streams, geospatial) с детерминированной латентностью. В экосистеме Go работа с Redis отличается от PHP или Java: здесь нет блокирующих тредов ОС на каждый запрос, а вся конкурентность управляется планировщиком Go и сетевым поллером <code>netpoll</code>. Правильная интеграция с Redis требует понимания пулов соединений, протокола сериализации, атомарности операций и влияния парсинга ответов на сборщик мусора.</p>
 <h2 id="1-arkhitektura-servera-i-protokol-resp">1. Архитектура сервера и протокол RESP</h2>
-
 <p>Redis использует текстовый бинарный протокол <strong>RESP</strong> (Redis Serialization Protocol). В версии 3 (RESP3) добавлены типизированные ответы, пуш-уведомления и нулевые указатели, что упрощает парсинг на стороне клиента.</p>
 <p>Каждая команда отправляется как массив строк. Например, <code>GET user:1</code> превращается в:</p>
 
@@ -361,7 +359,6 @@ flowchart LR
 
 
 <h2 id="2-pul-soedineniy-i-mekhanika-netpoll">2. Пул соединений и механика netpoll</h2>
-
 <p><code>go-redis</code> использует собственный пул соединений, оптимизированный под высокую конкуренцию. В отличие от <code>database/sql</code>, пул Redis работает через каналы и атомарные счетчики, минимизируя блокировки.</p>
 
 <div class="code-block" data-lang="go">
@@ -421,7 +418,6 @@ func GetUser(ctx context.Context, rdb *redis.Client, userID int64) (string, erro
 
 
 <h2 id="3-payplayning-i-multipleksirovanie">3. Пайплайнинг и мультиплексирование</h2>
-
 <p>Главный инструмент оптимизации Redis в Go — <strong>Pipeline</strong>. Он группирует несколько команд в один системный вызов <code>write</code>, отправляет их пакетом, а затем читает все ответы через один <code>read</code>. Это сокращает RTT и количество syscall с <code>N</code> до <code>2</code>.</p>
 
 <div class="code-block" data-lang="go">
@@ -467,7 +463,6 @@ func GetUser(ctx context.Context, rdb *redis.Client, userID int64) (string, erro
 
 
 <h2 id="4-serializatsiya-allokatsii-i-gc-davlenie">4. Сериализация, аллокации и GC-давление</h2>
-
 <p><code>encoding/json</code> активно использует рефлексию. Каждый <code>json.Marshal</code>/<code>json.Unmarshal</code> создает временные структуры в куче. При тысячах RPS это ускоряет достижение триггера <code>GOGC</code>, заставляя рантайм чаще запускать фазы Concurrent Mark и отвлекать процессорные ядра на помощь сборщику мусора (GC Mark Assist), что приводит к росту задержек p99.</p>
 <p><strong>Оптимизация:</strong><br />
 1. Используйте <code>go-redis</code> методы <code>.Scan()</code> для прямых преобразований типов.<br />
@@ -516,7 +511,6 @@ func GetUser(ctx context.Context, rdb *redis.Client, userID int64) (string, erro
 
 
 <h2 id="5-lovushki-production-i-antipatterny">5. Ловушки production и антипаттерны</h2>
-
 <ul>
 <li><strong>Блокирующие команды и пул</strong>: <code>BLPOP</code>, <code>BRPOP</code>, <code>XREAD BLOCK</code> ждут данные. Они блокируют соединение на всё время ожидания. Если <code>PoolSize=50</code> и 50 горутин вызовут <code>BLPOP</code>, пул исчерпается. Решение: выделяйте отдельный клиент с большим <code>PoolSize</code> для pub/sub/streams или используйте асинхронные воркеры.</li>
 <li><strong>Контекст и отмена</strong>: <code>go-redis/v9</code> полностью поддерживает <code>context.Context</code>. При отмене контекста клиент помечает соединение как <code>bad</code> и закрывает его. Команда на стороне Redis <strong>не отменяется</strong> (Redis однопоточный, отмена невозможна без <code>CLIENT KILL</code>). Это приводит к выполнению команды "в холостую".</li>
@@ -539,7 +533,6 @@ func GetUser(ctx context.Context, rdb *redis.Client, userID int64) (string, erro
 
 
 <h2 id="6-sravnenie-s-drugimi-ekosistemami">6. Сравнение с другими экосистемами</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -582,7 +575,6 @@ func GetUser(ctx context.Context, rdb *redis.Client, userID int64) (string, erro
 </tbody>
 </table></div>
 <h2 id="7-itog">7. Итог</h2>
-
 <ol>
 <li>Redis однопоточен: избегайте тяжелых команд, используйте <code>SCAN</code> вместо <code>KEYS</code>, мониторьте латентность.</li>
 <li><code>go-redis/v9</code> + <code>context</code> + <code>netpoll</code> обеспечивают максимальную пропускную способность без блокировок тредов ОС.</li>

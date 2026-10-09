@@ -299,11 +299,9 @@
 <p>В таких экосистемах, как Java или C#, тестирование HTTP-слоя нередко превращается в мучительный ритуал: запуск тяжелого контейнера зависимостей (Spring TestContext), поднятие встроенного сервера Tomcat или Jetty и прогон нескольких десятков тестов за полторы минуты. Разработчики перестают запускать тесты перед каждым коммитом, потому что обратная связь становится невыносимо медленной.</p>
 <p>Язык Go демонстрирует совершенно иной уровень инженерного изящества. Обработчик HTTP в Go — это не магический контроллер, а обыкновенная функция, удовлетворяющая скромному интерфейсу <code>http.Handler</code>: <code>ServeHTTP(ResponseWriter, *Request)</code>. Пакет стандартной библиотеки <code>net/http/httptest</code> предоставляет инструмент <code>httptest.NewRecorder</code>, который полностью имитирует HTTP-ответ в оперативной памяти процесса через обычный <code>bytes.Buffer</code>. Никаких системных вызовов сокетов, никаких сетевых задержек ядра и никаких портов: тысячи тестов контрактов выполняются за доли секунды прямо на рабочей машине.</p>
 <h2 id="filosofiya-testirovaniya-v-go">Философия тестирования в Go</h2>
-
 <p>Тестирование HTTP-сервисов в Go радикально отличается от подходов в экосистемах Java, C# или PHP. Вместо тяжелых фреймворков, запускающих вложенные JVM или поднимающих mock-серверы на реальных портах, стандартная библиотека <code>net/http/httptest</code> предоставляет легковесные примитивы для in-memory исполнения. Это позволяет запускать тысячи тестов за секунды, полностью исключая накладные расходы на сетевой стек ядра, TCP-handshake и контекстные переключения.</p>
 <p>Правильно написанный тест в Го — это не проверка кода, а проверка контракта. Он должен быть детерминированным, изолированным, быстро исполняться и явно демонстрировать ожидаемое поведение через таблицы данных, а не императивные блоки <code>if/else</code>.</p>
 <h2 id="1-instrumentariy-httptest-i-in-memory-ispolnenie">1. Инструментарий: httptest и in-memory исполнение</h2>
-
 <p>Пакет <code>httptest</code> предоставляет два основных инструмента: <code>NewRecorder</code> и <code>NewServer</code>. Первый имитирует <code>http.ResponseWriter</code> в памяти, второй поднимает полноценный <code>http.Server</code> на временном порту.</p>
 
 <div class="code-block" data-lang="go">
@@ -369,7 +367,6 @@ func TestGetUserHandler(t *testing.T) {
 
 
 <h2 id="2-mekhanika-ispolneniya-bez-setevogo-steka">2. Механика исполнения без сетевого стека</h2>
-
 <p>Когда требуется протестировать полный цикл взаимодействия с сетевым клиентом (таймауты, редиректы, потоковое чтение тела ответа), используется <code>httptest.NewServer</code>. В отличие от <code>httptest.NewRecorder</code>, он поднимает реальный локальный <code>http.Server</code>, открывая TCP-слушатель на случайном свободном порту loopback-интерфейса (<code>127.0.0.1:0</code> через системный вызов ядра <code>net.Listen</code>).</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -403,7 +400,6 @@ flowchart TD
 
 <p>Связка <code>httptest.NewClient()</code> и <code>NewServer()</code> использует оптимизированный транспорт, который кеширует соединения и минимизирует syscall-ы. Однако для юнит-тестов хендлеров <code>NewRecorder</code> всегда предпочтительнее: он быстрее, не требует открытия файловых дескрипторов и не создает конкуренцию за порты в параллельных сьютах.</p>
 <h2 id="3-idiomatichnye-patterny-table-driven-i-middleware">3. Идиоматичные паттерны: Table-Driven и Middleware</h2>
-
 <p>Тестирование маршрутов и промежуточных обработчиков в Го строится вокруг подтестов <code>t.Run</code>. Это позволяет изолировать кейсы, запускать их параллельно и получать детальный отчет по каждому сценарию.</p>
 
 <div class="code-block" data-lang="go">
@@ -451,7 +447,6 @@ flowchart TD
 </div>
 
 <h2 id="4-strategii-mokov-i-upravlenie-zavisimostyami">4. Стратегии моков и управление зависимостями</h2>
-
 <p>В Go мокирование реализуется через интерфейсы, а не через рефлексию или генерацию байт-кода. Ручные моки часто предпочтительнее <code>gomock</code>, так как они проще, быстрее и не требуют этапа <code>go generate</code>.</p>
 
 <div class="code-block" data-lang="go">
@@ -503,7 +498,6 @@ func TestHandlerWithDependency(t *testing.T) {
 
 
 <h2 id="5-proizvoditelnost-testov-i-mechanical-sympathy">5. Производительность тестов и Mechanical Sympathy</h2>
-
 <p>Большой набор тестов создает давление на сборщик мусора. Каждый <code>httptest.NewRequest</code> аллоцирует структуру <code>Request</code>, заголовки и <code>bytes.Buffer</code>. <code>NewRecorder</code> аллоцирует внутренний буфер ответа.</p>
 <p>Оптимизации для high-coverage проектов:<br />
 - <strong>Переиспользование рекордеров</strong>: <code>httptest.NewRecorder</code> не потоко-безопасен, но в синхронных табличных тестах можно инициализировать его один раз и очищать <code>w.Body.Reset()</code> между кейсами, экономя на аллокациях кучи.<br />
@@ -525,7 +519,6 @@ func TestHandlerWithDependency(t *testing.T) {
 
 
 <h2 id="6-lovushki-production-testirovaniya">6. Ловушки production-тестирования</h2>
-
 <ul>
 <li><strong>Незакрытые тела ответов</strong>: При использовании <code>httptest.NewServer</code> и <code>http.DefaultClient.Do()</code> всегда вызывайте <code>resp.Body.Close()</code>. Иначе файловые дескрипторы утекут, и на CI-раннере закончатся <code>ulimit -n</code>.</li>
 <li><strong>Тестирование приватных методов через <code>export_test.go</code></strong>: В Го допустимо создавать файл <code>handler_export_test.go</code> в том же пакете, экспортирующий приватные функции для тестов. Это чище, чем рефлексия, но должно применяться умеренно. Лучше тестировать через публичный контракт.</li>
@@ -533,7 +526,6 @@ func TestHandlerWithDependency(t *testing.T) {
 <li><strong>Различие сред</strong>: Тесты должны работать одинаково в Linux, macOS и CI. Избегайте зависимостей от специфичных путей файловой системы или <code>os.UserHomeDir</code>.</li>
 </ul>
 <h2 id="7-itog">7. Итог</h2>
-
 <ol>
 <li><code>httptest</code> из стандартной библиотеки покрывает 95% потребностей. Внешние фреймворки для HTTP-тестов в Го избыточны.</li>
 <li><code>NewRecorder</code> для юнит-тестов хендлеров и мидлвар, <code>NewServer</code> для интеграции с <code>http.Client</code> и сетевыми сценариями.</li>

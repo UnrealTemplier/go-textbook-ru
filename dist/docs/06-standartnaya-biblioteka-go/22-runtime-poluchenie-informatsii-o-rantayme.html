@@ -300,7 +300,6 @@
 
           <div class="article-markdown">
             <h2 id="filosofiya-introspektsii-i-kontrolya">Философия интроспекции и контроля</h2>
-
 <p>Если большинство пакетов стандартной библиотеки Go строят уютные, абстрактные переборки между разработчиком и операционной системой, то пакет <code>runtime</code> — это прямой трап в машинное отделение корабля. В отличие от <code>os</code>, который предоставляет абстракцию над операционной системой, <code>runtime</code> дает доступ к планировщику горутин, сборщику мусора, управлению стеками и низкоуровневым метрикам памяти. </p>
 <p>Это не инструмент для повседневной бизнес-логики. Вызов функций <code>runtime</code> в обычном сервисном слое чаще всего свидетельствует о нарушении границ абстракций или архитектурном просчете. Однако для старшего инженера глубокое понимание устройства рантайма жизненно необходимо: именно оно превращает слепую панику при production-инцидентах в хладнокровный инженерный анализ. Утечки горутин, зависание потоков ОС, раздувание стеков и непредсказуемое поведение в контейнерах Docker и подах Kubernetes невозможно диагностировать без знания механики этого пакета.</p>
 
@@ -316,7 +315,6 @@
 
 
 <h2 id="1-introspektsiya-planirovshchika-i-diagnostika-gorutin">1. Интроспекция планировщика и диагностика горутин</h2>
-
 <p>В распределенных системах любая утечка ресурсов обычно начинается тихо: счетчик горутин ползет вверх, пока не исчерпается память или сетевые дескрипторы. Базовая диагностика состояния приложения начинается с мониторинга активных горутин:</p>
 
 <div class="code-block" data-lang="go">
@@ -337,20 +335,16 @@ fmt.Printf(&quot;%s&quot;, buf[:n])
 </code></pre>
 </div>
 
-<h3 id="under-the-hood-kak-rabotaet-runtime-stack">Under the hood: Как работает `runtime.Stack`</h3>
-
+<h3 id="under-the-hood-kak-rabotaet-runtime-stack">Under the hood: Как работает <code>runtime.Stack</code></h3>
 <p>Функция <code>runtime.Stack</code> приостанавливает выполнение всех горутин (<code>stopTheWorld</code> на микросекунды), безопасным образом копирует их стеки из сегментированной памяти в переданный буфер и возобновляет работу. Когда передан флаг <code>all=true</code>, рантайм должен остановить мир, чтобы гарантировать согласованность указателей: если бы горутины продолжали исполняться, их стеки могли бы расти, перемещаться или сжиматься прямо во время чтения.</p>
 <p>В production вызов <code>runtime.Stack(..., true)</code> с флагом <code>all=true</code> может вызвать заметный <code>latency spike</code> при десятках тысяч горутин. Для безопасного получения стека текущей горутины используйте <code>debug.Stack()</code> из пакета <code>runtime/debug</code>, который работает асинхронно и не трогает другие потоки выполнения.</p>
 <p>Внутренний счетчик горутин (<code>sched.ngrun</code> + <code>sched.nmidle</code>) обновляется атомарно при создании (<code>newproc</code>) и завершении (<code>goexit</code>) горутин. <code>runtime.NumGoroutine()</code> читает его без блокировок, но возвращает мгновенный срез, который может не отражать горутины в процессе создания.</p>
 <h2 id="2-upravlenie-potokami-os-i-privyazka">2. Управление потоками ОС и привязка</h2>
-
 <p>Планировщик Go виртуозно мультиплексирует миллионы горутин (<code>G</code>) на небольшое количество потоков операционной системы (<code>M</code>). Но в реальном мире есть подсистемы, требующие строгой привязки к конкретному системному треду.</p>
-<h3 id="numcpu-vs-gomaxprocs">`NumCPU` vs `GOMAXPROCS`</h3>
-
+<h3 id="numcpu-vs-gomaxprocs"><code>NumCPU</code> vs <code>GOMAXPROCS</code></h3>
 <p><code>runtime.NumCPU()</code> возвращает количество логических ядер, доступных процессу. В Linux рантайм определяет это значение через системный вызов <code>sched_getaffinity</code> (маску affinity процесса), поэтому привязка к конкретным ядрам (<code>cpuset</code>) учитывается. Однако квоты процессорного времени (CFS Bandwidth / <code>cpu.max</code>) системный вызов <code>sched_getaffinity</code> не отражает, и файлы <code>cgroups</code> напрямую рантаймом не парсятся.</p>
 <p><code>runtime.GOMAXPROCS(n)</code> изменяет количество логических процессоров (<code>P</code>), используемых планировщиком Go. По умолчанию равно <code>NumCPU</code>. Изменение на лету возможно, но не рекомендуется: оно вызывает перераспределение очередей горутин и временную деградацию пропускной способности. В облачных контейнерах при жестких CPU Quota (CFS bandwidth control) исторически требовалось настраивать <code>GOMAXPROCS</code> вручную (например, через популярную библиотеку <code>uber-go/automaxprocs</code>), чтобы планировщик не создавал лишние <code>P</code>, приводящие к троттлингу ядра Linux.</p>
-<h3 id="lockosthread-i-unlockosthread">`LockOSThread` и `UnlockOSThread`</h3>
-
+<h3 id="lockosthread-i-unlockosthread"><code>LockOSThread</code> и <code>UnlockOSThread</code></h3>
 <p>Эти функции привязывают текущую горутину <code>g</code> к системному треду <code>m</code> на 1:1:</p>
 
 <div class="code-block" data-lang="go">
@@ -387,10 +381,8 @@ fmt.Printf(&quot;%s&quot;, buf[:n])
 
 
 <h2 id="3-metriki-pamyati-i-evolyutsiya-upravleniya-gc">3. Метрики памяти и эволюция управления GC</h2>
-
 <p>Пакет <code>runtime</code> предоставляет единственный способ получить точные данные о работе сборщика мусора без внешних агентов.</p>
-<h3 id="runtime-memstats">`runtime.MemStats`</h3>
-
+<h3 id="runtime-memstats"><code>runtime.MemStats</code></h3>
 <p>Структура <code>MemStats</code> раскрывает полную картину использования оперативной памяти приложением:</p>
 
 <div class="code-block" data-lang="go">
@@ -423,8 +415,7 @@ fmt.Printf(&quot;NumGC: %d\n&quot;, ms.NumGC)                        // Заве
 </aside>
 
 
-<h3 id="gogc-i-gomemlimit">`GOGC` и `GOMEMLIMIT`</h3>
-
+<h3 id="gogc-i-gomemlimit"><code>GOGC</code> и <code>GOMEMLIMIT</code></h3>
 <p>Две главные ручки управления поведением сборщика мусора:</p>
 <ul>
 <li><code>GOGC=100</code> (по умолчанию) запускает GC, когда heap удвоился с момента последнего сбора. Уменьшение (<code>GOGC=50</code>) делает сборку чаще, но снижает peak-память. Увеличение (<code>GOGC=200</code>) повышает latency, но снижает CPU overhead GC.</li>
@@ -468,21 +459,16 @@ flowchart TD
 </figure>
 
 
-<h2 id="4-mechanical-sympathy-stek-gosched-i-barery-pamyati">4. Mechanical Sympathy: Стек, `Gosched` и барьеры памяти</h2>
-
-<h3 id="runtime-gosched">`runtime.Gosched`</h3>
-
+<h2 id="4-mechanical-sympathy-stek-gosched-i-barery-pamyati">4. Mechanical Sympathy: Стек, <code>Gosched</code> и барьеры памяти</h2>
+<h3 id="runtime-gosched"><code>runtime.Gosched</code></h3>
 <p>Вызов <code>runtime.Gosched()</code> эквивалентен <code>sched_yield()</code> в POSIX. Он принудительно передает квант времени другой горутине, перемещая текущую <code>g</code> в конец локальной очереди <code>P</code>. В ранних версиях Go (до 1.14) планировщик был сугубо кооперативным, и плотный цикл без вызовов функций мог навечно заморозить ядро. Хотя в Go 1.14+ внедрена асинхронная не-кооперативная прерывистость по сигналам <code>SIGURG</code>, <code>Gosched()</code> по-прежнему полезен в tight-loop алгоритмах без блокирующих вызовов, чтобы избежать starvation других задач и уменьшить латентность координации.</p>
-<h3 id="runtime-keepalive">`runtime.KeepAlive`</h3>
-
+<h3 id="runtime-keepalive"><code>runtime.KeepAlive</code></h3>
 <p>Компилятор Go выполняет агрессивный анализ времени жизни переменных (liveness analysis). Если на объект больше нет ссылок в последующем коде, компилятор считает его «мертвым» еще до выхода из текущей функции, даже если указатель на него держится во внешнем коде CGO или дескрипторе ОС.</p>
 <p>Вызов <code>runtime.KeepAlive(x)</code> создает искусственную ссылку до точки вызова, предотвращая преждевременную сборку GC. Это критически важно при работе с <code>unsafe.Pointer</code>, финализаторами (<code>runtime.SetFinalizer</code>) и CGO, где C-код может использовать память, которую Go уже пометил для освобождения. Без <code>KeepAlive</code> сборщик мусора может уничтожить структуру и вызвать финализатор прямо в тот момент, когда функция C читает ее поля.</p>
 <h3 id="rost-steka">Рост стека</h3>
-
 <p>Исторически Go использовал <strong>сегментированные стеки</strong> (связанные списки фреймов памяти). Это приводило к печально известной проблеме «горячего разделения» (hot split): вызов функции на границе сегмента непрерывно выделял и освобождал память в цикле.</p>
 <p>Начиная с Go 1.4, рантайм перешел на <strong>непрерывные (contiguous) стеки с копированием</strong>. Каждая горутина рождается с крошечным стеком размером всего 2 КБ. При переполнении вызывается функция <code>runtime.morestack</code>, которая выделяет новый блок памяти удвоенного размера, копирует содержимое старого стека на новое место, аккуратно перенастраивает все внутренние указатели и освобождает старый блок. <code>runtime.Stack</code> отражает эту структуру. Размер стека начинается с 2 КБ и растет кратно 2 до ~1 ГБ на горутину (на 64-битных системах).</p>
 <h2 id="5-lovushki-i-voprosy-s-sobesedovaniy">5. Ловушки и вопросы с собеседований</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -530,7 +516,6 @@ flowchart TD
 
 
 <h2 id="6-sravnenie-s-ekosistemami">6. Сравнение с экосистемами</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -563,7 +548,6 @@ flowchart TD
 </tbody>
 </table></div>
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><code>runtime</code> — это диагностический и настройный слой, а не инструмент бизнес-логики.</li>
 <li><code>runtime.NumGoroutine()</code> атомарен, но <code>runtime.Stack(..., true)</code> вызывает <code>STW</code> и не подходит для hot-path.</li>

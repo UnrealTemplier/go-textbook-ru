@@ -300,7 +300,6 @@
 
           <div class="article-markdown">
             <h2 id="filosofiya-sinkhronizatsii-sostoyaniya">Философия синхронизации состояния</h2>
-
 <blockquote>
 <p><em>«Не общайтесь через разделяемую память — делитесь памятью через общение. Но если вам необходимо защитить состояние в оперативной памяти, делайте это с железной дисциплиной: берите мьютекс, держите критическую секцию микроскопической и никогда не удерживайте блокировку во время операций ввода-вывода».</em>  <br />
 — Брайан Керниган</p>
@@ -309,7 +308,6 @@
 <p>Ключевое отличие <code>sync</code> от мьютексов в C++ или классической Java — это продуманная <strong>гибридная модель</strong>. Блокировка в Go не падает в ядро операционной системы сразу. Сначала предпринимается сверхбыстрая попытка захвата в пространстве пользователя (User Space) с помощью атомарных процессорных инструкций. И только при обнаружении реальной конкуренции горутина передается планировщику Go и ядру ОС. Это минимизирует количество дорогостоящих переключений контекста и сохраняет колоссальную пропускную способность.</p>
 <hr />
 <h2 id="sync-mutex-gibridnaya-blokirovka-i-mashinnye-instruktsii">sync.Mutex: Гибридная блокировка и машинные инструкции</h2>
-
 <p><code>sync.Mutex</code> — это не просто тривиальная обертка над системным вызовом <code>futex</code> в Linux или функцией <code>WaitForSingleObject</code> в Windows. Это сложный конечный автомат с двумя режимами работы: <strong>Normal</strong> (нормальный) и <strong>Starvation</strong> (режим голодания).</p>
 <p>Внутреннее состояние мьютекса упаковано всего в два поля:</p>
 
@@ -328,7 +326,7 @@
 </code></pre>
 </div>
 
-<h3 id="algoritm-zakhvata-fast-path-slow-path">Алгоритм захвата (Fast Path -> Slow Path)</h3>
+<h3 id="algoritm-zakhvata-fast-path-slow-path">Алгоритм захвата (Fast Path -&gt; Slow Path)</h3>
 <ol>
 <li><strong>Атомарный CAS (Fast Path)</strong>: Горутина пытается установить бит <code>Locked</code> через атомарную операцию <code>atomic.CompareAndSwapInt32</code>. Если мьютекс был свободен — захват происходит мгновенно за ~5 тактов CPU без единого перехода в ядро ОС.</li>
 <li><strong>Аппаратный спиннинг (Spinning)</strong>: Если мьютекс занят, но на машине есть свободные процессоры P (логические процессоры рантайма) и очередь горутин коротка, горутина выполняет до 4 итераций активного спиннинга с инструкциями <code>PAUSE</code> (<code>procyield(30)</code>). Это позволяет удерживать поток на ядре CPU в надежде на скорую разблокировку владельцем, избегая дорогостоящего контекстного переключения.</li>
@@ -384,7 +382,6 @@ flowchart TD
 
 <hr />
 <h2 id="sync-rwmutex-prioritet-pisateley-i-balansirovka">sync.RWMutex: Приоритет писателей и балансировка</h2>
-
 <p>Структура <code>sync.RWMutex</code> (Read-Write Mutex) позволяет сотням читателей работать параллельно, но полностью блокирует доступ при запросе со стороны писателя. Внутри используется комбинация <code>int32</code> счетчиков и обычного <code>Mutex</code>.</p>
 <h3 id="logika-raboty">Логика работы</h3>
 <ul>
@@ -407,7 +404,6 @@ flowchart TD
 
 <hr />
 <h2 id="sync-waitgroup-koordinatsiya-bez-kanalov">sync.WaitGroup: Координация без каналов</h2>
-
 <p><code>WaitGroup</code> решает задачу ожидания завершения группы параллельных горутин. Это не канал, а оптимизированный атомарный счетчик со встроенным системным семафором.</p>
 <p>Внутренняя структура использует поле <code>state1 [3]uint32</code> (или <code>uint64</code> на 64-битных системах), разделенное на две логические части:<br />
 1. <strong>Counter</strong>: Число активных работающих горутин (<code>Add(1)</code> -&gt; <code>counter++</code>).<br />
@@ -460,7 +456,6 @@ flowchart TD
 
 <hr />
 <h2 id="sync-once-lenivaya-initsializatsiya-i-double-checked-locking">sync.Once: Ленивая инициализация и Double-Checked Locking</h2>
-
 <p><code>sync.Once</code> гарантирует однократное выполнение переданной функции <code>f</code>, сколько бы сотен параллельных горутин ни вызывали метод <code>Do(f)</code>. Используется для инициализации синглетонов, загрузки конфигурационных файлов, настройки кэшей.</p>
 <p>Реализация использует классический паттерн <strong>Double-Checked Locking</strong>:<br />
 1. Быстрая атомарная проверка флага <code>done == 0</code> без блокировок.<br />
@@ -507,7 +502,6 @@ func GetConfig() *Config {
 
 <hr />
 <h2 id="mechanical-sympathy-kesh-linii-false-sharing-i-planirovshchik">Mechanical Sympathy: Кэш-линии, False Sharing и планировщик</h2>
-
 <h3 id="1-false-sharing-lozhnoe-razdelenie">1. False Sharing (Ложное разделение)</h3>
 <p>Если два независимых экземпляра <code>sync.Mutex</code> случайно оказываются в пределах одной 64-байтовой кэш-линии процессора, изменение состояния одного мьютекса ядром CPU инвалидирует всю кэш-линию для соседнего ядра через протокол когерентности MESI. Это порождает паразитный <code>cache coherence traffic</code> и падение производительности на 10–30%.</p>
 <p><strong>Решение:</strong> Принудительное выравнивание структуры до размера строки кэша CPU (64 байта):</p>
@@ -532,7 +526,6 @@ func GetConfig() *Config {
 <p><strong>Правило:</strong> Держите критические секции микроскопическими! Никогда не делайте дисковый или сетевой I/O под <code>mu.Lock()</code>. Захватили -&gt; быстро скопировали/обновили указатель -&gt; немедленно отпустили через <code>mu.Unlock()</code>.</p>
 <hr />
 <h2 id="lovushki-i-voprosy-s-sobesedovaniy">Ловушки и вопросы с собеседований</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -582,7 +575,6 @@ func GetConfig() *Config {
 
 <hr />
 <h2 id="sravnenie-s-ekosistemami">Сравнение с экосистемами</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -616,7 +608,6 @@ func GetConfig() *Config {
 </table></div>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><code>sync.Mutex</code> использует быстрый CAS в User Space и переходит в <code>futex</code> только при длительном ожидании.</li>
 <li><code>sync.RWMutex</code> блокирует новых читателей при запросе писателя. Избегайте дедлоков через рекурсию.</li>

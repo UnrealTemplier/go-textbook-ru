@@ -443,7 +443,6 @@
 <p>Если вы бэкенд-инженер, создающий высоконагруженные сервисы на Go, в 99% сценариев взаимодействия с MySQL вы будете работать именно с InnoDB. Понимание того, как этот движок раскладывает байты по 16-килобайтным страницам диска и как он управляет оперативной памятью, отличает зрелого Senior-инженера от новичка, слепо верящего в то, что база данных — это просто бездонный хэш-мап на диске.</p>
 <hr />
 <h2 id="anatomiya-innodb-filosofiya-vzaimodeystviya-ram-i-disk">Анатомия InnoDB: Философия взаимодействия RAM и Disk</h2>
-
 <p>Движок InnoDB спроектирован вокруг фундаментального принципа <strong>Mechanical Sympathy к подсистеме ввода-вывода (I/O)</strong>: дисковый накопитель (даже самый передовой NVMe SSD) работает на порядки медленнее полупроводниковой оперативной памяти и многоуровневых кэшей CPU (L1/L2/L3). </p>
 <p>Главная философская максима InnoDB звучит так: <strong>Любые операции чтения и модификации выполняются исключительно в оперативной памяти (RAM), а сброс данных на диск производится либо строго асинхронно, либо укрупненными последовательными блоками (Sequential I/O)</strong>.</p>
 
@@ -502,8 +501,7 @@ flowchart TD
 
 <hr />
 <h2 id="1-diskovye-struktury-dannykh-on-disk-structures">1. Дисковые структуры данных (On-Disk Structures)</h2>
-
-<h3 id="stranitsy-i-ekstenty-pages-extents">Страницы и экстенты (Pages & Extents)</h3>
+<h3 id="stranitsy-i-ekstenty-pages-extents">Страницы и экстенты (Pages &amp; Extents)</h3>
 <p>Вся дисковая организация данных в InnoDB квантуется блоками строго фиксированного размера — <strong>Страницами (Pages)</strong>. По умолчанию размер страницы в InnoDB составляет ровно <strong>16 КБ (16 384 байта)</strong> — в два раза больше, чем в PostgreSQL (8 КБ).</p>
 
 <aside class="callout callout-info" aria-label="Под капотом: Mechanical Sympathy и размер страницы">
@@ -522,7 +520,6 @@ flowchart TD
 <p>Страницы объединяются в более крупные физические кластеры — <strong>Экстенты (Extents)</strong> по 64 страницы подряд (ровно 1 МБ). Набор экстентов формирует <strong>Табличные пространства (Tablespaces)</strong> — индивидуальные файлы с расширением <code>.ibd</code>, в которых хранятся таблицы вашей базы данных (режим <code>innodb_file_per_table = ON</code>).</p>
 <hr />
 <h3 id="klasternyy-indeks-clustered-index-tablitsa-eto-b-derevo">Кластерный индекс (Clustered Index): Таблица — это B+ дерево</h3>
-
 <p>Это самое глубокое концептуальное отличие InnoDB от PostgreSQL и исторического MyISAM.<br />
 В PostgreSQL таблица — это неупорядоченная Куча (Heap), а индексы — внешние вспомогательные файлы.<br />
 В InnoDB <strong>таблица физически и есть индекс!</strong></p>
@@ -569,7 +566,6 @@ flowchart TD
 <p>Именно поэтому точечный запрос по первичному ключу <code>SELECT * FROM users WHERE id = 1</code> в InnoDB отрабатывает с запредельной скоростью: алгоритм совершает спуск по B+ дереву за 2–3 перехода по страницам и в листовом узле <strong>сразу находит готовую строку со всеми колонками</strong>, без вторичных скачков по оперативной памяти! Подробно геометрию вторичных индексов мы разберем в лекции <a href="3-indeksy-v-mysql.html" class="wikilink">3. Индексы в MySQL</a>.</p>
 <hr />
 <h2 id="2-struktury-v-operativnoy-pamyati-in-memory-structures">2. Структуры в оперативной памяти (In-Memory Structures)</h2>
-
 <h3 id="buffer-pool-pul-buferov">Buffer Pool (Пул буферов)</h3>
 <p>Buffer Pool — центральный вычислительный резервуар InnoDB. Движок никогда не модифицирует байты прямо на накопителе. При выполнении любого <code>SELECT</code>, <code>UPDATE</code> или <code>DELETE</code> сервер сначала поднимает 16 КБ страницу с диска в Buffer Pool, вносит изменения в памяти (страница становится "грязной" — Dirty Page), а затем фоновый процесс асинхронно сбрасывает ее обратно на диск.</p>
 <p>Для управления кэшем страниц Buffer Pool задействует модифицированный двухуровневый алгоритм <strong>LRU (Least Recently Used)</strong>:</p>
@@ -628,10 +624,8 @@ flowchart LR
 Вместо этого InnoDB буферизирует изменение в <strong>Change Buffer</strong> в оперативной памяти. Позже, когда эта страница индекса будет прочитана другим пользовательским запросом, InnoDB прозрачно выполнит <strong>слияние (Merge)</strong> изменений.</p>
 <hr />
 <h2 id="3-tranzaktsionnost-i-acid-vzaimodeystvie-s-operatsionnoy-sistemoy">3. Транзакционность и ACID: Взаимодействие с операционной системой</h2>
-
 <p>Гарантии надежности и транзакционной изоляции ACID — самые ресурсоемкие операции СУБД, требующие постоянной координации с ядром ОС и дисковыми контроллерами.</p>
-<h3 id="atomicity-durability-redo-log-i-sistemnyy-vyzov-fsync">Atomicity & Durability: Redo Log и системный вызов `fsync`</h3>
-
+<h3 id="atomicity-durability-redo-log-i-sistemnyy-vyzov-fsync">Atomicity &amp; Durability: Redo Log и системный вызов <code>fsync</code></h3>
 <p>Как гарантировать сохранность зафиксированных транзакций при внезапном обесточивании сервера, не сбрасывая тяжелые 16-килобайтные страницы на медленный диск при каждом <code>COMMIT</code>?</p>
 <p>Решение строится на парадигме <strong>Write-Ahead Logging (WAL)</strong>, которая в InnoDB реализована циклическим журналом повтора — <strong>Redo Log</strong> (файлы <code>ib_logfile0</code>, <code>ib_logfile1</code> в MySQL 5.7 или директория <code>#innodb_redo</code> в MySQL 8.0).</p>
 <p>При фиксации транзакции (<code>COMMIT</code>) InnoDB записывает в буфер памяти <strong>Log Buffer</strong> не саму страницу данных, а компактную дельту (физико-логический вектор изменений: «на странице №42 по смещению 128 записать байты 0xDEADBEEF»). Затем инициируется блокирующий системный вызов ядра Linux <strong><code>fsync()</code></strong>, который приказывает контроллеру накопителя физически сбросить буфер на диск. </p>
@@ -653,7 +647,6 @@ flowchart LR
 
 <hr />
 <h3 id="consistency-zashchita-ot-razorvannykh-stranits-cherez-doublewrite-buffer">Consistency: Защита от разорванных страниц через Doublewrite Buffer</h3>
-
 <p>Вспомните разницу в физических размерах блоков: страница InnoDB равна <strong>16 КБ</strong>, а страница дисковой подсистемы Linux — <strong>4 КБ</strong>.<br />
 Когда фоновый воркер InnoDB сбрасывает 16-килобайтную страницу на SSD, для операционной системы это последовательность из <strong>четырех независимых операций записи по 4 КБ</strong>.</p>
 <p>Представьте катастрофический сценарий: контроллер успел физически записать первые два блока по 4 КБ, и в этот момент в дата-центре вырубается питание.<br />
@@ -694,7 +687,6 @@ flowchart TD
 <p>Перед тем как отправить измененную страницу в ее постоянное табличное пространство <code>.ibd</code>, InnoDB записывает ее в монолитный последовательный сегмент диска — <strong>Doublewrite Buffer</strong> (в системном файле <code>ibdata1</code>), и выполняет <code>fsync</code>. Если в момент записи в <code>.ibd</code> произойдет аппаратный сбой, при старте после аварии InnoDB обнаружит поврежденную страницу и восстановит ее эталонную 16-килобайтную копию из Doublewrite Buffer.</p>
 <hr />
 <h3 id="isolation-mvcc-i-segmenty-undo-logs">Isolation: MVCC и сегменты Undo Logs</h3>
-
 <p>Для реализации неблокирующего чтения при параллельной записи InnoDB задействует многоверсионный контроль конкурентности (<a href="../05-tranzaktsii-i-vnutrennosti/7-mvcc-multi-version-concurrency-control.html" class="wikilink">7. MVCC. Multi Version Concurrency Control</a>).</p>
 <p>В отличие от PostgreSQL, где старые версии плодятся прямо на страницах Кучи, в InnoDB <strong>старые версии вытесняются в специализированные сегменты — Undo Logs</strong>:</p>
 <p>Каждый физический кортеж в кластерном индексе несет в заголовке два служебных указателя:<br />
@@ -757,7 +749,6 @@ flowchart LR
 
 <hr />
 <h2 id="praktika-v-go-idiomatichnaya-rabota-s-tranzaktsiyami">Практика в Go: Идиоматичная работа с транзакциями</h2>
-
 <p>В стандартной библиотеке Go взаимодействие с транзакционным движком InnoDB инкапсулировано типом <code>*sql.Tx</code> (разобранным в <a href="../10-praktika-i-arkhitektura/1-rabota-s-bd-v-go-database-sql.html" class="wikilink">1. Работа с БД в Go. database/sql</a>). Безупречный код на Go требует строгого управления контекстами и обязательной защиты от утечек соединений в пуле:</p>
 
 <div class="code-block" data-lang="go">
@@ -814,7 +805,6 @@ func TransferMoney(ctx context.Context, db *sql.DB, fromID, toID int, amount flo
 
 <hr />
 <h2 id="rezyume-dlya-inzhenera">Резюме для инженера</h2>
-
 <ol>
 <li><strong>Кэширование в Buffer Pool:</strong> Все чтения и модификации выполняются над 16 КБ страницами в оперативной памяти с защитой от вымывания через двухзонный LRU (Midpoint).</li>
 <li><strong>Кластерная природа данных:</strong> Таблица InnoDB — это сбалансированное B+ дерево первичного ключа. Поиск по <code>PRIMARY KEY</code> извлекает всю строку за один проход по дереву.</li>

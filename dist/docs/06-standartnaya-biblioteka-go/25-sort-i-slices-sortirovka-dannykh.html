@@ -301,7 +301,6 @@
 
           <div class="article-markdown">
             <h2 id="evolyutsiya-sortirovki-ot-interfeysov-k-dzhenerikam">Эволюция сортировки: от интерфейсов к дженерикам</h2>
-
 <p>Сортировка данных — одна из самых частых и фундаментальных операций в бэкенде, будь то пагинация результатов API, агрегация метрик или подготовка батчей для записи в БД. В истории Go подход к этой задаче претерпел поразительную эволюцию, увенчавшуюся с выходом версии Go 1.21.</p>
 <p>В ранние годы разработчикам приходилось объявлять отдельные именованные типы и реализовывать три метода интерфейса <code>sort.Interface</code> (<code>Len</code>, <code>Less</code>, <code>Swap</code>), либо мириться с оверхедом <code>sort.Slice</code>, скрывавшим под капотом рефлексию и аллокации замыканий. Теперь пакет <code>slices</code> предоставляет типобезопасные, скомпилированные в нативный машинный код алгоритмы с нулевыми накладными расходами.</p>
 <p>Для инженера уровня Senior понимание внутренней механики сортировки — это не просто знание API, а умение предсказывать поведение CPU-кэшей, избегать аллокаций в горячих путях и выбирать стратегию в зависимости от размера и структуры данных.</p>
@@ -336,10 +335,8 @@
 
 
 <h2 id="under-the-hood-pdqsort-i-mekhanika-perestanovok">Under the hood: Pdqsort и механика перестановок</h2>
-
 <p>Go не использует классический Quicksort или Mergesort «в лоб». В основе <code>sort</code> и <code>slices</code> лежит <strong>Pdqsort (Pattern-Defeating Quicksort)</strong>, алгоритм Орсона Питерса, внедренный в стандартную библиотеку Go в версии 1.19.</p>
 <h3 id="pochemu-pdqsort">Почему Pdqsort?</h3>
-
 <p>Классический Quicksort имеет худший случай <code>O(n^2)</code> на уже отсортированных или инвертированных данных. Go решает эту проблему гибридным подходом:</p>
 <ol>
 <li><strong>Introsort</strong>: Отслеживает глубину рекурсии. Если она превышает <code>2 * log2(n)</code>, алгоритм переключается на Heapsort, гарантируя <code>O(n log n)</code> в худшем случае.</li>
@@ -384,8 +381,7 @@ flowchart TD
 </figure>
 
 
-<h2 id="migratsiya-s-sort-na-slices-go-1-21">Миграция с `sort` на `slices` (Go 1.21+)</h2>
-
+<h2 id="migratsiya-s-sort-na-slices-go-1-21">Миграция с <code>sort</code> на <code>slices</code> (Go 1.21+)</h2>
 <p>До Go 1.21 существовало три пути, каждый со своими недостатками. Теперь <code>slices</code> унифицирует подход.</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
@@ -424,7 +420,6 @@ flowchart TD
 </tbody>
 </table></div>
 <h3 id="idiomatichnyy-kod">Идиоматичный код</h3>
-
 <p>В современном коде на Go 1.21+ сортировка структур по полям стала декларативной и чистой:</p>
 
 <div class="code-block" data-lang="go">
@@ -458,10 +453,8 @@ func main() {
 
 <p>Пакет <code>cmp</code> (Go 1.21+) предоставляет <code>cmp.Compare[T cmp.Ordered]</code>, который заменяет громоздкие <code>if a &lt; b { return -1 } ...</code> на безопасное сравнение любых упорядочиваемых типов.</p>
 <h2 id="mechanical-sympathy-kesh-linii-predskazanie-vetvleniy-i-gc">Mechanical Sympathy: Кэш-линии, предсказание ветвлений и GC</h2>
-
 <p>Сортировка — это стресс-тест для CPU и памяти. Алгоритм может быть математически оптимальным, но проигрывать на реальном железе из-за плохой локальности.</p>
 <h3 id="1-lokalnost-kesha-i-razmer-struktur">1. Локальность кэша и размер структур</h3>
-
 <p>При сортировке <code>[]User</code>, где <code>User</code> занимает 40 байт, каждое перемещение элемента требует <code>memmove</code> 40 байт. Это быстро выходит за пределы кэш-линии L1 (64 байта).</p>
 <p><strong>Оптимизация для тяжелых структур:</strong><br />
 Если структура большая (&gt;32 байт) или содержит указатели, сортировка слайса указателей <code>[]*User</code> часто быстрее, несмотря на косвенную адресацию. Перемещение указателя (8 байт) дешевле для CPU, чем копирование 40+ байт, а предзагрузка (hardware prefetcher) лучше работает с последовательными указателями.</p>
@@ -486,14 +479,11 @@ slices.SortFunc(indices, func(i, j int) int {
 </div>
 
 <h3 id="2-predskazanie-vetvleniy-branch-prediction">2. Предсказание ветвлений (Branch Prediction)</h3>
-
 <p>Функция сравнения вызывается <code>O(n log n)</code> раз. Если ветвление внутри <code>LessFunc</code> непредсказуемо (например, сравнение случайных строк), CPU pipeline сбрасывается десятки тысяч раз.</p>
 <p>Функция <code>cmp.Compare</code> компилируется в инструкции <code>SETL</code>, <code>SETG</code>, которые минимизируют условные переходы. Избегайте сложных <code>if/else</code> цепочек внутри компаратора.</p>
 <h3 id="3-vliyanie-na-gc">3. Влияние на GC</h3>
-
 <p><code>sort.Slice</code> требует передачи <code>func(int, int) bool</code>. При каждом вызове рантайм создает замыкание, которое аллоцируется в куче и попадает в пул для GC. В цикле с обработкой тысяч запросов это генерирует фоновый шум <code>GC Assist Time</code>. <code>slices.Sort</code> использует дженерики и прямое сравнение элементов: компилятор Go генерирует специализированный машинный код (GcShape stenciling) с инлайнингом операторов сравнения, благодаря чему замыкания не создаются и аллокации в куче отсутствуют.</p>
 <h2 id="lovushki-i-voprosy-s-sobesedovaniy">Ловушки и вопросы с собеседований</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -541,7 +531,6 @@ slices.SortFunc(indices, func(i, j int) int {
 
 
 <h2 id="sravnenie-s-ekosistemami-drugikh-yazykov">Сравнение с экосистемами других языков</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -608,7 +597,6 @@ slices.SortFunc(indices, func(i, j int) int {
 
 
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Используйте <code>slices.Sort</code> и <code>slices.SortFunc</code></strong> для всех новых проектов на Go 1.21+. Они быстрее, безопаснее и не создают аллокаций.</li>
 <li><strong>Pdqsort гарантирует <code>O(n log n)</code></strong> и автоматически адаптируется к паттернам данных, избегая вырожденных случаев.</li>

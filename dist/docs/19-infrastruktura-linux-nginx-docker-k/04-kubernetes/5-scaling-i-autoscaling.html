@@ -316,7 +316,6 @@
 <p>Однако без понимания рантайма Go автоматика способна не спасти сервис, а окончательно добить его. Давайте разберем математику, физику и скрытые ловушки масштабирования с точки зрения механического сочувствия к машине.</p>
 <hr />
 <h2 id="1-horizontal-pod-autoscaler-hpa-mekhanika-i-matematika">1. Horizontal Pod Autoscaler (HPA): Механика и математика</h2>
-
 <p>Контроллер <strong>HPA</strong> встроен в <code>kube-controller-manager</code>. Он функционирует как непрерывный управляющий контур с отрицательной обратной связью (период опроса по умолчанию — каждые 15 секунд):</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -353,7 +352,6 @@ flowchart LR
 
 
 <h3 id="matematicheskaya-formula-hpa">Математическая формула HPA</h3>
-
 <p>Алгоритм вычисления целевого числа реплик в исходном коде Kubernetes поразительно прост и элегантен:</p>
 <p>$$\text{desiredReplicas} = \left\lceil \text{currentReplicas} \times \left( \frac{\text{currentMetricValue}}{\text{desiredMetricValue}} \right) \right\rceil$$</p>
 <p>В кодовой базе K8s эта формула записывается как:<br />
@@ -365,7 +363,6 @@ flowchart LR
 Контроллер немедленно отправляет патч в спецификацию деплоймента, увеличивая число реплик с 4 до 7.</p>
 <hr />
 <h2 id="2-lovushka-cfs-throttling-pochemu-dushat-go-protsessy">2. Ловушка CFS Throttling: Почему «душат» Go-процессы</h2>
-
 <p>Многие инженеры интуитивно настраивают HPA на метрику CPU и выставляют жесткие лимиты в манифесте:</p>
 
 <div class="code-block" data-lang="yaml">
@@ -432,7 +429,6 @@ gantt
 
 <hr />
 <h2 id="3-mechanical-sympathy-pochemu-cpu-i-ram-obmanyvayut-hpa-v-go">3. Mechanical Sympathy: Почему CPU и RAM обманывают HPA в Go</h2>
-
 <p>Стандартные шаблоны мониторинга предлагают масштабировать сервисы по CPU и RAM. Для стеков с синхронным вводом-выводом (Python WSGI, Ruby) это имеет смысл. Но для архитектуры Go это прямой путь к сбоям.</p>
 <h3 id="1-problema-s-cpu">1. Проблема с CPU</h3>
 <p>Модель многозадачности Go основана на неблокирующем сетевом полинге (<code>netpoller</code>). Десятки тысяч горутин могут обслуживать клиентов, проводя 95% времени в ожидании ответа от базы данных или сокета. В этот момент загрузка CPU стремится к нулю. Сервис может находиться на грани исчерпания системных файловых дескрипторов или соединений к БД, а HPA не пошевелится. </p>
@@ -494,7 +490,6 @@ flowchart TD
 
 <hr />
 <h2 id="4-kastomnye-metriki-istinnyy-scaling-dlya-go-bekenda">4. Кастомные метрики: Истинный Scaling для Go-бэкенда</h2>
-
 <p>Если аппаратные ресурсы — плохой индикатор здоровья Go-приложения, на что же должен опираться настоящий SRE-инженер? Ответ прост: на <strong>бизнес-метрики и задержки (Latency/Queue Depth)</strong>.</p>
 <p>Для проброса прикладных метрик в управляющий контур K8s используется <strong>Prometheus Adapter</strong> (или KEDA — Kubernetes Event-driven Autoscaling). Адаптер опрашивает TSDB Prometheus по PromQL-запросам и регистрирует виртуальное API <code>custom.metrics.k8s.io</code>, доступное для HPA.</p>
 
@@ -570,7 +565,6 @@ spec:
 
 <hr />
 <h2 id="5-cold-start-i-readiness-proby-spasenie-starykh-podov-ot-kaskadnogo-sboya">5. Cold Start и Readiness Пробы: Спасение старых подов от каскадного сбоя</h2>
-
 <p>Когда HPA принимает решение о масштабировании, новые поды не материализуются со скоростью света. Им требуется время:<br />
 1. Выгрузка Docker-образа с реестра на новую ноду (если образ не закэширован).<br />
 2. Выделение сетевого пространства (<code>ContainerCreating</code>).<br />
@@ -596,7 +590,6 @@ spec:
 
 <hr />
 <h2 id="6-vpa-vertical-pod-autoscaler-i-cluster-autoscaler-ca">6. VPA (Vertical Pod Autoscaler) и Cluster Autoscaler (CA)</h2>
-
 <p>Помимо HPA, инфраструктурный арсенал Kubernetes включает еще два типа автомасштабирования:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -649,7 +642,6 @@ flowchart TB
 3. Когда пик спадает, и поды удаляются, Cluster Autoscaler находит недозагруженные ноды, аккуратно выселяет оставшиеся поды (процедура <strong>Drain</strong>) и удаляет пустые серверы, снижая расходы на облако до нуля.</p>
 <hr />
 <h2 id="rezyume">Резюме</h2>
-
 <ol>
 <li><strong>Математика HPA:</strong> Вычисляет реплики по формуле <code>desiredReplicas = ceil[ currentReplicas * ( currentMetricValue / desiredMetricValue ) ]</code>.</li>
 <li><strong>CFS Throttling:</strong> Жесткие <code>limits: cpu</code> в Linux приводят к усыплению параллельных горутин Go на десятки миллисекунд. В Go-сервисах отдавайте предпочтение честным <code>requests</code>.</li>

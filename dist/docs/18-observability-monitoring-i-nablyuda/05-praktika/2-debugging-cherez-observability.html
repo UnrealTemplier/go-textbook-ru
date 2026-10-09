@@ -309,11 +309,9 @@
 <p>Для Senior-разработчика процесс отладки представляет собой движение по сужающейся воронке: от глобального сигнала к конкретной строке исходного кода.</p>
 <hr />
 <h2 id="ot-dogadok-k-dokazatelstvam">От догадок к доказательствам</h2>
-
 <p>Инженерная телеметрия исключает предположения вида «мне кажется, база данных тормозит». Каждое утверждение обязано подтверждаться графиком, спаном или профилем аллокаций.</p>
 <hr />
 <h2 id="tsikl-otladki-the-debugging-loop">Цикл отладки (The Debugging Loop)</h2>
-
 <p>Классический цикл диагностики инцидента состоит из четырех последовательных этапов:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -352,15 +350,12 @@ flowchart TD
 </ol>
 <hr />
 <h2 id="stsenariy-1-anomalnaya-latency-zaderzhka">Сценарий 1: Аномальная Latency (Задержка)</h2>
-
 <p><strong>Ситуация:</strong> Grafana показывает, что P99 latency эндпоинта <code>/checkout</code> выросло с 100мс до 3 секунд.</p>
 <h3 id="shag-1-metriki-detection">Шаг 1: Метрики (Detection)</h3>
-
 <p>Смотрим на график. CPU высокое или нормальное?<br />
 *   <strong>CPU High:</strong> Возможно, "тяжелый" алгоритм или цикл.<br />
 *   <strong>CPU Low:</strong> Приложение спит. Вероятно, ожидание I/O (БД, внешний API), блокировка мьютекса или GC pause.</p>
 <h3 id="shag-2-treysing-localization">Шаг 2: Трейсинг (Localization)</h3>
-
 <p>Открываем Jaeger/Tempo. Ищем трейсы с большой длительностью.<br />
 В дереве спанов находим "виновника":<br />
 *   Спан <code>http.call /payment-service</code> занял 2.8 секунды.<br />
@@ -379,7 +374,6 @@ flowchart TD
 
 
 <h3 id="shag-3-profilirovanie-root-cause">Шаг 3: Профилирование (Root Cause)</h3>
-
 <p>Допустим, метрика показывает высокое потребление CPU, а трейс не показывает узких мест I/O. Значит, проблема в коде ("горячий цикл").</p>
 <p>В Go мы подключаем <code>net/http/pprof</code>.<br />
 1.  Находим под, который тормозит.<br />
@@ -404,13 +398,10 @@ flowchart TD
 <strong>Вывод:</strong> Вы лепите JSON вручную в цикле или используете рефлексию неэффективно.</p>
 <hr />
 <h2 id="stsenariy-2-memory-leak-utechka-pamyati">Сценарий 2: Memory Leak (Утечка памяти)</h2>
-
 <p><strong>Ситуация:</strong> Метрика <code>go_memstats_heap_inuse_bytes</code> растет линейно, пока не упрется в лимит контейнера (OOM Kill).</p>
 <h3 id="shag-1-grafik-pamyati">Шаг 1: График памяти</h3>
-
 <p>Смотрим на график. Пила (пилообразный график) — это норма (работа GC). Линейный рост без падения — утечка.</p>
 <h3 id="shag-2-heap-profile">Шаг 2: Heap Profile</h3>
-
 <p>Используем <code>pprof</code> снова, но теперь <code>heap</code> профиль (распределение живых объектов).</p>
 
 <div class="code-block" data-lang="bash">
@@ -428,7 +419,6 @@ go tool pprof -top heap.pb.gz
 
 <p>Видим, что 1GB памяти занят слайсом байт <code>[]byte</code> в функции <code>processRequest</code>.</p>
 <h3 id="shag-3-analiz-koda-go-specific">Шаг 3: Анализ кода (Go Specific)</h3>
-
 <p>Утечки памяти в Go часто связаны с <strong>горутинами</strong>.<br />
 Горутина держит ссылку на данные, пока она жива. GC не может удалить данные, если на них ссылается стек горутины.</p>
 <p><strong>Типичная ловушка:</strong></p>
@@ -483,11 +473,9 @@ func process(id int) {
 
 <hr />
 <h2 id="stsenariy-3-zavisanie-servisa-deadlocks">Сценарий 3: "Зависание" сервиса (Deadlocks)</h2>
-
 <p><strong>Ситуация:</strong> Сервис отвечает 504 Gateway Timeout. Метрики CPU = 0%. Через какое-то время сервис отваливается по Health Check.</p>
 <p>Это классическая картина <strong>Deadlock</strong> или исчерпания семафоров/лимита файлов.</p>
 <h3 id="diagnostika">Диагностика:</h3>
-
 <ol>
 <li><strong>Metrics:</strong> <code>process_open_fds</code> (количество открытых файловых дескрипторов). Если оно равно лимиту (<code>ulimit -n</code>), новые соединения не принимаются.</li>
 <li><strong>Pprof Goroutine:</strong> Делаем дамп <code>goroutine</code> профиля.<br />
@@ -498,7 +486,6 @@ func process(id int) {
 </li>
 </ol>
 <h3 id="debugging-cherez-tracing-go-execution-tracer">Debugging через Tracing (Go Execution Tracer)</h3>
-
 <p>Иногда <code>pprof</code> недостаточно. Go имеет встроенный <strong>Execution Tracer</strong>.<br />
 Запускаем трассировку:</p>
 
@@ -520,7 +507,6 @@ go tool trace trace.out
 *   Или видим, что горутины создаются, но очередь runnable растет, а работающих (Running) нет — Deadlock.</p>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <p>Debugging в Go — это чтение "сигналов" системы.<br />
 1.  <strong>Метрики</strong> говорят, <em>какая</em> часть системы страдает.<br />
 2.  <strong>Трейсинг</strong> показывает, <em>где</em> именно в логике запроса проблема.<br />

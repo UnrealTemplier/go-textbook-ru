@@ -442,7 +442,6 @@
 <p>Понимание того, как PostgreSQL раскладывает байты на накопителе, наделяет инженера механическим сочувствием к машине: вы начнете физически видеть, почему порядок объявления колонок в миграциях экономит гигабайты памяти, почему слепой <code>SELECT *</code> разрушает кэш ввода-вывода и как индексы за один шаг находят нужный кортеж на диске.</p>
 <hr />
 <h2 id="anatomiya-faylov-ot-bazy-dannykh-k-gigabaytnym-segmentam">Анатомия файлов: От базы данных к гигабайтным сегментам</h2>
-
 <p>Если вы заглянете внутрь каталога данных PostgreSQL (обычно <code>/var/lib/postgresql/data/base/</code>), вы не обнаружите там привычных файлов с человеческими именами <code>users.db</code> или <code>orders.dat</code>. Перед вами предстанет лес директорий и файлов с числовыми именами:</p>
 
 <div class="code-block" data-lang="bash">
@@ -485,12 +484,10 @@ $ ls -l /var/lib/postgresql/data/base/16384/
 
 <hr />
 <h2 id="stranitsa-page-nedelimyy-kvant-vvoda-vyvoda">Страница (Page): Неделимый квант ввода-вывода</h2>
-
 <p>Гигабайтный сегмент — это лишь внешняя оболочка. Физически любой файл таблицы в PostgreSQL строго нарезан на блоки фиксированного размера — <strong>Страницы (Pages, или Blocks)</strong>. По умолчанию размер страницы равен <strong>8 КБ (8192 байта)</strong>.</p>
 <p>Запомните фундаментальный закон: <strong>PostgreSQL никогда не читает и не записывает на диск отдельные строки или колонки</strong>. Минимальной и неделимой единицей обмена между дисковым накопителем и оперативной памятью всегда является страница размером 8 КБ. </p>
 <p>Если в вашем запросе <code>SELECT email FROM users WHERE id = 1</code> требуется прочитать единственную строку длиной в 30 байт, движок загрузит с SSD в разделяемую память (<code>shared_buffers</code>, разобранную в <a href="1-arkhitektura-postgresql.html" class="wikilink">1. Архитектура PostgreSQL</a>) целиком всю 8-килобайтную страницу, содержащую эту запись.</p>
 <h3 id="vnutrennee-ustroystvo-8-kilobaytnoy-stranitsy-page-layout">Внутреннее устройство 8-килобайтной страницы (Page Layout)</h3>
-
 <p>Структура страницы базы данных — это шедевр низкоуровневой системной инженерии. Она спроектирована по принципу <strong>двунаправленного роста (slotted page)</strong>, что позволяет эффективно хранить строки переменной длины и исключает внутреннюю фрагментацию.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -562,7 +559,6 @@ flowchart TD
 
 <hr />
 <h2 id="vnutrennee-ustroystvo-stroki-heap-tuple">Внутреннее устройство строки (Heap Tuple)</h2>
-
 <p>Каждая физическая строка на странице состоит из двух компонентов: заголовка (<code>HeapTupleHeaderData</code>) и фактических пользовательских данных:</p>
 
 <div class="code-block" data-lang="text">
@@ -592,8 +588,7 @@ flowchart TD
 </ul>
 <p>Именно поля <code>t_xmin</code>, <code>t_xmax</code> и <code>t_ctid</code>, хранящиеся в каждом кортеже прямо на диске, обеспечивают феноменальную скорость неблокирующего параллельного чтения — фундаментальный механизм <a href="3-mvcc-v-postgresql.html" class="wikilink">3. MVCC в PostgreSQL</a>.</p>
 <hr />
-<h2 id="vyravnivanie-struktur-dannykh-na-diske-data-alignment-padding">Выравнивание структур данных на диске (Data Alignment & Padding)</h2>
-
+<h2 id="vyravnivanie-struktur-dannykh-na-diske-data-alignment-padding">Выравнивание структур данных на диске (Data Alignment &amp; Padding)</h2>
 <p>Инженеры, пишущие на Go, отлично знают: процессор читает оперативную память машинными словами (по 8 байт на 64-битной архитектуре). Если поле структуры не выровнено по адресу, кратному его размеру, процессор выполняет невыровненный доступ (unaligned access), что на многих архитектурах вызывает двойные циклы чтения или падение производительности. Поэтому компилятор Go добавляет между полями невидимые байты-заполнители (<strong>Padding</strong>).</p>
 <p>В дисковом хранилище PostgreSQL действует <strong>абсолютно то же правило</strong>. Движок Heap строго выравнивает столбцы кортежа:<br />
 * 8-байтовые типы (<code>INT8</code>, <code>BIGINT</code>, <code>TIMESTAMP</code>, <code>DOUBLE PRECISION</code>, указатели) обязаны начинаться со смещения, кратного <strong>8 байтам</strong>.<br />
@@ -661,7 +656,6 @@ flowchart TD
 
 <hr />
 <h2 id="toast-khranenie-sverkhbolshikh-atributov-the-oversized-attribute-storage-techniq">TOAST: Хранение сверхбольших атрибутов (The Oversized-Attribute Storage Technique)</h2>
-
 <p>Мы установили, что максимальный размер страницы в PostgreSQL строго равен 8 КБ. При этом кортеж данных <strong>не может пересекать границу страницы</strong> — строка обязана целиком помещаться внутри одного блока.</p>
 <p>Что произойдет, если пользователь загрузит документ размером 5 мегабайт в колонку <code>TEXT</code> или крупный JSONB-объект (с которым мы будем детально работать в <a href="5-jsonb-i-rabota-s-json.html" class="wikilink">5. JSONB и работа с JSON</a>)?</p>
 <p>Для решения этой задачи в PostgreSQL встроен элегантный механизм <strong>TOAST (The Oversized-Attribute Storage Technique)</strong>.</p>
@@ -710,8 +704,7 @@ flowchart TD
 <li>В теле исходной строки на обычной странице Heap вместо мегабайта данных сохраняется крошечный <strong>TOAST Pointer (указатель)</strong> размером около 18 байт, содержащий OID соответствующей TOAST-таблицы и логический идентификатор чанков.</li>
 </ol>
 <hr />
-<h3 id="mechanical-sympathy-pochemu-select-arkhitekturnyy-grekh">Mechanical Sympathy: Почему `SELECT *` — архитектурный грех</h3>
-
+<h3 id="mechanical-sympathy-pochemu-select-arkhitekturnyy-grekh">Mechanical Sympathy: Почему <code>SELECT *</code> — архитектурный грех</h3>
 <p>Теперь, осознавая устройство TOAST и страничной организации памяти, легко понять, почему вызов <code>SELECT * FROM users</code> (когда вам нужны только <code>id</code> и <code>email</code>) наносит сокрушительный удар по производительности системы:</p>
 <p>Представьте, что у пользователя есть колонка <code>bio TEXT</code> или <code>avatar_bytes BYTEA</code>, значения которых были вынесены в TOAST:</p>
 <ol>
@@ -724,7 +717,6 @@ flowchart TD
 <p>Если же вы выполните хирургически точный запрос <code>SELECT id, email FROM users</code>, PostgreSQL прочитает исключительно 8 КБ страницу из основной таблицы, проигнорирует наличие TOAST-указателя, не совершит ни единого лишнего дискового обращения к таблице TOAST и мгновенно вернет результат клиенту.</p>
 <hr />
 <h2 id="rezyume-dlya-inzhenera">Резюме для инженера</h2>
-
 <ol>
 <li><strong>Архитектура Heap:</strong> Таблицы хранятся в 1-гигабайтных сегментах, состоящих из 8-килобайтных страниц со slotted-структурой (встречный рост массива <code>Line Pointers</code> и кортежей <code>Tuples</code>).</li>
 <li><strong>Косвенная адресация CTID:</strong> Индексы ссылаются на пару <code>(номер страницы, индекс указателя)</code>. Локальное перемещение байтов строки не требует инвалидации внешних индексов.</li>

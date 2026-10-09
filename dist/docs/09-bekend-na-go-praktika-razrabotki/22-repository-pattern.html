@@ -298,11 +298,9 @@
             <p>В проектировании программного обеспечения существует хроническая болезнь, которую Джоэл Спольски метко назвал «архитектурным астронавтизмом». Инженеры создают десятки слоев абстракций, фабрик, адаптеров и оберток вокруг оберток, забывая, какую практическую задачу они решают. В объектно-ориентированных экосистемах паттерн Repository нередко вырождается в бессмысленную механическую прослойку, где на каждую таблицу базы данных создается класс из пяти CRUD-методов, дублирующих вызовы ORM.</p>
 <p>В языке Go паттерн Repository обретает свой первоначальный, чистый инженерный смысл. Это не ритуальная папка <code>internal/repository</code> и не набор шаблонного кода. Это <strong>архитектурный шов</strong> (architectural seam), изолирующий ядро бизнес-логики от деталей внешнего мира: сетевых сокетов, диалектов SQL, протоколов СУБД и библиотек маппинга. Репозиторий представляет собой иллюзию того, что все доменные сущности приложения уже загружены в оперативную память в виде упорядоченной коллекции, а сервис просто обращается к ней.</p>
 <h2 id="filosofiya-patterna-v-go">Философия паттерна в Go</h2>
-
 <p>Repository pattern в Go — это не просто папка <code>internal/repository</code> с CRUD-методами. Это архитектурный контракт, который изолирует бизнес-логику от деталей хранения данных. В отличие от Active Record, где модель сама знает о БД, или DAO (Data Access Object), который часто привязан к конкретной таблице, Repository абстрагирует коллекцию доменных объектов.</p>
 <p>Главное правило Go-архитектуры: <strong>интерфейсы определяются потребителем, а не создателем</strong>. Сервисный слой диктует, какие методы ему нужны для работы, а репозиторий реализует этот контракт, скрывая SQL, драйверы и маппинг строк.</p>
 <h3 id="interfeysy-opredelyayutsya-potrebitelem">Интерфейсы определяются потребителем</h3>
-
 <p>Вместо универсального <code>Save()</code> или <code>Find()</code>, методы отражают предметную область:</p>
 
 <div class="code-block" data-lang="go">
@@ -332,7 +330,6 @@ type UserRepository interface {
 
 <p>Это предотвращает раздувание интерфейса и упрощает тестирование. Моки реализуют только нужные методы.</p>
 <h3 id="pod-kapotom-mekhanika-interfeysov-i-pamyat">Под капотом. Механика интерфейсов и память</h3>
-
 <p>Когда вы передаете указатель на структуру в функцию, принимающую интерфейс, Go выполняет неявное преобразование. В памяти создается двухсловная структура <code>iface</code>:</p>
 <ol>
 <li><strong><code>itab</code></strong> (Interface Table): указатель на тип интерфейса, тип конкретной реализации и <strong>vtable</strong> — массив указателей на методы.</li>
@@ -379,7 +376,6 @@ flowchart TD
 
 
 <h3 id="idiomatichnaya-realizatsiya">Идиоматичная реализация</h3>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -433,7 +429,6 @@ func (r *pgUserRepo) Create(ctx context.Context, u *User) error {
 
 <p>Обратите внимание: интерфейс <code>UserRepository</code> не знает о <code>sql.DB</code>, <code>pgxpool</code> или ORM. Реализация может быть заменена на in-memory mock для тестов или на ClickHouse для аналитики без изменения сервисного слоя.</p>
 <h3 id="tranzaktsii-i-unit-of-work">Транзакции и Unit of Work</h3>
-
 <p>Репозиторий <strong>не должен</strong> управлять транзакциями самостоятельно. Это задача сервисного слоя. Правильный паттерн в Go — явная передача транзакции или использование callback-конструкции.</p>
 
 <div class="code-block" data-lang="go">
@@ -467,7 +462,6 @@ func (r *pgUserRepo) Create(ctx context.Context, u *User, exec DBExecutor) error
 <p>Такой подход позволяет переиспользовать один репозиторий как в <code>*sql.DB</code>, так и в <code>*sql.Tx</code>, сохраняя чистоту контракта.</p>
 <h3 id="lovushki-i-antipatterny">Ловушки и антипаттерны</h3>
 
-
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -482,7 +476,6 @@ func (r *pgUserRepo) Create(ctx context.Context, u *User, exec DBExecutor) error
 
 
 <h3 id="proizvoditelnost-i-mechanical-sympathy">Производительность и Mechanical Sympathy</h3>
-
 <p>Работа репозитория на hot-path создает несколько точек давления:<br />
 - <strong>Аллокации при <code>Scan</code></strong>: <code>row.Scan(&amp;u.ID)</code> требует указателей. Компилятор размещает их в стеке, но если <code>Scan</code> передается в функцию, принимающую <code>[]any</code>, слайс уходит в кучу. <code>pgx/v5</code> решает это через прямую запись в поля структуры, минуя <code>[]any</code>.<br />
 - <strong>Кэш-локальность</strong>: Структура репозитория должна быть компактной. Размещайте часто используемые поля (например, <code>*sql.DB</code> или <code>preparedStmt</code>) в начале. Это улучшает предвыборку L1 кэша при обходе.<br />
@@ -503,7 +496,6 @@ func (r *pgUserRepo) Create(ctx context.Context, u *User, exec DBExecutor) error
 
 
 <h3 id="itog">Итог</h3>
-
 <ol>
 <li>Интерфейсы репозитория определяются на стороне потребителя (сервиса), а не в пакете инфраструктуры.</li>
 <li>Не используйте универсальные Generic Repository для бизнес-логики. Явные методы (<code>FindByEmail</code>, <code>Deactivate</code>) читаемее и безопаснее.</li>

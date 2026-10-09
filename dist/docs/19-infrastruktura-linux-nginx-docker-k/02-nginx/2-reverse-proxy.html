@@ -310,7 +310,6 @@
 <p>В отличие от прямого прокси (<strong>Forward Proxy</strong>), который устанавливается на стороне клиентов (например, корпоративный прокси в офисе, скрывающий внутренние IP-адреса рабочих станций при выходе во внешнюю сеть), <strong>Reverse Proxy</strong> развертывается на стороне инфраструктуры сервиса. Он выступает единым фасадом для миллионов внешних пользователей, принимая весь входящий интернет-трафик и деликатно распределяя его по закрытым внутренним подсетям бэкенда.</p>
 <hr />
 <h2 id="1-kak-rabotaet-direktiva-proxypass-pod-kapotom">1. Как работает директива proxy_pass под капотом</h2>
-
 <p>Главная рабочая лошадка конфигурации Nginx — директива <code>proxy_pass</code>. Когда запрос попадает в соответствующий блок <code>location</code>, Nginx разворачивает сложную цепочку низкоуровневых операций:</p>
 <ol>
 <li><strong>Прием клиентского подключения:</strong> Воркер Nginx принимает TCP-соединение от клиента, инициирует TLS Handshake (при HTTPS) и считывает заголовки HTTP-запроса. Если в запросе присутствует тело (body), Nginx читает его в память в пределах лимита <code>client_body_buffer_size</code>.</li>
@@ -355,7 +354,6 @@ flowchart LR
 
 <hr />
 <h2 id="2-problema-zagolovkov-kto-zvonit">2. Проблема заголовков: «Кто звонит?»</h2>
-
 <p>Пожалуй, самая коварная ловушка при внедрении Reverse Proxy — <strong>потеря контекста оригинального сетевого соединения</strong>.</p>
 <p>Поскольку Nginx устанавливает собственное TCP-соединение с вашим Go-сервисом, вызов стандартного метода <code>r.RemoteAddr</code> вернет внутренний IP-адрес самого Nginx (например, <code>172.16.0.1</code> или <code>127.0.0.1</code>), а поле <code>r.Host</code> может оказаться именем апстрим-группы вместо доменного имени, которое пользователь ввел в адресной строке браузера.</p>
 <p>Если Go-бэкенд полагается на IP-адрес для rate-limiting, геолокации, логирования аудита или защиты от брутфорса, система моментально заблокирует сам Nginx или даст зеленый свет злоумышленникам.</p>
@@ -388,7 +386,6 @@ flowchart LR
 </div>
 
 <h3 id="x-forwarded-for-i-uyazvimost-ip-spoofing">X-Forwarded-For и уязвимость IP Spoofing</h3>
-
 <p>Заголовок <code>X-Forwarded-For</code> (XFF) имеет формат: <code>client_ip, proxy1_ip, proxy2_ip</code>. </p>
 <p>Здесь кроется критическая уязвимость безопасности: любой клиент может вручную отправить поддельный заголовок <code>X-Forwarded-For: 1.1.1.1</code>. Директива Nginx <code>$proxy_add_x_forwarded_for</code> просто добавит реальный IP в конец: <code>1.1.1.1, attacker_real_ip</code>. Если ваше Go-приложение доверяет <em>первому</em> IP из этого списка, вы подвергаетесь атаке IP Spoofing.</p>
 
@@ -421,7 +418,6 @@ real_ip_recursive on;
 
 
 <h3 id="izvlechenie-realnogo-ip-v-go-idiomatichnyy-podkhod">Извлечение реального IP в Go: Идиоматичный подход</h3>
-
 <p>Для защиты от спуфинга Go-приложение должно валидировать входящие адреса. Стандартная библиотека Go не содержит встроенного валидатора цепочек XFF, поэтому разработчики используют надежные экстракторы вроде <code>github.com/oapi-codegen/runtime</code> или пишут строгий middleware:</p>
 
 <div class="code-block" data-lang="go">
@@ -466,7 +462,6 @@ func RealIPMiddleware(next http.Handler) http.Handler {
 
 <hr />
 <h2 id="3-buferizatsiya-zashchita-go-ot-medlennykh-klientov-response-buffering">3. Буферизация: Защита Go от медленных клиентов (Response Buffering)</h2>
-
 <p>По умолчанию в Nginx включена буферизация ответов (<code>proxy_buffering on</code>). Это одна из ключевых причин, почему Nginx бережет оперативную память бэкенда.</p>
 <h3 id="stsenariy-bez-nginx-go-napryamuyu-v-mir">Сценарий без Nginx (Go напрямую в мир):</h3>
 <ol>
@@ -551,7 +546,6 @@ sequenceDiagram
 
 <hr />
 <h2 id="4-websockets-i-protokolnyy-apgreyd-http-upgrade">4. WebSockets и протокольный апгрейд (HTTP Upgrade)</h2>
-
 <p>Протокол WebSocket стартует как обычный HTTP/1.1 запрос, но в процессе рукопожатия клиент запрашивает переключение протокола через заголовки:</p>
 
 <div class="code-block" data-lang="http">
@@ -612,7 +606,6 @@ Nginx терминирует TLS на внешнем порту 443. Связь 
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Reverse Proxy как защитный экран:</strong> Nginx скрывает физическую топологию бэкенда, агрегирует соединения через <code>upstream keepalive</code> и защищает Go от сетевых аномалий.</li>
 <li><strong>Заголовки <code>X-Forwarded-*</code></strong>: Жизненно важный мост для передачи информации (<code>Host</code>, <code>X-Real-IP</code>, <code>X-Forwarded-For</code>, <code>X-Forwarded-Proto</code>) от Nginx к Go. Ошибки в их обработке ведут к багам с авторизацией и редиректами.</li>

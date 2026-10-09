@@ -300,7 +300,6 @@
 
           <div class="article-markdown">
             <h2 id="filosofiya-khesh-tablits-i-evolyutsiya-api">Философия хеш-таблиц и эволюция API</h2>
-
 <p>Хеш-таблицы в Go — это фундаментальная структура данных, лежащая в основе кэширования, агрегации метрик, маршрутизации запросов и управления состоянием. До Go 1.21 работа с мапами требовала написания циклов для клонирования, очистки или сравнения, что приводило к дублированию кода и ошибкам. Введение пакетов <code>maps</code> и <code>cmp</code>, а также встроенной функции <code>clear()</code>, закрыло эти пробелы, сделав операции декларативными, типобезопасными и часто более эффективными.</p>
 <p>Однако за простым синтаксисом <code>m["key"] = value</code> скрывается сложная механика распределения памяти, рандомизированного хеширования и управления кэшем процессора. Для инженера уровня Senior понимание внутренней структуры <code>hmap</code> критически важно для предсказания поведения системы под нагрузкой и избегания скрытых аллокаций.</p>
 
@@ -315,8 +314,7 @@
 </aside>
 
 
-<h2 id="under-the-hood-hmap-bakety-i-mekhanizm-rosta">Under the hood: `hmap`, бакеты и механизм роста</h2>
-
+<h2 id="under-the-hood-hmap-bakety-i-mekhanizm-rosta">Under the hood: <code>hmap</code>, бакеты и механизм роста</h2>
 <p>Внутреннее представление мапы — это указатель на структуру <code>runtime.hmap</code>. Она не хранит элементы напрямую, а управляет массивом бакетов.</p>
 
 <div class="code-block" data-lang="go">
@@ -345,7 +343,6 @@ type hmap struct {
 1. <strong>Нижние биты</strong> (определяются <code>B</code>) выбирают индекс бакета в массиве.<br />
 2. <strong>Старшие биты</strong> (top hash, 1 байт) сравниваются для быстрого отсева несовпадений без чтения полного ключа.</p>
 <h3 id="mekhanizm-rosta">Механизм роста</h3>
-
 <p>Рост мапы происходит асинхронно, по одному бакету за операцию вставки/удаления. Это предотвращает длительные <code>Stop-The-World</code> паузы.<br />
 1. <strong>Double-size рост</strong>: Запускается, когда <code>count &gt; loadFactor * 2^B</code> (loadFactor ≈ 6.5). Создается новый массив в 2 раза больше, элементы постепенно переезжают (evacuation).<br />
 2. <strong>Same-size рост</strong>: Запускается, когда много удалений, но бакеты фрагментированы (<code>noverflow</code> высок). Создается массив того же размера, чтобы собрать разрозненные элементы и освободить overflow-бакеты.</p>
@@ -405,13 +402,10 @@ flowchart TD
 </aside>
 
 
-<h2 id="novye-utility-go-1-21-maps-cmp-i-clear">Новые утилиты Go 1.21+: `maps`, `cmp` и `clear()`</h2>
-
-<h3 id="1-clearm">1. `clear(m)`</h3>
-
+<h2 id="novye-utility-go-1-21-maps-cmp-i-clear">Новые утилиты Go 1.21+: <code>maps</code>, <code>cmp</code> и <code>clear()</code></h2>
+<h3 id="1-clearm">1. <code>clear(m)</code></h3>
 <p>Встроенная функция <code>clear()</code> обнуляет все элементы мапы без выделения нового заголовка <code>hmap</code> или массива бакетов. Это значительно эффективнее, чем <code>m = make(map[K]V)</code>, если вы планируете заполнять её вновь и не хотите платить за аллокацию нового массива и последующую сборку мусора. При этом все ключи и значения удаляются, позволяя сборщику мусора освободить память под объекты, на которые они ссылались.</p>
-<h3 id="2-paket-maps">2. Пакет `maps`</h3>
-
+<h3 id="2-paket-maps">2. Пакет <code>maps</code></h3>
 <p>Предоставляет типовые операции без ручных циклов:</p>
 
 <div class="code-block" data-lang="go">
@@ -456,24 +450,18 @@ if maps.EqualFunc(m1, m2, func(a, b *User) bool {
 </aside>
 
 
-<h3 id="3-paket-cmp">3. Пакет `cmp`</h3>
-
+<h3 id="3-paket-cmp">3. Пакет <code>cmp</code></h3>
 <p><code>cmp.Compare[T constraints.Ordered](a, b T)</code> возвращает <code>-1</code>, <code>0</code> или <code>1</code>. Заменяет громоздкие <code>if/else</code> при сортировке мап по ключам или значению. Компилятор транслирует его в инструкции <code>SETL/SETG</code>, устраняя ветвления.</p>
 <h2 id="mechanical-sympathy-kesh-linii-allokatsii-i-gc">Mechanical Sympathy: Кэш-линии, аллокации и GC</h2>
-
 <h3 id="1-lokalnost-pamyati-i-razmer-baketov">1. Локальность памяти и размер бакетов</h3>
-
 <p>Бакеты <code>bmap</code> спроектированы так, чтобы занимать ровно одну кэш-линию (64 байта) на большинстве архитектур. Внутри бакета ключи и значения хранятся раздельно (все ключи подряд, затем все значения), чтобы избежать паддинга между парами <code>K-V</code>. Это улучшает плотность данных и предсказуемость загрузки в L1-кэш.<br />
 Однако при использовании <code>overflow buckets</code> происходит переход по указателю в случайную область кучи. Это вызывает <code>cache miss</code> и нагрузку на TLB. При высоких <code>noverflow</code> производительность мапы падает нелинейно.</p>
 <h3 id="2-predvaritelnoe-vydelenie">2. Предварительное выделение</h3>
-
 <p><code>make(map[K]V, n)</code> резервирует <code>2^ceil(log2(n/6.5))</code> бакетов сразу. Это предотвращает промежуточные <code>double-size</code> роста при последовательных вставках, экономя CPU на реаллокациях и копировании элементов.</p>
-<h3 id="3-sync-map-vs-map-sync-rwmutex">3. `sync.Map` vs `map` + `sync.RWMutex`</h3>
-
+<h3 id="3-sync-map-vs-map-sync-rwmutex">3. <code>sync.Map</code> vs <code>map</code> + <code>sync.RWMutex</code></h3>
 <p><code>sync.Map</code> оптимизирован для сценариев <strong>Write-Once, Read-Many</strong> или когда разные горутины пишут в непересекающиеся подмножества ключей. Он использует атомарные операции и разделяет данные на <code>read</code> (только чтение, lock-free) и <code>dirty</code> (требует мьютекс при miss).<br />
 При частых обновлениях одних и тех же ключей <code>sync.Map</code> проигрывает <code>map + RWMutex</code> из-за сложности поддержания <code>read</code>-кэша и аллокаций <code>entry</code> объектов.</p>
 <h2 id="lovushki-i-voprosy-s-sobesedovaniy">Ловушки и вопросы с собеседований</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -526,7 +514,6 @@ if maps.EqualFunc(m1, m2, func(a, b *User) bool {
 
 
 <h2 id="sravnenie-s-ekosistemami-drugikh-yazykov">Сравнение с экосистемами других языков</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -559,7 +546,6 @@ if maps.EqualFunc(m1, m2, func(a, b *User) bool {
 </tbody>
 </table></div>
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><code>map</code> в Go — это структура <code>hmap</code> с бакетами, overflow-цепочками и асинхронным ростом. Порядок итерации <strong>всегда рандомизирован</strong>.</li>
 <li>Используйте <code>clear()</code> для повторного использования мапы без аллокаций. <code>maps.Clone</code> и <code>maps.Copy</code> предоставляют безопасные и оптимизированные стандартные операции.</li>

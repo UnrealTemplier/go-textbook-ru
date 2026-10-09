@@ -297,7 +297,6 @@
 
           <div class="article-markdown">
             <h2 id="vvedenie-v-rpc-i-filosofiyu-grpc">Введение в RPC и философию gRPC</h2>
-
 <p>В истории распределенных систем идея <strong>Remote Procedure Call (RPC)</strong> всегда была святым Граалем: заставить вызов функции на удаленном сервере на другом конце планеты выглядеть для программиста точно так же, как обычный вызов локальной функции в оперативной памяти:</p>
 
 <div class="code-block" data-lang="go">
@@ -331,7 +330,6 @@
 
 <hr />
 <h2 id="protocol-buffers-schema-first-i-serializatsiya">Protocol Buffers: Schema-first и сериализация</h2>
-
 <p>В основе gRPC лежит язык описания интерфейсов и формат сериализации <strong>Protocol Buffers (Protobuf)</strong>. </p>
 <p><code>.proto</code> файлы определяют контракт до написания кода. Proto3 упростил эволюцию схем, убрав обязательные поля и валидацию enum, что критично для микросервисной разработки, где версии могут обновляться асинхронно.</p>
 
@@ -361,7 +359,6 @@ service UserService {
 </div>
 
 <h3 id="kak-ustroena-serializatsiya-protobuf">Как устроена сериализация Protobuf?</h3>
-
 <p>JSON передает данные как текст с именами полей: <code>{"id": 42, "name": "Alice"}</code>. Здесь имя поля <code>"name"</code> занимает 6 байт каждый раз, кавычки и двоеточия тратят байты, а число <code>42</code> записывается как два ASCII-символа <code>'4'</code> и <code>'2'</code>.</p>
 <p>Protobuf использует компактную схему <strong>Tag-Length-Value (TLV)</strong>. Имена полей не передаются по сети вовсе! Вместо них передается тег:<br />
 $$\text{Tag} = (\text{field_number} \ll 3) \mid \text{wire_type}$$<br />
@@ -416,7 +413,6 @@ flowchart LR
 4. Изменение типа поля запрещено, если оно уже использовалось.</p>
 <hr />
 <h2 id="arkhitektura-grpc-transport-i-stili-vzaimodeystviya">Архитектура gRPC: Транспорт и Стили взаимодействия</h2>
-
 <p>gRPC поддерживает четыре стиля взаимодействия, каждый из которых имеет свои сетевые и рантайм-особенности в Go:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -471,10 +467,8 @@ flowchart TD
 
 <hr />
 <h2 id="pod-kapotom-grpc-http2-i-go-rantaym">Под капотом: gRPC, HTTP/2 и Go-рантайм</h2>
-
 <p>gRPC работает поверх HTTP/2. Пакет <code>grpc-go</code> не использует стандартный <code>net/http</code>, а напрямую интегрируется с собственной высокопроизводительной реализацией транспорта <code>net/http2</code>. Ключевые компоненты рантайма: <code>transport.Conn</code>, <code>transport.Stream</code>, <code>grpc.codec</code> и <code>grpc.resolver</code>.</p>
 <h3 id="mapping-grpc-na-freymy-http2">Маппинг gRPC на фреймы HTTP/2</h3>
-
 <p>Каждый вызов gRPC отображается на спецификацию HTTP/2 следующим образом:<br />
 - <strong>HTTP Method:</strong> Всегда <code>POST</code>.<br />
 - <strong>Path:</strong> Строго в формате <code>/{package}.{ServiceName}/{MethodName}</code> (например, <code>/demo.UserService/GetUser</code>).<br />
@@ -510,7 +504,6 @@ sequenceDiagram
 
 
 <h3 id="multiplexing-i-http2">Multiplexing и HTTP/2</h3>
-
 <p>В отличие от <a href="10-tcp-ustroystvo-garantii-i-zhiznennyy-tsikl-soedineni.html" class="wikilink"><code>10. TCP. Устройство, гарантии и жизненный цикл соединения</code></a> с его блокировкой на уровне транспортного слоя, gRPC использует бинарные фреймы и multiplexing. Несколько потоков данных (<code>Stream</code>) передаются по одному TCP-соединению без заголовочных накладных расходов на каждое сообщение.</p>
 
 <aside class="callout callout-info" aria-label="Под капотом">
@@ -525,7 +518,6 @@ sequenceDiagram
 
 
 <h3 id="upravlenie-kontekstom-i-otmena">Управление контекстом и отмена</h3>
-
 <p>Контекст в gRPC — это не просто таймаут. При отмене контекста клиент отправляет HTTP/2 фрейм <code>RST_STREAM</code> с кодом <code>CANCEL</code> (<code>GOAWAY</code> относится ко всему соединению, а не к одному вызову), сервер прекращает обработку и освобождает ресурсы.</p>
 
 <div class="code-block" data-lang="go">
@@ -578,15 +570,12 @@ return &lt;-done
 
 <hr />
 <h2 id="setevye-osobennosti-i-proizvoditelnost">Сетевые особенности и производительность</h2>
-
 <h3 id="mekhanicheskoe-sochuvstvie-mechanical-sympathy">Механическое сочувствие (Mechanical Sympathy)</h3>
-
 <p>Бинарный протокол Protobuf в 3-10 раз компактнее JSON. Меньший размер пакета означает:<br />
 1. Меньше промахов TLB (Translation Lookaside Buffer) при работе с сетевыми буферами.<br />
 2. Более предсказуемая работа кэш-линий CPU при десериализации. Процессор последовательно считывает бинарные поля без строкового ветвления и регулярных выражений.<br />
 3. Снижение нагрузки на Garbage Collector: меньше аллокаций строк и байт-массивов. В Go сгенерированный код создает строго типизированные структуры с полями-значениями, которые при вызове могут оставаться на стеке (stack allocation) благодаря эффективному Escape Analysis.</p>
 <h3 id="backpressure-i-flow-control">Backpressure и Flow Control</h3>
-
 <p>HTTP/2 реализует flow control через окна размером в байты. <code>grpc-go</code> уважает эти окна, но может буферизовать данные в Go-буферах, если приложение читает медленнее, чем пишет. Для контроля используются <code>grpc.MaxCallRecvMsgSize</code> и <code>grpc.MaxCallSendMsgSize</code>.</p>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
@@ -602,7 +591,6 @@ return &lt;-done
 
 
 <h3 id="sravnenie-podkhodov">Сравнение подходов</h3>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -641,9 +629,7 @@ return &lt;-done
 </table></div>
 <hr />
 <h2 id="lovushki-optimizatsii-i-voprosy-na-sobesedovaniyakh">Ловушки, оптимизации и вопросы на собеседованиях</h2>
-
 <h3 id="tipichnye-oshibki-v-production">Типичные ошибки в production</h3>
-
 <ol>
 <li><strong>Утечка памяти в стриминге:</strong> Забытое чтение до <code>io.EOF</code> или отмена контекста без закрытия <code>Stream</code>.</li>
 <li><strong>Игнорирование контекста:</strong> Сервер не проверяет <code>ctx.Done()</code> при длительных операциях, тратя CPU впустую.</li>
@@ -663,7 +649,6 @@ return &lt;-done
 
 
 <h3 id="voprosy-na-sobesedovanii-middlesenior">Вопросы на собеседовании (Middle+/Senior)</h3>
-
 <ul>
 <li><strong>Как gRPC реализует cancellation?</strong> Контекст транслируется в HTTP/2 фрейм <code>RST_STREAM</code> с кодом <code>CANCEL</code>. Сервер должен проверять <code>ctx.Err()</code> или читать из <code>ctx.Done()</code>.</li>
 <li><strong>Почему Protobuf быстрее JSON?</strong> Нет парсера строк, нет выделения памяти под ключи объектов, VLQ-кодирование, бинарный формат.</li>
@@ -672,7 +657,6 @@ return &lt;-done
 </ul>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li>gRPC — это RPC-фреймворк, работающий поверх HTTP/2, предоставляющий бинарный протокол, строгую типизацию и стриминг.</li>
 <li>Protocol Buffers используют VLQ-кодирование и schema-first подход, что дает компактность и предсказуемую эволюцию контракта.</li>

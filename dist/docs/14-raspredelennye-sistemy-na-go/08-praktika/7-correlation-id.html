@@ -375,7 +375,6 @@
 
           <div class="article-markdown">
             <h2 id="chto-takoe-correlation-id-i-zachem-on-nuzhen">Что такое Correlation ID и зачем он нужен</h2>
-
 <blockquote>
 <p><em>«В распределенной системе каждый запрос — это странник, проходящий через десятки чужих земель. Если вы не выдадите ему паспорт на границе, вы никогда не узнаете, в какой деревне он пропал».</em><br />
 — Метафора распределенной трассировки</p>
@@ -430,7 +429,6 @@ flowchart LR
 
 <hr />
 <h2 id="generatsiya-correlation-id">Генерация Correlation ID</h2>
-
 <p>Главное требование к идентификатору корреляции — <strong>абсолютная глобальная уникальность</strong> во времени и пространстве. В распределенной системе с десятками тысяч RPS коллизия двух ID приведет к смешиванию логов разных пользователей и ложным выводам при аудите инцидентов.</p>
 <p>В современной индустрии применяются два стандарта:<br />
 1. <strong>UUID v4 (RFC 4122):</strong> Псевдослучайный 128-битный идентификатор (вероятность коллизии пренебрежимо мала).<br />
@@ -485,9 +483,7 @@ func FastCorrelationID() string {
 
 <hr />
 <h2 id="peredacha-correlation-id-mezhdu-servisami">Передача Correlation ID между сервисами</h2>
-
 <h3 id="http">HTTP</h3>
-
 <p>В REST API общепринятыми заголовками являются <strong><code>X-Request-Id</code></strong> или <strong><code>X-Correlation-Id</code></strong>.</p>
 <p>На стороне сервера заголовок считывается из структуры <code>http.Request.Header</code>:</p>
 
@@ -531,7 +527,6 @@ req.Header.Set(&quot;X-Request-Id&quot;, correlationID)
 
 <hr />
 <h3 id="grpc">gRPC</h3>
-
 <p>В протоколе gRPC аналогом HTTP-заголовков выступает подсистема <strong>метаданных (<code>metadata</code>)</strong>, передаваемая во фреймах HTTP/2:</p>
 
 <div class="code-block" data-lang="go">
@@ -573,7 +568,6 @@ func ExtractCorrelationID(ctx context.Context) string {
 
 <hr />
 <h3 id="ocheredi-soobshcheniy-kafka-rabbitmq-nats">Очереди сообщений (Kafka, RabbitMQ, NATS)</h3>
-
 <p>В асинхронных событийно-ориентированных архитектурах запрос разрывается во времени: продюсер кладет событие в топик, а консьюмер может вычитать его через несколько минут. Чтобы сквозной след не потерялся, Correlation ID помещается в системные метаданные сообщения:<br />
 - <strong>Apache Kafka:</strong> Заголовок записи <strong><code>RecordHeader</code></strong>;<br />
 - <strong>RabbitMQ:</strong> Системное свойство AMQP-пакета <strong><code>AMQP.BasicProperties.CorrelationId</code></strong>;<br />
@@ -604,7 +598,6 @@ func PublishOrderEvent(ctx context.Context, producer *kafka.Producer, correlatio
 <p>Консьюмер при получении сообщения распаковывает <code>Header</code>, извлекает ID и создает свежий <code>context.Context</code>, прошитый оригинальным идентификатором транзакции.</p>
 <hr />
 <h2 id="khranenie-v-context-context">Хранение в context.Context</h2>
-
 <p>Внутри одного Go-процесса Correlation ID обязан быть доступен в любой точке исполнения: в контроллерах, бизнес-сервисах, репозиториях баз данных и фоновых воркерах. Единственным законным контейнером для этого в Go является <strong><code>context.Context</code></strong> (см. <span class="wikilink-unresolved" title="Заметка в разработке">3. context и его использование</span>).</p>
 
 <div class="code-block" data-lang="go">
@@ -655,16 +648,14 @@ func GetCorrelationID(ctx context.Context) string {
 </code></pre>
 </div>
 
-<h3 id="pod-kapotom-context-withvalue">Под капотом `context.WithValue`</h3>
+<h3 id="pod-kapotom-context-withvalue">Под капотом <code>context.WithValue</code></h3>
 <p>При каждом вызове <code>context.WithValue</code> в куче создается структура <strong><code>context.valueCtx</code></strong> (размером ~48 байт на 64-битных системах), оборачивающая родительский контекст.<br />
 Поиск значения <code>ctx.Value()</code> — это линейный проход по цепочке ссылок от дочернего контекста к корневому <code>context.Background()</code> с временной сложностью $O(N)$. Поскольку глубина контекстов в типичном веб-сервисе составляет от 2 до 5 узлов, поиск сводится к 2–3 сравнениям указателей в кэше L1 процессора и практически бесплатен.</p>
 <hr />
 <h2 id="logirovanie-s-correlation-id">Логирование с Correlation ID</h2>
-
 <p>В распределенной системе разработчик не должен вручную писать <code>slog.Info("msg", "correlation_id", id)</code> в каждом месте вызова. Идентификатор должен прикрепляться к строкам логов автоматически.</p>
 <p>В стандартном пакете <strong><code>slog</code></strong> (Go 1.21+) это решается двумя путями:</p>
-<h3 id="sposob-1-obogashchenie-loggera-cherez-with">Способ 1: Обогащение логгера через `With`</h3>
-
+<h3 id="sposob-1-obogashchenie-loggera-cherez-with">Способ 1: Обогащение логгера через <code>With</code></h3>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -687,12 +678,11 @@ func HandleCheckout(w http.ResponseWriter, r *http.Request) {
 </code></pre>
 </div>
 
-<h3 id="sposob-2-kastomnyy-handler-dlya-slog-rekomenduetsya-dlya-high-load">Способ 2: Кастомный `Handler` для slog (Рекомендуется для High-Load)</h3>
+<h3 id="sposob-2-kastomnyy-handler-dlya-slog-rekomenduetsya-dlya-high-load">Способ 2: Кастомный <code>Handler</code> для slog (Рекомендуется для High-Load)</h3>
 <p>Создание нового экземпляра <code>*slog.Logger</code> на каждый входящий запрос через вызов <code>With</code> создает паразитные аллокации в памяти.<br />
 В высоконагруженных системах кастомный <strong><code>Handler</code></strong> самостоятельно вычитывает <code>correlationIDKey</code> из переданного в <code>r.Record</code> контекста непосредственно в момент форматирования JSON-строки, обеспечивая <strong>zero-allocation</strong> обогащение (см. <span class="wikilink-unresolved" title="Заметка в разработке">1. Logging и observability</span>).</p>
 <hr />
 <h2 id="svyaz-s-raspredelyonnoy-trassirovkoy-opentelemetry">Связь с распределённой трассировкой (OpenTelemetry)</h2>
-
 <p>Важно понимать соотношение понятий:<br />
 - <strong><code>trace-id</code> (OpenTelemetry):</strong> 16-байтный криптографически стойкий шестнадцатеричный идентификатор, регламентированный стандартом W3C Trace Context и предназначенный для построения графов времени (Spans) в Jaeger/Tempo.<br />
 - <strong><code>span-id</code>:</strong> 8-байтный идентификатор конкретного шага внутри цепочки.<br />
@@ -700,7 +690,6 @@ func HandleCheckout(w http.ResponseWriter, r *http.Request) {
 <p>Если в вашей инфраструктуре полноценно развернут OpenTelemetry (<span class="wikilink-unresolved" title="Заметка в разработке">2. OpenTelemetry tracing</span>), библиотека OTel автоматически берет на себя роль распространения <code>trace-id</code>. Однако в промышленной практике часто сосуществуют оба идентификатора: <code>trace-id</code> служит для глубокой технической телеметрии инженеров, а короткий Correlation ID возвращается клиенту в мобильное приложение для обращения в саппорт.</p>
 <hr />
 <h2 id="lovushki-i-chastye-oshibki">Ловушки и частые ошибки</h2>
-
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Потеря ID при асинхронных вызовах">
   <header class="callout-header">
@@ -797,7 +786,6 @@ go sendEmailNotification(ctx, orderData)
 
 <hr />
 <h2 id="mechanical-sympathy-overkhed-correlation-id">Mechanical Sympathy: оверхед Correlation ID</h2>
-
 <p>Оценим накладные расходы Correlation ID с точки зрения аппаратных ресурсов:</p>
 <ol>
 <li><strong>Аллокации при генерации UUID:</strong><br />
@@ -811,7 +799,6 @@ go sendEmailNotification(ctx, orderData)
 </ol>
 <hr />
 <h2 id="sobesedovanie">Собеседование</h2>
-
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -845,7 +832,6 @@ go sendEmailNotification(ctx, orderData)
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Correlation ID — паспорт запроса:</strong> Обеспечивает причинно-следственную связь между логами, метриками и спанами во всей распределенной системе.</li>
 <li><strong>Единая точка входа:</strong> Генерируется один раз на внешнем шлюзе (API Gateway) и распространяется по всей цепочке downstream-вызовов.</li>

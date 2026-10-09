@@ -301,7 +301,6 @@
 
           <div class="article-markdown">
             <h2 id="filosofiya-obkhoda-sistemy-tipov">Философия обхода системы типов</h2>
-
 <p>Язык Go создавался с непоколебимой верой в статическую безопасность типов: компилятор неусыпно следит за границами массивов, проверяет совместимость типов и не позволяет разработчику выстрелить себе в ногу случайным смещением указателя. Однако в реальном мире высоконагруженных систем, сетевых драйверов и криптографии иногда возникает непреодолимое требование: говорить с «железом» на языке сырых байтов памяти без посредников.</p>
 <p>Пакет <code>unsafe</code> — это единственный легальный способ в Go выйти за границы строгой типизации и напрямую манипулировать адресами памяти. Он не содержит магии, а лишь открывает доступ к примитивам, которые компилятор обычно запрещает ради безопасности. Использование <code>unsafe</code> — это архитектурная сделка: вы получаете предельную производительность, полный контроль над layout'ом памяти и возможность взаимодействия с C/C++ библиотеками, но взамен берете на себя ответственность за корректность указателей, безопасность сборщика мусора и совместимость кода с будущими версиями компилятора.</p>
 
@@ -318,8 +317,7 @@
 </aside>
 
 
-<h2 id="1-under-the-hood-unsafe-pointer-vs-uintptr-i-pravila-gc">1. Under the hood. `unsafe.Pointer` vs `uintptr` и правила GC</h2>
-
+<h2 id="1-under-the-hood-unsafe-pointer-vs-uintptr-i-pravila-gc">1. Under the hood. <code>unsafe.Pointer</code> vs <code>uintptr</code> и правила GC</h2>
 <p>Фундаментальная концептуальная граница, которую обязан понимать каждый разработчик, пролегает между <code>unsafe.Pointer</code> и целочисленным типом <code>uintptr</code>. Это различие определяет судьбу управляемой памяти.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -361,7 +359,6 @@ flowchart TD
 <p><code>uintptr</code> — это просто целое число архитектурного размера (4 байта на 32-битных и 8 байт на 64-битных системах). Для GC это мусор. Сборщик мусора принципиально не инспектирует целые числа на предмет сходства с адресами в куче. Если вы сконвертируете указатель в <code>uintptr</code> и сохраните его в долгоживущей структуре, а оригинальный объект больше не будет доступен по другим ссылкам, сборщик освободит память. При следующем разыменовании <code>uintptr</code> процесс упадет с <code>SIGSEGV</code> или прочитает поврежденные данные другого объекта.</p>
 <p><strong>Правило конвертации:</strong> Преобразование <code>Pointer</code> → <code>uintptr</code> допустимо <strong>только</strong> если результат используется немедленно в той же инструкции или выражении, где происходит конвертация обратно в <code>Pointer</code>. Сохранять <code>uintptr</code> на будущее запрещено. Между вычислением <code>uintptr</code> и обратным преобразованием в <code>unsafe.Pointer</code> не должно быть вызовов функций, аллокаций или точек переключения горутин (preemption points).</p>
 <h2 id="2-sovremennyy-api-go-1-17-i-1-20">2. Современный API Go 1.17+ и 1.20+</h2>
-
 <p>Исторически <code>unsafe</code> требовал сложной арифметики указателей через <code>uintptr</code>, что приводило к ошибкам. Начиная с Go 1.17 и 1.20, в язык добавлены типобезопасные встроенные функции, которые делают работу с памятью предсказуемой и отправляют в архив небезопасное манипулирование устаревшими структурами <code>reflect.SliceHeader</code> и <code>reflect.StringHeader</code>.</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
@@ -405,7 +402,6 @@ flowchart TD
 </tbody>
 </table></div>
 <h3 id="primer-idiomatichnogo-zero-copy-preobrazovaniya">Пример идиоматичного zero-copy преобразования</h3>
-
 <p>Конвертация строки в срез байт без единой аллокации памяти в современном Go выглядит предельно лаконично:</p>
 
 <div class="code-block" data-lang="go">
@@ -445,10 +441,8 @@ flowchart TD
 
 
 <h2 id="3-mechanical-sympathy-vyravnivanie-kesh-i-zero-copy">3. Mechanical Sympathy. Выравнивание, кэш и zero-copy</h2>
-
 <p>Прямая работа с памятью через <code>unsafe</code> позволяет обойти аллокации, но требует понимания layout'а структур и протоколов когерентности кэшей.</p>
-<h3 id="1-struct-padding-i-unsafe-offsetof">1. Struct Padding и `unsafe.Offsetof`</h3>
-
+<h3 id="1-struct-padding-i-unsafe-offsetof">1. Struct Padding и <code>unsafe.Offsetof</code></h3>
 <p>Компилятор добавляет пустые байты между полями структуры для выравнивания под границы слов CPU. Это ускоряет доступ, но увеличивает размер. <code>unsafe</code> позволяет работать с packed-структурами, полученными из C или сетевого протокола:</p>
 
 <div class="code-block" data-lang="go">
@@ -474,10 +468,8 @@ flowchart TD
 
 <p>Если вы читаете сырые байты из сети в такую структуру через <code>unsafe.Slice</code>, убедитесь, что <code>unsafe.Alignof(packet) == 1</code> или используйте <code>binary.Read</code> для переносимости. Прямое наложение <code>unsafe</code> на сеть без учета Endianness и Padding приведет к чтению мусора на другой архитектуре.</p>
 <h3 id="2-izbeganie-allokatsiy-v-goryachikh-putyakh">2. Избегание аллокаций в горячих путях</h3>
-
 <p>Пакет <code>reflect</code> упаковывает данные в <code>interface{}</code>, создавая нагрузку на GC. <code>unsafe</code> работает напрямую с указателями. В высоконагруженном парсере протоколов замена <code>reflect</code> на <code>unsafe.Slice</code> и ручное чтение по смещениям может ускорить обработку в 5–10 раз и снизить <code>GC Pause</code> до нуля, так как память переиспользуется, а не выделяется.</p>
 <h2 id="4-lovushki-i-voprosy-s-sobesedovaniy">4. Ловушки и вопросы с собеседований</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -525,7 +517,6 @@ flowchart TD
 
 
 <h2 id="5-sravnenie-s-ekosistemami-drugikh-yazykov">5. Сравнение с экосистемами других языков</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -558,7 +549,6 @@ flowchart TD
 </tbody>
 </table></div>
 <h2 id="6-itog">6. Итог</h2>
-
 <ol>
 <li><code>unsafe</code> — это мост к низкоуровневому контролю, а не замена стандартной библиотеки. Используйте его только когда профилирование показало необходимость.</li>
 <li><code>unsafe.Pointer</code> видим для GC, <code>uintptr</code> — нет. Никогда не храните <code>uintptr</code> как долгоживущие ссылки.</li>

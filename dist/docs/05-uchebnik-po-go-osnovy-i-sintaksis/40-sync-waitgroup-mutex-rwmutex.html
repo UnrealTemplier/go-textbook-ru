@@ -306,14 +306,12 @@
 <p>Каналы идеально подходят для передачи владения данными, конвейерной обработки (pipelines) и оркестрации жизненного цикла. Но если вам нужно просто защитить in-memory кэш (например, <code>map</code>) от одновременной записи или подождать завершения пула воркеров, использование каналов сделает код переусложненным, медленным и многословным. В таких сценариях на сцену выходит пакет <code>sync</code>.</p>
 <hr />
 <h2 id="1-sync-waitgroup-orkestratsiya-gorutin">1. sync.WaitGroup: Оркестрация горутин</h2>
-
 <p>Когда вы запускаете фоновые горутины, функция <code>main</code> (или родительская горутина) не будет их ждать. Если <code>main</code> завершится, рантайм Go жестко убьет все фоновые процессы процесса ОС. <code>sync.WaitGroup</code> — это потокобезопасный счетчик, который решает проблему барьерной синхронизации.</p>
 <p>У него всего три метода:<br />
 * <code>Add(int)</code> — увеличивает счетчик (сколько горутин мы ждем).<br />
 * <code>Done()</code> — уменьшает счетчик на 1 (вызывается внутри горутины при завершении).<br />
 * <code>Wait()</code> — блокирует текущую горутину, пока счетчик не станет равен 0.</p>
 <h3 id="pod-kapotom-atomiki-i-semafory">Под капотом: Атомики и Семафоры</h3>
-
 
 <aside class="callout callout-info" aria-label="Под капотом: Устройство WaitGroup">
   <header class="callout-header">
@@ -417,10 +415,8 @@ wg.Wait()
 
 <hr />
 <h2 id="2-sync-mutex-eksklyuzivnaya-blokirovka">2. sync.Mutex: Эксклюзивная блокировка</h2>
-
 <p><code>Mutex</code> (Mutual Exclusion) гарантирует, что только одна горутина может находиться в критической секции (например, при записи в <code>map</code>, которая в Go не является потокобезопасной).</p>
 <h3 id="mechanical-sympathy-fast-path-protiv-slow-path">Mechanical Sympathy: Fast Path против Slow Path</h3>
-
 <p>Системные вызовы для блокировки потоков ОС (<code>futex</code> в Linux) — это очень дорого. Поэтому <code>sync.Mutex</code> в Go использует гибридный подход.</p>
 <p>У мьютекса есть два пути захвата:<br />
 1. <strong>Fast Path (Быстрый путь):</strong> Горутина пытается атомарно (с помощью процессорной инструкции Compare-And-Swap, CAS) изменить состояние мьютекса в User Space. Если мьютекс был свободен, операция занимает около <strong>20 тактов CPU</strong>. Никаких обращений к ОС не происходит.<br />
@@ -460,7 +456,6 @@ flowchart TD
 
 
 <h3 id="starvation-mode-rezhim-golodaniya">Starvation Mode (Режим голодания)</h3>
-
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -512,13 +507,11 @@ func (c Cache) Set(k, v string) { ... }
 
 <hr />
 <h2 id="3-sync-rwmutex-razdelenie-chteniya-i-zapisi">3. sync.RWMutex: Разделение чтения и записи</h2>
-
 <p>Если ваши данные обновляются редко (например, конфиги или In-Memory словарь), но читаются тысячами горутин одновременно, использование обычного <code>Mutex</code> убьет пропускную способность: читатели будут выстраиваться в очередь друг за другом.</p>
 <p>Для этого существует <code>sync.RWMutex</code> (Read-Write Mutex):<br />
 * <code>RLock()</code> / <code>RUnlock()</code> — захват для чтения. Множество горутин могут владеть им одновременно.<br />
 * <code>Lock()</code> / <code>Unlock()</code> — эксклюзивный захват для записи. Блокирует и новых читателей, и новых писателей.</p>
 <h3 id="mekhanika-raboty-pod-kapotom">Механика работы под капотом</h3>
-
 <p>Как <code>Lock()</code> предотвращает появление новых читателей, пока ждет завершения старых?<br />
 В <code>RWMutex</code> есть счетчик <code>readerCount</code> (атомарный <code>int32</code>). <br />
 Когда приходит писатель, он делает хитрый трюк: вычитает из <code>readerCount</code> константу <code>rwmutexMaxReaders</code> (равную $2^{30}$). <br />
@@ -576,7 +569,6 @@ flowchart TD
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong><code>WaitGroup</code>:</strong> Используйте для ожидания завершения пула фоновых задач. Вызывайте <code>Add</code> строго до старта горутины.</li>
 <li><strong><code>Mutex</code>:</strong> Защищает критические секции. Использует гибридный подход (Спиннинг + Парковка). Имеет режим защиты от голодания (Starvation Mode).</li>

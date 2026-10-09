@@ -402,7 +402,6 @@
 
           <div class="article-markdown">
             <h2 id="postmortem-analiz-rassledovanie-posle-intsidenta">Postmortem анализ: расследование после инцидента</h2>
-
 <p>В предыдущих статьях нашего подраздела мы освоили мощный арсенал оперативной отладки: интерактивный отладчик Delve (<a href="2-delve-debugger.html" class="wikilink">2. Delve debugger</a>), боевой детектор гонок ThreadSanitizer (<a href="3-race-detector-v-prode.html" class="wikilink">3. Race detector в проде</a>) и структурированное логирование высокой пропускной способности (<a href="4-logi-i-debugging.html" class="wikilink">4. Логи и debugging</a>). </p>
 <p>Однако в реальной эксплуатации распределенных систем неизбежно наступает момент, когда методы живой диагностики бессильны: высоконагруженный сервис в продакшене скоропостижно скончался в три часа ночи, оставив после себя лишь лаконичное сообщение в системном журнале и файл посмертного дампа памяти. Либо масштабный инцидент длился 15 минут, привел к деградации базы данных и самопроизвольно прекратился, но никто в команде не понимает истинной первопричины сбоя.</p>
 <p>В такие моменты на первый план выходит <strong>Postmortem анализ (Посмертный анализ)</strong> — фундаментальная инженерная дисциплина системного расследования уже завершившегося инцидента по оставленным артефактам.</p>
@@ -410,7 +409,6 @@
 <p>В этой статье мы построим законченный цикл расследования: от упреждающего сбора артефактов (<a href="../08-runtime-i-instrumenty/4-goroutine-dump.html" class="wikilink">4. goroutine dump</a>, <a href="../04-memory-profiling/5-pprof-memory-profile.html" class="wikilink">5. pprof memory profile</a>, <a href="../08-runtime-i-instrumenty/3-execution-tracer.html" class="wikilink">3. execution tracer</a>, <a href="../08-runtime-i-instrumenty/1-runtime-paket.html" class="wikilink">1. runtime пакет</a>, <a href="../../14-raspredelennye-sistemy-na-go/08-praktika/7-correlation-id.html" class="wikilink">7. Correlation ID</a>) до выявления истинной первопричины по методике «Пять почему» и формирования культуры Blameless.</p>
 <hr />
 <h2 id="chto-takoe-postmortem-analiz-v-ekosisteme-go">Что такое Postmortem анализ в экосистеме Go</h2>
-
 <p><strong>Postmortem анализ</strong> (дословно — «вскрытие после смерти») — это строго регламентированный процесс исследования причин аварии программного комплекса на основе данных, сохраненных до и в момент катастрофы. Главная цель расследования — не поиск виновных и не наказание инженеров, а установление точной причинно-следственной связи событий и внедрение системных предохранителей, исключающих повторение данного класса проблем в будущем.</p>
 <p>В высоконагруженных системах на Go postmortem анализ опирается на три фундаментальных столпа:</p>
 <ol>
@@ -451,7 +449,6 @@ flowchart TD
 <p>Главное отличие postmortem от оперативной отладки заключается в том, что у инженера нет возможности перезапустить упавший запрос под отладчиком. Есть только осколки информации — застывшие снимки памяти. Задача инженера — восстановить по ним динамику катастрофы.</p>
 <hr />
 <h2 id="podgotovka-k-postmortem-chto-neobkhodimo-nastroit-zaranee">Подготовка к Postmortem: что необходимо настроить заранее</h2>
-
 <p>Качественный посмертный анализ невозможен, если сервис не оставил после себя следов. Подготовка к инцидентам всегда начинается задолго до аварии:</p>
 <h3 id="1-polnotekstovye-logi-so-skvoznym-correlation-id">1. Полнотекстовые логи со сквозным Correlation ID</h3>
 <p>Каждая операция обязана маркироваться уникальным <code>trace_id</code> (<a href="4-logi-i-debugging.html" class="wikilink">4. Логи и debugging</a>, <a href="../../14-raspredelennye-sistemy-na-go/08-praktika/7-correlation-id.html" class="wikilink">7. Correlation ID</a>), транзитивно передаваемым через микросервисные границы. Без сквозного идентификатора терабайты логов в Elasticsearch или Loki превращаются в бесполезный белый шум.</p>
@@ -479,7 +476,6 @@ flowchart TD
 * Запись 5-секундного среза execution trace (<a href="../08-runtime-i-instrumenty/3-execution-tracer.html" class="wikilink">3. execution tracer</a>) при фиксации скачка перцентиля задержки <code>p99 latency</code>.</p>
 <hr />
 <h2 id="instrumenty-analiza-posmertnykh-artefaktov">Инструменты анализа посмертных артефактов</h2>
-
 <h3 id="1-preparirovanie-core-dump-cherez-delve">1. Препарирование Core Dump через Delve</h3>
 <p>Главный инструмент патологоанатомического анализа в Go. Delve (<a href="2-delve-debugger.html" class="wikilink">2. Delve debugger</a>) умеет загружать системный файл дампа ядра так же прозрачно, как живой процесс:</p>
 
@@ -509,7 +505,6 @@ flowchart TD
 <p>Если в момент инцидента мониторинг успел записать срез трассировки событий рантайма, утилита <code>go tool trace</code> (<a href="../08-runtime-i-instrumenty/3-execution-tracer.html" class="wikilink">3. execution tracer</a>) позволяет восстановить посекундный фильм: в какой момент планировщик Go заблокировал потоки M, когда сборщик мусора запустил длительную фазу Stop-The-World и какие сетевые события <code>netpoller</code> привели к коллапсу.</p>
 <hr />
 <h2 id="metodologiya-provedeniya-postmortem-poshagovyy-algoritm">Методология проведения Postmortem: пошаговый алгоритм</h2>
-
 <p>Расследование серьезного инцидента — это строгий научный процесс, исключающий домыслы и спекуляции.</p>
 
 <div class="code-block" data-lang="ascii">
@@ -579,14 +574,12 @@ flowchart TD
 - Обновляются эксплуатационные регламенты (runbooks).</p>
 <hr />
 <h2 id="primer-postmortem-rassledovaniya-padeniya-s-panikoy">Пример postmortem-расследования падения с паникой</h2>
-
 <p><strong>Инцидент:</strong> В ночное время сервис <code>user-api</code> упал с паникой <code>panic: runtime error: invalid memory address or nil pointer dereference</code>. Под перезапустился, но файл <code>core.user-api.3456</code> был успешно сохранен.</p>
 <p><strong>Хронология (из логов):</strong><br />
 - 03:14:05 — запрос с <code>trace_id=abc123</code> поступил на <code>user-api</code>.<br />
 - 03:14:05 — лог <code>processing user update</code>.<br />
 - 03:14:05 — паника, процесс завершён.</p>
 <h3 id="issledovanie-artefakta-cherez-delve">Исследование артефакта через Delve:</h3>
-
 
 <div class="code-block" data-lang="bash">
   <header class="code-header">
@@ -633,7 +626,6 @@ user = main.User {ID: 123, Name: &quot;Ivan&quot;, Email: nil}
 - [ ] Провести аудит схемы СУБД и проставить дефолтные значения для пустых колонок (Ответственный: @dba, срок: 3 дня).</p>
 <hr />
 <h2 id="mechanical-sympathy-apparatnoe-vliyanie-sbora-artefaktov">Mechanical Sympathy: Аппаратное влияние сбора артефактов</h2>
-
 <p>Сбор диагностических улик расходует ресурсы сервера. Небрежная автоматизация сбора артефактов способна вызвать «вторичный инцидент», добив едва живой сервер:</p>
 
 <div class="code-block" data-lang="ascii">
@@ -666,7 +658,6 @@ user = main.User {ID: 123, Name: &quot;Ivan&quot;, Email: nil}
 </ol>
 <hr />
 <h2 id="kultura-blameless-postmortem-bezobvinitelnaya-kultura">Культура Blameless Postmortem (Безобвинительная культура)</h2>
-
 <p>Высшим признаком инженерной зрелости компании является внедрение <strong>культуры Blameless Postmortem</strong>:</p>
 <ul>
 <li><strong>Отказ от поиска виновных:</strong> Никаких фамилий разработчиков в протоколах инцидентов. Человеческая ошибка — это не причина аварии, а естественное следствие несовершенства системы. Человек не может работать безошибочно 100% времени.</li>
@@ -676,7 +667,6 @@ user = main.User {ID: 123, Name: &quot;Ivan&quot;, Email: nil}
 <p>В распределенных системах культура надежности дополняется регулярными учениями <strong>Game Days</strong> и проактивным хаос-инжинирингом (подробнее в <a href="../../14-raspredelennye-sistemy-na-go/08-praktika/9-production-incidents.html" class="wikilink">9. Production incidents</a>).</p>
 <hr />
 <h2 id="rezyume">Резюме</h2>
-
 <ol>
 <li><strong>Postmortem — системная инженерная дисциплина:</strong> Ее цель — выявить истинную корневую причину аварии и навсегда устранить возможность ее повторения.</li>
 <li><strong>Готовьте артефакты заранее:</strong> Включайте <code>GOTRACEBACK=crash</code>, снимайте лимиты на core dump через <code>ulimit -c</code>, используйте сквозные Correlation ID в структурированных логах <code>slog</code>.</li>

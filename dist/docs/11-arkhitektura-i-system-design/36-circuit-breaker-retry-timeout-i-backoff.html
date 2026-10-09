@@ -307,7 +307,6 @@
 
           <div class="article-markdown">
             <h2 id="patterny-ustoychivosti-circuit-breaker-retry-timeout-i-backoff">Паттерны устойчивости: Circuit Breaker, Retry, Timeout и Backoff</h2>
-
 <blockquote>
 <p><em>«Все, что может пойти не так, пойдет не так».</em>  <br />
 — Закон Мёрфи</p>
@@ -317,7 +316,6 @@
 <p>Чтобы строить несокрушимые системы, бэкенд-инженер обязан опираться на четыре столпа архитектурной устойчивости: <strong>Timeout</strong>, <strong>Retry</strong>, <strong>Backoff</strong> и <strong>Circuit Breaker</strong>. В этой главе мы разберём физику работы каждого примитива, покажем их высоконагруженную реализацию на Go и объединим их в монолитный оборонительный рубеж.</p>
 <hr />
 <h3 id="timeout-ne-zhdat-beskonechno">Timeout: не ждать бесконечно</h3>
-
 <p><strong>Timeout (Дедлайн)</strong> — это фундаментальное правило гигиены распределённых систем: ни одна сетевая операция не имеет права ожидать ответа бесконечно долго.</p>
 <p>Если удалённый сервис перестал отвечать, горутина в Go, заблокированная на чтении из сетевого сокета, без таймаута останется висеть в рантайме навсегда. Каждая такая «горутина-зомби» держит в памяти свой стек (~2–8 КБ), структуру сокета и файловый дескриптор в ядре Linux. При нагрузке в 1 000 RPS сервис исчерпает все доступные системные ресурсы менее чем за две минуты.</p>
 <p>В современном Go управление временем жизни сетевых операций строится исключительно вокруг интерфейса <code>context.Context</code>:</p>
@@ -366,7 +364,6 @@ func CallExternalAPI(ctx context.Context, httpClient *http.Client, url string) (
 </div>
 
 <h4 id="pravila-khoroshego-tona-pri-rabote-s-taymautami">Правила хорошего тона при работе с таймаутами:</h4>
-
 <ol>
 <li><strong>Запрет на <code>http.DefaultClient</code></strong>:<br />
    Стандартный глобальный клиент <code>http.DefaultClient</code> в Go <strong>не имеет таймаута по умолчанию (<code>Timeout: 0</code>)</strong>. Любое использование <code>http.Get()</code> в продакшене — это мина замедленного действия. Всегда объявляйте явно сконфигурированный экземпляр:<br />
@@ -379,7 +376,6 @@ func CallExternalAPI(ctx context.Context, httpClient *http.Client, url string) (
 </ol>
 <hr />
 <h3 id="retry-povtorit-pri-oshibke">Retry: повторить при ошибке</h3>
-
 <p>Не каждый сбой является фатальным. В распределённых сетях подавляющее большинство ошибок носит <strong>транзиентный (кратковременный) характер</strong>: кратковременный сетевой флап, секундная перезагрузка пода Kubernetes или смена лидера в etcd/Raft кластере.</p>
 <p>Паттерн <strong>Retry (Повторная попытка)</strong> позволяет преодолеть кратковременный сбой автоматически, не возвращая ошибку пользователю.</p>
 <h4 id="zheleznye-pravila-retry">Железные правила Retry:</h4>
@@ -393,7 +389,6 @@ func CallExternalAPI(ctx context.Context, httpClient *http.Client, url string) (
 </ul>
 <hr />
 <h3 id="backoff-umnaya-pauza-mezhdu-popytkami">Backoff: умная пауза между попытками</h3>
-
 <p>Если сервис упал под лавиной нагрузки, а 1 000 клиентов немедленно начнут слать повторные запросы в ту же миллисекунду, они окончательно добьют упавший узел. Это явление называется <strong>Retry-штормом (Retry Storm)</strong>.</p>
 <p>Паттерн <strong>Backoff</strong> задаёт алгоритм нарастания пауз между попытками:<br />
 1. <strong>Constant Backoff</strong>: Одинаковая пауза (например, 100 мс). Плохо защищает систему.<br />
@@ -482,7 +477,6 @@ func ExecuteWithBackoff(ctx context.Context, operation func() error) error {
 
 <hr />
 <h3 id="circuit-breaker-predotvrashchenie-laviny">Circuit Breaker: предотвращение лавины</h3>
-
 <p>Если зависимый downstream-сервис отключился физически (сгорел дата-центр или упал кластер СУБД), никакой Retry и Backoff не помогут. Продолжение отправки запросов будет лишь бессмысленно расходовать соединения и заставлять пользователей смотреть на крутящийся спиннер.</p>
 <p><strong>Circuit Breaker (Автоматический выключатель)</strong> — это предохранитель, защищающий систему от расходования ресурсов на заведомо мёртвые сервисы.</p>
 <p>Паттерн описывается конечной стейт-машиной из трёх состояний:</p>
@@ -533,8 +527,7 @@ stateDiagram-v2
 <li><strong>Half-Open (Полуразомкнут)</strong>:<br />
    По истечении времени сна (Sleep Window, например, 10 секунд) выключатель приоткрывается и пропускает один или несколько пробных (canary) запросов. Если пробный вызов успешен — система восстановилась, автомат возвращается в <strong>Closed</strong>. Если снова сбой — цепь немедленно возвращается в <strong>Open</strong>.</li>
 </ol>
-<h4 id="realizatsiya-na-go-s-ispolzovaniem-sonygobreaker">Реализация на Go с использованием `sony/gobreaker`</h4>
-
+<h4 id="realizatsiya-na-go-s-ispolzovaniem-sonygobreaker">Реализация на Go с использованием <code>sony/gobreaker</code></h4>
 <p>В промышленной разработке стандартом де-факто является библиотека <code>github.com/sony/gobreaker</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -618,7 +611,6 @@ func (c *ProtectedClient) fallback(ctx context.Context) any {
 
 <hr />
 <h3 id="mechanical-sympathy-nagruzka-na-rantaym-go">Mechanical Sympathy: нагрузка на рантайм Go</h3>
-
 <ol>
 <li><strong>Таймеры и планировщик Go</strong>:<br />
    Каждый вызов <code>context.WithTimeout</code> создаёт таймер в планировщике Go. Начиная с Go 1.23, внутренняя структура таймеров рантайма была радикально переработана (удалены глобальные блокировки таймерных очередей на каждом логическом процессоре <code>P</code>), что позволило сервисам обрабатывать миллионы дедлайнов в секунду без деградации CPU.</li>
@@ -631,7 +623,6 @@ func (c *ProtectedClient) fallback(ctx context.Context) any {
 </ol>
 <hr />
 <h3 id="integratsiya-chetyryokh-mekhanizmov">Интеграция четырёх механизмов</h3>
-
 <p>В боевом продакшене все четыре механизма объединяются в единый слаженный эшелон обороны:</p>
 
 <div class="code-block" data-lang="go">
@@ -709,7 +700,6 @@ func CallWithResilience(
 4. <strong>Circuit Breaker</strong> пресекает повторы, если сервис умер системно, переводя трафик на fallback.</p>
 <hr />
 <h3 id="svyaz-s-drugimi-arkhitekturnymi-patternami">Связь с другими архитектурными паттернами</h3>
-
 <ul>
 <li><strong>Idempotency</strong> (<a href="27-idempotency-i-exactly-once-semantika.html" class="wikilink">27. Idempotency и exactly once семантика</a>): Идемпотентность — необходимое предварительное условие для безопасного включения Retry. Без идемпотентности ретраи запрещены!</li>
 <li><strong>Bulkhead</strong> (<a href="37-bulkhead-i-izolyatsiya-otkazov.html" class="wikilink">37. Bulkhead и изоляция отказов</a>): Circuit Breaker отсекает сбои во времени, а Bulkhead изолирует ресурсы (пулы горутин и соединений) в пространстве памяти.</li>
@@ -718,7 +708,6 @@ func CallWithResilience(
 </ul>
 <hr />
 <h3 id="antipatterny">Антипаттерны</h3>
-
 <ol>
 <li><strong>Бесконечный Retry</strong>:<br />
    Цикл повтора без жесткого ограничения числа попыток или общего времени жизни контекста <code>ctx.Done()</code>. Зависшая горутина никогда не освободит память.</li>
@@ -749,7 +738,6 @@ func CallWithResilience(
 
 <hr />
 <h3 id="itog">Итог</h3>
-
 <p>Устойчивость распределённой системы не возникает сама по себе — она методично закладывается в архитектуру. Связка Timeout, Retry, Exponential Backoff с джиттером и Circuit Breaker — это канонический оборонительный комплекс современного Go-разработчика. Он гарантирует, что локальная авария в одном микросервисе будет локализована и не превратится в пожар, уничтожающий всю компанию.</p>
 <p>Однако, помимо временной защиты вызовов, важно физически изолировать ресурсы (пулы горутин, сокеты, память), чтобы сбой одного компонента не лишил ресурсов соседние.</p>
 <p>О том, как работает морской принцип непотопляемости в программировании, читайте в следующей главе: <a href="37-bulkhead-i-izolyatsiya-otkazov.html" class="wikilink">37. Bulkhead и изоляция отказов</a>.</p>

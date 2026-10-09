@@ -363,7 +363,6 @@
 2. <strong>Компенсирующие транзакции (Compensation Logic / Saga)</strong> — для обратного отката при возникновении неустранимых бизнес-ошибок.</p>
 <hr />
 <h2 id="1-retry-logic-strategii-povtornykh-popytok">1. Retry Logic (Стратегии повторных попыток)</h2>
-
 <p>Философия оркестраторов формулируется парадоксальным, на первый взгляд, принципом: <strong>Activity обязана падать, и это абсолютно нормальная штатная ситуация</strong>. </p>
 <p>Если сторонний сервис недоступен, Activity-воркер не должен судорожно обрабатывать ошибку костылями или ронять родительский Workflow. Воркер просто возвращает ошибку кластеру, а оркестратор берет на себя интеллектуальное планирование повторов.</p>
 
@@ -399,7 +398,6 @@ flowchart TD
 
 <hr />
 <h3 id="nastroyka-retrypolicy-v-go">Настройка RetryPolicy в Go</h3>
-
 <p>Политика повторных попыток задается декларативно через структуру <code>ActivityOptions</code> в коде Workflow:</p>
 
 <div class="code-block" data-lang="go">
@@ -449,7 +447,6 @@ func PaymentWorkflow(ctx workflow.Context, orderID string, amount int64) error {
 
 <hr />
 <h3 id="mechanical-sympathy-kak-retrai-rabotayut-pod-kapotom">Mechanical Sympathy: Как ретраи работают под капотом?</h3>
-
 <p>Вспомним, с какими мучениями связана реализация повторов в традиционных брокерах сообщений (как мы разбирали в <a href="../02-rabbitmq/8-retry-patterns-v-rabbitmq.html" class="wikilink">8. Retry patterns в RabbitMQ</a>). В RabbitMQ инженерам приходится создавать запутанные топологии: вспомогательные очереди ожидания (Wait Queues), Dead Letter Exchanges (DLX), настраивать TTL сообщений или подключать сторонние плагины на базе базы данных Mnesia. При этом сообщения летают по кругу, пожирая трафик и засоряя очереди.</p>
 <p>В Temporal механизм повторов <strong>встроен непосредственно в ядро распределенного конечного автомата (History Service)</strong>:<br />
 1. Воркер выполняет Activity, натыкается на сетевой сбой и сообщает серверу по gRPC: <em>«Activity упала с ошибкой Connection Reset»</em>.<br />
@@ -492,7 +489,6 @@ func PaymentWorkflow(ctx workflow.Context, orderID string, amount int64) error {
 
 <hr />
 <h2 id="2-compensation-logic-pattern-saga">2. Compensation Logic (Паттерн Saga)</h2>
-
 <p>Что делать, если все разрешенные повторы исчерпаны, или мы получили фатальную <code>NonRetryableError</code>, но до этой точки Workflow уже успел успешно выполнить несколько необратимых действий в других микросервисах?</p>
 <p>Классический сценарий бронирования отпуска:<br />
 1. Забронирован номер в гостинице (Успех: отель заморозил номер).<br />
@@ -540,7 +536,6 @@ sequenceDiagram
 
 <hr />
 <h3 id="idiomatichnaya-saga-v-temporal-go">Идиоматичная Saga в Temporal (Go)</h3>
-
 <p>В языке Go нет встроенных синтаксических конструкций для отката распределенных транзакций, но мы можем элегантно реализовать паттерн Saga с помощью замыканий (closures), стека функций обратного вызова и ключевого слова <code>defer</code>.</p>
 
 <div class="code-block" data-lang="go">
@@ -644,7 +639,6 @@ func TourBookingWorkflow(ctx workflow.Context, req TourRequest) (err error) {
 
 <hr />
 <h2 id="fundament-nadezhnosti-idempotentnost">Фундамент надежности: Идемпотентность</h2>
-
 <p>И повторные попытки (Retries), и компенсирующие транзакции таят в себе колоссальную скрытую опасность.</p>
 <p>Представьте ситуацию: воркер выполнил функцию <code>ChargeCardActivity</code>, банк успешно списал $1000, сформировал квитанцию, но в момент отправки HTTP-ответа на стороне провайдера моргнул сетевой кабель. TCP-соединение разорвалось по таймауту.</p>
 <p>Воркер возвращает оркестратору ошибку <code>DeadlineExceeded</code>. Temporal, руководствуясь <code>RetryPolicy</code>, добросовестно берет ту же самую Activity и отправляет ее на повторное исполнение на другой воркер. <strong>Если внешняя система не защищена от дублей, с карты клиента будут списаны повторные $1000.</strong></p>
@@ -704,7 +698,6 @@ idempotencyKey := fmt.Sprintf(&quot;%s:%s:%d&quot;,
 <hr />
 <h2 id="podvodnye-kamni-i-voprosy-s-sobesedovaniy">Подводные камни и вопросы с собеседований</h2>
 
-
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -724,7 +717,6 @@ idempotencyKey := fmt.Sprintf(&quot;%s:%s:%d&quot;,
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Retry Logic</strong> устраняет временные инфраструктурные сбои (сеть, таймауты, <code>503 Service Unavailable</code>). В Temporal таймеры повторов работают в ядре кластера и не утилизируют память воркеров.</li>
 <li>Ошибки бизнес-правил (нет денег, отказ скоринга) должны маркироваться как <strong><code>NonRetryableError</code></strong>, иначе система уйдет в бесконечный деструктивный цикл повторов.</li>

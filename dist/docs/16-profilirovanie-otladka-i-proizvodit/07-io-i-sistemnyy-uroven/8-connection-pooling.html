@@ -402,14 +402,12 @@
 
           <div class="article-markdown">
             <h2 id="connection-pooling-pereispolzovanie-soedineniy-kak-osnova-effektivnogo-vvoda-vyv">Connection pooling: переиспользование соединений как основа эффективного ввода-вывода</h2>
-
 <p>В предыдущих статьях подраздела мы подробно разобрали скрытую стоимость системных вызовов ядра (<a href="1-sistemnye-vyzovy-i-ikh-stoimost.html" class="wikilink">1. Системные вызовы и их стоимость</a>), классифицировали аппаратные и программные бутылочные горлышки ввода-вывода (<a href="2-io-bottlenecks.html" class="wikilink">2. IO bottlenecks</a>), исследовали природу сетевой задержки (<a href="3-network-latency.html" class="wikilink">3. Network latency</a>) и изучили архитектуру сетевого поллера Go — netpoller (<a href="4-epoll-kqueue-i-netpoller.html" class="wikilink">4. epoll, kqueue и netpoller</a>).</p>
 <p>Мы выяснили, что процедура установления нового TCP-соединения требует как минимум 1 полного RTT (трехстороннее рукопожатие), плюс еще от 1 до 2–3 RTT на согласование шифрованных сессий TLS, плюс серию системных вызовов ядра на создание сокета, связывание и выделение буферов. Повторять этот тяжеловесный ритуал заново для каждого исходящего HTTP-запроса, вызова СУБД или отправки сообщения в очередь — значит бездумно разбазаривать драгоценные миллисекунды, такты процессора и память операционной системы на действия, не имеющие никакого отношения к полезной бизнес-логике.</p>
 <p>Представьте себе почтовую службу, которой для доставки каждого отдельного письма нужно сначала построить персональную железнодорожную ветку до адресата, выставить на границе караул из четырех пограничников с проверкой паспортов (TCP SYN, SYN-ACK, ACK и обмен сертификатами TLS), передать один конверт, а затем... немедленно разобрать рельсы и уволить стражу! При такой организации служба доставки сможет отправлять лишь пару писем в минуту ценой колоссальных затрат.</p>
 <p><strong>Connection pooling</strong> (пул соединений) — это фундаментальный механизм удержания и повторного использования открытых сетевых соединений для обслуживания множества последовательных и параллельных транзакций. Пул амортизирует стоимость установления соединения, исключает лишние сетевые RTT, бережет ресурсы ядра ОС (дескрипторы, эфемерные порты, буферы сокетов) и защищает нижележащие сервисы от шторма подключений при пиковых нагрузках.</p>
 <p>В языке Go стандартные клиенты (<code>net/http</code>, <code>database/sql</code>, а также популярные библиотеки <code>go-redis</code> и клиенты Kafka) уже содержат встроенные подсистемы пулинга. Однако Senior-инженер обязан досконально знать их внутреннее устройство, уметь тонко настраивать параметры под профиль нагрузки и диагностировать скрытые утечки и «протухшие» соединения.</p>
 <h2 id="chto-takoe-connection-pool-i-zachem-on-nuzhen">Что такое connection pool и зачем он нужен</h2>
-
 <p>Создание каждого нового TCP-сокета с точки зрения ядра и оборудования включает:</p>
 <ul>
 <li>Выделение локального эфемерного порта и системный вызов <code>connect</code>.</li>
@@ -457,11 +455,9 @@ flowchart TD
 </figure>
 
 
-<h2 id="http-klient-pul-v-http-transport">HTTP-клиент: пул в `http.Transport`</h2>
-
+<h2 id="http-klient-pul-v-http-transport">HTTP-клиент: пул в <code>http.Transport</code></h2>
 <p>Стандартный HTTP-клиент в Go (<code>net/http.Client</code>) по умолчанию опирается на глобальный экземпляр <code>http.DefaultTransport</code>, содержащий встроенный высокопроизводительный пул TCP-соединений. Однако для продакшена использование дефолтного транспорта недопустимо: необходимо явно конфигурировать собственный экземпляр <code>http.Transport</code>.</p>
-<h3 id="kak-rabotaet-http-transport">Как работает `http.Transport`</h3>
-
+<h3 id="kak-rabotaet-http-transport">Как работает <code>http.Transport</code></h3>
 <p>Внутренняя механика пула описана в файле <code>src/net/http/transport.go</code>. Пул управляется на основе двухуровневой ассоциативной карты:</p>
 <ul>
 <li>Ключ поиска: структура <code>connectMethodKey</code> — уникальная комбинация схемы протокола (http/https), сетевого адреса и целевого порта хоста.</li>
@@ -490,8 +486,7 @@ flowchart TD
 </aside>
 
 
-<h3 id="klyuchevye-nastroyki-http-transport">Ключевые настройки `http.Transport`</h3>
-
+<h3 id="klyuchevye-nastroyki-http-transport">Ключевые настройки <code>http.Transport</code></h3>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -525,7 +520,6 @@ flowchart TD
 
 
 <h2 id="grpc-i-http2-pochemu-pul-nevidim-no-vsyo-ravno-vazhen">gRPC и HTTP/2: почему пул «невидим», но всё равно важен</h2>
-
 <p>Клиенты gRPC работают поверх протокола HTTP/2, который аппаратно поддерживает <strong>мультиплексирование потоков</strong> внутри одного TCP-соединения.</p>
 <p>В классическом понимании пул соединений для gRPC не требуется: один дескриптор <code>grpc.ClientConn</code> удерживает одно постоянное физическое TCP-соединение, через которое параллельно передаются сотни независимых RPC-вызовов.</p>
 <p>Однако здесь возникают свои критические нюансы:<br />
@@ -553,11 +547,9 @@ flowchart TD
 <ul>
 <li><strong>Idle-таймаут (<code>IdleTimeout</code>):</strong> gRPC-клиент умеет автоматически закрывать простаивающие каналы при отсутствии нагрузки, освобождая порты.</li>
 </ul>
-<h2 id="pul-soedineniy-k-bazam-dannykh-databasesql">Пул соединений к базам данных: `database/sql`</h2>
-
+<h2 id="pul-soedineniy-k-bazam-dannykh-databasesql">Пул соединений к базам данных: <code>database/sql</code></h2>
 <p>Встроенный пакет <code>database/sql</code> реализует индустриальный эталон пула соединений к СУБД, поверх которого работают сторонние драйверы (<code>go-sql-driver/mysql</code>, <code>jackc/pgx</code>, <code>mattn/go-sqlite3</code>).</p>
-<h3 id="vnutrennee-ustroystvo-pula-databasesql">Внутреннее устройство пула `database/sql`</h3>
-
+<h3 id="vnutrennee-ustroystvo-pula-databasesql">Внутреннее устройство пула <code>database/sql</code></h3>
 <p>Структура <code>sql.DB</code> управляет следующими ключевыми полями:<br />
 - <code>freeConn</code> — слайс свободных простаивающих соединений <code>[]*driverConn</code>.<br />
 - <code>connRequests</code> — очередь горутин, ожидающих освобождения соединения (канал структур <code>connRequest</code>).<br />
@@ -620,7 +612,6 @@ flowchart TD
 
 <h3 id="klyuchevye-nastroyki">Ключевые настройки</h3>
 
-
 <div class="code-block" data-lang="go">
   <header class="code-header">
     <span class="code-lang-tag">Go</span>
@@ -650,9 +641,7 @@ db.SetConnMaxIdleTime(1 * time.Minute) // Максимальное время п
 
 
 <h2 id="pul-soedineniy-k-redis-kafka-i-drugim-sistemam">Пул соединений к Redis, Kafka и другим системам</h2>
-
 <h3 id="redis-go-redis">Redis (go-redis)</h3>
-
 <p>Популярный клиент <code>go-redis</code> (<code>github.com/redis/go-redis/v9</code>) использует пул на основе <code>sync.Pool</code>-подобной структуры с явным управлением соединениями и их жизненным циклом. Настраивается через <code>redis.Options</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -674,11 +663,9 @@ db.SetConnMaxIdleTime(1 * time.Minute) // Максимальное время п
 
 <p>Параметр <code>MinIdleConns</code> критически важен: он заставляет клиент упреждающе прогревать указанное число соединений в фоне, сглаживая холодный старт при резких всплесках нагрузки.</p>
 <h3 id="kafka-sarama-kafka-go">Kafka (sarama, kafka-go)</h3>
-
 <p>В библиотеке <strong>Sarama</strong> (<code>sarama.NewAsyncProducer</code> / <code>sarama.NewConsumer</code>) управление сокетами к брокерам кластера полностью инкапсулировано внутри клиента. Параметры <code>Net.MaxOpenRequests</code> и <code>Net.DialTimeout</code> задают лимиты конвейеризации.</p>
 <p>В клиенте <strong><code>kafka-go</code></strong> от Segmentio архитектура пулинга более прозрачна: параметры <code>MaxAttempts</code>, <code>QueueCapacity</code> и <code>BatchSize</code> позволяют тонко балансировать пакетную отправку и время удержания соединений. Главное системное требование — не превышать лимит брокера <code>max.connections.per.ip</code>.</p>
 <h2 id="problemy-i-lovushki-connection-pooling">Проблемы и ловушки connection pooling</h2>
-
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
@@ -728,7 +715,6 @@ db.SetConnMaxIdleTime(1 * time.Minute) // Максимальное время п
 
 
 <h2 id="mechanical-sympathy-connection-pool-i-sistema">Mechanical Sympathy: connection pool и система</h2>
-
 <p>Рассмотрение пулов соединений через призму аппаратной архитектуры раскрывает их колоссальный эффект на производительность:</p>
 <ul>
 <li><strong>Сокет как структура ядра:</strong><br />
@@ -739,9 +725,7 @@ db.SetConnMaxIdleTime(1 * time.Minute) // Максимальное время п
   Сетевой адаптер распределяет входящие TCP-потоки по ядрам процессора на основе хэша заголовков (IP/порт) с помощью Receive Side Scaling (RSS). Если соединение переиспользуется на том же процессоре P (чему способствует архитектура <code>sync.Pool</code>-подобных структур), обработка softirq и данные сокета остаются на одном NUMA-узле, минимизируя трафик по межпроцессорной шине (Intel UPI / AMD Infinity Fabric).</li>
 </ul>
 <h2 id="monitoring-i-diagnostika-pulov">Мониторинг и диагностика пулов</h2>
-
 <h3 id="databasesql">database/sql</h3>
-
 <p>Пакет стандартной библиотеки предоставляет встроенный метод <code>db.Stats()</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -764,12 +748,10 @@ fmt.Printf(&quot;Open: %d, InUse: %d, Idle: %d, WaitCount: %d, WaitDuration: %s\
 - <code>WaitDuration</code> — совокупное время, проведенное горутинами в ожидании соединений. Если оно растет — база данных или пул тормозят весь сервис.<br />
 - <code>InUse</code> vs <code>Idle</code> — мгновенный баланс между занятыми и простаивающими слотами.</p>
 <h3 id="nethttp-transport">net/http.Transport</h3>
-
 <p>Для детальной инспекции HTTP-пула используется пакет <code>net/http/httptrace</code>:<br />
 - Хуки <code>GotConn</code>, <code>ConnectStart</code>, <code>ConnectDone</code> позволяют замерить, было ли соединение получено из idle-пула мгновенно (<code>GotConnInfo.Reused == true</code>) или клиенту пришлось проходить процедуру установки сокета с нуля.<br />
 - Внешний сбор и экспорт метрик Prometheus (семейство <code>http_client_*</code>, например <code>http_client_requests_total</code>, <code>http_client_request_duration_seconds</code>) позволяет непрерывно анализировать задержки сетевых вызовов и оценивать процент попадания в пул idle-соединений.</p>
 <h3 id="sistemnye-utility">Системные утилиты</h3>
-
 <ul>
 <li><strong><code>ss -tanop</code> или <code>netstat -anp</code>:</strong><br />
   Позволяет оценить распределение состояний сокетов: <code>ESTABLISHED</code> (активные и idle-соединения), <code>TIME_WAIT</code> (закрывающиеся сокеты — признак недостатка пулинга) и <code>CLOSE_WAIT</code> (сокеты, закрытые сервером, но забытые клиентом).</li>
@@ -777,7 +759,6 @@ fmt.Printf(&quot;Open: %d, InUse: %d, Idle: %d, WaitCount: %d, WaitDuration: %s\
   Показывает долю системных вызовов <code>connect</code> и <code>tcp_connect</code>. Если в профиле системных вызовов доминируют <code>connect</code>, пул настроен неэффективно.</li>
 </ul>
 <h2 id="itog">Итог</h2>
-
 <ul>
 <li><strong>Connection pooling (пулинг соединений)</strong> — ключевой инженерный механизм устранения сетевых задержек, амортизирующий затраты на рукопожатия TCP и TLS (экономия от 1 до 4 RTT на запрос).</li>
 <li>В Go пулы соединений бесшовно встроены в <code>net/http.Transport</code>, <code>database/sql</code>, а также библиотеки для Redis и Kafka.</li>

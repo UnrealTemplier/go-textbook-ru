@@ -438,7 +438,6 @@
 
           <div class="article-markdown">
             <h2 id="vvedenie-tri-kita-izolyatsii-tranzaktsiy">Введение: Три кита изоляции транзакций</h2>
-
 <p>В теории баз данных существует фундаментальное противоречие: с одной стороны, нам хочется, чтобы транзакции выполнялись с абсолютной математической строгостью — последовательно, без малейших следов параллельного вмешательства. С другой стороны, реальный мир требует десятков тысяч операций в секунду, и последовательная очередь запросов превратила бы высоконагруженный веб-сервис в бесконечную пробку.</p>
 <p>Чтобы примирить эти два взаимоисключающих требования, инженеры Bell Labs, IBM и сообщества СУБД разработали шкалу уровней изоляции. Три главных столпа этой шкалы — <strong>READ COMMITTED</strong>, <strong>REPEATABLE READ</strong> и <strong>SERIALIZABLE</strong> — представляют собой тщательно выверенные точки компромисса между чистотой данных и пропускной способностью аппаратных ресурсов.</p>
 <p>Для бэкенд-инженера уровня Senior/Lead понимание различий между этими уровнями критично, потому что:<br />
@@ -482,11 +481,9 @@ flowchart TD
 <p>* В PostgreSQL <code>REPEATABLE READ</code> предотвращает и фантомные чтения благодаря предикатным блокировкам.</p>
 <hr />
 <h2 id="read-committed-snimok-na-kazhdyy-zapros">READ COMMITTED: Снимок на каждый запрос</h2>
-
 <p><strong>READ COMMITTED</strong> — это рабочий стандарт современной индустрии и уровень изоляции по умолчанию в подавляющем большинстве СУБД (PostgreSQL, MySQL/InnoDB, Oracle). </p>
 <p>Его фундаментальный принцип прост: <strong>транзакция никогда не видит незафиксированных изменений (грязных данных), но каждый отдельный SQL-запрос внутри транзакции получает свежий моментальный снимок базы данных</strong>.</p>
 <h3 id="mekhanika-v-postgresql-mvcc">Механика в PostgreSQL (MVCC)</h3>
-
 <p>Когда транзакция выполняет чтение в режиме <code>READ COMMITTED</code>:<br />
 1. При начале каждого отдельного оператора (<code>SELECT</code>, <code>UPDATE</code>, <code>DELETE</code>) ядро СУБД формирует новый моментальный снимок (Snapshot), фиксируя список активных на данный момент транзакций.<br />
 2. Видимость кортежа (строки таблицы) проверяется по правилу:<br />
@@ -511,7 +508,6 @@ flowchart TD
 
 
 <h3 id="primer-anomalii-non-repeatable-read">Пример аномалии: Non-Repeatable Read</h3>
-
 <p>Представим классическую ситуацию неповторяющегося чтения:</p>
 
 <div class="code-block" data-lang="sql">
@@ -539,7 +535,6 @@ COMMIT;
 
 <p>Для транзакции 1 мир изменился прямо посреди ее выполнения: одна и та же строка вернула разные значения.</p>
 <h3 id="primer-v-go-kogda-read-committed-dostatochno">Пример в Go: когда READ COMMITTED достаточно</h3>
-
 <p>Если бизнес-логика не требует идеальной заморозки времени между запросами, а опирается на атомарные операции в СУБД, <code>READ COMMITTED</code> обеспечивает максимальную скорость:</p>
 
 <div class="code-block" data-lang="go">
@@ -597,10 +592,8 @@ _, err = db.ExecContext(ctx, &quot;UPDATE articles SET views = $1 WHERE id = $2&
 <p>Решение: использовать атомарные операции в SQL (<code>views = views + 1</code>) или явные блокировки (<code>FOR UPDATE</code>).</p>
 <hr />
 <h2 id="repeatable-read-snimok-na-vsyu-tranzaktsiyu">REPEATABLE READ: Снимок на всю транзакцию</h2>
-
 <p>Уровень <strong>REPEATABLE READ</strong> переводит систему в режим «замороженного времени». Он гарантирует, что <strong>все запросы внутри транзакции видят ровно один и тот же моментальный снимок данных</strong>, зафиксированный на момент выполнения первого оператора транзакции.</p>
 <h3 id="mekhanika-v-postgresql">Механика в PostgreSQL</h3>
-
 <ol>
 <li>Моментальный снимок создается единожды — при исполнении первого запроса (<code>SELECT</code> или DML).</li>
 <li>Все последующие запросы транзакции используют этот первоначальный снимок, игнорируя любые сторонние коммиты.</li>
@@ -619,7 +612,6 @@ _, err = db.ExecContext(ctx, &quot;UPDATE articles SET views = $1 WHERE id = $2&
 
 
 <h3 id="primer-konsistentnyy-otchyot-v-odnoy-tranzaktsii">Пример: консистентный отчёт в одной транзакции</h3>
-
 
 <div class="code-block" data-lang="sql">
   <header class="code-header">
@@ -649,7 +641,6 @@ COMMIT;
 </div>
 
 <h3 id="primer-v-go-raschyot-s-zavisimymi-zaprosami">Пример в Go: расчёт с зависимыми запросами</h3>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -721,10 +712,8 @@ func ProcessOrder(ctx context.Context, db *sql.DB, orderID int64) error {
 
 <hr />
 <h2 id="serializable-strogaya-seriynaya-ekvivalentnost">SERIALIZABLE: Строгая серийная эквивалентность</h2>
-
 <p>Уровень <strong>SERIALIZABLE</strong> — это высший идеал транзакционной изоляции. Он гарантирует, что итоговый результат любого набора конкурентно выполняющихся транзакций математически эквивалентен результату их строго последовательного выполнения в каком-то порядке.</p>
 <h3 id="realizatsiya-v-postgresql-serializable-snapshot-isolation-ssi">Реализация в PostgreSQL: Serializable Snapshot Isolation (SSI)</h3>
-
 <p>Исторически сериализуемость достигалась через тяжелые предикатные блокировки таблиц и диапазонов индексов (2PL — Two-Phase Locking), что полностью парализовало систему. В PostgreSQL применен революционный алгоритм <strong>SSI (Serializable Snapshot Isolation)</strong>:</p>
 <ol>
 <li>Транзакции читают данные без блокировок, используя обычные снимки MVCC (как в <code>REPEATABLE READ</code>).</li>
@@ -749,7 +738,6 @@ func ProcessOrder(ctx context.Context, db *sql.DB, orderID int64) error {
 
 
 <h3 id="primer-predotvrashchenie-lost-update">Пример: предотвращение lost update</h3>
-
 
 <div class="code-block" data-lang="sql">
   <header class="code-header">
@@ -778,7 +766,6 @@ COMMIT; -- ERROR: could not serialize access due to read/write dependencies amon
 </div>
 
 <h3 id="pattern-retraya-v-go-dlya-serializable">Паттерн ретрая в Go для SERIALIZABLE</h3>
-
 <p>Для работы с <code>SERIALIZABLE</code> приложение обязано быть готово к ошибкам <code>40001</code> и уметь перезапускать операцию:</p>
 
 <div class="code-block" data-lang="go">
@@ -845,7 +832,6 @@ COMMIT; -- ERROR: could not serialize access due to read/write dependencies amon
 
 <hr />
 <h2 id="sravnitelnaya-tablitsa-chto-predotvrashchaet-kazhdyy-uroven">Сравнительная таблица: что предотвращает каждый уровень</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -905,7 +891,6 @@ COMMIT; -- ERROR: could not serialize access due to read/write dependencies amon
 
 <hr />
 <h2 id="mekhanicheskaya-simpatiya-tsena-izolyatsii-na-urovne-zheleza">Механическая симпатия: цена изоляции на уровне железа</h2>
-
 <p>Выбор уровня изоляции влияет на утилизацию ресурсов не только в СУБД, но и в вашем Go-приложении.</p>
 <h3 id="pamyat-i-kesh-linii">Память и кэш-линии</h3>
 <ul>
@@ -944,8 +929,7 @@ COMMIT; -- ERROR: could not serialize access due to read/write dependencies amon
 
 <hr />
 <h2 id="prakticheskie-rekomendatsii-kak-vybrat-uroven">Практические рекомендации: как выбрать уровень</h2>
-
-<h3 id="ispolzuyte-read-committed-esli">Используйте `READ COMMITTED`, если:</h3>
+<h3 id="ispolzuyte-read-committed-esli">Используйте <code>READ COMMITTED</code>, если:</h3>
 <ul>
 <li>Ваша логика допускает, что данные могут измениться между запросами.</li>
 <li>Вы используете атомарные операции в SQL (<code>UPDATE ... = ... + 1</code>).</li>
@@ -978,13 +962,13 @@ func UpdateWithVersion(ctx context.Context, db *sql.DB, id int64, newValue strin
 </code></pre>
 </div>
 
-<h3 id="ispolzuyte-repeatable-read-esli">Используйте `REPEATABLE READ`, если:</h3>
+<h3 id="ispolzuyte-repeatable-read-esli">Используйте <code>REPEATABLE READ</code>, если:</h3>
 <ul>
 <li>Вы выполняете несколько зависимых запросов, и результат второго зависит от первого.</li>
 <li>Вам критично избежать lost update без явных блокировок.</li>
 <li>Вы работаете с финансовыми операциями, где важна согласованность снимка данных.</li>
 </ul>
-<h3 id="ispolzuyte-serializable-esli">Используйте `SERIALIZABLE`, если:</h3>
+<h3 id="ispolzuyte-serializable-esli">Используйте <code>SERIALIZABLE</code>, если:</h3>
 <ul>
 <li>Вы не можете допустить ни одной аномалии параллелизма.</li>
 <li>Конфликты транзакций редки (&lt;5% запросов).</li>
@@ -992,7 +976,6 @@ func UpdateWithVersion(ctx context.Context, db *sql.DB, id int64, newValue strin
 </ul>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>READ COMMITTED</strong>: снимок на запрос, высокая производительность, допускает non-repeatable read и phantom read. Подходит для большинства OLTP-сценариев с атомарными операциями.</li>
 <li><strong>REPEATABLE READ</strong>: снимок на транзакцию, предотвращает non-repeatable read и (в PostgreSQL) phantom read. Требует обработки ошибок при обновлении «устаревших» строк.</li>

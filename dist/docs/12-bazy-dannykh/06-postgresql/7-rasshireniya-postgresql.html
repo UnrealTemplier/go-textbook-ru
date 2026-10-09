@@ -442,7 +442,6 @@
 <p>Для бэкенд-инженера понимание архитектуры расширений критически важно: именно они превращают «просто реляционную базу» в мощнейший швейцарский нож, способный в рамках единой инсталляции заменить Redis, Elasticsearch, ClickHouse или InfluxDB.</p>
 <hr />
 <h2 id="arkhitektura-c-plaginov-i-sistema-khukov-hook-system">Архитектура C-плагинов и система хуков (Hook System)</h2>
-
 <p>Ядро PostgreSQL написано на чистом языке C в строгих традициях Unix и Bell Labs. Архитектурно СУБД спроектирована так, чтобы динамически компоновать скомпилированные разделяемые C-библиотеки (файлы <code>.so</code> в Linux или <code>.dll</code> в Windows) прямо в виртуальное адресное пространство процессов PostgreSQL — как в дочерние серверные обработчики (Backend Processes), так и в управляющий процесс Postmaster (разобранный в <a href="1-arkhitektura-postgresql.html" class="wikilink">1. Архитектура PostgreSQL</a>).</p>
 <p>Когда разделяемая библиотека подгружается в память, она получает прямой доступ к внутреннему API рантайма PostgreSQL через <strong>Систему Хуков (Hook System)</strong>.</p>
 <h3 id="kak-fizicheski-ustroeny-khuki">Как физически устроены хуки?</h3>
@@ -508,7 +507,6 @@ flowchart TD
 
 <hr />
 <h2 id="dva-etapa-zhiznennogo-tsikla-rasshireniya">Два этапа жизненного цикла расширения</h2>
-
 <p>Распространенная ошибка начинающих разработчиков — путаница между системной загрузкой разделяемой библиотеки и ее активацией в схеме базы данных. Это два принципиально разных этапа.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -547,7 +545,7 @@ flowchart LR
 </figure>
 
 
-<h3 id="1-zagruzka-razdelyaemoy-biblioteki-sharedpreloadlibraries">1. Загрузка разделяемой библиотеки (`shared_preload_libraries`)</h3>
+<h3 id="1-zagruzka-razdelyaemoy-biblioteki-sharedpreloadlibraries">1. Загрузка разделяемой библиотеки (<code>shared_preload_libraries</code>)</h3>
 <p>Если расширению требуется глобальное разделяемое состояние (Shared Memory) для координации между всеми процессами БД или запуск собственных фоновых демонов (Background Workers), оно обязано быть загружено <strong>в момент первичного старта Postmaster</strong>.</p>
 <p>Для этого библиотека явно прописывается в конфигурационном файле <code>postgresql.conf</code>:</p>
 
@@ -564,7 +562,7 @@ flowchart LR
 </div>
 
 <p><em>Изменение этого параметра требует обязательного физического перезапуска экземпляра PostgreSQL (<code>systemctl restart postgresql</code>).</em></p>
-<h3 id="2-registratsiya-obektov-v-kataloge-create-extension">2. Регистрация объектов в каталоге (`CREATE EXTENSION`)</h3>
+<h3 id="2-registratsiya-obektov-v-kataloge-create-extension">2. Регистрация объектов в каталоге (<code>CREATE EXTENSION</code>)</h3>
 <p>Даже если код библиотеки уже загружен в оперативную память Postmaster, конкретная логическая база данных не знает о доступных функциях, типах данных и представлениях. Для их регистрации в целевой БД выполняется SQL-команда:</p>
 
 <div class="code-block" data-lang="sql">
@@ -596,16 +594,15 @@ flowchart LR
 
 <hr />
 <h2 id="promyshlennye-rasshireniya-pervoy-neobkhodimosti-must-have">Промышленные расширения первой необходимости (Must-Have)</h2>
-
 <p>Среди тысяч доступных плагинов существует проверенная временем классика, присутствующая практически в любом высоконагруженном production-проекте:</p>
-<h3 id="1-pgstatstatements-skvoznaya-nablyudaemost">1. `pg_stat_statements` (Сквозная наблюдаемость)</h3>
+<h3 id="1-pgstatstatements-skvoznaya-nablyudaemost">1. <code>pg_stat_statements</code> (Сквозная наблюдаемость)</h3>
 <p>Без этого расширения профессиональная эксплуатация и оптимизация PostgreSQL в production попросту невозможны.<br />
 Плагин перехватывает этап исполнения запросов (<code>ExecutorRun_hook</code>) и накапливает в разделяемой памяти сводную телеметрию по каждому уникальному шаблону SQL-запроса (параметры <code>$1, $2</code> заменяются плейсхолдерами, объединяя тысячи однотипных запросов в единую запись).</p>
 <p><code>pg_stat_statements</code> дает точные ответы на фундаментальные вопросы:<br />
 * Какие запросы генерируют наибольшую нагрузку на процессор (<code>total_exec_time</code> / <code>mean_exec_time</code>)?<br />
 * Какие запросы вымывают полезные страницы из кэша, вызывая шторм физического чтения с SSD (<code>shared_blks_read</code> против <code>shared_blks_hit</code>)?<br />
 * Подробнее об анализе этих метрик мы поговорим в лекции <a href="../10-praktika-i-arkhitektura/19-observability-bd.html" class="wikilink">19. Observability БД</a>.</p>
-<h3 id="2-pgtrgm-polnotekstovyy-i-nechetkiy-poisk-po-trigrammam">2. `pg_trgm` (Полнотекстовый и нечеткий поиск по триграммам)</h3>
+<h3 id="2-pgtrgm-polnotekstovyy-i-nechetkiy-poisk-po-trigrammam">2. <code>pg_trgm</code> (Полнотекстовый и нечеткий поиск по триграммам)</h3>
 <p>В предыдущей статье мы выяснили, что префиксный <code>LIKE '%query%'</code> приводит к Sequential Scan. Расширение <code>pg_trgm</code> элегантно решает эту проблему, разбивая текст на триграммы — перекрывающиеся цепочки из 3 символов подряд (например, слово <code>'foo'</code> порождает триграммы <code>'  f'</code>, <code>' fo'</code>, <code>'foo'</code>, <code>'oo '</code>).</p>
 <p><code>pg_trgm</code> добавляет специализированный класс операторов для GIN-индексов (<code>gin_trgm_ops</code>), позволяя индексировать произвольные подстроки и производить нечеткий поиск (Fuzzy Search):</p>
 
@@ -627,12 +624,11 @@ SELECT * FROM users WHERE email ILIKE '%@gmail.com%';
 </code></pre>
 </div>
 
-<h3 id="3-pgcrypto-kriptografiya-vnutri-bazy-dannykh">3. `pgcrypto` (Криптография внутри базы данных)</h3>
+<h3 id="3-pgcrypto-kriptografiya-vnutri-bazy-dannykh">3. <code>pgcrypto</code> (Криптография внутри базы данных)</h3>
 <p>Предоставляет криптографические примитивы (хеширование паролей алгоритмом bcrypt, HMAC, AES-шифрование), исполняемые непосредственно на сервере БД без передачи чувствительных открытых ключей и паролей по сети в Go-сервис.<br />
 Исторически расширение использовалось для генерации случайных идентификаторов через <code>gen_random_uuid()</code>, но начиная с PostgreSQL 13 эта функция стала стандартной частью ядра (хотя модуль <code>uuid-ossp</code> по-прежнему востребован для генерации UUIDv1 по времени и MAC-адресу).</p>
 <hr />
 <h2 id="arkhitekturnye-rasshireniya-menyayushchie-paradigmu-subd">Архитектурные расширения, меняющие парадигму СУБД</h2>
-
 <p>Некоторые расширения представляют собой настолько масштабные инженерные системы, что они полностью меняют внутреннее устройство хранилища и превращают PostgreSQL в специализированные платформы:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -675,7 +671,6 @@ flowchart TD
 </ol>
 <hr />
 <h2 id="rezyume-dlya-inzhenera">Резюме для инженера</h2>
-
 <ol>
 <li><strong>Расширяемый каркас:</strong> Архитектура PostgreSQL построена на модульных C-библиотеках и глобальной системе хуков (<code>ExecutorRun_hook</code>, <code>Planner_hook</code>), перехватывающих внутренние этапы обработки запросов.</li>
 <li><strong>Низкоуровневая скорость и ответственность:</strong> Плагины работают в общем адресном пространстве с ядром СУБД и читают <code>shared_buffers</code> напрямую, но аппаратный сбой или Segfault в коде расширения может вызвать аварийный перезапуск сессии.</li>

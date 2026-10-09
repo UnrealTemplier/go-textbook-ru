@@ -315,7 +315,6 @@
 
           <div class="article-markdown">
             <h2 id="zachem-go-nuzhen-sobstvennyy-netpoller">Зачем Go нужен собственный Netpoller</h2>
-
 <p>В предыдущих главах мы подробно исследовали, как современные ядра операционных систем уведомляют пользовательские программы о готовности данных через системные селекторы <code>epoll</code> (<a href="36-select-poll-i-epoll.html" class="wikilink"><code>36. select, poll и epoll</code></a>) и <code>kqueue</code> (<a href="37-kqueue-i-iocp-chem-otlichayutsya-bsd-i-windows.html" class="wikilink"><code>37. kqueue и IOCP. Чем отличаются BSD и Windows</code></a>). Но почему разработчики языка Go не оставили вызовы <code>epoll</code> и <code>kqueue</code> прикладным программистам, а создали мощный внутренний механизм рантайма — <strong>Netpoller</strong>?</p>
 <p>Ответ кроется в фундаментальной архитектуре планировщика Go. В классических средах разработки (C++, Java до появления Project Loom, Python) принята модель потоков <strong>1:1</strong> — один программный поток жестко привязан к одному системному треду операционной системы (<code>pthread</code>). Если такой поток выполняет блокирующий системный вызов <code>read</code> на сетевом сокете, ядро усыпляет весь тред ОС. Для сервера с сотней потоков это нормально, но совершенно неприемлемо для сотен тысяч одновременных подключений.</p>
 <p>В мире Go действует легковесная кооперативная модель <strong>M:N</strong>: сотни тысяч горутин (<code>g</code>) мультиплексируются планировщиком рантайма на ограниченное число системных тредов операционной системы (<code>m</code>), привязанных к логическим процессорам (<code>p</code>). </p>
@@ -372,7 +371,6 @@ flowchart TD
 
 <hr />
 <h2 id="epoll-i-kqueue-kratkiy-vzglyad-so-storony-os">Epoll и kqueue: Краткий взгляд со стороны ОС</h2>
-
 <p>Оба механизма операционных систем служат одной фундаментальной цели: уведомить процесс о готовности файловых дескрипторов без разорительного активного опроса (<code>polling</code>).</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
@@ -401,7 +399,6 @@ flowchart TD
 <p>В главе <a href="35-asinkhronnyy-io-i-blokiruyushchiy-io.html" class="wikilink"><code>35. Асинхронный IO и блокирующий IO</code></a> мы видели, что оба подхода могут работать по принципу <strong>edge-triggered</strong> (срабатывают при изменении состояния; по умолчанию <code>epoll</code> работает в level-triggered режиме, а Go сам включает <code>EPOLLET</code>), но требуют от приложения явного и сложного управления состоянием дескрипторов. Go полностью освобождает прикладного программиста от этой рутины, забирая все низкоуровневое управление событиями внутрь рантайма.</p>
 <hr />
 <h2 id="arkhitektura-netpoller-v-go-runtime">Архитектура Netpoller в Go Runtime</h2>
-
 <p>Go не создает отдельный процесс или тред для каждого <code>epoll</code>/<code>kqueue</code> инстанса. Вместо этого в <code>runtime</code> существует единый глобальный дескриптор <code>epoll</code>/<code>kqueue</code>, который инициализируется при первом обращении к сети, а на каждый сокет заводится своя структура <code>pollDesc</code>.</p>
 
 <div class="code-block" data-lang="go">
@@ -433,7 +430,6 @@ type pollDesc struct {
 4. Если операция вернула ошибку <code>EAGAIN</code> (данные еще не подошли), горутина переводится в состояние ожидания <code>waiting</code> вызовом <code>gopark</code>, освобождая системный тред <code>m</code> для другой полезной работы!</p>
 <hr />
 <h2 id="pod-kapotom-kak-svyazyvayutsya-goroutine-i-yadro">Под капотом: Как связываются Goroutine и ядро</h2>
-
 <p>Связь между планировщиком Go и ядром ОС осуществляется через два ключевых компонента: фоновый монитор планировщика <code>sysmon</code> и рабочие потоки операционной системы <code>m</code> (thread).</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -473,7 +469,6 @@ flowchart TD
 
 
 <h3 id="klyuchevye-detali-realizatsii">Ключевые детали реализации</h3>
-
 <ol>
 <li><strong><code>EPOLLET</code> и <code>EV_CLEAR</code> (Edge-Triggered)</strong>: Go регистрирует события сокетов в триггерном по фронту режиме (<code>EPOLLET</code> в Linux и <code>EV_CLEAR</code> в kqueue BSD/macOS). Уведомление о готовности ядро генерирует только при изменении состояния (прибытие новых данных в буфер или освобождение буфера сокета). Это полностью избавляет рантайм от спама уведомлений (level-triggered шторм) и от лишних системных вызовов модификации (в отличие от модели <code>EPOLLONESHOT</code>, требующей регулярных вызовов <code>EPOLL_CTL_MOD</code> для повторного взведения).</li>
 <li><strong><code>sysmon</code> и <code>netpoll</code></strong>: Системный поток мониторинга (<code>sysmon</code>) исполняется без привязки к какому-либо логическому процессору <code>p</code>. Он просыпается с адаптивным интервалом (от 20 микросекунд до 10 миллисекунд) и вызывает неблокирующий <code>netpoll(0)</code>. Если в сетевых буферах ядра появились готовые байты, <code>netpoll</code> моментально собирает список горутин и передает их планировщику.</li>
@@ -509,7 +504,6 @@ flowchart TD
 
 <hr />
 <h2 id="mechanical-sympathy-proizvoditelnost-i-kesh-linii">Mechanical Sympathy: Производительность и кэш-линии</h2>
-
 <p>Почему гибридная архитектура <code>netpoller</code> работает на порядки быстрее классической модели thread-per-request?</p>
 <ol>
 <li><strong>Снижение Context Switch ядра</strong>: Смена контекста между системными тредами <code>m</code> на уровне ядра ОС требует сохранения полного набора регистров CPU, смены стека ядра и планирования потоков ядра (а при переключении между процессами — сброса записей TLB). В Go переключение горутин происходит в пространстве пользователя (userspace) за считанные наносекунды — планировщик Go сохраняет минимальный набор регистров в структуре <code>g.sched</code> (SP, PC, BP, g).</li>
@@ -569,7 +563,6 @@ flowchart LR
 
 <hr />
 <h2 id="sravnenie-s-drugimi-ekosistemami">Сравнение с другими экосистемами</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -609,7 +602,6 @@ flowchart LR
 <p>Команда разработчиков Go нашла идеальную золотую середину: единый внутренний <code>netpoller</code> скрывает от прикладного инженера чудовищную сложность асинхронного системного программирования, обеспечивая при этом производительность уровня C и C++.</p>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong><code>netpoller</code></strong> — это фундамент масштабируемости Go, слой интеграции рантайма с механизмами <code>epoll</code> и <code>kqueue</code>, превращающий блокирующие вызовы в событийно-ориентированные.</li>
 <li>Go регистрирует дескрипторы <strong>один раз</strong> в режиме edge-triggered (<strong><code>EPOLLET</code></strong> в Linux, <strong><code>EV_CLEAR</code></strong> в kqueue); флаги <code>EPOLLONESHOT</code> и <code>EV_ONESHOT</code> рантайм не использует, поэтому повторные <code>epoll_ctl(EPOLL_CTL_MOD)</code> после каждого события не нужны.</li>

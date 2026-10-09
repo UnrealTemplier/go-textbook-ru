@@ -424,7 +424,6 @@
 </blockquote>
 <hr />
 <h2 id="vvedenie-o1-tsenoy-pamyati-i-statichnosti">Введение: O(1) ценой памяти и статичности</h2>
-
 <p>В предыдущих главах мы подробно исследовали структуры для динамических диапазонных запросов: универсальное <a href="1-segment-tree-derevo-otrezkov.html" class="wikilink">1. Segment tree - дерево отрезков</a> и компактное <a href="2-fenwick-tree-binarnoe-indeksnoe-derevo.html" class="wikilink">2. Fenwick tree - бинарное индексное дерево</a>. Обе структуры обеспечивают строгое время $O(\log n)$ как на чтение, так и на модификацию данных, что превосходно подходит для постоянно мутирующих коллекций.</p>
 <p>Однако в реальной практике высоконагруженного бэкенда колоссальный объем данных носит неизменяемый (<strong>статический</strong>) характер:<br />
 - Исторические логи временных рядов (TSDB, ClickHouse, Prometheus blocks).<br />
@@ -449,7 +448,6 @@ $$O(1)$$</p>
 
 <hr />
 <h2 id="1-matematicheskaya-osnova-idempotentnosti">1. Математическая основа идемпотентности</h2>
-
 <p>Хранить предрассчитанные ответы для каждого возможного отрезка <code>O(n²)</code> памяти для миллиона элементов потребовало бы терабайты данных. </p>
 <p>Идея Sparse Table элегантна: мы вычисляем и сохраняем результаты <strong>только для отрезков, чья длина является точной степенью двойки</strong>: $2^0, 2^1, 2^2, \dots, 2^{\lfloor \log_2 n \rfloor}$. Для массива длины <code>n</code> существует <code>n * log₂n</code> таких диапазонов.</p>
 <p>Запрос к произвольному отрезку <code>[L, R]</code> длины <code>len = R - L + 1</code> разбивается на два предвычисленных блока размера $2^k$, где <code>k = floor(log₂(len))</code> (используется логарифм <code>log₂</code>):<br />
@@ -515,7 +513,6 @@ $$\min([a, b, c, d]) = \min(\min([a, b, c]), \, \min([b, c, d]))$$</p>
 
 <hr />
 <h2 id="2-production-realizatsiya-na-go-1-21">2. Production-реализация на Go 1.21+</h2>
-
 <p>В академических учебниках Sparse Table часто оформляют как двумерный срез <code>[][]T</code>. В высоконагруженном бэкенде это архитектурная ошибка: <code>logN</code> независимых срезов порождают <code>logN</code> отдельных аллокаций в куче, фрагментируют память и превращают чтение в двойное разыменование указателей (<code>table[k][i]</code>).</p>
 <p>В промышленном коде мы применяем <strong>монолитный плоский массив <code>[]T</code></strong> с плотной упаковкой уровней по смещению <code>offset = n * k</code>:</p>
 
@@ -604,7 +601,6 @@ func (st *SparseTable[T]) Query(l, r int) T {
 
 <h3 id="primer-ispolzovaniya-monitoring-minimalnoy-zaderzhki">Пример использования: Мониторинг минимальной задержки</h3>
 
-
 <div class="code-block" data-lang="go">
   <header class="code-header">
     <span class="code-lang-tag">Go</span>
@@ -633,7 +629,6 @@ func (st *SparseTable[T]) Query(l, r int) T {
 
 <hr />
 <h2 id="3-mechanical-sympathy-kesh-cpu-i-gc">3. Mechanical Sympathy: кэш, CPU и GC</h2>
-
 <p>То, как структура данных взаимодействует с процессорным конвейером и многоуровневым кэшем памяти, определяет реальную задержку под нагрузкой.</p>
 <h3 id="plotnost-pamyati-i-cache-locality">Плотность памяти и Cache Locality</h3>
 <p>Плоский срез <code>[]T</code> гарантирует размещение всех уровней таблицы в монолитном блоке RAM. При вызове <code>Query</code> ядро процессора вычисляет два индекса и подгружает данные для <code>val1</code> и <code>val2</code> в кэш-линию. </p>
@@ -667,7 +662,6 @@ $$10^6 \times 19 \times 4\text{ байта} \approx 76\text{ МБ}$$</p>
 
 <hr />
 <h2 id="4-ogranicheniya-i-arkhitekturnye-kompromissy">4. Ограничения и архитектурные компромиссы</h2>
-
 <p>Разреженная таблица не является универсальным решением. Ее применение строго ограничено фундаментальными свойствами операции:</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
@@ -725,7 +719,6 @@ $$10^6 \times 19 \times 4\text{ байта} \approx 76\text{ МБ}$$</p>
 <hr />
 <h2 id="5-lovushki-i-khardkor-sobesedovaniya">5. Ловушки и хардкор-собеседования</h2>
 
-
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -747,7 +740,6 @@ $$10^6 \times 19 \times 4\text{ байта} \approx 76\text{ МБ}$$</p>
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ul>
 <li><strong>Sparse Table</strong> — бескомпромиссный выбор для статических неизменяемых массивов и идемпотентных операций (<code>min</code>, <code>max</code>, <code>gcd</code>, <code>bitwise AND/OR</code>), обеспечивающий строгий отклик <strong>$O(1)$</strong> на диапазонные запросы.</li>
 <li><strong>Плоский срез <code>[]T</code></strong> в Go устраняет разыменование указателей, снижает фрагментацию кучи и гарантирует идеальное аппаратное попадание в L3 кэш процессора.</li>

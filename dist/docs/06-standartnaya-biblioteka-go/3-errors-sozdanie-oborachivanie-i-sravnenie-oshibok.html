@@ -305,7 +305,6 @@
 — Роб Пайк</p>
 </blockquote>
 <h2 id="filosofiya-obrabotki-oshibok-v-go">Философия обработки ошибок в Go</h2>
-
 <p>В отличие от языков с исключениями (Java, C#, Python, PHP), где нормальный контроль потока выполнения может быть внезапно разорван скрытым выбросом <code>throw</code> в любой точке стека вызовов, Go использует фундаментально иную, предельно честную модель: <strong>ошибки — это обычные значения</strong>. Они возвращаются функциями как штатный результат работы, передаются как аргументы и проверяются явным <code>if err != nil</code>.</p>
 <p>Это не просто эстетическое предпочтение создателей языка, а глубокий архитектурный выбор:<br />
 * <strong>Предсказуемость:</strong> Каждый потенциальный сбой обязан быть обработан прямо на уровне вызывающего кода. Нет скрытых прыжков через 20 уровней стека в неизвестный блок <code>catch</code>.<br />
@@ -342,7 +341,6 @@
 
 <hr />
 <h2 id="1-interfeys-error-i-ego-ustroystvo-v-pamyati">1. Интерфейс error и его устройство в памяти</h2>
-
 <p>В оперативной памяти интерфейс <code>error</code> физически представлен структурой <code>iface</code> (размером 16 байт на 64-битной архитектуре):</p>
 
 <div class="code-block" data-lang="go">
@@ -397,7 +395,6 @@ flowchart LR
 <p>Когда функция завершается успешно и не возвращает ошибку, она возвращает <code>nil</code>. Для интерфейса это означает, что <strong>оба указателя</strong> (<code>tab</code> и <code>data</code>) равны <code>nil</code>. </p>
 <p>Именно здесь кроется самая коварная и знаменитая ловушка языка Go, на которой регулярно спотыкаются даже опытные инженеры.</p>
 <h3 id="problema-nil-nil">Проблема: nil != nil</h3>
-
 <p>Рассмотрим классический баг, ломающий production-системы:</p>
 
 <div class="code-block" data-lang="go">
@@ -508,7 +505,6 @@ return nil // Явный нетипизированный nil
 
 <hr />
 <h2 id="2-tri-strategii-raboty-s-oshibkami">2. Три стратегии работы с ошибками</h2>
-
 <p>В зависимости от архитектурных требований к обработке сбоев, в Go выделяют три основные стратегии:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -616,7 +612,6 @@ if errors.As(err, &amp;valErr) {
 
 <hr />
 <h2 id="3-tsepochki-oshibok-i-mekhanizmy-go-1-13">3. Цепочки ошибок и механизмы Go 1.13+</h2>
-
 <p>Исторически для оборачивания ошибок с сохранением контекста сообщество Go использовало внешнюю библиотеку <code>github.com/pkg/errors</code> Дейва Чейни. Начиная с версии Go 1.13, этот механизм был официально стандартизирован: функция <code>fmt.Errorf</code> получила поддержку глагола <code>%w</code> (wrap).</p>
 <h3 id="mekhanika-unwrap">Механика Unwrap</h3>
 <p>Обертка над ошибкой — это любая структура, реализующая метод <code>Unwrap() error</code>.<br />
@@ -656,7 +651,6 @@ flowchart TD
 
 <h3 id="primer-idiomatichnogo-oborachivaniya">Пример идиоматичного оборачивания</h3>
 
-
 <div class="code-block" data-lang="go">
   <header class="code-header">
     <span class="code-lang-tag">Go</span>
@@ -678,7 +672,6 @@ flowchart TD
 </div>
 
 <h3 id="go-1-20-errors-join-i-mnozhestvennaya-raspakovka">Go 1.20: errors.Join и множественная распаковка</h3>
-
 <p>В Go 1.20 появился метод <code>errors.Join</code>, решающий давнюю проблему объединения нескольких независимых ошибок в одну (например, при валидации сложных форм или закрытии нескольких ресурсов через <code>Close()</code> в блоке <code>defer</code>):</p>
 
 <div class="code-block" data-lang="go">
@@ -700,7 +693,6 @@ if len(errs) &gt; 0 {
 <p>Внутри <code>errors.Join</code> создает структуру, реализующую метод <code>Unwrap() []error</code>. Функции <code>errors.Is</code> и <code>errors.As</code> умеют обходить дерево ошибок, проверяя каждую ветку.</p>
 <hr />
 <h2 id="4-mechanical-sympathy-i-tsena-allokatsiy">4. Mechanical Sympathy и цена аллокаций</h2>
-
 <p>Каждая созданная ошибка — это выделение памяти. В высоконагруженных бэкенд-сервисах (10k–100k RPS) неосторожное создание ошибок в горячих путях приводит к взрывному росту нагрузки на Garbage Collector и деградации задержек (<code>GC Assist Time</code>).</p>
 <h3 id="vnutrennie-allokatsii">Внутренние аллокации</h3>
 <ol>
@@ -708,7 +700,6 @@ if len(errs) &gt; 0 {
 <li><code>fmt.Errorf("текст %w", err)</code>: Парсит строку формата, выделяет память под результирующую строку и создает новую структуру <code>wrapError</code>. Это <strong>в разы дороже</strong>, чем <code>errors.New</code>.</li>
 </ol>
 <h3 id="optimizatsiya-dlya-hot-paths">Оптимизация для Hot Paths</h3>
-
 <p>Если ошибка в цикле является ожидаемым сигналом (например, признак окончания данных), никогда не используйте <code>fmt.Errorf</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -749,7 +740,6 @@ if errors.Is(err, io.EOF) {
 
 <hr />
 <h2 id="5-lovushki-i-khardkornye-voprosy-s-sobesedovaniy">5. Ловушки и хардкорные вопросы с собеседований</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -797,7 +787,6 @@ if errors.Is(err, io.EOF) {
 
 <hr />
 <h2 id="6-sravnenie-s-ekosistemami-drugikh-yazykov">6. Сравнение с экосистемами других языков</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -831,7 +820,6 @@ if errors.Is(err, io.EOF) {
 </table></div>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Ошибки в Go — это данные.</strong> С ними работают так же, как с числами или строками: передают через <code>return</code> и проверяют явно.</li>
 <li><strong>Помните про <code>iface != nil</code>.</strong> Возвращайте <code>nil</code>, а не <code>&amp;MyError{}</code> со значением <code>nil</code>.</li>

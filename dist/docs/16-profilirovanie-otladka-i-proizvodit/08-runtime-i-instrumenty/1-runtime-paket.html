@@ -401,8 +401,7 @@
           </header>
 
           <div class="article-markdown">
-            <h2 id="runtime-most-mezhdu-kodom-i-sredoy-vypolneniya">`runtime` — мост между кодом и средой выполнения</h2>
-
+            <h2 id="runtime-most-mezhdu-kodom-i-sredoy-vypolneniya"><code>runtime</code> — мост между кодом и средой выполнения</h2>
 <p>Пакет <code>runtime</code> занимает совершенно особое положение в экосистеме Go. В отличие от подавляющего большинства стандартных библиотек, реализующих прикладную логику (сетевые протоколы, сериализацию или работу с файловой системой), <code>runtime</code> предоставляет прямой программный API к сокровенным внутренностям самого языка: планировщику горутин (<a href="../06-konkurentnost/1-scheduler-go-g-m-p-model.html" class="wikilink">1. Scheduler Go. G-M-P модель</a>), сборщику мусора (<a href="../05-garbage-collector/1-gc-v-go-obzor.html" class="wikilink">1. GC в Go. Обзор</a>), подсистеме низкоуровневого профилирования (<a href="../03-cpu-profiling/1-pprof-vvedenie.html" class="wikilink">1. pprof. Введение</a>) и аллокатору виртуальной памяти (<a href="../04-memory-profiling/1-memory-model-go.html" class="wikilink">1. Memory model Go</a>).</p>
 <p>Если обычный код на Go работает в уютной абстракции «виртуальной машины без интерпретатора», то вызовы функций пакета <code>runtime</code> распахивают капот и дают инженеру доступ к рычагам управления двигателем. Senior-инженер, свободно владеющий этим пакетом, получает возможность не просто компилировать код, а «разговаривать» со средой выполнения на её родном языке: инспектировать распределение стека, тонко регулировать параллелизм, привязывать горутины к физическим ядрам процессора, динамически тюнить сборщик мусора и проводить глубинную диагностику приложений непосредственно в продакшене.</p>
 
@@ -454,9 +453,7 @@ flowchart TD
 <p>Однако общение с рантаймом напрямую требует предельной инженерной дисциплины: многие системные функции несут ненулевой overhead, вызывают принудительные остановки мира (Stop-The-World) или блокировки глобальных структур планировщика, способные исказить замеры и нарушить стабильность системы при бездумном применении. В этой статье мы систематизируем ключевой арсенал пакета <code>runtime</code>, связывая каждую функцию с принципами механического сочувствия к машине (<a href="../01-fundament/5-mechanical-sympathy-v-backend-razrabotke.html" class="wikilink">5. Mechanical sympathy в backend разработке</a>).</p>
 <hr />
 <h2 id="upravlenie-parallelizmom-i-planirovshchikom">Управление параллелизмом и планировщиком</h2>
-
 <h3 id="gomaxprocs-glavnyy-regulyator-parallelizma">GOMAXPROCS — главный регулятор параллелизма</h3>
-
 <p>Функция <code>runtime.GOMAXPROCS(n int) int</code> устанавливает максимальное количество логических процессоров <code>P</code> (структур <code>runtime.p</code>), которые имеют право одновременно исполнять пользовательский байткод Go на физических ядрах ОС, и возвращает предыдущее действующее значение.</p>
 <p>Если передать <code>n &lt;= 0</code>, рантайм ничего не изменяет, а просто сообщает текущее значение <code>GOMAXPROCS</code>:</p>
 
@@ -491,7 +488,6 @@ runtime.GOMAXPROCS(4)        // Принудительно установить 
 
 <hr />
 <h3 id="gosched-dobrovolnaya-peredacha-upravleniya">Gosched — добровольная передача управления</h3>
-
 <p>Функция <code>runtime.Gosched()</code> заставляет текущую исполняющуюся горутину добровольно уступить процессор <code>P</code> своим товарищам по очереди:</p>
 
 <div class="code-block" data-lang="go">
@@ -513,7 +509,6 @@ runtime.GOMAXPROCS(4)        // Принудительно установить 
 <p>Исторический контекст: до появления асинхронного вытеснения на базе сигналов ОС в Go 1.14 (сигнал <code>SIGURG</code>), горутина, застрявшая в плотном вычислительном цикле без вызовов функций (где компилятор не мог вставить преамбулу проверки стека <code>morestack</code>), намертво монополизировала поток <code>M</code>, блокируя сборку мусора (STW) и другие горутины. В те времена <code>Gosched</code> был жизненно необходим. Сегодня, благодаря <code>SIGURG</code>-преемпции, необходимость в ручном вызове отпала в большинстве случаев, однако <code>Gosched</code> остается мощным инструментом в тестах, спинлоках и алгоритмах кооперативной многозадачности.</p>
 <hr />
 <h3 id="numgoroutine-i-numcpu-indikatory-sostoyaniya">NumGoroutine и NumCPU — индикаторы состояния</h3>
-
 <ul>
 <li><strong><code>runtime.NumGoroutine() int</code></strong> — возвращает мгновенное количество всех существующих в процессе горутин (включая активные, спящие в ожиданиях таймеров, заблокированные на каналах, мьютексах и системных вызовах). Экспоненциальный рост этого числа — первый признак классической утечки горутин (goroutine leak) или взрывного наплыва трафика.</li>
 <li><strong><code>runtime.NumCPU() int</code></strong> — возвращает количество аппаратных логических ядер процессора, доступных процессу на момент старта. Значение считывается через вызовы ядра ОС (<code>sched_getaffinity</code> в Linux или <code>sysctl</code> в macOS) и используется для автоконфигурации пулов воркеров и размера очередей.</li>
@@ -521,7 +516,6 @@ runtime.GOMAXPROCS(4)        // Принудительно установить 
 <p>Обе функции практически бесплатны с точки зрения CPU и регулярно опрашиваются агентами мониторинга для формирования алертов.</p>
 <hr />
 <h2 id="privyazka-gorutiny-k-potoku-os-lockosthread">Привязка горутины к потоку ОС: LockOSThread</h2>
-
 <p>Модель G-M-P по умолчанию мультиплексирует миллионы горутин <code>G</code> на ограниченный пул потоков ОС <code>M</code>. Это означает, что горутина может уснуть на одном потоке ОС, а проснуться после системного вызова или блокировки ввода-вывода совершенно на другом потоке ОС и даже на другом ядре процессора.</p>
 <p>Функция <code>runtime.LockOSThread()</code> ломает эту динамику и жестко «прибивает» текущую горутину к конкретному потоку операционной системы:</p>
 
@@ -547,7 +541,7 @@ runtime.GOMAXPROCS(4)        // Принудительно установить 
 1. Только эта конкретная горутина <code>G</code> имеет право выполняться на данном потоке <code>M</code>.<br />
 2. Если горутина паркуется (ожидает канал или таймер), данный поток <code>M</code> засыпает вместе с ней и <strong>не передается</strong> другим горутинам.<br />
 3. При завершении горутины привязанный поток <code>M</code> не возвращается в пул, а уничтожается ядром ОС (если до выхода не был вызван парный <code>UnlockOSThread</code>).</p>
-<h3 id="kogda-lockosthread-zhiznenno-neobkhodim">Когда `LockOSThread` жизненно необходим:</h3>
+<h3 id="kogda-lockosthread-zhiznenno-neobkhodim">Когда <code>LockOSThread</code> жизненно необходим:</h3>
 <ul>
 <li><strong>CGO и Thread-Local Storage (TLS):</strong> библиотеки на C/C++ часто полагаются на <code>pthread_setspecific</code> или переменные <code>__thread</code>. Если разные этапы вычислений будут скакать по разным потокам ОС, C-библиотека повредит свои внутренние структуры памяти.</li>
 <li><strong>Графические и UI-библиотеки (OpenGL, Cocoa, Win32):</strong> оконные подсистемы требуют, чтобы создание окон, обработка очереди событий мыши и клавиатуры, а также рендеринг происходили строго на главном системном потоке (Main Thread, поток <code>m0</code>).</li>
@@ -567,9 +561,7 @@ runtime.GOMAXPROCS(4)        // Принудительно установить 
 
 <hr />
 <h2 id="upravlenie-sborshchikom-musora-i-pamyatyu">Управление сборщиком мусора и памятью</h2>
-
 <h3 id="gc-i-prinuditelnaya-sborka">GC и принудительная сборка</h3>
-
 <p>Функция <code>runtime.GC()</code> инициирует немедленный запуск полного цикла сборки мусора (фазы mark + sweep). В отличие от фонового конкурентного GC, вызов <code>runtime.GC()</code> является <strong>синхронным и блокирующим</strong>: вызвавшая его горутина засыпает и ждет полного завершения всех фаз очистки памяти.</p>
 
 <div class="code-block" data-lang="go">
@@ -592,7 +584,6 @@ runtime.GC()
 <p>Вызывать <code>runtime.GC()</code> в обработчиках высоконагруженного боевого API категорически запрещено: это разрушает всю математику конкурентного GC Pacer, порождает деградацию p99 latency и на пустом месте тратит драгоценные процессорные циклы.</p>
 <hr />
 <h3 id="setgcpercent-i-setmemorylimit-dinamicheskaya-nastroyka-politik">SetGCPercent и SetMemoryLimit — динамическая настройка политик</h3>
-
 <p>Эти функции дублируют системные переменные окружения <code>GOGC</code> и <code>GOMEMLIMIT</code>, позволяя адаптировать аппетиты рантайма непосредственно из Go-кода на лету:</p>
 <ul>
 <li><strong><code>runtime.SetGCPercent(percent int) int</code></strong> — программно изменяет целевой коэффициент прироста кучи <code>GOGC</code> (<a href="../05-garbage-collector/7-gogc-i-tuning.html" class="wikilink">7. GOGC и tuning</a>) и возвращает старое значение. Передача отрицательного числа (<code>-1</code>) полностью отключает автоматический сборщик мусора.</li>
@@ -619,7 +610,6 @@ oldLimit := runtime.SetMemoryLimit(2 * 1024 * 1024 * 1024)
 <p>Динамическое переключение позволяет умным оркестраторам сервиса временно повышать <code>GOGC</code> при скачках сетевого трафика (чтобы уменьшить CPU-overhead на частые сборы мусора за счет использования резервов RAM), возвращая стандартные значения при спаде нагрузки.</p>
 <hr />
 <h3 id="readmemstats-podrobnyy-snimok-podsistemy-pamyati">ReadMemStats — подробный снимок подсистемы памяти</h3>
-
 <p>Функция <code>runtime.ReadMemStats(m *runtime.MemStats)</code> считывает глобальную статистику аллокатора памяти Go и заполняет переданную структуру детальными метриками:</p>
 
 <div class="code-block" data-lang="go">
@@ -664,37 +654,31 @@ fmt.Printf(&quot;Количество прогонов GC (NumGC):        %d\n&q
 
 <hr />
 <h2 id="profilirovanie-iz-koda">Профилирование из кода</h2>
-
 <p>Большинство инженеров привыкли профилировать Go-приложения через HTTP-эндпоинты пакета <code>net/http/pprof</code> (<a href="../03-cpu-profiling/1-pprof-vvedenie.html" class="wikilink">1. pprof. Введение</a>). Однако в CLI-утилитах, демонах без сетевого интерфейса, интеграционных тестах или кастомных агентах мониторинга требуется запускать сбор профилей непосредственно программным кодом.</p>
 <h3 id="cpu-profil">CPU-профиль</h3>
-
 <ul>
 <li><strong><code>runtime.SetCPUProfileRate(hz int)</code></strong> — настраивает базовую частоту дискретизации таймера профилировщика CPU (в герцах, то есть сэмплов в секунду). По умолчанию частота равна 100 Гц (прерывание каждые 10 миллисекунд). Установка <code>hz = 0</code> полностью отключает профилирование.</li>
 <li>Высокоуровневая обертка <code>pprof.StartCPUProfile(w)</code> (из пакета <code>runtime/pprof</code>) внутри себя конфигурирует буферы и вызывает именно <code>runtime.SetCPUProfileRate</code>.</li>
 </ul>
 <h3 id="memory-profil">Memory профиль</h3>
-
 <ul>
 <li><strong><code>runtime.MemProfileRate</code></strong> — глобальная целочисленная переменная рантайма, определяющая шаг вероятностного сэмплирования аллокаций памяти. По умолчанию равна $512 \times 1024$ (один сэмпл на каждые 512 КБ выделенной памяти).</li>
 <li>Если установить <code>runtime.MemProfileRate = 1</code>, рантайм начнет сэмплировать абсолютно каждую аллокацию. Это дает 100% точность в тестах, но порождает колоссальный overhead в проде.</li>
 <li>Для ручной вычитки записей профиля кучи служит функция <code>runtime.MemProfile(records []MemProfileRecord, zero bool)</code> или функция <code>pprof.WriteHeapProfile(w)</code>.</li>
 </ul>
 <h3 id="block-i-mutex-profili">Block и mutex профили</h3>
-
 <p>Профилировщики задержек синхронизации по умолчанию полностью выключены, так как они требуют замеров времени на системных таймерах при каждой блокировке:</p>
 <ul>
 <li><strong><code>runtime.SetBlockProfileRate(rate int)</code></strong> — активирует профиль блокировок горутин на каналах, мьютексах и сетевых вызовах (<a href="5-block-profile.html" class="wikilink">5. block profile</a>). Аргумент задает порог задержки в наносекундах: события блокировки длительностью более <code>rate</code> наносекунд попадают в профиль. Значение <code>1</code> отслеживает абсолютно все блокировки.</li>
 <li><strong><code>runtime.SetMutexProfileFraction(rate int)</code></strong> — включает профиль конкуренции за мьютексы (<code>sync.Mutex</code>, <code>sync.RWMutex</code>, <a href="6-mutex-profile.html" class="wikilink">6. mutex profile</a>). Аргумент задает знаменатель вероятности выборки: записывается каждое <code>1/rate</code>-е событие contention. Значение <code>1</code> записывает 100% конфликтов.</li>
 </ul>
 <h3 id="profili-potokov-i-gorutin">Профили потоков и горутин</h3>
-
 <ul>
 <li><strong><code>runtime.ThreadCreateProfile(records []ThreadCreateProfileRecord)</code></strong> — считывает стек-трейсы мест создания системных потоков ОС <code>M</code>. Позволяет выявить виновников взрывного роста потоков операционной системы.</li>
 <li><strong><code>runtime.GoroutineProfile(records []GoroutineProfileRecord)</code></strong> — программный аналог профиля горутин, возвращающий структуры с программными счетчиками стека для всех существующих горутин.</li>
 </ul>
 <hr />
 <h2 id="poluchenie-steka-i-inspektsiya-vyzovov">Получение стека и инспекция вызовов</h2>
-
 <p>Пакет <code>runtime</code> предоставляет мощнейший инструментарий интроспекции, позволяющий коду исследовать собственный стек вызовов в режиме реального времени:</p>
 <ul>
 <li><strong><code>runtime.Stack(buf []byte, all bool) int</code></strong> — форматирует текстовый стек-трейс текущей горутины в переданный байтовый слайс <code>buf</code> (или всех горутин, если <code>all=true</code>). Используется для логирования паник или снятия аварийных диагностических дампов при расследовании инцидентов.</li>
@@ -706,7 +690,6 @@ fmt.Printf(&quot;Количество прогонов GC (NumGC):        %d\n&q
 <p>Именно на базе связки <code>Callers</code> и <code>CallersFrames</code> построены современные высокопроизводительные логгеры вроде <code>log/slog</code> (<span class="wikilink-unresolved" title="Заметка в разработке">1. Logging и observability</span>) и <code>uber-go/zap</code>, собирающие метаданные об источнике лога с минимальными аллокациями памяти.</p>
 <hr />
 <h2 id="trassirovka-sobytiy-execution-tracer">Трассировка событий: execution tracer</h2>
-
 <p>Пакет <code>runtime/trace</code> (не путать с низкоуровневым <code>runtime</code> напрямую, но тесно связанный с ним) предоставляет функции <code>trace.Start(w)</code> и <code>trace.Stop()</code>, которые записывают события рантайма (запуск и остановка горутин, фазы GC, сетевой поллер и системные вызовы syscall) для последующего анализа execution tracer'ом (<a href="3-execution-tracer.html" class="wikilink">3. execution tracer</a>):</p>
 
 <div class="code-block" data-lang="go">
@@ -735,8 +718,7 @@ defer trace.Stop()
 
 <p>Внутри ядра рантайма модуль трассировки оперирует внутренними функциями <code>traceEvent</code>, <code>traceAcquire</code> и <code>traceRelease</code>, сбрасывая микрособытия в сверхбыстрые кольцевые буферы на каждом <code>P</code>. При включенном <code>trace.Start(w)</code> рантайм непрерывно регистрирует переключения контекста, парковку горутин и системные вызовы, а пользовательский код вызывает лаконичный и безопасный API из <code>runtime/trace</code>.</p>
 <hr />
-<h2 id="drugie-vazhnye-funktsii-paketa-runtime">Другие важные функции пакета `runtime`</h2>
-
+<h2 id="drugie-vazhnye-funktsii-paketa-runtime">Другие важные функции пакета <code>runtime</code></h2>
 <ul>
 <li><strong><code>runtime.KeepAlive(x interface{})</code></strong> (в современном Go <code>x any</code>) — гарантирует, что объект <code>x</code> не будет собран сборщиком мусора до вызова <code>KeepAlive</code>. Это критически важно при работе с <code>cgo</code>, <code>syscall.Syscall</code> или финализаторами. Если компилятор видит, что обертка структуры больше не используется в коде, он может позволить GC освободить память структуры прямо в середине выполнения низкоуровневого системного вызова, передающего дескриптор в C-код. Вызов <code>KeepAlive</code> предотвращает преждевременную утилизацию объекта.</li>
 <li><strong><code>runtime.NumCgoCall() int64</code></strong> — возвращает общее количество вызовов функций CGO, совершенных процессом с момента запуска. Позволяет оценить масштаб накладных расходов на переключение стеков между миром Go и C.</li>
@@ -744,8 +726,7 @@ defer trace.Stop()
 <li><strong><code>runtime.Version() string</code></strong> — возвращает строку текущей версии компилятора Go (например, <code>go1.23.1</code>).</li>
 </ul>
 <hr />
-<h2 id="mechanical-sympathy-sistemnaya-stoimost-vyzovov-runtime">Mechanical Sympathy: системная стоимость вызовов `runtime`</h2>
-
+<h2 id="mechanical-sympathy-sistemnaya-stoimost-vyzovov-runtime">Mechanical Sympathy: системная стоимость вызовов <code>runtime</code></h2>
 <p>Разработчик, обладающий аппаратной интуицией, никогда не рассматривает функции <code>runtime</code> как бесплатные библиотечные вызовы. Многие из них напрямую воздействуют на планировщик ядра ОС, инвалидируют процессорные кэши и сбрасывают конвейеры инструкций:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -787,7 +768,6 @@ flowchart LR
 </ul>
 <hr />
 <h2 id="sobesedovanie-tipichnye-voprosy">Собеседование: типичные вопросы</h2>
-
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -832,7 +812,6 @@ flowchart LR
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ul>
 <li>Пакет <code>runtime</code> — это прямой низкоуровневый интерфейс к планировщику задач G-M-P, сборщику мусора, профилировщикам и памяти языка Go.</li>
 <li>Основные функциональные группы пакета охватывают:</li>

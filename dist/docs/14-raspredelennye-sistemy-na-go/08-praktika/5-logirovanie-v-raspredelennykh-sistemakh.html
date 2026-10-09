@@ -374,7 +374,6 @@
 
           <div class="article-markdown">
             <h2 id="vvedenie-pochemu-logirovanie-v-raspredelennykh-sistemakh-eto-otdelnaya-inzhenern">Введение: Почему логирование в распределенных системах — это отдельная инженерная дисциплина</h2>
-
 <blockquote>
 <p><em>«Самый эффективный инструмент отладки — это по-прежнему аккуратное мышление в сочетании с разумно расставленными индикаторами состояния».</em><br />
 — Брайан Керниган</p>
@@ -387,9 +386,7 @@
 <p>Логирование в распределенных системах превращается из тривиального вывода строк в <strong>высоконагруженный инженерный конвейер генерации, структурной сериализации, асинхронной доставки и сквозной корреляции событий</strong>. Задача Go-разработчика — обеспечить максимальную информативность записей при строго детерминированном, околонулевом overhead на процессор и сборщик мусора (GC).</p>
 <hr />
 <h2 id="fundamentalnye-printsipy">Фундаментальные принципы</h2>
-
 <h3 id="strukturirovannoe-logirovanie">Структурированное логирование</h3>
-
 <p>Текстовые неструктурированные строки вида <code>"User 123 logged in"</code> — это тупик для распределенного мониторинга. Их невозможно эффективно парсить, фильтровать, индексировать и агрегировать на терабайтных масштабах.</p>
 <p>В современном Go стандартное требование — <strong>машиночитаемое структурированное логирование</strong> (прежде всего в формате JSON, либо бинарных схемах MsgPack/UBJSON). Каждая запись представляет собой валидный JSON-документ со строгими стандартизированными полями: <code>level</code>, <code>trace_id</code>, <code>request_id</code>, <code>duration</code>, <code>status</code>.</p>
 
@@ -421,7 +418,6 @@
 
 <hr />
 <h3 id="correlation-id-i-kontekst">Correlation ID и контекст</h3>
-
 <p>Каждый входящий запрос на границе кластера обязан получить уникальный идентификатор сквозного следа (<code>trace_id</code> или <code>request_id</code>). Этот идентификатор должен бесшовно пронизывать все слои распределенного приложения:<br />
 - Заголовки сетевых запросов HTTP (<code>X-Request-ID</code>, <code>traceparent</code>) и gRPC (<code>metadata</code>);<br />
 - Асинхронные события в брокерах сообщений (Kafka headers, NATS metadata);<br />
@@ -444,7 +440,6 @@
 
 <hr />
 <h3 id="urovni-logirovaniya-i-semplirovanie">Уровни логирования и семплирование</h3>
-
 <p>В высоконагруженных системах запись полного лога для каждого успешного запроса приведет к колоссальным расходам на дисковый I/O и переполнению хранилищ (Loki, Elasticsearch). </p>
 <p>Применяется жесткая градуация уровней и динамическое семплирование:<br />
 - <strong><code>DEBUG</code> / <code>TRACE</code>:</strong> Максимально подробная трассировка. В production по умолчанию выключена либо семплируется (например, логируется лишь 1% запросов, либо запросы с аномальной задержкой <code>duration &gt; threshold</code>).<br />
@@ -453,9 +448,7 @@
 - <strong><code>ERROR</code>:</strong> Сбои, требующие внимания инженера (ошибка сохранения в БД, отказ внешнего API). Логируются в 100% случаев без какого-либо семплирования.</p>
 <hr />
 <h2 id="pod-kapotom-kak-go-obrabatyvaet-logi">Под капотом: Как Go обрабатывает логи</h2>
-
 <h3 id="lock-free-logirovanie-i-atomarnye-operatsii">Lock-free логирование и атомарные операции</h3>
-
 <p>Устаревшие библиотеки логирования использовали глобальный мьютекс <code>sync.Mutex</code> для синхронизации записи в общий буфер вывода. В многопоточном сервисе на Go, где тысячи горутин одновременно исполняются на 32 или 64 процессорных ядрах, постоянная борьба за один и тот же мьютекс приводит к разрушительному феномену <strong>Cache Line Bouncing</strong> (кэш-линии L1/L2 ядер процессора непрерывно инвалидируются).</p>
 <p>Современный рантайм пакета <code>slog</code> и библиотеки <code>zerolog</code>/<code>zap</code> опираются на атомарные операции пакета <code>sync/atomic</code> и указатели <code>unsafe.Pointer</code>:</p>
 
@@ -483,7 +476,6 @@ func (h *LevelHandler) Enabled(ctx context.Context, level slog.Level) bool {
 <p>Благодаря <code>atomic</code> чтению, проверка того, включен ли уровень <code>DEBUG</code>, занимает считанные такты CPU и вообще не создает конкуренции между ядрами процессора.</p>
 <hr />
 <h3 id="borba-s-gc-sync-pool-i-allokatsii">Борьба с GC: sync.Pool и аллокации</h3>
-
 <p>Каждый наивный вызов логирования вида <code>log.Info("msg", "key", val)</code> в пакете <code>slog</code> под капотом аллоцирует <code>map[string]any</code> или слайс интерфейсов <code>[]any</code>.</p>
 <p>Посчитаем математику: при нагрузке 10 000 RPS на инстанс наивный логгер генерирует более 10 000 аллокаций в секунду в куче (Heap).<br />
 Сборщик мусора Go (Concurrent Tri-color Mark &amp; Sweep с барьером записи Write Barrier) будет вынужден включаться в работу непрерывно, отнимая до 25% времени процессора и раздувая <strong><code>P99 latency</code></strong> сервиса до сотен миллисекунд!</p>
@@ -509,7 +501,6 @@ func (h *LevelHandler) Enabled(ctx context.Context, level slog.Level) bool {
 
 <hr />
 <h3 id="sinkhronnoe-vs-asinkhronnoe-logirovanie-syscall-write">Синхронное vs Асинхронное логирование: syscall write</h3>
-
 <p>Запись данных в файл или стандартный поток вывода — это системный вызов ядра Linux (<code>syscall write</code> или <code>writev()</code>).<br />
 Даже если запись идет в файловый дескриптор, открытый без флагов синхронизации <code>O_SYNC</code> или <code>O_DSYNC</code>, ядро Linux может заблокировать вызывающий поток в случае высокой нагрузки на дисковую подсистему ноды (высокий iowait).</p>
 <p>В рантайме Go блокировка системного вызова означает, что системный поток операционной системы <strong><code>M</code></strong> зависает внутри ядра. Если блокировок становится много, планировщик Go исчерпывает пул тредов, горутины скапливаются в очереди, и сервис перестает отвечать на сетевые запросы.</p>
@@ -517,7 +508,6 @@ func (h *LevelHandler) Enabled(ctx context.Context, level slog.Level) bool {
 Горутины бизнес-логики кладут сформированные байты в неблокирующую очередь или буферизованный канал <code>chan []byte</code>, а отдельная выделенная фоновая горутина выполняет пакетную запись (<strong><code>batch write</code></strong>) через системный вызов <code>writev()</code> раз в 50–100 миллисекунд или по мере накопления буфера. Это превращает тысячи микро-вызовов ядра в десятки компактных блочных операций, экономя такты CPU.</p>
 <hr />
 <h2 id="arkhitektura-sbora-i-agregatsii-logov">Архитектура сбора и агрегации логов</h2>
-
 <p>В распределенной архитектуре контейнеризированное Go-приложение <strong>никогда не должно отправлять логи в удаленные базы данных (Loki, Elasticsearch) напрямую по сети</strong>. Это нарушает принцип единственной ответственности (Single Responsibility Principle), раздувает зависимости и создает критическую точку отказа при сбоях внешней сети.</p>
 <p>Вместо этого применяется проверенный паттерн <strong>Log Shipper</strong>:</p>
 
@@ -562,9 +552,7 @@ flowchart LR
 </ol>
 <hr />
 <h2 id="idiomatichnaya-realizatsiya-v-go">Идиоматичная реализация в Go</h2>
-
 <h3 id="propuskatsiya-konteksta-i-trace-id">Пропускация контекста и Trace ID</h3>
-
 <p>Для того чтобы сквозной <code>trace_id</code> не терялся между вызовами, мы настраиваем легковесную HTTP-middleware:</p>
 
 <div class="code-block" data-lang="go">
@@ -609,8 +597,7 @@ func WithTraceID(next http.Handler) http.Handler {
 </div>
 
 <hr />
-<h3 id="kastomnyy-handler-dlya-slog">Кастомный Handler для `slog`</h3>
-
+<h3 id="kastomnyy-handler-dlya-slog">Кастомный Handler для <code>slog</code></h3>
 <p>Если стандартного форматирования <code>slog</code> недостаточно и требуется эффективный асинхронный сброс:</p>
 
 <div class="code-block" data-lang="go">
@@ -729,9 +716,7 @@ func (h *AsyncHandler) WithGroup(name string) slog.Handler        { return h }
 
 <hr />
 <h2 id="lovushki-proizvoditelnost-i-voprosy-na-sobesedovaniyakh">Ловушки, производительность и вопросы на собеседованиях</h2>
-
 <h3 id="log-flooding-i-retry-storms">Log flooding и retry storms</h3>
-
 <p>Когда внешняя зависимость (например, база данных PostgreSQL) становится недоступной, тысячи горутин на каждый HTTP-запрос начинают панически писать в лог:<br />
 <code>ERROR: connection refused</code>.</p>
 <p>Возникает опаснейший каскадный эффект:<br />
@@ -742,13 +727,11 @@ func (h *AsyncHandler) WithGroup(name string) slog.Handler        { return h }
 В кастомном хендлере <code>slog</code> настраивается скользящее окно с атомарным счетчиком <code>atomic</code> для каждого <code>key-value</code> паттерна ошибки. Если число однотипных ошибок превышает лимит (например, 10 сообщений в секунду), логгер переходит в режим подавления: пишет предупреждение <code>WARN: rate limit exceeded, suppressing repeated errors</code> и временно блокирует вывод дубликатов.</p>
 <hr />
 <h3 id="kontekst-i-taymauty">Контекст и таймауты</h3>
-
 <p>Распространенная архитектурная ошибка — передавать <code>context.Background()</code> в фоновые горутины, занимающиеся логированием или отправкой телеметрии.</p>
 <p>Если родительский HTTP-запрос завершился, а фоновая горутина продолжает удерживать ссылку на <code>nil</code> контекст или пытается выполнить операцию после завершения родителя, это чревато утечками горутин или неожиданной паникой (<code>panic</code>).<br />
 Всегда передавайте контекст явно, обогащая логгер через связку <code>slog.WithContext(ctx)</code>.</p>
 <hr />
 <h3 id="tipichnye-voprosy-seniorlead-go-engineer">Типичные вопросы Senior/Lead Go Engineer</h3>
-
 
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
@@ -770,7 +753,6 @@ func (h *AsyncHandler) WithGroup(name string) slog.Handler        { return h }
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Структурируйте с первого дня:</strong> Забудьте про неструктурированный текст <code>fmt.Println</code>. Пишите логи исключительно в формате машиночитаемого JSON.</li>
 <li><strong>Сквозной контекст:</strong> Пробрасывайте <code>trace_id</code> и <code>request_id</code> через всю цепочку вызовов, используя <code>context.Context</code> и сетевые метаданные.</li>

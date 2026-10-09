@@ -301,12 +301,10 @@
 
           <div class="article-markdown">
             <h2 id="filosofiya-serializatsii-bezopasnost-protiv-skorosti">Философия сериализации: безопасность против скорости</h2>
-
 <p>В мире распределенных сервисов и веб-API текстовый формат JSON стал универсальным лингва франка. Пакет <code>encoding/json</code> является де-факто стандартом для обмена данными в Go-бэкенде. Его архитектурный дизайн подчиняется главному принципу стандартной библиотеки, сформулированному еще создателями Unix и Go: <strong>корректность, надежность и безопасность важнее предельной пропускной способности</strong>. </p>
 <p>В отличие от динамических языков вроде PHP или Python, где сериализация часто игнорирует строгую типизацию, Go требует явного маппинга структур, что исключает «тихие» ошибки приведения типов и гарантирует строгую предсказуемость контрактов API. Если поле структуры объявлено как <code>int</code>, парсер никогда не запишет туда массив или строку без явного согласия разработчика.</p>
 <p>Однако эта безопасность имеет цену. <code>encoding/json</code> активно использует рефлексию, упаковку в интерфейсы и копирование данных. В высоконагруженных системах (10k+ RPS, микросервисы с крупными пейлоадами) это становится заметным bottleneck'ом, породив целую экосистему сторонних библиотек (<code>jsoniter</code>, <code>sonic</code>, <code>easyjson</code>). Для инженера уровня Senior понимание внутренних механизмов стандартного кодировщика обязательно: это позволяет принимать осознанные решения о том, когда хватит <code>stdlib</code>, а когда пора подключать сторонние оптимизации или кодогенерацию.</p>
 <h2 id="under-the-hood-kesh-tipov-puly-buferov-i-kompilyatsiya-enkoderov">Under the hood: Кэш типов, пулы буферов и компиляция энкодеров</h2>
-
 <p>При первом вызове <code>json.Marshal</code> или <code>json.Unmarshal</code> для конкретного типа Go не просто запускает рефлексию «в лоб». Он проходит фазу динамической компиляции:</p>
 <ol>
 <li><strong>Анализ структуры</strong>: Рантайм сканирует поля структуры, читает теги <code>json</code>, определяет типы и правила опциональности (<code>omitempty</code>).</li>
@@ -363,7 +361,6 @@ flowchart TD
 
 
 <h2 id="mechanical-sympathy-allokatsii-escape-analysis-i-vliyanie-na-gc">Mechanical Sympathy: Аллокации, Escape Analysis и влияние на GC</h2>
-
 <p>Понимание того, как <code>encoding/json</code> взаимодействует с памятью, критически для тюнинга latency и пропускной способности.</p>
 <ol>
 <li><strong>Escape Analysis</strong>: <code>json.Marshal</code> возвращает <code>[]byte</code>. Поскольку эти данные должны жить после возврата из функции, компилятор размещает результирующий срез в куче. Это обязательная аллокация, которую нельзя обойти без использования <code>json.Encoder</code>, пишущего напрямую в <code>io.Writer</code>.</li>
@@ -371,7 +368,6 @@ flowchart TD
 <li><strong>Копирование вместо zero-copy</strong>: В отличие от protobuf, JSON не поддерживает чтение напрямую из байтового слайса без парсинга символов. Символы экранирования (<code>\"</code>, <code>\n</code>, <code>\u0000</code>) требуют создания новых строк, что генерирует дополнительные аллокации.</li>
 </ol>
 <h3 id="striming-vs-polnaya-buferizatsiya">Стриминг vs Полная буферизация</h3>
-
 <p>В высоконагруженных сетевых обработчиках выбор между <code>json.Unmarshal</code> и <code>json.NewDecoder</code> определяет расход памяти процесса:</p>
 
 <div class="code-block" data-lang="go">
@@ -411,16 +407,13 @@ func handleStream(w http.ResponseWriter, r *http.Request) {
 
 <p><code>json.Decoder</code> и <code>json.Encoder</code> работают напрямую с буфером <code>bufio</code> (внутри <code>io</code>), пропуская создание промежуточных <code>[]byte</code>. Это снижает peak-RSS и уменьшает частоту GC-пауз. Однако помните: <code>json.Encoder.Encode()</code> автоматически добавляет перевод строки <code>\n</code> в конец вывода, что важно учитывать при строгих протокольных проверках.</p>
 <h2 id="1-idiomatichnaya-rabota-s-json-i-skrytye-ogranicheniya">1. Идиоматичная работа с JSON и скрытые ограничения</h2>
-
 <h3 id="tegi-i-pravila-mappinga">Теги и правила маппинга</h3>
-
 <ul>
 <li><code>json:"-"</code> — полное игнорирование поля.</li>
 <li><code>json:"field_name,omitempty"</code> — пропуск поля при нулевом значении. <strong>Важно:</strong> для числовых типов <code>0</code> является нулевым, для строк <code>""</code>, для указателей и слайсов <code>nil</code>. Пустой слайс <code>[]string{}</code> <strong>не будет</strong> опущен, только <code>nil</code>.</li>
 <li><code>json:",string"</code> — принудительная сериализация числа как строки (<code>"123"</code>). Решает проблему потери точности в JS при больших <code>int64</code>.</li>
 </ul>
 <h3 id="disallowunknownfields">DisallowUnknownFields</h3>
-
 <p>По умолчанию декодер молча игнорирует поля, отсутствующие в целевой структуре. Для строгих API-контрактов это антипаттерн, так как скрывает ошибки версионирования.</p>
 
 <div class="code-block" data-lang="go">
@@ -450,9 +443,7 @@ dec.DisallowUnknownFields() // Строгий режим: вернет ошиб�
 
 
 <h2 id="2-prodvinutye-patterny-i-zashchita-kontraktov">2. Продвинутые паттерны и защита контрактов</h2>
-
 <h3 id="json-rawmessage-dlya-polimorfizma">json.RawMessage для полиморфизма</h3>
-
 <p>Иногда структура JSON зависит от внешнего параметра. <code>json.RawMessage</code> позволяет отложить парсинг части пейлоада до выяснения контекста.</p>
 
 <div class="code-block" data-lang="go">
@@ -493,7 +484,6 @@ func processEvent(raw []byte) error {
 
 <p>Это позволяет парсить заголовок один раз, а тело десериализовать только в нужный тип, экономя CPU и избегая ошибок приведения.</p>
 <h3 id="json-number-dlya-tochnosti">json.Number для точности</h3>
-
 <p>Стандартный декодер парсит все числа как <code>float64</code>. Числовой тип <code>float64</code> в стандарте IEEE 754 имеет лишь 53 бита мантиссы: целые числа больше $2^{53} - 1$ (например, 64-битные Snowflake ID или банковские счета) неминуемо теряют младшие разряды. Для финансовых систем или работы с ID &gt; 9e15 это недопустимо.</p>
 
 <div class="code-block" data-lang="go">
@@ -511,7 +501,6 @@ dec.UseNumber() // Парсит числа как json.Number (хранится 
 </div>
 
 <h2 id="lovushki-i-voprosy-s-sobesedovaniy">Ловушки и вопросы с собеседований</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -564,7 +553,6 @@ dec.UseNumber() // Парсит числа как json.Number (хранится 
 
 
 <h2 id="sravnenie-s-ekosistemami-drugikh-yazykov">Сравнение с экосистемами других языков</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -602,7 +590,6 @@ dec.UseNumber() // Парсит числа как json.Number (хранится 
 </tbody>
 </table></div>
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><code>encoding/json</code> компилирует энкодеры динамически и кэширует их в <code>sync.Map</code>. Первый вызов медленнее, последующие быстры.</li>
 <li>Для больших пейлоадов используйте <code>json.Encoder</code> / <code>json.Decoder</code> со стримингом, чтобы избежать аллокации промежуточных <code>[]byte</code> и снизить GC-паузы.</li>

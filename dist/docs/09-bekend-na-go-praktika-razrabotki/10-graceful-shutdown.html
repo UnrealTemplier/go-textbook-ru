@@ -335,7 +335,6 @@ sequenceDiagram
 
 <hr />
 <h2 id="graceful-shutdown-korrektnoe-zavershenie-servisa">Graceful shutdown. Корректное завершение сервиса</h2>
-
 <p>Graceful shutdown — это не просто вызов <code>os.Exit(0)</code>. Это детерминированный процесс завершения работы сервиса, который гарантирует:<br />
 - Отправку валидных HTTP-ответов на уже принятые запросы<br />
 - Корректное закрытие пулов соединений (БД, Redis, очереди)<br />
@@ -344,7 +343,6 @@ sequenceDiagram
 <p>Без корректного завершения rolling-обновления приводят к 502 Bad Gateway, незавершенным транзакциям и повреждению состояния в распределенных системах.</p>
 <hr />
 <h3 id="uroven-os-i-tcp-steytmashina">Уровень ОС и TCP-стейтмашина</h3>
-
 <p>Когда оркестратор или администратор останавливает контейнер, ядро ОС отправляет процессу сигнал <code>SIGTERM</code>. По умолчанию Go не обрабатывает сигналы самостоятельно — процесс завершается мгновенно. Но нам нужно перехватить этот сигнал и запустить процедуру очистки.</p>
 <p>С точки зрения сетевого стека:<br />
 1. Сервер закрывает слушающий сокет (<code>close(listener)</code>). Новые TCP SYN-пакеты получают <code>Connection Refused</code> или <code>RST</code>.<br />
@@ -364,8 +362,7 @@ sequenceDiagram
 
 
 <hr />
-<h3 id="pod-kapotom-kak-rabotaet-http-server-shutdown">Под капотом. Как работает `http.Server.Shutdown`</h3>
-
+<h3 id="pod-kapotom-kak-rabotaet-http-server-shutdown">Под капотом. Как работает <code>http.Server.Shutdown</code></h3>
 <p>Внутренний механизм <code>http.Server</code> в Go построен вокруг централизованного трекинга открытых сокетов. В исходном коде (<code>src/net/http/server.go</code>) сервер хранит единую хеш-таблицу соединений под защитой мьютекса:<br />
 - <code>activeConn map[*conn]struct{}</code>: множество всех открытых клиентских TCP-соединений. Текущий статус сокета (<code>StateNew</code>, <code>StateActive</code>, <code>StateIdle</code>, <code>StateClosed</code>) хранится непосредственно в самом экземпляре <code>*conn</code> и защищается его внутренним атомарным состоянием (<code>c.getState()</code>).</p>
 <p>При вызове <code>Shutdown(ctx)</code>:<br />
@@ -377,7 +374,6 @@ sequenceDiagram
 6. Если переданный контекст <code>ctx</code> истекает до того, как все горутины обработчиков закончили работу, метод <code>Shutdown</code> завершается с возвратом ошибки <code>ctx.Err()</code>. Для жесткого принудительного обрыва оставшихся сокетов используется вызов <code>server.Close()</code>.</p>
 <hr />
 <h3 id="production-realizatsiya">Production-реализация</h3>
-
 <p>Полноценный канонический шаблон graceful shutdown с раздельными контекстами, логированием и очисткой внешних ресурсов:</p>
 
 <div class="code-block" data-lang="go">
@@ -463,7 +459,6 @@ func setupRouter() http.Handler {
 
 <hr />
 <h3 id="upravlenie-fonovymi-protsessami-i-zavisimostyami">Управление фоновыми процессами и зависимостями</h3>
-
 <p><code>http.Server.Shutdown</code> <strong>не останавливает</strong> горутины, запущенные внутри обработчиков. Если ваш хендлер запускает фоновую задачу (отправка email, асинхронная запись в Kafka), вы обязаны передать <code>r.Context()</code> и отслеживать его отмену.</p>
 
 <div class="code-block" data-lang="go">
@@ -556,7 +551,6 @@ func startWorker(ctx context.Context) {
 
 <hr />
 <h3 id="itog">Итог</h3>
-
 <ol>
 <li>Graceful shutdown — обязательный атрибут production-сервиса, работающего в кластере.</li>
 <li><code>http.Server.Shutdown(ctx)</code> закрывает listener, ждет завершения активных запросов и корректно закрывает соединения.</li>

@@ -370,7 +370,6 @@
 
 <hr />
 <h2 id="proklyatie-dvoynoy-zapisi-dual-write">Проклятие двойной записи (Dual Write)</h2>
-
 <p>Классический сценарий микросервиса электронной коммерции: пользователь нажимает кнопку «Оформить заказ». Нам требуется выполнить две элементарные операции:<br />
 1. Сохранить сущность заказа в реляционную базу данных (PostgreSQL);<br />
 2. Опубликовать событие <code>OrderCreatedEvent</code> в брокер сообщений (Kafka или RabbitMQ), чтобы Сервис Склада начал комплектацию товара.</p>
@@ -423,7 +422,6 @@ func (s *Service) CreateOrder(ctx context.Context, req OrderRequest) error {
 <p>Инженерное решение этой задачи — паттерн <strong>Transactional Outbox (Исходящие сообщения)</strong>.</p>
 <hr />
 <h2 id="anatomiya-patterna-outbox">Анатомия паттерна Outbox</h2>
-
 <p>Философия паттерна гениально проста: мы используем локальные ACID-свойства нашей проверенной реляционной базы данных (PostgreSQL/MySQL), чтобы гарантировать 100% атомарность.</p>
 <p>Вместо того чтобы совершать ненадежный сетевой вызов к брокеру посреди транзакции, мы создаем в той же базе данных служебную таблицу — <code>outbox</code> (ящик исходящей почты).</p>
 
@@ -480,7 +478,6 @@ flowchart TD
 
 <hr />
 <h2 id="idiomatichnyy-go-realizatsiya-zapisi-command-side">Идиоматичный Go: Реализация записи (Command Side)</h2>
-
 <p>На стороне API-сервиса код становится предельно надежным и избавляется от любых внешних сетевых зависимостей в момент обработки клиентского запроса:</p>
 
 <div class="code-block" data-lang="go">
@@ -563,10 +560,8 @@ func (s *OrderService) CreateOrder(ctx context.Context, order Order) error {
 
 <hr />
 <h2 id="mekhanizmy-relay-dostavka-iz-bazy-v-broker">Механизмы Relay: Доставка из базы в брокер</h2>
-
 <p>Записать строку в <code>outbox</code> — половина дела. Как надежно и с минимальной задержкой извлечь эти данные и доставить их в брокер сообщений? В индустрии существует два основных подхода.</p>
 <h3 id="podkhod-1-polling-publisher-opros-bazy-dannykh">Подход 1: Polling Publisher (Опрос базы данных)</h3>
-
 <p>Периодический фоновый воркер на Go раз в $N$ миллисекунд опрашивает таблицу <code>outbox</code> обычным SQL-запросом.</p>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Блокировки и гонки при конкурентном Polling">
@@ -618,7 +613,6 @@ COMMIT;
 <p><em>Минусы Polling:</em> Постоянная нагрузка на CPU базы данных (даже когда новых событий нет) и неизбежный лаг доставки, равный интервалу таймера опроса.</p>
 <hr />
 <h3 id="podkhod-2-transaction-log-tailing-cdc-industrialnyy-standart">Подход 2: Transaction Log Tailing (CDC) — Индустриальный стандарт</h3>
-
 <p>В высоконагруженных системах (HighLoad) периодический опрос базы данных неприменим из-за накладных расходов. Вместо этого применяется технология <strong>Change Data Capture (CDC — Захват изменений данных)</strong>.</p>
 
 <aside class="callout callout-info" aria-label="Под капотом: Mechanical Sympathy, PostgreSQL WAL и Debezium">
@@ -656,7 +650,6 @@ Debezium (как и любой другой механизм репликаци�
 
 <hr />
 <h2 id="ochistka-outbox-tablitsy-housekeeping">Очистка Outbox-таблицы (Housekeeping)</h2>
-
 <p>Таблица <code>outbox</code> имеет неприятное свойство непрерывно расти. Если ее не очищать, размер таблицы и ее индексов быстро превысит сотни гигабайт, замедляя основные бизнес-транзакции <code>INSERT INTO orders</code> и вызывая разрастание мертвых строк (<strong>Table Bloat</strong> в PostgreSQL).</p>
 <p>Стратегии очистки:<br />
 1. <strong>Жесткое удаление (Hard Delete):</strong> При использовании Polling Relay успешно отправленные строки удаляются сразу в транзакции отправки: <code>DELETE FROM outbox WHERE id = X</code>.<br />
@@ -669,7 +662,6 @@ Debezium (как и любой другой механизм репликаци�
    Удаление файла партиции на уровне файловой системы происходит за доли миллисекунды (<strong>Zero I/O operation</strong>) и не порождает мертвых строк MVCC и мусора в WAL.</p>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Dual Write</strong> (попытка прямой записи в СУБД и брокер) — антипаттерн, приводящий к гарантированной рассинхронизации данных при сетевых сбоях.</li>
 <li><strong>Transactional Outbox</strong> обеспечивает 100% атомарность, сохраняя бизнес-сущность и событие в рамках одной локальной ACID-транзакции.</li>

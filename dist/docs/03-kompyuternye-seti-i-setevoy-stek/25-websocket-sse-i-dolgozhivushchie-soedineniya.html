@@ -296,7 +296,6 @@
 
           <div class="article-markdown">
             <h2 id="vvedenie-ot-zapros-otvet-k-postoyannomu-kanalu">Введение: От запрос-ответ к постоянному каналу</h2>
-
 <p>Классическая архитектура Всемирной паутины строилась по принципу коротких дискретных взаимодействий: клиент постучался, задал вопрос, сервер ответил, соединение закрылось. Классическая HTTP-модель <code>request-response</code> требует открытия нового TCP-соединения (или повторного использования через Keep-Alive) для каждой операции. Это создает накладные расходы на рукопожатия, задержки и потребление памяти на стороне сервера.</p>
 <p>Представьте себе биржевого трейдера, который каждые 200 миллисекунд отправляет курьера на биржу с запиской: «Изменилась ли цена акций?». В 99% случаев курьер возвращается с ответом «Нет». Этот подход, известный как <strong>Short Polling</strong> (периодический опрос), сжигает процессорные такты, переполняет таблицы маршрутизации и забивает сеть бесполезными HTTP-заголовками. Позже инженеры придумали костыль <strong>Long Polling</strong> (когда сервер удерживает запрос открытым, пока не появятся данные), но и он оставался неуклюжей имитацией двусторонней связи.</p>
 <p>Для сценариев, где клиенту критично получать обновления в реальном времени (чат, биржевые тикеры, live-логирование, коллаборативные редакторы), сервер должен сам инициировать отправку данных клиенту.</p>
@@ -347,7 +346,6 @@ flowchart TD
 
 <hr />
 <h2 id="http-upgrade-kak-rozhdaetsya-dolgozhivushchee-soedinenie">HTTP Upgrade: Как рождается долгоживущее соединение</h2>
-
 <p>WebSocket-соединение начинается как обычный HTTP-запрос. Клиент отправляет заголовок <code>Upgrade</code>, а сервер отвечает кодом <code>101 Switching Protocols</code>. После этого TCP-соединение не закрывается, а протокол на транспортном уровне меняется.</p>
 <p>Клиент отправляет стандартный заголовок рукопожатия:</p>
 
@@ -431,7 +429,6 @@ sequenceDiagram
 
 <hr />
 <h2 id="server-sent-events-sse-prostoy-i-nadezhnyy-push">Server-Sent Events (SSE): Простой и надежный push</h2>
-
 <p>SSE — это текстовый протокол поверх HTTP/1.1. Он поддерживает <strong>только одностороннюю</strong> передачу данных (от сервера к клиенту). Клиент сам должен реализовывать логику повторных попыток при обрыве связи.</p>
 <p>Спецификация SSE невероятно проста: это непрерывный поток текста в кодировке UTF-8, разделенный двойными переводами строк (<code>\n\n</code>). Каждое сообщение состоит из простых текстовых полей:</p>
 
@@ -456,7 +453,6 @@ data: {&quot;symbol&quot;: &quot;BTCUSD&quot;, &quot;price&quot;: 95000}\n\n
 <li>Нет накладных расходов на бинарный фрейминг.</li>
 </ul>
 <h3 id="realizatsiya-v-go">Реализация в Go</h3>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -531,10 +527,8 @@ data: {&quot;symbol&quot;: &quot;BTCUSD&quot;, &quot;price&quot;: 95000}\n\n
 
 <hr />
 <h2 id="websocket-polnyy-dupleks-i-freyming">WebSocket: Полный дуплекс и фрейминг</h2>
-
 <p>WebSocket (RFC 6455) предоставляет <strong>полнодуплексный (full-duplex)</strong> бинарный или текстовый канал поверх одного TCP-соединения. Клиент и сервер могут отправлять данные одновременно без ожидания ответа.</p>
 <h3 id="vnutrennee-ustroystvo-protokola">Внутреннее устройство протокола</h3>
-
 <p>WebSocket не отправляет «сырые» байты. Он оборачивает их в <strong>фреймы</strong>:</p>
 
 <div class="code-block" data-lang="text">
@@ -606,7 +600,6 @@ flowchart LR
 
 
 <h3 id="realizatsiya-v-go-2">Реализация в Go</h3>
-
 <p>Стандартная библиотека не содержит WebSocket. Индустриальный стандарт — <code>github.com/gorilla/websocket</code> или <code>nhooyr.io/websocket</code>. Ниже пример с корректной обработкой ошибок и контекстом:</p>
 
 <div class="code-block" data-lang="go">
@@ -693,13 +686,10 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 <hr />
 <h2 id="pod-kapotom-go-netpoller-i-upravlenie-pamyatyu">Под капотом: Go, netpoller и управление памятью</h2>
-
 <h3 id="1-netpoller-i-cpu-cache">1. Netpoller и CPU Cache</h3>
-
 <p>Долгоживущие соединения идеально ложатся на <code>netpoller</code> (epoll в Linux, kqueue в BSD/macOS). Файловые дескрипторы остаются в <code>epoll</code>-инстансе. Когда приходит пакет, ядро будит один из рабочих тредов Go (<code>runtime.netpoll</code>), который пробуждает соответствующую горутину.<br />
 *   <strong>Механический симпатизм:</strong> Если вы обрабатываете сообщения в одной горутине, вы пользуетесь <strong>CPU cache locality</strong>. Регистры и кэш L1/L2 не инвалидируются при переключении контекста. Это критично для high-throughput систем.</p>
 <h3 id="2-gorutinnyy-stek-i-gc">2. Горутинный стек и GC</h3>
-
 <p>Каждая активная WebSocket/SSE-соединение держит живую горутину.<br />
 *   <strong>Стек:</strong> Изначально 2 КБ. Если данные уходят в кучу (escape analysis), стек перераспределяется. Долгоживущие горутины могут накапливать «хвосты» аллокаций, если не освобождать срезы и мапы.<br />
 *   <strong>GC Pressure:</strong> Частое создание <code>[]byte</code> для payload вызывает нагрузку на GC. Используйте <code>sync.Pool</code> для буферов, если протокол позволяет:<br />
@@ -714,7 +704,6 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
     buf := msgPool.Get().(*[]byte)
     defer msgPool.Put(buf)</code></p>
 <h3 id="3-tcp-i-kernel-buffers">3. TCP и Kernel Buffers</h3>
-
 <p>Долгоживущее соединение упирается в ограничения ядра:<br />
 *   <code>net.core.rmem_max</code> / <code>wmem_max</code>: Буферы сокета. Если клиент читает медленнее, чем сервер пишет, <code>TCP Window</code> закрывается. Горутина блокируется на <code>Write</code>, ожидая освобождения пространства в ядре.<br />
 *   <strong>Backpressure:</strong> В Go это проявляется как блокировка <code>conn.Write</code>. Не используйте неблокирующие каналы без контроля глубины — это приведет к OOM.</p>
@@ -732,7 +721,6 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 <hr />
 <h2 id="masshtabirovanie-i-patterny">Масштабирование и паттерны</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -765,7 +753,6 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 </tbody>
 </table></div>
 <h3 id="gorizontalnoe-masshtabirovanie">Горизонтальное масштабирование</h3>
-
 <p>Одна инстанция Go не может доставить сообщение всем клиентам, если они распределены по разным нодам. Решение:<br />
 1.  <strong>Sticky Sessions:</strong> Load balancer отправляет все пакеты от клиента на один сервер.<br />
 2.  <strong>External Pub/Sub (Рекомендуется):</strong> Серверы подписываются на канал (Redis Pub/Sub, NATS, Kafka). При получении сообщения от клиента, сервер транслирует его в Pub/Sub, и все узлы рассылают данные своим клиентам.</p>
@@ -810,7 +797,6 @@ flowchart TD
 
 <hr />
 <h2 id="sravnenie-s-drugimi-yazykami">Сравнение с другими языками</h2>
-
 <ul>
 <li><strong>PHP (FPM):</strong> Убивает процесс после каждого запроса. Для долгоживущих соединений нужны Swoole, ReactPHP или Hyperf. В Go это не требуется, так как <code>net/http</code> спроектирован с нуля под асинхронность.</li>
 <li><strong>Java:</strong> Historically Tomcat использовал блокирующий I/O (BIO). Сейчас используется Netty (NIO) с event-loop моделью. Go делает то же самое, но с меньшим количеством boilerplate.</li>
@@ -834,7 +820,6 @@ flowchart TD
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <p>Долгоживущие соединения в Go — это не магия, а аккуратное управление файловыми дескрипторами через <code>netpoller</code>, контроль жизненного цикла горутин и понимание ограничений TCP-стека. Выбор между SSE и WebSocket определяется архитектурой: SSE для уведомлений и легковесных сценариев, WebSocket для интерактивных приложений с полным дуплексом. При масштабировании обязательно закладывайте Pub/Sub слой или sticky sessions.</p>
 <p>Мы разобрали, как поддерживать активные каналы связи. Следующим шагом логично изучить бинарные RPC-протоколы, которые часто используются внутри микросервисов для высокопроизводительного обмена данными: <a href="26-grpc-protocol-buffers-i-setevye-osobennosti-rpc.html" class="wikilink">26. gRPC, Protocol Buffers и сетевые особенности RPC</a>.</p>
           </div>

@@ -459,9 +459,8 @@
 <p>В 95% прикладных задач бэкенда для полнотекстового поиска (Full Text Search, FTS) более чем достаточно встроенных возможностей PostgreSQL. Они работают транзакционно согласованно, не требуют сетевых прыжков и демонстрируют выдающуюся скорость, если понимать их физическое устройство.</p>
 <hr />
 <h2 id="fundamentalnye-tipy-dannykh-tsvector-i-tsquery">Фундаментальные типы данных: tsvector и tsquery</h2>
-
 <p>В ядре PostgreSQL полнотекстовый поиск базируется на двух специализированных типах данных, преобразующих неструктурированный текст в математически строгие множества лексем.</p>
-<h3 id="1-tsvector-tekstovyy-vektor-dokumenta">1. `tsvector` (Текстовый вектор документа)</h3>
+<h3 id="1-tsvector-tekstovyy-vektor-dokumenta">1. <code>tsvector</code> (Текстовый вектор документа)</h3>
 <p>PostgreSQL принципиально не производит поиск по сырым текстовым строкам <code>TEXT</code> или <code>VARCHAR</code>. Текст предварительно нормализуется и компилируется в тип <strong><code>tsvector</code></strong> — отсортированный массив уникальных нормальных форм слов (<strong>лексем</strong>, lexemes) с фиксацией их порядковых позиций в исходном документе:</p>
 
 <div class="code-block" data-lang="sql">
@@ -526,7 +525,7 @@ flowchart LR
 
 
 <hr />
-<h3 id="2-tsquery-derevo-poiskovogo-zaprosa">2. `tsquery` (Дерево поискового запроса)</h3>
+<h3 id="2-tsquery-derevo-poiskovogo-zaprosa">2. <code>tsquery</code> (Дерево поискового запроса)</h3>
 <p>Поисковая фраза пользователя точно так же нормализуется и трансформируется в тип <strong><code>tsquery</code></strong>. Это не просто строка, а логическое булево дерево предикатов.</p>
 <p>В <code>tsquery</code> поддерживаются классические логические операторы:<br />
 * <code>&amp;</code> (AND — логическое И)<br />
@@ -564,7 +563,6 @@ flowchart LR
 
 <hr />
 <h2 id="indeksatsiya-gin-pod-kapotom-polnotekstovogo-poiska">Индексация: GIN под капотом полнотекстового поиска</h2>
-
 <p>Вычисление функции <code>to_tsvector()</code> "на лету" при каждом пользовательском <code>SELECT</code> моментально сожжет ресурсы CPU. Полнотекстовые векторы обязаны быть проиндексированы.</p>
 <p>Для этой задачи идеально подходит знакомый нам по лекции <a href="5-jsonb-i-rabota-s-json.html" class="wikilink">5. JSONB и работа с JSON</a> инвертированный индекс <strong>GIN (Generalized Inverted Index)</strong>.<br />
 В листовых узлах GIN-дерева в качестве ключей хранятся уникальные лексемы всех проиндексированных документов, а в качестве значений — упорядоченные списки физических адресов (<code>CTID</code>) страниц Heap, где эти лексемы присутствуют.</p>
@@ -655,7 +653,6 @@ CREATE INDEX idx_articles_search ON articles USING GIN (search_vector);
 <p>Теперь запрос вида <code>WHERE search_vector @@ to_tsquery('...')</code> будет выполняться за доли миллисекунды прямо по GIN-индексу.</p>
 <hr />
 <h2 id="ranzhirovanie-ranking-sortirovka-po-relevantnosti">Ранжирование (Ranking): Сортировка по релевантности</h2>
-
 <p>Найти подходящие строки в базе — только половина дела. Пользователь ожидает увидеть наиболее релевантные совпадения на первых позициях выдачи.<br />
 Для вычисления коэффициента релевантности в PostgreSQL используются функции:<br />
 * <strong><code>ts_rank(tsvector, tsquery)</code></strong>: Базовый подсчет частоты встречаемости лексем (TF-IDF модель).<br />
@@ -681,7 +678,6 @@ LIMIT 10;
 <hr />
 <h3 id="mechanical-sympathy-pochemu-ranzhirovanie-mozhet-obvalit-bazu">Mechanical Sympathy: Почему ранжирование может обвалить базу?</h3>
 
-
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -698,7 +694,6 @@ LIMIT 10;
 
 <hr />
 <h2 id="bezopasnaya-integratsiya-s-yazykom-go">Безопасная интеграция с языком Go</h2>
-
 <p>Типичная авария в Go-сервисах: пользователь вводит в строку поиска <code>"iphone 15 pro"</code>. Если разработчик наивно передаст эту строку в стандартную функцию <code>to_tsquery('iphone 15 pro')</code>, PostgreSQL вернет ошибку синтаксиса <code>syntax error in tsquery: "iphone 15 pro"</code>, поскольку <code>to_tsquery</code> ожидает строгого наличия логических операторов (<code>&amp;</code>, <code>|</code>), требуя формат вроде <code>iphone &amp; 15 &amp; pro</code>.</p>
 <p>Попытка «чинить» это в коде на Go через наивную склейку:</p>
 
@@ -722,7 +717,6 @@ safeQuery := strings.ReplaceAll(q, &quot; &quot;, &quot; &amp; &quot;)
 * Префикс минус (<code>-исключение</code>) трансформируется в оператор отрицания <code>!</code>.<br />
 * Функция <strong>никогда не выбрасывает синтаксических исключений</strong>, даже при наличии мусорных спецсимволов.</p>
 <h3 id="idiomatichnyy-go-repozitoriy-s-optimizatsiey-ranzhirovaniya">Идиоматичный Go-репозиторий с оптимизацией ранжирования</h3>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -793,7 +787,6 @@ func SearchArticles(ctx context.Context, db *sql.DB, userInput string) ([]Articl
 
 <hr />
 <h2 id="rezyume-dlya-inzhenera">Резюме для инженера</h2>
-
 <ol>
 <li><strong>Встроенный FTS решает проблему Dual Write:</strong> Использование возможностей PostgreSQL избавляет систему от рассинхронизации данных и накладных расходов на кластер Elasticsearch.</li>
 <li><strong>Тандем <code>tsvector</code> и <code>tsquery</code>:</strong> Текст преобразуется в лексемы через стемминг и стоп-слова, а запросы строятся в виде булевых деревьев.</li>

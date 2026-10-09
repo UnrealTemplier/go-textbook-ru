@@ -372,10 +372,8 @@
 3. <strong>Structured Contextual Logging (Структурированное контекстное логирование):</strong> Сквозная привязка <code>log/slog</code> к идентификаторам трассировки.</p>
 <hr />
 <h2 id="1-raspredelennaya-trassirovka-distributed-tracing">1. Распределенная трассировка (Distributed Tracing)</h2>
-
 <p>Единственный способ не потерять нить выполнения между изолированными процессами — передавать <strong>Trace Context</strong> через шину данных. Общепринятым мировым стандартом стал <strong>OpenTelemetry (OTel)</strong> и спецификация W3C Trace Context.</p>
 <h3 id="mekhanika-raboty-propagation">Механика работы (Propagation)</h3>
-
 <p>Тело сообщения (Payload — будь то JSON, Protobuf или Avro) предназначено для доменной логики. Смешивать транспортные метаданные с бизнес-полями — грубое нарушение принципа разделения ответственности (Separation of Concerns).</p>
 <p>Поэтому метаданные трассировки (<code>TraceID</code>, <code>SpanID</code>) всегда упаковываются в <strong>Заголовки (Headers)</strong> транспортного протокола:<br />
 - В <strong>RabbitMQ</strong> это таблица атрибутов <code>amqp.Table</code> внутри структуры публикации.<br />
@@ -451,10 +449,8 @@ sequenceDiagram
 
 <hr />
 <h3 id="idiomatichnyy-go-inject-i-extract">Идиоматичный Go: Inject и Extract</h3>
-
 <p>Клиентская библиотека RabbitMQ <code>amqp091-go</code> не имеет встроенной поддержки OpenTelemetry (в отличие от <code>net/http</code>, где OTel поставляется с готовыми middleware). Чтобы подружить OTel с брокером, мы реализуем стандартный интерфейс <code>propagation.TextMapCarrier</code>.</p>
 <h4 id="1-realizatsiya-textmapcarrier-dlya-rabbitmq">1. Реализация TextMapCarrier для RabbitMQ</h4>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -504,7 +500,6 @@ func (c AMQPHeadersCarrier) Keys() []string {
 </div>
 
 <h4 id="2-inektsiya-konteksta-na-storone-publisher">2. Инъекция контекста на стороне Publisher</h4>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -575,7 +570,6 @@ func (p *EventPublisher) PublishOrderCreated(ctx context.Context, orderID string
 </div>
 
 <h4 id="3-izvlechenie-konteksta-na-storone-consumer">3. Извлечение контекста на стороне Consumer</h4>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -669,7 +663,6 @@ func (c *OrderConsumer) processOrder(ctx context.Context, payload []byte) error 
 
 <hr />
 <h2 id="2-metriki-prometheus-urovnya-prilozheniya">2. Метрики (Prometheus) уровня приложения</h2>
-
 <p>Брокер сообщений экспортирует собственные системные метрики (очереди, соединения, память — их мы разберем в лекции <a href="9-monitoring-lag-i-throughput.html" class="wikilink">9. Мониторинг lag и throughput</a>). Однако брокер ничего не знает о том, <em>что именно</em> делает ваш Go-воркер: сколько миллисекунд занимает обработка, где застряли транзакции, и почему растет число отказов.</p>
 <p>Приложение обязано предоставлять собственные метрики по <strong>RED-паттерну (Rate, Errors, Duration)</strong>:</p>
 
@@ -800,7 +793,6 @@ $$\text{Topics} \times \text{Groups} \times \text{Statuses} \times 1\,000\,000 \
 
 <hr />
 <h2 id="3-kontekstnoe-logirovanie-structured-logging">3. Контекстное логирование (Structured Logging)</h2>
-
 <p>Трассировка показывает <em>где</em> в цепочке сервисов возник затор или сбой. Метрики показывают <em>как часто</em> он происходит. Но только структурированные логи объясняют, <em>почему</em> это произошло (какие данные передавались, какая ветка алгоритма сработала, какие переменные привели к ошибке).</p>
 <p>Начиная с <strong>Go 1.21</strong>, стандартная библиотека включает пакет структурированного логирования <code>log/slog</code>. В распределенных брокерах идиоматичный подход — писать логи строго в формате JSON и автоматически насыщать каждую строчку идентификаторами <code>trace_id</code> и <code>span_id</code>.</p>
 <p>Когда централизованный сборщик логов (Grafana Loki, Elasticsearch, ClickHouse, Datadog) парсит JSON, он индексирует поле <code>trace_id</code>. В результате в дашборде Jaeger или Grafana Tempo можно нажать на упавший Span и в один клик увидеть все ассоциированные с ним строки логов.</p>
@@ -840,7 +832,6 @@ flowchart LR
 
 
 <h3 id="idiomatichnyy-slog-adapter-dlya-trassirovki">Идиоматичный Slog-адаптер для трассировки</h3>
-
 <p>Мы создаем декоратор для <code>slog.Handler</code>, который прозрачно извлекает OTel Trace Context из <code>context.Context</code> без ручного добавления полей в каждом логе:</p>
 
 <div class="code-block" data-lang="go">
@@ -942,7 +933,6 @@ func ProcessMessage(ctx context.Context, msg []byte) {
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Трассировка — кровеносная система EDA:</strong> Без OpenTelemetry и проброса заголовка <code>traceparent</code> через заголовки сообщений расследование инцидентов превращается в гадание на кофейной гуще.</li>
 <li><strong>Propagators:</strong> Используйте реализацию интерфейса <code>propagation.TextMapCarrier</code> для прозрачного преобразования OTel-контекста в <code>amqp.Table</code> или Kafka-заголовки <code>Headers</code>.</li>

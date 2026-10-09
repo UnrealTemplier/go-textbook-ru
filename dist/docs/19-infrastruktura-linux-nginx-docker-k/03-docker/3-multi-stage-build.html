@@ -311,7 +311,6 @@
 <p>В компилируемых языках — Си, C++, Rust и Go — <strong>среда сборки (Build Environment)</strong> и <strong>среда исполнения (Runtime Environment)</strong> кардинально различаются. Сборка требует богатого набора инструментов, но для выполнения полностью статического Go-бинарника не нужна даже операционная система — достаточно лишь ядра Linux.</p>
 <hr />
 <h2 id="1-arkhitekturnaya-kontseptsiya-multi-stage-build">1. Архитектурная концепция Multi-Stage Build</h2>
-
 <p>Движок Docker позволяет объявлять инструкцию <code>FROM</code> <strong>несколько раз внутри одного Dockerfile</strong>. Каждая последующая директива <code>FROM</code> начинает <strong>новый этап сборки (Stage)</strong> с абсолютно чистого листа, отсекая все слои и временные файлы предыдущих этапов.</p>
 <p>Это фундаментальное решение породило классический паттерн:<br />
 1. <strong>Этап сборщика (Builder Stage):</strong> Тяжелый образ с компилятором, где скачиваются зависимости и компилируется бинарник.<br />
@@ -372,7 +371,6 @@ flowchart TD
 
 <hr />
 <h2 id="2-idealnyy-production-ready-multi-stage-dockerfile-dlya-go">2. Идеальный production-ready Multi-Stage Dockerfile для Go</h2>
-
 <p>Соберем воедино все передовые инженерные практики: именованные этапы, кэширование зависимостей, статическую сборку, работу от непривилегированного пользователя и системные сертификаты:</p>
 
 <div class="code-block" data-lang="dockerfile">
@@ -430,7 +428,6 @@ ENTRYPOINT [&quot;/app/myapp&quot;]
 
 <hr />
 <h2 id="3-vybor-bazovogo-obraza-dlya-runner-scratch-distroless-ili-alpine">3. Выбор базового образа для Runner: scratch, distroless или alpine?</h2>
-
 <p>Выбор базового образа для финального этапа — это стратегический компромисс между максимальной безопасностью, минимальным размером и удобством диагностики инцидентов:</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
@@ -480,18 +477,18 @@ ENTRYPOINT [&quot;/app/myapp&quot;]
 </tr>
 </tbody>
 </table></div>
-<h3 id="1-obraz-scratch-absolyutnyy-vakuum">1. Образ `scratch` (Абсолютный вакуум)</h3>
+<h3 id="1-obraz-scratch-absolyutnyy-vakuum">1. Образ <code>scratch</code> (Абсолютный вакуум)</h3>
 <p>В образе <code>scratch</code> нет вообще ничего — ни одного файла, ни оболочки shell, ни директории <code>/etc/passwd</code>.<br />
 * <strong>Плюсы:</strong> Минимальный физический размер. Абсолютная защита: злоумышленник физически не может запустить шелл-скрипт или скачать вредоносный бинарник.<br />
 * <strong>Минусы:</strong> Нельзя зайти в контейнер через <code>docker exec -it ... sh</code> для дебага. Отсутствуют CA-сертификаты (ваши исходящие HTTPS-запросы упадут с ошибкой <code>x509: certificate signed by unknown authority</code>). Отсутствуют файлы временных зон (<code>time.LoadLocation</code> вернет ошибку).<br />
 * <em>Решение:</em> Скопировать сертификаты и tzdata на этапе <code>builder</code>:<br />
 <code>dockerfile
   COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/</code></p>
-<h3 id="2-obrazy-google-distroless-zolotoy-korporativnyy-standart">2. Образы Google `distroless` (Золотой корпоративный стандарт)</h3>
+<h3 id="2-obrazy-google-distroless-zolotoy-korporativnyy-standart">2. Образы Google <code>distroless</code> (Золотой корпоративный стандарт)</h3>
 <p>Линейка образов <code>gcr.io/distroless/static-debian12</code> специально спроектирована инженерами Google для статических приложений.<br />
 * <strong>Плюсы:</strong> Образ содержит корневые сертификаты, базу таймзон <code>/usr/share/zoneinfo</code>, файл <code>/etc/passwd</code> с дефолтным пользователем <code>nonroot</code> (UID 65532), но <strong>не содержит командной оболочки shell</strong>. Это гарантирует непробиваемость перед атаками типа Command Injection при нулевых затратах на ручную конфигурацию.<br />
 * <strong>Минусы:</strong> Отладка через <code>exec</code> по-прежнему невозможна (нет <code>sh</code>).</p>
-<h3 id="3-obraz-alpine-pragmatichnyy-vybor-dlya-razrabotki">3. Образ `alpine` (Прагматичный выбор для разработки)</h3>
+<h3 id="3-obraz-alpine-pragmatichnyy-vybor-dlya-razrabotki">3. Образ <code>alpine</code> (Прагматичный выбор для разработки)</h3>
 <ul>
 <li><strong>Плюсы:</strong> Наличие минималистичного шелла BusyBox позволяет в критической ситуации подключиться к контейнеру командой <code>docker exec -it &lt;id&gt; sh</code> и запустить сетевую диагностику через <code>netstat</code> или <code>wget</code>.</li>
 <li><strong>Минусы:</strong> Использует стандартную библиотеку языка Си <strong><code>musl libc</code></strong> вместо <code>glibc</code>.</li>
@@ -526,8 +523,7 @@ ENTRYPOINT [&quot;/app/myapp&quot;]
 
 
 <hr />
-<h2 id="copy-chown-izyashchnoe-vladenie-faylami">`COPY --chown`: Изящное владение файлами</h2>
-
+<h2 id="copy-chown-izyashchnoe-vladenie-faylami"><code>COPY --chown</code>: Изящное владение файлами</h2>
 <p>В классическом одноэтапном подходе файлы, скопированные в образ, автоматически принадлежат пользователю <code>root</code>. Чтобы перевести их на <code>appuser</code>, разработчики выполняли:</p>
 
 <div class="code-block" data-lang="dockerfile">
@@ -561,7 +557,6 @@ RUN chown -R appuser:appgroup /app
 <p>назначает корректного владельца непосредственно в момент записи файла в слой контейнера, не создавая лишних мегабайт в снимках файловой системы.</p>
 <hr />
 <h2 id="5-rasshirennyy-pattern-inektsiya-otladochnykh-instrumentov-delve">5. Расширенный паттерн: Инъекция отладочных инструментов (Delve)</h2>
-
 <p>Что делать, если в тестовом окружении или на staging-стенде требуется подключиться к живому Go-процессу интерактивным отладчиком <strong>Delve (<code>dlv</code>)</strong> или снять профили через pprof, но тащить тяжелые отладочные пакеты в продакшен строго запрещено?</p>
 <p>Многоэтапная сборка позволяет формировать альтернативные сборочные цели (<strong>Build Targets</strong>):</p>
 
@@ -610,7 +605,6 @@ ENTRYPOINT [&quot;/go/bin/dlv&quot;, &quot;--listen=:40000&quot;, &quot;--headle
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Multi-Stage Build</strong> кардинально разделяет среду компиляции и среду исполнения, уменьшая размер продакшен-образов Go с сотен мегабайт до компактных 15–25 МБ.</li>
 <li><strong>Выбор Runner:</strong> <code>distroless</code> — эталон безопасности для боевого продакшена; <code>alpine</code> — удобный компромисс для сервисов, требующих оперативной ручной диагностики; <code>scratch</code> — предельный минимализм, требующий ручной подкладки сертификатов.</li>

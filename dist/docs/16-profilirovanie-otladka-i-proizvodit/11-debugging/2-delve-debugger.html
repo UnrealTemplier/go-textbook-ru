@@ -401,13 +401,11 @@
 
           <div class="article-markdown">
             <h2 id="delve-interaktivnyy-otladchik-go">Delve: интерактивный отладчик Go</h2>
-
 <p>В предыдущей статье «<a href="1-debugging-v-go.html" class="wikilink">1. Debugging в Go</a>» мы определили отладку как искусство поиска логических ошибок и расследования аномального поведения рантайма, выстроив общую карту диагностических инструментов. Теперь мы берем в руки главный интерактивный скальпель Go-разработчика — <strong>Delve</strong> (<code>dlv</code>).</p>
 <p>Это специализированный отладчик уровня исходного кода, позволяющий устанавливать точки останова (включая условные), пошагово трассировать инструкции, инспектировать локальные переменные и регистры процессора, мгновенно переключаться между тысячами горутин и препарировать посмертные дампы памяти (Core Dumps). В отличие от профилировщика <code>pprof</code>, отображающего размытую агрегированную статистику за интервал времени, Delve предоставляет абсолютный детерминированный контроль над конкретным срезом состояния программы.</p>
 <p>Для Senior Go-инженера Delve — не костыль на случай «непонятной ошибки», а высокоточный лабораторный инструмент. Умение виртуозно управлять Delve из терминала и связывать его с анализом гонок данных (<a href="3-race-detector-v-prode.html" class="wikilink">3. Race detector в проде</a>) и дедлоков входит в золотой стандарт инженерной квалификации.</p>
 <hr />
 <h2 id="arkhitektura-delve-kak-otladchik-vzaimodeystvuet-s-go-pod-kapotom">Архитектура Delve: как отладчик взаимодействует с Go под капотом</h2>
-
 <p>Классические отладчики вроде GDB создавались десятилетия назад для языков C и C++. Они мыслят понятиями потоков операционной системы (OS Threads) и ничего не знают о внутренних структурах рантайма Go: легковесных горутинах <code>runtime.g</code>, каналах <code>runtime.hchan</code>, интерфейсах <code>runtime.iface</code> и динамических расширяемых стеках. Попытка отлаживать сложный Go-сервис через GDB обычно заканчивается кашей из системных тредов и искаженными стековыми фреймами.</p>
 <p>Отладчик <strong>Delve</strong> изначально спроектирован с глубоким пониманием рантайма Go:</p>
 
@@ -442,14 +440,12 @@ flowchart TD
 * В <strong>macOS</strong> он взаимодействует через системный API <code>proc_*</code> и Mach-порты ядра.</p>
 <p>Отладчик перехватывает сигналы ядра, останавливает выполнение инструкций процессора, считывает память процесса и сопоставляет машинные адреса с исходным кодом, используя стандартную отладочную информацию <strong>DWARF</strong> (версий 4 и 5). Компилятор Go автоматически встраивает DWARF-таблицы в результирующий бинарный файл, если сборка не производилась с флагами усечения отладочных символов <code>-ldflags="-s -w"</code>.</p>
 <h3 id="fundamentalnye-sledstviya-arkhitektury">Фундаментальные следствия архитектуры:</h3>
-
 <ol>
 <li><strong>Полная независимость от модификации кода:</strong> Delve не требует перекомпиляции программы со специальными обертками. Он способен исследовать стандартный бинарник, собранный <code>go build</code> (при сохранении DWARF).</li>
 <li><strong>Колоссальный оверхед системных прерываний:</strong> Вызов <code>ptrace</code> принудительно останавливает либо поток ОС, либо весь процесс целиком через сигнал <code>SIGTRAP</code>. Это полностью разрушает временные характеристики (тайминги), замораживает фоновые сетевые циклы и приводит к разрыву TCP-сокетов. По этой причине Delve <strong>категорически запрещено использовать на живом продакшене</strong>.</li>
 </ol>
 <hr />
 <h2 id="ustanovka-i-rezhimy-zapuska">Установка и режимы запуска</h2>
-
 <p>Канонический способ установки Delve — компиляция через <code>go install</code>:</p>
 
 <div class="code-block" data-lang="bash">
@@ -497,10 +493,8 @@ dlv core ./my_server core.dump
 
 <hr />
 <h2 id="komandnyy-arsenal-repl-interfeys-delve">Командный арсенал: REPL интерфейс Delve</h2>
-
 <p>Интерфейс командной строки Delve представляет собой интерактивный цикл REPL (Read-Eval-Print Loop). Освоение ключевых команд позволяет диагностировать сложнейшие аномалии без графической оболочки.</p>
 <h3 id="1-tochki-ostanova-breakpoints">1. Точки останова (Breakpoints)</h3>
-
 <p>Точка останова — инструкция процессора <code>INT 3</code> (опкод <code>0xCC</code> в x86-64), временно подменяемая отладчиком по целевому адресу в памяти, по достижении которой ядро ОС передает сигнал <code>SIGTRAP</code> отладчику.</p>
 <ul>
 <li><strong><code>break main.main</code></strong> (или <code>b main.main</code>) — установка брейкпоинта на точку входа в функцию <code>main</code>.</li>
@@ -524,7 +518,6 @@ Breakpoint 1 set at 0x4a1b20 for main.processOrder() ./service.go:30
 </div>
 
 <h3 id="2-upravlenie-ispolneniem">2. Управление исполнением</h3>
-
 <ul>
 <li><strong><code>continue</code></strong> / <strong><code>c</code></strong> — продолжить выполнение до следующей точки останова.</li>
 <li><strong><code>next</code></strong> / <strong><code>n</code></strong> — шаг на следующую строку в текущей функции (не заходя внутрь вызовов).</li>
@@ -533,7 +526,6 @@ Breakpoint 1 set at 0x4a1b20 for main.processOrder() ./service.go:30
 <li><strong><code>restart</code></strong> — перезапустить программу под отладчиком (быстро, без перекомпиляции).</li>
 </ul>
 <h3 id="3-inspektsiya-steka-i-peremennykh">3. Инспекция стека и переменных</h3>
-
 <ul>
 <li><strong><code>stack</code></strong> / <strong><code>bt</code></strong> — вывод полного стека вызовов (Backtrace) текущей горутины.</li>
 <li><strong><code>frame 2</code></strong> — переход к стековому фрейму номер 2 для исследования локальных переменных вызывающей функции.</li>
@@ -558,7 +550,6 @@ main.User{ID: 42, Name: &quot;Alice&quot;, Email: &quot;alice@example.com&quot;}
 </div>
 
 <h3 id="4-rabota-s-gorutinami">4. Работа с горутинами</h3>
-
 <p>Главная суперсила Delve — бесшовная работа с абстракциями планировщика Go:</p>
 <ul>
 <li><strong><code>goroutines</code></strong> / <strong><code>grs</code></strong> — полный список всех существующих горутин в памяти с указанием их текущего статуса (<code>running</code>, <code>runnable</code>, <code>waiting</code>). Это интерактивный аналог дампа горутин (<a href="../08-runtime-i-instrumenty/4-goroutine-dump.html" class="wikilink">4. goroutine dump</a>).</li>
@@ -566,7 +557,6 @@ main.User{ID: 42, Name: &quot;Alice&quot;, Email: &quot;alice@example.com&quot;}
 <li><strong><code>goroutines -t</code></strong> — вывод списка всех горутин с раскрытыми трассировками их стеков. Незаменимо для распутывания взаимных блокировок.</li>
 </ul>
 <h3 id="5-prochie-poleznye-komandy">5. Прочие полезные команды</h3>
-
 <ul>
 <li><strong><code>disassemble</code></strong> / <strong><code>disass</code></strong> — показать ассемблерный листинг текущей функции (требует понимания ассемблера Go, но иногда необходимо).</li>
 <li><strong><code>regs</code></strong> — содержимое регистров процессора (<code>RAX</code>, <code>RSP</code>, <code>RIP</code> и др.).</li>
@@ -576,7 +566,6 @@ main.User{ID: 42, Name: &quot;Alice&quot;, Email: &quot;alice@example.com&quot;}
 </ul>
 <hr />
 <h2 id="prosmotr-slozhnykh-tipov-i-kastomnye-printery">Просмотр сложных типов и кастомные принтеры</h2>
-
 <p>Delve корректно отображает слайсы, мапы, интерфейсы и структуры:</p>
 <ul>
 <li><strong><code>p var</code></strong> — покажет значение с полями структуры.</li>
@@ -610,7 +599,6 @@ main.User{ID: 42, Name: &quot;Alice&quot;, Email: &quot;alice@example.com&quot;}
 <p>Если стандартный вывод структур перегружен, Delve поддерживает настройку конфигурационного файла <code>~/.dlv/config.yml</code>, где можно активировать <strong>pretty-print</strong> и подключать кастомные функции строкового форматирования для визуализации доменных типов.</p>
 <hr />
 <h2 id="udalennaya-otladka-v-konteynerakh-headless-mode">Удаленная отладка в контейнерах (Headless Mode)</h2>
-
 <p>При разработке распределенных систем код часто выполняется внутри контейнеров Docker или в удаленном кластере Kubernetes. В таких условиях запустить интерактивный терминал невозможно.</p>
 <p>Delve решает эту задачу через <strong>Headless-режим</strong> (серверный режим без консоли):</p>
 
@@ -660,7 +648,6 @@ dlv debug --headless --listen=:2345 --api-version=2 ./main.go
 
 <hr />
 <h2 id="anatomiya-postmortem-analiza-preparirovanie-core-dump">Анатомия Postmortem анализа: препарирование Core Dump</h2>
-
 <p>Когда сервис падает с фатальной паникой или сегментацией памяти на удаленном сервере, Delve выступает в роли патологоанатома. </p>
 <p>Workflow посмертного вскрытия (подробно разобранный в <a href="6-core-dumps.html" class="wikilink">6. Core dumps</a>):</p>
 
@@ -700,7 +687,6 @@ flowchart LR
 </ol>
 <hr />
 <h2 id="mechanical-sympathy-apparatnaya-tsena-interaktivnoy-ostanovki">Mechanical Sympathy: Аппаратная цена интерактивной остановки</h2>
-
 <p>Каждый раз, когда процессор спотыкается о точку останова Delve, в системе запускается каскад низкоуровневых событий:</p>
 
 <div class="code-block" data-lang="ascii">
@@ -736,7 +722,6 @@ flowchart LR
 </ol>
 <hr />
 <h2 id="tipichnye-stsenarii-ispolzovaniya-delve">Типичные сценарии использования Delve</h2>
-
 <h3 id="1-rassledovanie-paniki">1. Расследование паники</h3>
 <p>Программа спорадически падает с сообщением <code>panic: runtime error: invalid memory address or nil pointer dereference</code>. Стек указывает на функцию <code>processData</code>. <br />
 * Запускаем Delve, ставим брейкпоинт: <code>break processData</code>.<br />
@@ -761,7 +746,6 @@ flowchart LR
 * Стек показывает, что канал был закрыт в блоке <code>defer</code>, но горутина-отправитель еще работала. Находим гонку по управлению жизненным циклом канала.</p>
 <hr />
 <h2 id="integratsiya-s-sovremennymi-ide-i-cicd">Интеграция с современными IDE и CI/CD</h2>
-
 <p>Хотя консольный интерфейс Delve самодостаточен, современные редакторы предоставляют удобные графические оболочки:<br />
 * <strong>VSCode:</strong> Официальный плагин Go интегрирует Delve «из коробки». Точки останова выставляются кликом мыши, запуск отладки по клавише <code>F5</code>. Конфигурация <code>.vscode/launch.json</code> позволяет легко настроить удаленную отладку через headless port.<br />
 * <strong>GoLand (JetBrains):</strong> Глубокая интеграция с визуализацией дерева горутин, поддержкой условных брейкпоинтов и инспекцией структур в реальном времени.</p>
@@ -785,7 +769,6 @@ sleep 5
 <p>Однако на практике нестабильные тесты эффективнее локализовать через параллельные прогоны с ключами <code>-race</code> и <code>-count=100</code>.</p>
 <hr />
 <h2 id="svyaz-v-ekosisteme-znaniy">Связь в экосистеме знаний</h2>
-
 <ul>
 <li><a href="1-debugging-v-go.html" class="wikilink">1. Debugging в Go</a> — философский фундамент и классификация методов отладки.</li>
 <li><a href="3-race-detector-v-prode.html" class="wikilink">3. Race detector в проде</a> — как использовать ThreadSanitizer для локализации гонок, которые Delve маскирует.</li>
@@ -797,7 +780,6 @@ sleep 5
 </ul>
 <hr />
 <h2 id="rezyume">Резюме</h2>
-
 <ol>
 <li><strong>Delve — специализированный инструмент для Go:</strong> Он понимает структуры рантайма (<code>runtime.g</code>, <code>hchan</code>, интерфейсы) и опирается на отладочную информацию DWARF.</li>
 <li><strong>Функциональные возможности:</strong> Условные брейкпоинты, переключение контекста между горутинами, удаленная отладка через Headless Mode и расследование посмертных core dump'ов.</li>

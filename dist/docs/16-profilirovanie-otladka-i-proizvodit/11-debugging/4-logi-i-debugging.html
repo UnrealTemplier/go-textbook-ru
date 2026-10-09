@@ -401,23 +401,20 @@
           </header>
 
           <div class="article-markdown">
-            <h2 id="logi-i-debugging-pochemu-fmt-println-ne-strategiya">Логи и debugging: почему `fmt.Println` — не стратегия</h2>
-
+            <h2 id="logi-i-debugging-pochemu-fmt-println-ne-strategiya">Логи и debugging: почему <code>fmt.Println</code> — не стратегия</h2>
 <p>В предыдущих главах мы детально рассмотрели интерактивную пошаговую отладку с помощью Delve (<a href="2-delve-debugger.html" class="wikilink">2. Delve debugger</a>), требующую жесткой остановки процесса системным вызовом <code>ptrace</code>, и специализированный детектор гонок (<a href="3-race-detector-v-prode.html" class="wikilink">3. Race detector в проде</a>), замедляющий исполнение в 10 раз. Оба эти инструмента либо категорически неприменимы на живом боевом трафике продакшена, либо до неузнаваемости искажают временные характеристики системы.</p>
 <p>Что же остается в распоряжении инженера, когда сервис обрабатывает 30 000 RPS в распределенном кластере Kubernetes? Остается самый древний, универсальный и при этом наиболее часто недооцениваемый инструмент — <strong>логи</strong>.</p>
 <p>Правильно спроектированная система логирования — это не хаотичный сброс отладочных строк на диск, а высокопроизводительный, структурированный поток телеметрии первого уровня. Когда глобальные метрики сигнализируют о всплеске серверных ошибок, а распределенная трассировка (подробно разобранная в разделе <span class="wikilink-unresolved" title="Заметка в разработке">18. Observability</span>) указывает на деградацию конкретного микросервиса, именно логи позволяют по сквозному Correlation ID посекундно восстановить причинно-следственную цепочку событий в момент сбоя. Без логов любые метрики и трейсы — это мощный микроскоп с выключенной подсветкой.</p>
 <p>В этой статье мы превратим логирование из источника тормозов в высокоточный отладочный инструмент: разберем стандарт <code>log/slog</code>, архитектуру Correlation ID, динамическое переключение уровней детализации на лету и механическое сочувствие к процессору (<a href="../01-fundament/5-mechanical-sympathy-v-backend-razrabotke.html" class="wikilink">5. Mechanical sympathy в backend разработке</a>) при профилировании аллокаций (<a href="../04-memory-profiling/4-allocation-profiling.html" class="wikilink">4. Allocation profiling</a>) и сборке мусора (<a href="../05-garbage-collector/1-gc-v-go-obzor.html" class="wikilink">1. GC в Go. Обзор</a>).</p>
 <hr />
-<h2 id="ot-fmt-println-k-strukturirovannomu-logirovaniyu">От `fmt.Println` к структурированному логированию</h2>
-
+<h2 id="ot-fmt-println-k-strukturirovannomu-logirovaniyu">От <code>fmt.Println</code> к структурированному логированию</h2>
 <p>Среди начинающих разработчиков распространена привычка расставлять по коду вызовы вроде <code>fmt.Println("error:", err)</code> или <code>log.Printf("user %d failed: %v", userID, err)</code>. В учебных скриптах это допустимо, но в боевом высоконагруженном сервисе такой подход гарантирует три катастрофических последствия:</p>
 <ol>
 <li><strong>Непригодность для машинного анализа:</strong> Неструктурированный текст требует медленного парсинга через регулярные выражения (RegEx), что в разы удорожает работу систем агрегации (Grafana Loki, Elasticsearch, ClickHouse).</li>
 <li><strong>Утрата контекста в конкурентной среде:</strong> Когда 10 000 параллельных горутин одновременно пишут в поток <code>stdout</code>, текстовые строки хаотично перемешиваются, и понять, к какой транзакции или пользователю относится конкретное сообщение об ошибке, становится физически невозможно.</li>
 <li><strong>Колоссальный оверхед по памяти и CPU:</strong> Вызовы <code>fmt.Sprintf</code> внутри классических логеров упаковывают аргументы в интерфейсы <code>interface{}</code> (boxing), порождают непрерывные аллокации строк в куче и запускают лавину циклов сборки мусора (см. <a href="../05-garbage-collector/9-kogda-gc-stanovitsya-bottleneck.html" class="wikilink">9. Когда GC становится bottleneck</a>).</li>
 </ol>
-<h3 id="zolotoy-standart-industrii-paket-logslog">Золотой стандарт индустрии: пакет `log/slog`</h3>
-
+<h3 id="zolotoy-standart-industrii-paket-logslog">Золотой стандарт индустрии: пакет <code>log/slog</code></h3>
 <p>Решением является <strong>структурированное логирование (Structured Logging)</strong>. Вместо произвольной текстовой строки формируется строгая JSON-запись со стандартизированными типизированными атрибутами:</p>
 
 <div class="code-block" data-lang="json">
@@ -473,7 +470,6 @@ func orderHandler(w http.ResponseWriter, r *http.Request) {
 
 <hr />
 <h2 id="correlation-id-rasputyvanie-klubka-v-raspredelennykh-sistemakh">Correlation ID: распутывание клубка в распределенных системах</h2>
-
 <p>В современных микросервисных архитектурах (<a href="../../14-raspredelennye-sistemy-na-go/08-praktika/8-debugging-distributed-systems.html" class="wikilink">8. Debugging distributed systems</a>) единый пользовательский клик порождает цепочку из десятков синхронных и асинхронных вызовов через HTTP, gRPC и брокеры сообщений. Логи изолированного сервиса без глобального идентификатора бесполезны для отладки системных сбоев.</p>
 <p><strong>Correlation ID (Trace ID)</strong> — это глобальный уникальный идентификатор, генерируемый на периметре системы (API Gateway / Ingress) и транзитивно передаваемый через все сетевые границы.</p>
 
@@ -568,7 +564,6 @@ func LoggerFromContext(ctx context.Context, base *slog.Logger) *slog.Logger {
 
 <hr />
 <h2 id="urovni-logirovaniya-i-dinamicheskaya-perenastroyka-na-letu">Уровни логирования и динамическая перенастройка на лету</h2>
-
 <p>В штатном режиме в продакшене выставляется фильтрация уровня <strong><code>slog.LevelInfo</code></strong>, чтобы не перегружать сетевые каналы и дисковые массивы гигабайтами отладочной информации.</p>
 <p>Однако в момент возникновения аварийного инцидента инженеру критически важно заглянуть глубже и активировать уровень <code>Debug</code>. Перезапуск сервиса с изменением конфига недопустим: рестарт сбросит текущее ошибочное состояние памяти и уничтожит воспроизводимость бага.</p>
 <p>Пакет <code>log/slog</code> элегантно решает эту задачу: он поддерживает специализированный <code>LevelHandler</code> или атомарный уровень <code>slog.LevelVar</code>:</p>
@@ -625,18 +620,15 @@ func setLogLevel(w http.ResponseWriter, r *http.Request) {
 <p>Во время аварии дежурный инженер отправляет простой запрос <code>POST /admin/log-level?level=debug</code>, собирает исчерпывающий отладочный лог в течение двух минут и возвращает уровень в <code>info</code> без единого рестарта подов.</p>
 <hr />
 <h2 id="proizvoditelnost-logirovaniya-allokatsii-bufery-i-gc">Производительность логирования: аллокации, буферы и GC</h2>
-
 <p>В системах класса Highload логирование в горячем пути (Hot Path) — один из главных скрытых убийц производительности.</p>
 <p>Давайте посчитаем: если сервис обрабатывает $10\,000 \text{ RPS}$, и на каждый запрос генерируется всего 5 строк логов, система формирует <strong>50 000 записей в секунду</strong>.<br />
 Если каждая запись создает временный срез атрибутов <code>[]slog.Attr</code> и конкатенирует строки, сервис будет генерировать сотни тысяч паразитных аллокаций в секунду, приводя к непрерывному Stop-The-World и взрывному росту <code>p99 latency</code>.</p>
-<h3 id="sravnenie-logerov-slog-zap-i-zerolog">Сравнение логеров: `slog`, `zap` и `zerolog`</h3>
-
+<h3 id="sravnenie-logerov-slog-zap-i-zerolog">Сравнение логеров: <code>slog</code>, <code>zap</code> и <code>zerolog</code></h3>
 <p>Для максимальной производительности в экстремальных нагрузках применяются специализированные библиотеки:<br />
 - <strong><code>uber-go/zap</code>:</strong> Пионер высокоскоростного логирования. Использует предварительно выделенные пулы буферов через <code>sync.Pool</code> (<a href="../09-prakticheskie-optimizatsii/2-sync-pool.html" class="wikilink">2. sync Pool</a>) и строгую типизацию без упаковки в <code>interface{}</code>.<br />
 - <strong><code>rs/zerolog</code>:</strong> Архитектура с абсолютным Zero Allocation. Пишет JSON напрямую в байтовые буферы без создания промежуточных структур.</p>
 <p>Стандартный <code>slog</code> из Go 1.21 спроектирован с учетом этих практик, однако его дефолтный <code>JSONHandler</code> может немного уступать <code>zerolog</code> по чистым аллокациям. В latency-критичных узлах всегда бенчмаркайте альтернативные реализации бэкендов для <code>slog.Handler</code>.</p>
 <h3 id="asinkhronnoe-logirovanie-i-koltsevye-bufery">Асинхронное логирование и кольцевые буферы</h3>
-
 <p>Прямой синхронный вызов системного вывода через <code>syscall.Write</code> (<a href="../07-io-i-sistemnyy-uroven/1-sistemnye-vyzovy-i-ikh-stoimost.html" class="wikilink">1. Системные вызовы и их стоимость</a>) может блокировать горутину на миллисекунды, если буфер пайпа ядра Linux или сокет агента сбора логов переполнен.</p>
 <p>Асинхронные логгеры решают эту проблему: вызывающая горутина лишь помещает сформированное сообщение в неблокирующий кольцевой буфер в памяти (<code>RingBuffer</code>), а отдельная фоновая горутина сбрасывает данные на диск порциями (Batching).</p>
 
@@ -656,7 +648,6 @@ func setLogLevel(w http.ResponseWriter, r *http.Request) {
 <p>Когда трафик исчисляется десятками тысяч запросов в секунду, писать 100% успешных сообщений не имеет смысла. Применяется <strong>сэмплирование</strong>: сохраняется лишь 1% успешных операций (<code>rand.Intn(100) == 0</code>), но 100% сообщений об ошибках (<code>level &gt;= Error</code>).</p>
 <hr />
 <h2 id="mechanical-sympathy-chto-proiskhodit-v-kremnii-pri-zapisi-loga">Mechanical Sympathy: Что происходит в кремнии при записи лога</h2>
-
 <p>Каждая запись лога — это путь от строки в памяти до системного вызова <code>write</code> (или <code>sendto</code> для сети). С точки зрения процессора:</p>
 <ol>
 <li><strong>Форматирование и локальность данных:</strong> Сериализация JSON-структуры требует копирования байт. Если логер использует пулы <code>sync.Pool</code>, память остается «горячей» в кэше процессора L1d/L2, исключая промахи (подробнее в <a href="../03-cpu-profiling/8-cache-friendliness.html" class="wikilink">8. Cache friendliness</a>).</li>
@@ -665,7 +656,6 @@ func setLogLevel(w http.ResponseWriter, r *http.Request) {
 </ol>
 <hr />
 <h2 id="konfiguratsiya-logirovaniya-po-konturam-razvertyvaniya">Конфигурация логирования по контурам развертывания</h2>
-
 <ul>
 <li><strong>Локальная разработка:</strong> Текстовый человекочитаемый формат (<code>slog.NewTextHandler</code>), уровень <code>Debug</code>, вывод в консоль терминала <code>stderr</code>.</li>
 <li><strong>CI / Интеграционные тесты:</strong> Уровень <code>Warn</code> или <code>Error</code>, чтобы не загрязнять вывод конвейера сборки, но гарантированно фиксировать непредвиденные сбои.</li>
@@ -673,7 +663,6 @@ func setLogLevel(w http.ResponseWriter, r *http.Request) {
 </ul>
 <hr />
 <h2 id="prakticheskiy-primer-rassledovanie-intsidenta-cherez-strukturirovannye-logi">Практический пример: расследование инцидента через структурированные логи</h2>
-
 <p><strong>Проблема:</strong> В распределенной платформе электронных платежей сервис чекаута спорадически падал с ошибкой таймаута при списании средств. В старых неструктурированных логах царил хаос из перемешанных строк <code>fmt.Println</code>.</p>
 <p><strong>Инженерный план действий:</strong><br />
 1. Кодовая база была переведена на <code>log/slog</code> с JSON-выводом.<br />
@@ -687,7 +676,6 @@ func setLogLevel(w http.ResponseWriter, r *http.Request) {
 7. Логи перестали быть бесполезным шумом и превратились в точнейший измерительный инструмент.</p>
 <hr />
 <h2 id="rezyume">Резюме</h2>
-
 <ol>
 <li><strong><code>fmt.Println</code> не является инженерной стратегией:</strong> Неструктурированные логи не парсятся машинами, перемешиваются между параллельными горутинами и генерируют горы мусора для GC.</li>
 <li><strong>Используйте стандарт <code>log/slog</code>:</strong> Структурированный JSON-формат, типизированные атрибуты и нативная интеграция с <code>context.Context</code> обеспечивают максимальную наблюдаемость.</li>

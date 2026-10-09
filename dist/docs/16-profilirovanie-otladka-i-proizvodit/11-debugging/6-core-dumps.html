@@ -402,14 +402,12 @@
 
           <div class="article-markdown">
             <h2 id="core-dumps-chyornyy-yashchik-upavshey-programmy">Core dumps: «чёрный ящик» упавшей программы</h2>
-
 <p>В предыдущей главе <a href="5-postmortem-analiz.html" class="wikilink">5. Postmortem анализ</a> мы выстроили целостную методологию расследования инцидентов по сохраненным цифровым следам. Но среди всех возможных артефактов существует один абсолютный источник истины — <strong>Core Dump (дамп ядра / дамп памяти)</strong>. Это исчерпывающий побайтовый снимок виртуальной памяти процесса, зафиксированный операционной системой в наносекунду физической гибели программы.</p>
 <p>Если структурированные логи (<a href="4-logi-i-debugging.html" class="wikilink">4. Логи и debugging</a>) отвечают на вопрос: <em>«Что происходило за мгновение до катастрофы?»</em>, а профили аллокаций — <em>«Какой общий объем памяти был занят кучей?»</em>, то Core Dump позволяет заглянуть в самый эпицентр взрыва. Он позволяет восстановить точнейшее состояние всех горутин, значения абсолютно всех локальных переменных в стеке, содержимое срезов, хэш-таблиц и даже машинные регистры процессора на момент падения.</p>
 <p>Для Senior Go-инженера владение техникой генерации и анализа Core Dump'ов — обязательный стандарт. Спорадические паники с разыменованием <code>nil pointer</code>, фатальные сегфолты в CGO-библиотеках, скрытые повреждения памяти через <code>unsafe.Pointer</code> или дедлоки, которые невозможно воспроизвести локально под отладчиком Delve (<a href="2-delve-debugger.html" class="wikilink">2. Delve debugger</a>) — всё это оставляет неизгладимые улики в Core Dump. </p>
 <p>В этой статье мы препарируем анатомию Core Dump: разберем, как рантайм Go и ядро Linux создают дамп, как правильно сконфигурировать серверы и поды Kubernetes, как провести расследование через Delve и с какими аппаратными ограничениями операционной системы предстоит столкнуться инженеру.</p>
 <hr />
 <h2 id="chto-predstavlyaet-soboy-core-dump-v-arkhitekture-go">Что представляет собой Core Dump в архитектуре Go</h2>
-
 <p><strong>Core Dump</strong> (дамп ядра) — это системный бинарный файл стандарта ELF (Executable and Linkable Format в Linux) или Mach-O (в macOS), содержащий точный снимок адресного пространства виртуальной памяти процесса на момент получения фатального сигнала ядра (<code>SIGSEGV</code>, <code>SIGABRT</code>, <code>SIGBUS</code>, <code>SIGQUIT</code>), при условии, что лимит <code>ulimit -c</code> разрешает запись на диск.</p>
 <p>В контексте среды выполнения Go Core Dump сохраняет фундаментальные пласты рантайма:</p>
 
@@ -442,8 +440,7 @@
 </ul>
 <p>В отличие от текстового дампа горутин (<a href="../08-runtime-i-instrumenty/4-goroutine-dump.html" class="wikilink">4. goroutine dump</a>), содержащего лишь плоские стек-трейсы, Core Dump — это <strong>полноценный замороженный бинарный слепок</strong>. Это позволяет инспектировать реальные значения в структурах данных, обходить граф объектов кучи и диагностировать повреждения памяти, вызванные CGO.</p>
 <hr />
-<h2 id="kak-go-upravlyaet-sozdaniem-core-dump-peremennaya-gotraceback">Как Go управляет созданием Core Dump: переменная `GOTRACEBACK`</h2>
-
+<h2 id="kak-go-upravlyaet-sozdaniem-core-dump-peremennaya-gotraceback">Как Go управляет созданием Core Dump: переменная <code>GOTRACEBACK</code></h2>
 <p>Рантайм Go перехватывает аварийные сигналы и паники. Поведение рантайма при падении напрямую определяется системной переменной окружения <strong><code>GOTRACEBACK</code></strong>:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -510,10 +507,8 @@ flowchart TD
 
 <hr />
 <h2 id="nastroyka-infrastruktury-dlya-sokhraneniya-core-dump">Настройка инфраструктуры для сохранения Core Dump</h2>
-
 <p>По умолчанию большинство дистрибутивов Linux блокируют запись дампов ради экономии дискового пространства (<code>ulimit -c 0</code>).</p>
 <h3 id="lokalno-i-na-serverakh">Локально и на серверах</h3>
-
 
 <div class="code-block" data-lang="bash">
   <header class="code-header">
@@ -553,7 +548,6 @@ echo &quot;/var/coredumps/core.%e.%p.%t&quot; | sudo tee /proc/sys/kernel/core_p
 <p>Где <code>/usr/local/bin/core_compressor</code> принимает бинарный поток дампа из <code>stdin</code>, сжимает его на лету с помощью <code>zstd</code> или <code>gzip</code> и асинхронно сбрасывает в сетевое хранилище (NFS / S3).</p>
 <hr />
 <h3 id="2-nastroyka-v-konteynerakh-kubernetes-i-docker">2. Настройка в контейнерах Kubernetes и Docker</h3>
-
 <p>В контейнеризированных окружениях контейнер после краша немедленно уничтожается оркестратором. Если не принять меры, дамп испарится вместе с контейнером.</p>
 <p>Правильная конфигурация пода в Kubernetes:</p>
 
@@ -604,7 +598,6 @@ spec:
 
 <hr />
 <h2 id="analiz-core-dump-s-pomoshchyu-otladchika-delve">Анализ Core Dump с помощью отладчика Delve</h2>
-
 <p>Для препарирования посмертного дампа используется специализированный режим Delve (<code>dlv core</code>):</p>
 
 <div class="code-block" data-lang="bash">
@@ -632,7 +625,6 @@ spec:
 </ul>
 <hr />
 <h3 id="prakticheskiy-stsenariy-rassledovanie-paniki-nil-pointer-dereference">Практический сценарий: Расследование паники Nil Pointer Dereference</h3>
-
 <p><strong>Ситуация:</strong> Боевой API-сервер упал с ошибкой <code>panic: runtime error: invalid memory address or nil pointer dereference</code>. В логах виден лишь факт паники. Открываем сохраненный Core Dump:</p>
 
 <div class="code-block" data-lang="bash">
@@ -676,7 +668,6 @@ nil
 <p><strong>Диагноз:</strong> На строке <code>handler.go:67</code> выполнялось чтение поля <code>record.Data.Field</code> при значении <code>Data == nil</code> (переменная <code>record.Data</code> оказалась равна <code>nil</code>). Без Core Dump мы бы видели только строку кода, но не знали бы, какое именно поле структуры содержало <code>nil</code>. Core Dump позволил мгновенно увидеть конкретное значение объекта <code>record</code>.</p>
 <hr />
 <h3 id="analiz-dedloka">Анализ дедлока</h3>
-
 <p>Если сервис завис в мертвом клинче, сборщик мусора и запросы клиентов останавливаются. Внешний мониторинг фиксирует таймаут пробы <code>livenessProbe</code> и завершает процесс сигналом <code>SIGABRT</code> (или администратор посылает <code>kill -ABRT</code>).</p>
 <p>Открыв Core Dump такого процесса в Delve, мы выполняем команду <code>goroutines</code> и видим характерную патологию:<br />
 * 0 горутин со статусом <code>[running]</code>.<br />
@@ -685,7 +676,6 @@ nil
 <p>Переключаясь между горутинами (<code>goroutine 12</code>, <code>goroutine 15</code>), мы исследуем переменные каналов и мьютексов, мгновенно выявляя циклическую зависимость блокировок.</p>
 <hr />
 <h2 id="ogranicheniya-i-riski-ispolzovaniya-core-dump">Ограничения и риски использования Core Dump</h2>
-
 <p>При всей своей мощи Core Dump — это тяжеловесный инструмент, требующий осторожности:</p>
 <ol>
 <li><strong>Гигантский размер на диске:</strong> Объем дампа равен объему виртуальной памяти (RSS + анонимные страницы), выделенной процессу. Для Go-сервиса с 16 ГБ кучи дамп займет 16 ГБ дискового пространства. Если на сервере кончится свободное место, это приведет к падению соседних сервисов.</li>
@@ -695,7 +685,6 @@ nil
 </ol>
 <hr />
 <h2 id="alternativy-kogda-core-dump-izbytochen">Альтернативы: когда Core Dump избыточен</h2>
-
 <p>Если падения вызваны предсказуемыми логическими дефектами, Core Dump часто можно заменить значительно более легкими инструментами:</p>
 <ul>
 <li><strong>Текстовый дамп горутин (<a href="../08-runtime-i-instrumenty/4-goroutine-dump.html" class="wikilink">4. goroutine dump</a>):</strong> Снимается по сигналу <code>SIGQUIT</code> или через <code>pprof.Lookup("goroutine").WriteTo()</code>. Он весит несколько мегабайт текста и полностью достаточен для распутывания 90% взаимных блокировок (дедлоков).</li>
@@ -704,7 +693,6 @@ nil
 </ul>
 <hr />
 <h2 id="mechanical-sympathy-chto-proiskhodit-v-yadre-os-pri-zapisi-dampa">Mechanical Sympathy: Что происходит в ядре ОС при записи дампа</h2>
-
 <p>Когда рантайм Go выполняет <code>abort()</code>, процессор переходит в режим обработки исключения:</p>
 
 <div class="code-block" data-lang="ascii">
@@ -731,7 +719,6 @@ nil
 </ol>
 <hr />
 <h2 id="rezyume">Резюме</h2>
-
 <ol>
 <li><strong>Core Dump — абсолютный черный ящик:</strong> Это полный побайтовый снимок виртуальной памяти процесса (стеки всех горутин, куча, код, регистры CPU).</li>
 <li><strong>Активация через <code>GOTRACEBACK=crash</code>:</strong> Только с этим параметром рантайм Go вызывает системный <code>abort()</code>, инициируя генерацию дампа при панике.</li>

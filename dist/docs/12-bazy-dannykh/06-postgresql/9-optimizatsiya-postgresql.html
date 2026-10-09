@@ -442,7 +442,6 @@
 <p>В этой главе мы систематизируем принципы глубокого тюнинга PostgreSQL, превращая неповоротливый «черный ящик» в предсказуемый и послушный реактивный двигатель вашего бэкенда.</p>
 <hr />
 <h2 id="1-konfiguratsiya-tyuning-parametrov-pod-sovremennoe-zhelezo">1. Конфигурация: Тюнинг параметров под современное железо</h2>
-
 <p>Конфигурационный файл по умолчанию (<code>postgresql.conf</code>) исторически настроен так, чтобы сервер гарантированно запустился даже на скромном виртуальном сервере с 512 МБ оперативной памяти. Для промышленного инженера понимание физического смысла ключевых директив — обязательный базовый навык.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -485,7 +484,7 @@ flowchart TD
 </figure>
 
 
-<h3 id="pamyat-sharedbuffers-i-keshirovanie">Память: `shared_buffers` и кэширование</h3>
+<h3 id="pamyat-sharedbuffers-i-keshirovanie">Память: <code>shared_buffers</code> и кэширование</h3>
 <ul>
 <li><strong><code>shared_buffers</code></strong>: Как мы выяснили в <a href="1-arkhitektura-postgresql.html" class="wikilink">1. Архитектура PostgreSQL</a>, это сегмент разделяемой памяти для кэширования 8-килобайтных страниц данных. Для большинства промышленных инсталляций золотым стандартом является значение в <strong>25% от общего объема физической RAM</strong>.</li>
 <li><em>Почему не отдать все 80%, как в MySQL?</em> PostgreSQL намеренно не использует прямой ввод-вывод (<code>O_DIRECT</code>), всецело доверяя кэшированию страниц ядру Linux (Page Cache). Если забрать под <code>shared_buffers</code> почти всю память, вы спровоцируете эффект двойного буферизирования и лишите ядро ОС возможности кэшировать чтение файлов на системном уровне.</li>
@@ -500,7 +499,6 @@ flowchart TD
 </ul>
 <hr />
 <h2 id="2-analiz-zaprosov-kogda-planirovshchik-oshibaetsya">2. Анализ запросов: Когда планировщик ошибается</h2>
-
 <p>Даже идеально сконфигурированный кластер будет тормозить, если SQL-запросы составлены неграмотно. Главным диагностическим микроскопом инженера является команда <code>EXPLAIN (ANALYZE, BUFFERS)</code> (или просто <code>EXPLAIN ANALYZE</code>):</p>
 
 <div class="code-block" data-lang="sql">
@@ -551,7 +549,6 @@ SELECT * FROM orders WHERE user_id = 500 AND status = 'pending';
 
 <hr />
 <h2 id="3-optimizatsiya-na-urovne-go-prilozheniya">3. Оптимизация на уровне Go-приложения</h2>
-
 <p>Инженер, разрабатывающий сервис на Go, оказывает прямое влияние на здоровье базы данных через выбор драйвера и архитектуру взаимодействия с пулом соединений.</p>
 <h3 id="podgotovlennye-vyrazheniya-prepared-statements">Подготовленные выражения (Prepared Statements)</h3>
 <p>Использование параметризованных вызовов вроде <code>db.Query("SELECT ... WHERE id = $1", id)</code> решает две фундаментальные задачи:<br />
@@ -669,7 +666,6 @@ func InsertMetricsBatch(ctx context.Context, pool *pgxpool.Pool, metrics []Metri
 <p>Пакетная вставка упаковывает данные в единый сетевой пакет и выполняет единый групповой коммит в WAL, ускоряя операции модификации в <strong>10–50 раз</strong>!</p>
 <hr />
 <h2 id="4-ekspluatatsionnoe-obsluzhivanie-predotvrashchenie-bloat">4. Эксплуатационное обслуживание: Предотвращение Bloat</h2>
-
 <p>Как мы подробно разбирали в <a href="3-mvcc-v-postgresql.html" class="wikilink">3. MVCC в PostgreSQL</a>, операции <code>UPDATE</code> и <code>DELETE</code> оставляют на страницах Heap мертвые кортежи. Если фоновый демон Autovacuum отстает от темпа записи, таблицы катастрофически раздуваются (Bloat).</p>
 <h3 id="tyuning-dlya-bolshikh-tablits">Тюнинг для больших таблиц:</h3>
 <p>Если в таблице 100 млн строк, а вы обновляете 1% ежедневно, дефолтный Autovacuum может запускаться слишком редко.</p>
@@ -717,7 +713,6 @@ ORDER BY pg_relation_size(indexrelid) DESC;
 <p>Если индекс имеет <code>idx_scan = 0</code> на протяжении месяцев промышленной эксплуатации, он должен быть безжалостно удален (<code>DROP INDEX CONCURRENTLY</code>).</p>
 <hr />
 <h2 id="5-ispolzovanie-rasshireniy-dlya-analiza">5. Использование расширений для анализа</h2>
-
 <p>Как упоминалось в <a href="7-rasshireniya-postgresql.html" class="wikilink">7. Расширения PostgreSQL</a>, расширение <code>pg_stat_statements</code> — ваш лучший друг. Оно позволяет найти "самые дорогие" запросы не в теории, а на реальном трафике.</p>
 <p><strong>Топ-5 запросов по суммарному времени выполнения:</strong></p>
 
@@ -739,7 +734,6 @@ LIMIT 5;
 <p>Инспектируя этот отчет, вы безошибочно определите, где оптимизация даст максимальный финансовый и архитектурный эффект.</p>
 <hr />
 <h2 id="rezyume-dlya-inzhenera">Резюме для инженера</h2>
-
 <ol>
 <li><strong>Конфигурация под SSD:</strong> Выделите 25% RAM под <code>shared_buffers</code>, 75% под <code>effective_cache_size</code> и обязательно понизьте <code>random_page_cost</code> до <code>1.1</code>.</li>
 <li><strong>Диагностика планов:</strong> Регулярно запускайте <code>EXPLAIN (ANALYZE, BUFFERS)</code> и стремитесь к минимизации параметра <code>shared read</code>.</li>

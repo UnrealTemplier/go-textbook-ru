@@ -327,7 +327,6 @@
 
           <div class="article-markdown">
             <h2 id="vvedenie-vykhod-za-granitsy-virtualnoy-faylovoy-sistemy">Введение: выход за границы виртуальной файловой системы</h2>
-
 <p>В Unix-подобных операционных системах всё является файлом, а доступ к файловой системе строится вокруг единого древовидного графа inode. Когда бэкенд-приложение реализует функции загрузки аватаров, отдачи статических отчетов, экспорта PDF или чтения локализованных шаблонов, разработчик почти всегда оперирует концепцией «базовой доверенной директории» (например, <code>/var/app/uploads/</code>).</p>
 <p>Но что произойдет, если пользователь вместо безобидного имени файла <code>report.pdf</code> передаст строку <code>../../../../etc/passwd</code>?</p>
 <p>Если сервис склеит переданную строку с базовым путем без исчерпывающей проверки, возникает критическая уязвимость <strong>Path Traversal (Обход путей каталога)</strong>.</p>
@@ -373,8 +372,7 @@ flowchart TD
 
 
 <hr />
-<h2 id="mekhanika-v-go-filepath-clean-filepath-join-i-ikh-ogranicheniya">Механика в Go: `filepath.Clean`, `filepath.Join` и их ограничения</h2>
-
+<h2 id="mekhanika-v-go-filepath-clean-filepath-join-i-ikh-ogranicheniya">Механика в Go: <code>filepath.Clean</code>, <code>filepath.Join</code> и их ограничения</h2>
 <p>Стандартная библиотека Go предоставляет функции <code>filepath.Clean</code> и <code>filepath.Join</code>. Начинающие разработчики часто ошибочно полагают, что вызов <code>filepath.Clean(userInput)</code> или <code>filepath.Join(baseDir, userInput)</code> гарантирует защиту от выхода за пределы каталога. </p>
 <p>Это опасное заблуждение. Функции пакета <code>path/filepath</code> выполняют исключительно <strong>лексическую нормализацию</strong> текстовой строки:<br />
 - Убирают повторяющиеся избыточные разделители (<code>//</code> -&gt; <code>/</code>).<br />
@@ -385,7 +383,6 @@ flowchart TD
 - <strong>Не защищают от обхода через двойное кодирование</strong> (<code>%2e%2e%2f</code> или устаревшие UTF-8 оверлонги вроде <code>..%c0%af</code>), если декодирование произведено некорректно.</p>
 <p>Если базовая папка равна <code>/var/app/data</code>, а пользователь передал <code>../../etc/passwd</code>, то <code>filepath.Join("/var/app/data", "../../etc/passwd")</code> честно вычислит лексический результат: <code>/var/etc/passwd</code>. Защита не сработала.</p>
 <h3 id="idiomatichnyy-shablon-bezopasnogo-khendlera-faylov-v-go">Идиоматичный шаблон безопасного хендлера файлов в Go</h3>
-
 <p>Чтобы надежно запереть чтение файлов внутри целевого каталога, алгоритм обязан включать лексическую нормализацию, получение абсолютных путей, строгую проверку префикса и запрет символических ссылок:</p>
 
 <div class="code-block" data-lang="go">
@@ -489,15 +486,13 @@ func SecureFileHandler(baseDir string) http.HandlerFunc {
 
 <hr />
 <h2 id="pod-kapotom-syscalls-dentry-cache-i-problema-toctou">Под капотом: syscalls, dentry cache и проблема TOCTOU</h2>
-
 <p>Даже идеальная пользовательская проверка путей через <code>filepath.Clean</code> и <code>os.Lstat</code> страдает от фундаментальной уязвимости многозадачных ОС: <strong>Time-of-Check to Time-of-Use (TOCTOU)</strong>.</p>
 <p>Представьте временной промежуток между двумя системными вызовами:<br />
 1. Шаг проверки: Сервер вызывает <code>os.Lstat("/var/uploads/avatar.png")</code> и убеждается, что это обычный файл.<br />
 2. Интервал времени: Процесс Go уступает тред операционной системы другому процессу.<br />
 3. Атака гонки: Параллельный процесс атакующего (или эксплуатация race condition) удаляет <code>avatar.png</code> и мгновенно создает симлинк с тем же именем, указывающий на <code>/etc/shadow</code>.<br />
 4. Шаг использования: Сервер вызывает <code>os.Open("/var/uploads/avatar.png")</code> и передает содержимое суперсекретного файла наружу!</p>
-<h3 id="reshenie-na-urovne-yadra-linux-5-6-i-sistemnyy-vyzov-openat2">Решение на уровне ядра: Linux 5.6+ и системный вызов `openat2`</h3>
-
+<h3 id="reshenie-na-urovne-yadra-linux-5-6-i-sistemnyy-vyzov-openat2">Решение на уровне ядра: Linux 5.6+ и системный вызов <code>openat2</code></h3>
 <p>В современных ядрах Linux для решения проблемы TOCTOU был разработан специализированный системный вызов <code>openat2</code> с набором флагов разрешения путей <code>RESOLVE_*</code>. Флаг <code>RESOLVE_BENEATH</code> заставляет ядро VFS проверять границы пути атомарно, прямо во время обхода <code>dentry cache</code>: если любой компонент пути пытается выйти выше переданного дескриптора базового каталога (включая попытки побега через симлинки), системный вызов немедленно завершается с ошибкой <code>EXDEV</code>.</p>
 <p>В Go доступ к этим возможностям ядра реализуется через пакет <code>golang.org/x/sys/unix</code>:</p>
 
@@ -591,7 +586,6 @@ func OpenSecure(baseDir, requestPath string) (*os.File, error) {
 
 <hr />
 <h2 id="sravnenie-podkhodov-go-php-cc">Сравнение подходов: Go, PHP, C/C++</h2>
-
 <p>Взглянем на то, как архитектура языков программирования влияет на обработку путей:</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
@@ -632,7 +626,6 @@ func OpenSecure(baseDir, requestPath string) (*os.File, error) {
 <p>В Go преимущество заключается в строгой типизации и отсутствии «магии» вроде <code>include</code> или <code>require</code> с автоматическим резолвингом путей. Однако ответственность за валидацию полностью ложится на разработчика.</p>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Суть уязвимости:</strong> Path Traversal возникает, когда непроверенные пути передаются в <code>os.Open</code> или <code>http.FileServer</code>. Подсистема VFS ядра операционной системы слепо следует указаниям <code>..</code> и разрешает символические ссылки.</li>
 <li><strong>Ограниченность лексической нормализации:</strong> Функции <code>filepath.Clean</code> и <code>filepath.Join</code> не защищают от выхода за пределы корневой папки. Они лишь приводят строковое представление пути к каноническому виду.</li>

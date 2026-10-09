@@ -438,7 +438,6 @@
 
           <div class="article-markdown">
             <h2 id="vvedenie-izolyatsiya-cherez-snimki-sostoyaniya">Введение: Изоляция через снимки состояния</h2>
-
 <p><strong>Snapshot Isolation (SI)</strong> — это выдающийся механизм обеспечения согласованности, при котором каждая транзакция видит строго фиксированный моментальный снимок (виртуальный срез) базы данных на момент своего старта. Все операции чтения в рамках транзакции возвращают данные именно из этого неизменного снимка, а изменения, параллельно вносимые другими транзакциями, становятся видимыми только после их фиксации (<code>COMMIT</code>) и в контексте новых снимков.</p>
 <p>В отличие от классических блокировочных моделей двухфазной блокировки (2PL), Snapshot Isolation принципиально не требует разделяющих блокировок (<code>Shared Lock</code>) для операций чтения <code>SELECT</code>. Это позволяет читателям изучать таблицы без малейших конфликтов с пишущими транзакциями, что служит краеугольным камнем колоссальной пропускной способности современных высоконагруженных OLTP-систем.</p>
 <p>Для инженера уровня Senior/Lead понимание SI — это не просто знание уровня <code>REPEATABLE READ</code>. Это способность:<br />
@@ -483,11 +482,9 @@ flowchart TD
 
 <hr />
 <h2 id="mekhanika-vidimosti-kak-sozdayotsya-i-primenyaetsya-snimok">Механика видимости: Как создаётся и применяется снимок</h2>
-
 <p>Когда транзакция запускается, СУБД не копирует таблицы в память. Вместо этого она создаёт компактную структуру — <strong>снимок (Snapshot)</strong>, содержащую границы идентификаторов транзакций.</p>
 <p>Видимость строки определяется сравнением её системных атрибутов <code>xmin</code> (ID транзакции-создателя) и <code>xmax</code> (ID транзакции-удалителя) с параметрами снимка.</p>
 <h3 id="algoritm-proverki-uproshchyonno-dlya-postgresqlinnodb">Алгоритм проверки (упрощённо для PostgreSQL/InnoDB)</h3>
-
 <ol>
 <li>Если <code>xmin &gt;= snapshot.high_limit</code> → строка создана после начала снимка. <strong>Невидима</strong>.</li>
 <li>Если <code>xmin &lt; snapshot.low_limit</code> и <code>xmin</code> отсутствует в списке активных транзакций → строка создана до снимка и уже зафиксирована. <strong>Видима</strong>.</li>
@@ -508,8 +505,7 @@ flowchart TD
 
 
 <hr />
-<h2 id="pod-kapotom-upravlenie-pamyatyu-i-struktura-procarray">Под капотом: Управление памятью и структура `ProcArray`</h2>
-
+<h2 id="pod-kapotom-upravlenie-pamyatyu-i-struktura-procarray">Под капотом: Управление памятью и структура <code>ProcArray</code></h2>
 <p>Создание снимка требует доступа к глобальному состоянию кластера. В PostgreSQL эта информация хранится в разделяемой памяти в структуре <code>ProcArray</code>, которая содержит массив записей о каждом активном бэкенд-процессе.</p>
 <ol>
 <li>При <code>BEGIN</code> процесс берёт <code>ProcArrayLock</code> (в режиме <code>LW_SHARED</code>).</li>
@@ -532,10 +528,8 @@ flowchart TD
 
 <hr />
 <h2 id="anomaliya-write-skew-granitsa-izolyatsii-snimkov">Аномалия Write Skew: Граница изоляции снимков</h2>
-
 <p><code>Snapshot Isolation</code> предотвращает <code>Dirty Read</code>, <code>Non-Repeatable Read</code> и <code>Phantom Read</code>, но <strong>не гарантирует сериализуемость</strong>. Классическая проблема — <strong>Write Skew</strong>.</p>
 <h3 id="stsenariy">Сценарий</h3>
-
 <p>Представьте строгое медицинское правило: «В больнице на дежурстве должен постоянно оставаться минимум 1 врач». В таблице <code>doctors</code> дежурят два врача: <code>Alice</code> и <code>Bob</code>. У обоих статус <code>on_call = true</code>.</p>
 
 <div class="code-block" data-lang="sql">
@@ -577,29 +571,23 @@ COMMIT;
 
 <hr />
 <h2 id="mekhanicheskaya-simpatiya-tsena-soglasovannosti-dlya-zheleza">Механическая симпатия: Цена согласованности для железа</h2>
-
 <p>Изоляция через снимки напрямую влияет на утилизацию процессора, памяти и дисковой подсистемы.</p>
 <h3 id="kesh-linii-cpu-i-lokalnost-dannykh">Кэш-линии CPU и локальность данных</h3>
-
 <p>При сканировании таблицы в рамках снимка СУБД последовательно читает страницы, но каждая строка требует проверки видимости. Это приводит к:<br />
 * Частым проверкам <code>xip[]</code> массива, который может не помещаться в кэш <code>L1</code>.<br />
 * Промахам кэша при переключении между активной строкой и её «мертвой» версией, лежащей на другой странице.<br />
 * Нагрузке на ветвление (<code>branch prediction</code>): результат проверки видимости непредсказуем при высокой фрагментации, что вызывает сброс конвейера (<code>pipeline flush</code>).</p>
 <h3 id="vliyanie-na-pul-soedineniy-v-go">Влияние на пул соединений в Go</h3>
-
 <p>Когда горутина выполняет длительный <code>SELECT</code> в рамках <code>REPEATABLE READ</code>:<br />
 1. Соединение остаётся активным (<code>state = active</code> в <code>pg_stat_activity</code>).<br />
 2. Память под структуру снимка удерживается в процессе СУБД.<br />
 3. Если в Go используется <code>context.WithTimeout</code>, но запрос блокируется на диске, соединение не возвращается в пул.<br />
 4. При достижении <code>SetMaxOpenConns</code> новые запросы будут ждать в очереди <code>db.connRequests</code>, увеличивая <code>p99</code> латентность сервиса.</p>
 <h3 id="diskovye-operatsii-i-vacuum">Дисковые операции и VACUUM</h3>
-
 <p>Чем дольше живёт снимок, тем медленнее работает <code>autovacuum</code>. Задержка очистки приводит к тому, что <code>Index Only Scan</code> вынужден обращаться к куче для проверки <code>Visibility Map</code>, которая не обновлена. Это превращает быструю операцию (чтение только из индекса) в медленную (чтение индекс + куча), увеличивая случайные чтения (<code>random I/O</code>) и задержки <code>await</code> на SSD.</p>
 <hr />
 <h2 id="praktika-v-go-patterny-i-antipatterny">Практика в Go: Паттерны и антипаттерны</h2>
-
 <h3 id="pattern-1-izolirovannoe-chtenie-dlya-otchyotov">Паттерн 1: Изолированное чтение для отчётов</h3>
-
 <p>Используйте <code>REPEATABLE READ</code> для формирования консистентных отчётов, но строго ограничивайте время жизни транзакции.</p>
 
 <div class="code-block" data-lang="go">
@@ -641,7 +629,6 @@ COMMIT;
 </div>
 
 <h3 id="pattern-2-razdelenie-chteniya-i-obrabotki">Паттерн 2: Разделение чтения и обработки</h3>
-
 <p>Никогда не держите транзакцию открытой во время тяжёлых вычислений или внешних вызовов.</p>
 
 <div class="code-block" data-lang="go">
@@ -697,7 +684,6 @@ func GoodProcessing(ctx context.Context, db *sql.DB) error {
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Snapshot Isolation</strong> обеспечивает консистентное чтение без блокировок, используя сравнение <code>xmin</code>/<code>xmax</code> с границами снимка.</li>
 <li><strong>Под капотом</strong>: Снимок создаётся копированием списка активных транзакций из <code>ProcArray</code> или <code>trx_sys</code>. Проверка видимости — это целочисленные операции на CPU.</li>

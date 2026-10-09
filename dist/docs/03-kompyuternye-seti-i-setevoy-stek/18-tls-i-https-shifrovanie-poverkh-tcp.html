@@ -296,7 +296,6 @@
 
           <div class="article-markdown">
             <h2 id="vvedenie-https-i-mesto-tls-v-setevom-steke">Введение: HTTPS и место TLS в сетевом стеке</h2>
-
 <blockquote>
 <p><em>"Передавать незашифрованные данные через интернет — всё равно что отправлять открытку с номером банковской карты, надеясь на честность всех почтальонов мира."</em><br />
 — Принцип сетевой безопасности</p>
@@ -327,14 +326,12 @@
 
 <p>В Go стандартом де-факто является пакет <strong><code>crypto/tls</code></strong> (рассматриваемый в главе <a href="18-tls-i-https-shifrovanie-poverkh-tcp.html" class="wikilink">18. TLS и HTTPS. Шифрование поверх TCP</a>), который бесшовно интегрирован в стандартную библиотеку <code>net/http</code>. Когда вы вызываете <code>http.Client</code> или запускаете <code>http.Server</code> со схемой <code>https</code>, рантайм Go автоматически оборачивает базовое сетевое соединение <strong><code>net.Conn</code></strong> в криптографическую обертку <strong><code>tls.Conn</code></strong>, загружает корневые сертификаты из системного хранилища и прозрачно управляет жизненным циклом сессии.</p>
 <h3 id="pochemu-chistyy-go-pobezhdaet-c-bindingi">Почему чистый Go побеждает C-биндинги?</h3>
-
 <p>В других языках программирования работа с криптографией устроена иначе:<br />
 - В <strong>PHP</strong> или раннем Python работа с криптографией традиционно делегируется внешнему C-расширению <strong><code>openssl</code></strong>. Каждое обращение к функции вроде <strong><code>openssl_crypt</code></strong> требует переключения контекста Cgo (или FFI), выделения структур в памяти <strong><code>Zval</code></strong> и жестко привязывает сервис к версии OpenSSL, установленной в дистрибутиве Linux. Уязвимости вроде Heartbleed требовали экстренного патчинга динамических библиотек всей ОС.<br />
 - В <strong>Java</strong> аналогичная модель (<strong><code>SSLSocket</code></strong> / <strong><code>SSLContext</code></strong>) сильно перегружена сложной объектной иерархией, создавая высокое давление на Garbage Collector из-за обилия объектов <code>SSLSession</code> и <code>Cipher</code>.</p>
 <p>Разработчики Go пошли по смелому пути: пакет <code>crypto/tls</code> реализован <strong>на чистом Go</strong> (<em>Pure Go</em>). Это избавляет от зависимости от сторонних <code>.so</code> библиотек, гарантирует безупречную кросс-компиляцию и позволяет рантайму филигранно оптимизировать аллокации памяти под управление сборщика мусора (<code>GOGC</code> и <code>GOMEMLIMIT</code>).</p>
 <hr />
 <h2 id="arkhitektura-protokola-handshake-i-record-layer">Архитектура протокола: Handshake и Record Layer</h2>
-
 <p>Протокол TLS состоит из двух четко разграниченных функциональных уровней:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -388,7 +385,6 @@ flowchart TD
    Работает непрерывно во время передачи данных приложения. Берет байты от <code>http.Server</code> или <code>http.Client</code>, нарезает их на блоки (TLS Records), шифрует с помощью симметричного шифра, добавляет имитовставку (<strong>AEAD</strong> nonce/tag) для гарантии целостности и упаковывает в кадры для отправки через TCP.</li>
 </ol>
 <h3 id="evolyutsiya-tls-1-2-protiv-tls-1-3">Эволюция: TLS 1.2 против TLS 1.3</h3>
-
 <p>В стандарте <strong>TLS 1.2</strong> (RFC 5246) на установление защищенного соединения требовалось два полных кругосветных сетевых оборота (<strong><code>2-RTT</code></strong>) поверх уже выполненного TCP Handshake (суммарно 3 RTT до первого HTTP-байта!).</p>
 <p>В современном стандарте <strong>TLS 1.3</strong> (RFC 8446) архитектура была радикально переработана:<br />
 - <strong>Рукопожатие сокращено до <code>1-RTT</code>:</strong> Клиент уже в первом пакете <code>ClientHello</code> отправляет спекулятивные доли ключей для самых распространенных эллиптических кривых (X25519). Сервер сразу отвечает своими долями ключа, и шифрованный канал готов!<br />
@@ -441,12 +437,10 @@ sequenceDiagram
 
 
 <hr />
-<h2 id="pod-kapotom-cryptotls-i-vzaimodeystvie-s-rantaymom">Под капотом: `crypto/tls` и взаимодействие с рантаймом</h2>
-
+<h2 id="pod-kapotom-cryptotls-i-vzaimodeystvie-s-rantaymom">Под капотом: <code>crypto/tls</code> и взаимодействие с рантаймом</h2>
 <p>В среде Go тип <strong><code>tls.Conn</code></strong> реализует стандартные интерфейсы <code>net.Conn</code> и <code>io.ReadWriter</code>. </p>
 <p>Ключевая особенность: при создании сокета через <code>tls.Client(conn, cfg)</code> или <code>tls.Server(conn, cfg)</code> сетевой обмен <strong>не начинается немедленно</strong>. Рукопожатие инициируется лениво — при первом вызове <code>Read()</code> или <code>Write()</code>, либо явно через метод <strong><code>Handshake()</code></strong>. Если рукопожатие еще не завершено, горутина блокируется до завершения криптографической аутентификации.</p>
-<h3 id="vnutrennee-ustroystvo-tls-conn">Внутреннее устройство `tls.Conn`</h3>
-
+<h3 id="vnutrennee-ustroystvo-tls-conn">Внутреннее устройство <code>tls.Conn</code></h3>
 <p>Если мы заглянем в исходный код пакета <code>crypto/tls</code> (<code>conn.go</code>), структура <strong><code>tls.Conn</code></strong> содержит:<br />
 - <strong><code>conn net.Conn</code></strong> — ссылка на физическое TCP-соединение.<br />
 - <strong><code>config *tls.Config</code></strong> — конфигурация (сертификаты, поддерживаемые версии, таймауты).<br />
@@ -518,16 +512,13 @@ flowchart LR
 
 <hr />
 <h2 id="proizvoditelnost-i-mekhanika-mechanical-sympathy">Производительность и механика (Mechanical Sympathy)</h2>
-
 <p>Шифрование — это сугубо вычислительная операция (<strong>CPU-bound</strong>), а не ограничение пропускной способности ввода-вывода (<strong>I/O-bound</strong>). На высокоскоростных 10/40/100-гигабитных интерфейсах именно процессор становится главным «бутылочным горлышком» шифрования.</p>
 <h3 id="1-kesh-linii-i-instruktsii-protsessora">1. Кэш-линии и инструкции процессора</h3>
-
 <p>Современные процессоры x86-64 поддерживают аппаратный набор инструкций <strong><code>AES-NI</code></strong> (Advanced Encryption Standard New Instructions), а процессоры ARM64 (Apple Silicon, AWS Graviton) — инструкции ARMv8 Cryptography Extensions.<br />
 - При наличии <code>AES-NI</code> раунды шифрования выполняются аппаратно внутри конвейера процессора с использованием 128/256-битных векторных регистров XMM/YMM за считанные такты.<br />
 - Данные обрабатываются напрямую через регистры, не загрязняя кэши L1/L2 промежуточными таблицами подстановок (S-boxes).<br />
 - Если шифрование выполняется в цикле, избегайте постоянных переаллокаций буферов в куче (<code>make([]byte, N)</code> внутри цикла): это вызовет ложные промахи мимо кэша (false cache misses) и заставит GC собирать мусор, пока процессор простаивает в ожидании инструкций шифрования.</p>
 <h3 id="2-escape-analysis-i-gc-davlenie">2. Escape Analysis и GC давление</h3>
-
 <p>Каждое новое TLS-соединение требует инициализации криптографического состояния: парсинг сертификатов <strong><code>tls.Certificate</code></strong>, создание ключей, аллокации буферов. При создании сотен тысяч коротких соединений стандартный порог сборки мусора <strong><code>GOGC=100</code></strong> может вызывать постоянные тормоза сервиса:</p>
 
 <div class="code-block" data-lang="go">
@@ -576,7 +567,6 @@ func init() {
 </div>
 
 <h3 id="3-vzaimodeystvie-s-netpoller-i-planirovshchikom-g-m-p">3. Взаимодействие с netpoller и планировщиком G-M-P</h3>
-
 <p>Когда горутина вызывает <code>tlsConn.Read()</code>, а сетевой пакет еще летит по проводу, рантайм Go переводит горутину <code>G</code> в состояние ожидания <strong><code>Gwaiting</code></strong>. Планировщик Go отвязывает её от системного потока <strong><code>M</code></strong>, отправляя поток выполнять другие горутины из очереди <strong><code>runq</code></strong>.</p>
 <p>Когда прерывание сетевой карты доставляет пакет, сетевой полинг <strong><code>netpoller</code></strong> (через epoll/kqueue) будит горутину <code>G</code> и возвращает её в <code>runq</code>. <br />
 Но обратите внимание: <strong>как только зашифрованные данные получены, фаза дешифрации выполняется синхронно на потоке <code>M</code></strong>! Если сотни потоков одновременно нагружены расшифровкой криптографии, потоки <code>M</code> будут загружены на 100% CPU. Чтобы сетевой реактор не голодал, критически важно, чтобы <strong><code>GOMAXPROCS</code></strong> соответствовал реальному CPU-лимиту контейнера (по умолчанию он равен числу логических CPU <code>NumCPU</code>; начиная с Go 1.25 рантайм учитывает и cgroup-лимит CPU) и использовать мультиплексирование HTTP/2 или HTTP/3 поверх одного TLS-соединения.</p>
@@ -596,7 +586,6 @@ func init() {
 
 <hr />
 <h2 id="idiomatichnaya-rabota-s-tls-v-go">Идиоматичная работа с TLS в Go</h2>
-
 <p>Напишем надежный, готовый к production клиент с валидацией цепочки доверия, поддержкой взаимной аутентификации (<strong><code>mTLS</code></strong>) и строгой проверкой доменного имени:</p>
 
 <div class="code-block" data-lang="go">
@@ -701,7 +690,6 @@ func main() {
 
 <hr />
 <h2 id="lovushki-i-tipichnye-voprosy-na-sobesedovaniyakh">Ловушки и типичные вопросы на собеседованиях</h2>
-
 <ol>
 <li><strong>Смертоносный флаг <code>InsecureSkipVerify: true</code>:</strong><br />
    Этот флаг отключает проверку всей цепочки доверия CA и проверку имени хоста. Его часто включают разработчики для локального тестирования самоподписанных сертификатов. Попадая в production, этот флаг превращает ваш сервис в легкую добычу для любой MITM-атаки в локальной сети или облаке. Правильное решение — добавить корпоративный самоподписанный CA в конфигурационное поле <strong><code>RootCAs</code></strong>.</li>
@@ -716,7 +704,6 @@ func main() {
 </ol>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>HTTPS</strong> — это не отдельный протокол, а HTTP, инкапсулированный в защищенный криптографический туннель TLS.</li>
 <li><strong>Два уровня TLS:</strong> Уровень рукопожатия (<strong>Handshake Layer</strong>) отвечает за аутентификацию и согласование мастер-ключа (<strong>Master Secret</strong>); уровень записей (<strong>Record Layer</strong>) шифрует и фрагментирует данные через шифры <strong>AEAD</strong>.</li>

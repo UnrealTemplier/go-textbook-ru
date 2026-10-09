@@ -315,7 +315,6 @@
 
           <div class="article-markdown">
             <h2 id="vvedenie-raznye-filosofii-io">Введение: Разные философии I/O</h2>
-
 <p>В современной серверной разработке Linux занимает доминирующее положение. Однако компилятор и рантайм языка Go создавались как бескомпромиссно кроссплатформенная среда: один и тот же исходный код обязан с максимальной производительностью работать на ноутбуках разработчиков под управлением macOS, в промышленных кластерах под FreeBSD или в корпоративной инфраструктуре под управлением Windows Server.</p>
 <p>Каждая из этих операционных систем пришла к высоконагруженному сетевому вводу-выводу своим собственным историческим путем. За внешне одинаковым поведением сетевого пакета <code>net/http</code> и планировщика горутин скрываются принципиально разные архитектурные философии:<br />
 - <strong>Linux</strong> сделал ставку на <code>epoll</code> — модель уведомления о готовности (Readiness Model / Reactor).<br />
@@ -363,11 +362,9 @@ flowchart TD
 
 <hr />
 <h2 id="kqueue-deklarativnaya-model-sobytiy-bsdmacos">kqueue: Декларативная модель событий BSD/macOS</h2>
-
 <p>В 2000 году Джонатан Лемон (Jonathan Lemon) представил в FreeBSD 4.1 подсистему <strong>kqueue</strong> (Kernel Queue), которая впоследствии стала стандартом де-факто во всех современных BSD-системах, включая macOS и iOS. </p>
 <p>Главное архитектурное достоинство <code>kqueue</code> перед Linux-овым <code>epoll</code> — его потрясающая <strong>ортогональность и универсальность</strong>. В то время как <code>epoll</code> создавался исключительно под файловые дескрипторы (сокеты, пайпы), <code>kqueue</code> изначально проектировалась как всеобъемлющая событийная шина операционной системы.</p>
 <h3 id="ustroystvo-pod-kapotom">Устройство под капотом</h3>
-
 <p>В отличие от <code>epoll</code>, где вы создаете единый контекст и добавляете туда дескрипторы, <code>kqueue</code> работает на уровне <strong>очередей событий</strong>. Процесс вызывает системный вызов <code>kqueue()</code> и получает новый дескриптор очереди. Далее через системный вызов <code>kevent()</code> вы регистрируете гибкие фильтры:<br />
 - <code>EVFILT_READ</code> / <code>EVFILT_WRITE</code> — готовность сокета или файла к чтению/записи.<br />
 - <code>EVFILT_TIMER</code> — аппаратные таймеры ядра с точностью до наносекунд (заменяет <code>timerfd</code>).<br />
@@ -448,11 +445,9 @@ flowchart LR
 
 <hr />
 <h2 id="iocp-model-zaversheniya-operatsiy-windows">IOCP: Модель завершения операций Windows</h2>
-
 <p>Инженеры операционной системы Windows NT под руководством легендарного Дэйва Катлера (Dave Cutler) пошли совершенно иным путем. Windows не использует <code>epoll</code> или <code>kqueue</code>. Вместо этого она реализует <strong>I/O Completion Ports</strong> (IOCP). Это механизм, основанный на парадигме <strong>completion notification</strong> (уведомление о завершении), а не опросе состояния.</p>
 <p>В модели Linux/BSD сетевой поллер ждет, пока сокет станет <em>готов</em> к чтению, после чего пользовательский поток выполняет системный вызов <code>read</code> и ждет, пока байты скопируются из памяти ядра. В Windows приложение передает указатель на свой пользовательский буфер ядру <strong>заранее</strong>: <em>«Ядро, читай в этот буфер, а когда закончишь — дай знать»</em>.</p>
 <h3 id="ustroystvo-pod-kapotom-2">Устройство под капотом</h3>
-
 <p>Архитектура IOCP строится вокруг четкого четырехэтапного протокола:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -510,7 +505,6 @@ sequenceDiagram
 
 <hr />
 <h2 id="arkhitekturnoe-sravnenie-bsd-vs-windows">Архитектурное сравнение: BSD vs Windows</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -583,7 +577,6 @@ flowchart TD
 
 <hr />
 <h2 id="kak-go-runtime-abstragiruet-eti-mekhanizmy">Как Go Runtime абстрагирует эти механизмы</h2>
-
 <p>Язык Go избавляет разработчика от необходимости писать платформо-зависимые ветвления <code>#ifdef</code> или дублировать логику под разные ОС. Пакет <code>runtime</code> содержит единую внутреннюю подсистему <code>netpoll</code>, которая элегантно инкапсулирует фундаментальные различия между readiness- и completion-моделями:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -620,13 +613,13 @@ flowchart TD
 </figure>
 
 
-<h3 id="na-macosbsd-netpollkqueue-go">На macOS/BSD (`netpoll_kqueue.go`):</h3>
+<h3 id="na-macosbsd-netpollkqueue-go">На macOS/BSD (<code>netpoll_kqueue.go</code>):</h3>
 <ol>
 <li>При старте рантайма Go создает один глобальный дескриптор <code>kqueue</code>.</li>
 <li>При открытии сетевого соединения Go регистрирует фильтры вызовом <code>kevent</code> с масками <code>EVFILT_READ | EV_ADD</code> и <code>EVFILT_WRITE | EV_ADD</code>.</li>
 <li>В цикле планировщика функция <code>runtime.netpoll</code> периодически вызывает <code>kevent</code> с нулевым timeout. Как только ядро возвращает готовый дескриптор, Go находит ассоциированную структуру горутины, переводит ее в состояние <code>runnable</code> и пробуждает планировщик.</li>
 </ol>
-<h3 id="na-windows-netpollwindows-go">На Windows (`netpoll_windows.go`):</h3>
+<h3 id="na-windows-netpollwindows-go">На Windows (<code>netpoll_windows.go</code>):</h3>
 <ol>
 <li>Go создает один глобальный порт завершения вызовом <code>CreateIoCompletionPort</code>.</li>
 <li>Все открытые сетевые сокеты связываются с этим портом.</li>
@@ -649,7 +642,6 @@ flowchart TD
 
 <hr />
 <h2 id="lovushki-i-arkhitekturnye-nyuansy">Ловушки и архитектурные нюансы</h2>
-
 <ol>
 <li><strong>Различия в TCP стеке:</strong> Сетевой стек Windows NT разрабатывался независимо от классического стека BSD. Особенности закрытия соединений, длительность фазы <code>TIME_WAIT</code> и семантика сокетных опций вроде <code>SO_REUSEADDR</code> имеют тонкие платформенные различия. Это проявляется при высоконагруженном перезапуске сервисов (graceful shutdown) и повторном открытии локальных портов.</li>
 <li><strong>Управление памятью дескрипторов в macOS:</strong> Таймеры <code>EVFILT_TIMER</code> в <code>kqueue</code> жестко привязаны к дескриптору очереди. При закрытии очереди таймеры мгновенно аннулируются ядром. Рантайм Go обязан с ювелирной точностью координировать жизненный цикл системных структур, предотвращая утечки ресурсов.</li>
@@ -658,7 +650,6 @@ flowchart TD
 </ol>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong><code>kqueue</code> (BSD/macOS)</strong> и <strong><code>IOCP</code> (Windows)</strong> воплощают две различные инженерные парадигмы: модель уведомления о готовности (Reactor) против модели уведомления о завершении (Proactor).</li>
 <li><strong><code>kqueue</code></strong> выделяется широтой охвата: через единый дескриптор очереди и структуры <code>knote</code> она мониторит сокеты, таймеры, сигналы ОС и файловые события <code>vnode</code>.</li>

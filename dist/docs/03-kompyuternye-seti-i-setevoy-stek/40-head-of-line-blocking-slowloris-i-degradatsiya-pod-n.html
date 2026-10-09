@@ -296,7 +296,6 @@
 
           <div class="article-markdown">
             <h2 id="vvedenie">Введение</h2>
-
 <blockquote>
 <p><em>«Управление сложностью — вот суть программирования».</em>  <br />
 — Брайан Керниган</p>
@@ -306,7 +305,6 @@
 <p>В этой статье мы разберем, как эти явления возникают на разных уровнях сетевого стека, как они влияют на планировщик Go и выделение памяти, и какие production-паттерны необходимо внедрять в <code>http.Server</code> для надежной защиты от деградации.</p>
 <hr />
 <h3 id="bytovye-modeli-uzkiy-drive-through-i-medlitelnye-posetiteli">Бытовые модели: Узкий Drive-Through и медлительные посетители</h3>
-
 <p>Чтобы наглядно представить суть этих проблем, обратимся к простым физическим аналогиям:</p>
 <ol>
 <li><strong>Head of Line Blocking (Автокафе с одной полосой):</strong><br />
@@ -316,7 +314,6 @@
 </ol>
 <hr />
 <h2 id="head-of-line-blocking-lovushka-posledovatelnogo-ispolneniya">Head of Line Blocking: Ловушка последовательного исполнения</h2>
-
 <p><strong>Head of Line (HoL) Blocking</strong> — это фундаментальное архитектурное явление в сетях передачи данных, при котором потеря или задержка одного-единственного элемента данных в начале очереди полностью блокирует доставку и обработку всех последующих элементов, даже если они уже физически доставлены на принимающую сторону.</p>
 <h3 id="1-uroven-tcp-transportnyy-uroven">1. Уровень TCP (Транспортный уровень)</h3>
 <p>Протокол TCP гарантирует строгий порядок доставки байт (In-Order Delivery). Каждому отправляемому байту присваивается порядковый номер <code>Sequence Number</code>. </p>
@@ -394,7 +391,6 @@ flowchart LR
 </ul>
 <hr />
 <h2 id="slowloris-ataka-medlennoy-smerti">Slowloris: Атака медленной смерти</h2>
-
 <p><strong>Slowloris</strong> — это классическая атака типа DoS (Denial of Service), направленная не на перегрузку пропускной способности канала (как в случае с UDP-флудом), а на исчерпание пула ресурсов сервера через удержание сокетов открытыми.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -455,7 +451,6 @@ sequenceDiagram
 
 <hr />
 <h2 id="degradatsiya-pod-nagruzkoy-sistemnyy-vzglyad">Деградация под нагрузкой: Системный взгляд</h2>
-
 <p>Когда HoL-блокировки и атаки типа Slowloris (или просто медленные мобильные клиенты с нестабильным 3G/LTE) накапливаются, система проходит четыре стадии деградации:</p>
 <ol>
 <li><strong>Истощение пула соединений (<code>http.Transport</code>):</strong> Клиентские коннекты не освобождаются. Новые запросы начинают ждать в очереди.</li>
@@ -465,10 +460,8 @@ sequenceDiagram
 </ol>
 <hr />
 <h2 id="go-spetsifika-upravlenie-soedineniyami-i-taymauty">Go-специфика: Управление соединениями и таймауты</h2>
-
 <p>В Go защита от деградации строится на двух уровнях: строгая настройка <code>http.Server</code> (серверная сторона) и конфигурация <code>http.Transport</code> (клиентская сторона).</p>
 <h3 id="1-servernye-taymauty-obyazatelnyy-minimum">1. Серверные таймауты (Обязательный минимум)</h3>
-
 <p>Никогда не используйте стандартный <code>http.Server{}</code> без явного указания таймаутов! Главное оружие против Slowloris — параметр <strong><code>ReadHeaderTimeout</code></strong> (появившийся в Go 1.8), который жестко ограничивает время чтения исключительно заголовков запроса:</p>
 
 <div class="code-block" data-lang="go">
@@ -508,8 +501,7 @@ func createSecureServer(handler http.Handler) *http.Server {
 </code></pre>
 </div>
 
-<h3 id="2-klientskiy-pul-soedineniy-http-transport">2. Клиентский пул соединений (`http.Transport`)</h3>
-
+<h3 id="2-klientskiy-pul-soedineniy-http-transport">2. Клиентский пул соединений (<code>http.Transport</code>)</h3>
 <p>По умолчанию Go использует <code>http.DefaultTransport</code>. Для production нужно явно управлять пулом, чтобы избежать HoL на клиенте и истощения file descriptors.</p>
 
 <div class="code-block" data-lang="go">
@@ -549,11 +541,10 @@ client := &amp;http.Client{
 </aside>
 
 
-<h3 id="3-vzaimodeystvie-s-netpoller">3. Взаимодействие с `netpoller`</h3>
+<h3 id="3-vzaimodeystvie-s-netpoller">3. Взаимодействие с <code>netpoller</code></h3>
 <p>Когда горутина блокируется на чтении из сокета (из-за Slowloris или HoL), она переходит в состояние <code>waiting</code> и перестает потреблять CPU. <code>netpoller</code> (epoll/kqueue) регистриует fd и ждет событий. Когда таймаут срабатывает, срабатывает дедлайн чтения, и <code>Read</code> возвращает ошибку <code>i/o timeout</code> (<code>os.ErrDeadlineExceeded</code>); затем сервер закрывает соединение. Горутина разблокируется, буферы <code>bufio</code> сбрасываются, и ресурсы возвращаются в пул.</p>
 <hr />
 <h2 id="itogi-i-voprosy-dlya-sobesedovaniya">Итоги и вопросы для собеседования</h2>
-
 <ol>
 <li><strong>Как HTTP/2 решает проблему HoL?</strong> Через мультиплексирование кадров (frames) поверх одного TCP-соединения. HTTP/2 решает HoL на уровне HTTP, но поверх TCP потеря пакета всё равно задерживает все потоки соединения (HoL уровня TCP); только HTTP/3 поверх QUIC изолирует потерю в конкретном stream.</li>
 <li><strong>Почему Slowloris опасен для Go-сервера?</strong> Истощает file descriptors, память (буферы <code>bufio</code>) и пул горутин, не нагружая CPU. Дефолтный <code>http.Server</code> без таймаутов не защитит от него.</li>
@@ -562,7 +553,6 @@ client := &amp;http.Client{
 </ol>
 <hr />
 <h2 id="chto-dalshe">Что дальше</h2>
-
 <p>Мы разобрали сетевые аномалии и механизмы деградации на уровне приложения. Следующий шаг — понимание того, как эти проблемы решаются на уровне инфраструктуры и оркестрации. В следующей статье мы перейдем к сетевому стеку Kubernetes: <a href="41-kubernetes-networking-cni-pod-network-service-ingres.html" class="wikilink">41. Kubernetes Networking. CNI, Pod Network, Service, Ingress</a>.</p>
           </div>
 

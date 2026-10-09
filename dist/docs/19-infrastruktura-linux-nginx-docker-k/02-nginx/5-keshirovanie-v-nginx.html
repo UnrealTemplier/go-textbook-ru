@@ -311,7 +311,6 @@
 <p>Однако кэширование на уровне обратного прокси Nginx обладает фундаментальным преимуществом: <strong>оно отрабатывает до того, как сетевой пакет вообще коснется вашего приложения</strong>.</p>
 <hr />
 <h2 id="1-mechanical-sympathy-pochemu-nginx-kesh-effektivnee-go-kesha-dlya-tyazhelykh-ge">1. Mechanical Sympathy: Почему Nginx-кэш эффективнее Go-кэша для тяжелых GET-запросов</h2>
-
 <p>Представьте типичный аналитический сценарий: клиент запрашивает сложный дашборд через HTTP GET. Чтобы сформировать JSON-ответ размером 500 КБ, сервис на Go выполняет 3 запроса в PostgreSQL, агрегирует данные и сериализует результат в течение 300 мс.</p>
 <h3 id="esli-keshirovat-dannye-v-redis">Если кэшировать данные в Redis:</h3>
 <ol>
@@ -330,7 +329,6 @@
 </ol>
 <hr />
 <h2 id="2-arkhitektura-kesha-nginx-disk-i-razdelyaemaya-pamyat">2. Архитектура кэша Nginx: Диск и Разделяемая память</h2>
-
 <p>Nginx реализует элегантную гибридную архитектуру кэша:</p>
 <ol>
 <li><strong>Дисковая подсистема (Disk Storage):</strong> Тела HTTP-ответов и оригинальные заголовки бэкенда записываются в обычные файлы на диске. Это решение исключительно надежно и быстро, поскольку операционная система Linux автоматически удерживает часто запрашиваемые дисковые блоки в оперативной памяти — в системном кэше страниц (<strong>Page Cache</strong>).</li>
@@ -373,7 +371,6 @@ proxy_cache_path /var/cache/nginx/api
 
 <hr />
 <h2 id="3-zhiznennyy-tsikl-zaprosa-v-keshe">3. Жизненный цикл запроса в кэше</h2>
-
 <p>При получении HTTP-запроса Nginx выполняет строгий алгоритм:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -417,7 +414,6 @@ flowchart TD
 
 <hr />
 <h2 id="4-thundering-herd-stadnyy-effekt-i-direktiva-proxycachelock">4. Thundering Herd (Стадный эффект) и директива proxy_cache_lock</h2>
-
 <p>Самая опасная аварийная ситуация для кэширующей системы — явление <strong>Cache Stampede</strong> (или <strong>Thundering Herd</strong> — эффект стадного наплыва).</p>
 <p>Представьте высоконагруженный эндпоинт каталога с трафиком 2 000 RPS. Время жизни кэша (TTL) составляет 10 минут. В <code>12:00:00</code> срок жизни кэша истекает. </p>
 <p>Если Nginx не защищен, в <code>12:00:01</code> все 2 000 одновременных запросов обнаружат <code>Cache MISS</code> и синхронно ринутся в Go-бэкенд! В этот момент:<br />
@@ -449,7 +445,7 @@ flowchart TD
 </code></pre>
 </div>
 
-<h3 id="kak-rabotaet-proxycachelock">Как работает `proxy_cache_lock`:</h3>
+<h3 id="kak-rabotaet-proxycachelock">Как работает <code>proxy_cache_lock</code>:</h3>
 <ol>
 <li>При протухании кэша Nginx пропускает к Go-бэкенду <strong>ровно один запрос</strong>, который захватывает внутренний мьютекс блокировки.</li>
 <li>Остальные 1 999 запросов либо ждут освобождения блокировки, либо — если указана директива <code>proxy_cache_use_stale updating</code> — <strong>мгновенно получают слегка устаревший ответ из старого кэша</strong>.</li>
@@ -457,7 +453,6 @@ flowchart TD
 </ol>
 <hr />
 <h2 id="5-kontrakt-zagolovkov-mezhdu-go-i-nginx">5. Контракт заголовков между Go и Nginx</h2>
-
 <p>Жестко прописывать TTL в конфигурации Nginx (<code>proxy_cache_valid 200 10m</code>) неудобно при микросервисной разработке: изменение логики кэширования требует передеплоя инфраструктуры.</p>
 <p>Идиоматичный подход — <strong>делегировать управление временем жизни кэша самому Go-сервису</strong> через стандартные HTTP-заголовки <code>Cache-Control</code> и <code>Expires</code>:</p>
 
@@ -533,7 +528,6 @@ func heavyHandler(w http.ResponseWriter, r *http.Request) {
 
 <hr />
 <h2 id="6-invalidatsiya-kesha-purge-i-cache-busting">6. Инвалидация кэша: Purge и Cache Busting</h2>
-
 <p>Рано или поздно данные в базе данных обновляются, и закэшированный ответ становится неактуальным до истечения TTL.</p>
 <p>Существует несколько стратегий инвалидации:</p>
 <ol>
@@ -560,7 +554,6 @@ func heavyHandler(w http.ResponseWriter, r *http.Request) {
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Двухуровневый кэш Nginx</strong> (Keys Zone в RAM + Файлы на диске) позволяет обрабатывать тысячи запросов в секунду вообще не тревожа Go-бэкенд.</li>
 <li><strong><code>levels</code> и <code>use_temp_path</code></strong> — обязательные настройки для избежания узких мест файловой системы и блокировок IO.</li>

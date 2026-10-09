@@ -438,12 +438,10 @@
           <div class="article-markdown">
             <h1>MongoDB под капотом: устройство WiredTiger, oplog и распределенный шардинг</h1>
 <h2 id="vvedenie">Введение</h2>
-
 <p>В <a href="7-document-bazy-mongodb.html" class="wikilink">прошлой статье</a> мы разобрали MongoDB с позиции разработчика: модель документа, CRUD-операции, транзакции и паттерны применения. Теперь настало время спуститься на этаж ниже и понять, как именно MongoDB хранит данные на диске, управляет памятью, обеспечивает атомарность и реплицирует состояние. Это знание необходимо Senior Go-инженеру, чтобы прогнозировать поведение системы под нагрузкой и избегать ситуаций, когда база «внезапно» упирается в диск или уходит в латентность.</p>
 <p>Все современные версии MongoDB (начиная с 3.2) используют <strong>WiredTiger</strong> в качестве storage engine по умолчанию. Именно его внутреннее устройство мы и будем препарировать.</p>
 <hr />
 <h2 id="wiredtiger-b-tree-stranitsy-i-szhatie">WiredTiger: B-Tree, страницы и сжатие</h2>
-
 <p>WiredTiger — это самостоятельный storage engine, разработанный ещё до поглощения MongoDB Inc. и оптимизированный для смешанных нагрузок OLTP. Он хранит данные в <strong>B+-деревьях</strong>, где каждый узел — это страница фиксированного размера (обычно 4–32 КБ).</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -485,7 +483,6 @@ flowchart TD
 <p>Для Go-разработчика это означает: документ, полученный из MongoDB, уже распакован, и вы не видите разницы, но планирование ресурсов CPU на сервере должно учитывать нагрузку на сжатие, особенно при записи больших документов.</p>
 <hr />
 <h2 id="upravlenie-pamyatyu-wiredtiger-cache">Управление памятью: WiredTiger Cache</h2>
-
 <p>Самое важное, что нужно понимать про производительность MongoDB — это её <strong>внутренний кэш</strong>, отделённый от page cache операционной системы.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -536,7 +533,6 @@ flowchart TD
 
 
 <h3 id="journal-i-dolgovechnost">Journal и долговечность</h3>
-
 <p>WiredTiger пишет изменения сначала в <strong>journal</strong> (WAL, аналог <a href="../05-tranzaktsii-i-vnutrennosti/8-wal-write-ahead-log.html" class="wikilink">WAL</a>), а уже потом в основные файлы данных. Это гарантирует восстановление после краша.</p>
 <ul>
 <li>Journal — это отдельные файлы, по умолчанию сжатые snappy, записываются с настраиваемой периодичностью fsync (по умолчанию 100 мс). Для полной долговечности (<code>writeConcern: "majority"</code>, <code>j: true</code>) требуется дождаться fsync journal’а на большинстве узлов, что увеличивает latency.</li>
@@ -544,7 +540,6 @@ flowchart TD
 </ul>
 <hr />
 <h2 id="mvcc-i-tranzaktsii-pod-kapotom">MVCC и транзакции под капотом</h2>
-
 <p>MongoDB с версии 4.0 добавила мультидокументные транзакции, базирующиеся на <strong>Snapshot Isolation</strong> внутри WiredTiger (подобно MVCC в PostgreSQL, см. <a href="../05-tranzaktsii-i-vnutrennosti/7-mvcc-multi-version-concurrency-control.html" class="wikilink">7. MVCC. Multi Version Concurrency Control</a>). Однако есть важные нюансы.</p>
 <ul>
 <li><strong>Snapshot Isolation</strong>: Каждый документ может иметь несколько версий в памяти/на диске, помеченных временной меткой транзакции. Читающая операция видит последнюю зафиксированную версию, которая была до начала транзакции.</li>
@@ -554,7 +549,6 @@ flowchart TD
 <p>Для Go-разработчика это означает: если ваш сервис держит долгую транзакцию (например, обновляет много документов в цикле с задержками), вы накапливаете мультиверсионный мусор и можете спровоцировать рост кэша и усиление eviction. Всегда стремитесь к коротким транзакциям и перемежайте их коммитами.</p>
 <hr />
 <h2 id="oplog-serdtse-replikatsii">Oplog — сердце репликации</h2>
-
 <p><strong>Oplog</strong> (operations log) — это ограниченная коллекция (capped collection), в которую Primary пишет все операции изменения данных в порядке их выполнения. Secondary ноды непрерывно читают oplog и применяют изменения к своим копиям.</p>
 <ul>
 <li>Записи в oplog <strong>идемпотентны</strong> (вставляются с полным состоянием документа или операцией <code>$set</code> с конкретными значениями), чтобы повторное применение не испортило данные.</li>
@@ -564,7 +558,6 @@ flowchart TD
 <p><strong>Mechanical Sympathy</strong>: чтение oplog Secondary нодами — это потоковая передача данных по сети, похожая на чтение Kafka-топика. Нагружает диск Primary (если данные не в кэше) и сеть. Для Go-драйвера важна настройка read preference: если вы шлёте чтение на Secondary, драйвер учитывает <code>maxStalenessSeconds</code>, чтобы не читать с сильно отставшей ноды.</p>
 <hr />
 <h2 id="indeksy-pod-kapotom-b-tree-v-wiredtiger">Индексы под капотом: B-Tree в WiredTiger</h2>
-
 <p>Все индексы в MongoDB — это B-Tree в том же WiredTiger, аналогично <a href="../04-indeksy-i-proizvoditelnost/2-b-tree-indeks-pod-kapotom.html" class="wikilink">B-Tree индексам в PostgreSQL</a>, но с особенностями.</p>
 <ul>
 <li>Индексы хранят ключ (значения полей) + указатель на документ (RecordId). Для покрывающих индексов (covering index) значения запрошенных полей включаются прямо в индекс, экономя чтение документа.</li>
@@ -574,7 +567,6 @@ flowchart TD
 </ul>
 <hr />
 <h2 id="sharding-kak-dannye-razletayutsya-po-uzlam">Шардинг: как данные разлетаются по узлам</h2>
-
 <p>MongoDB реализует горизонтальное масштабирование через шардинг на основе диапазонов (range‑based) или хеша (hashed).</p>
 <ul>
 <li><strong>Shard Key</strong>: поле (или поля), по которому распределяются документы. Диапазоны значений ключа делятся на чанки (chunks), которые равномерно распределяются между шардами.</li>
@@ -585,7 +577,6 @@ flowchart TD
 <p>Для Go-разработчика это значит: правильный выбор shard key критически важен, чтобы избежать hot shard (неравномерной нагрузки). Избегайте монотонно возрастающих полей (например, ObjectId) для range-шардинга, используйте hashed-шардинг.</p>
 <hr />
 <h2 id="mechanical-sympathy-mongodb-i-go-rantaym">Mechanical Sympathy: MongoDB и Go-рантайм</h2>
-
 <p>Когда ваш Go-сервис выполняет <code>collection.FindOne(ctx, filter)</code>, происходит следующая физическая картина:</p>
 <ol>
 <li><strong>Драйвер берёт соединение из пула</strong> (управляемого внутри <code>mongo.Client</code>). Это TCP-сокет, подключённый к <code>mongod</code> или <code>mongos</code>.</li>
@@ -598,7 +589,6 @@ flowchart TD
 <p>Если MongoDB начинает читать с диска, драйвер может столкнуться с увеличением времени ответа до десятков миллисекунд вместо микросекунд. Горутины зависают в ожидании сети, но так как это сетевой ввод-вывод, поток ОС не блокируется (благодаря netpoller). Однако планировщик Go может создать дополнительные потоки ОС для других готовых горутин, что нужно учитывать при настройке <code>GOMAXPROCS</code>.</p>
 <hr />
 <h2 id="lovushki-i-optimalnye-praktiki">Ловушки и оптимальные практики</h2>
-
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
   <header class="callout-header">
@@ -632,7 +622,6 @@ flowchart TD
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <p>MongoDB под капотом — это гармоничное сочетание B-Tree storage engine (WiredTiger), сжатия на лету, MVCC и распределённых механизмов репликации и шардинга. Понимание этих механизмов позволяет Go-разработчику осознанно выбирать размер кэша, конфигурацию write/read concern, проектировать схему данных, минимизирующую дисковые операции, и писать код, который не перегружает GC лишними аллокациями.</p>
 <p>Теперь, освоив документную модель, мы переходим к следующему крупному классу NoSQL — колоночным (wide-column) базам, которые оптимизированы для записи и хранения временных рядов и событий. <a href="9-column-bazy-cassandra.html" class="wikilink">9. Column базы. Cassandra</a></p>
           </div>

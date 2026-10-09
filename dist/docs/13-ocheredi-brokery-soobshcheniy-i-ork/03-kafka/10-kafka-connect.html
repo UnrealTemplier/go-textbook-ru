@@ -370,7 +370,6 @@
 
 <hr />
 <h2 id="vvedenie-integratsionnaya-shina-a-ne-prosto-topiki">Введение: интеграционная шина, а не просто топики</h2>
-
 <p>В реальной корпоративной архитектуре Apache Kafka почти никогда не существует изолированно. Данные непрерывно рождаются и потребляются во внешних системах: в реляционных базах (PostgreSQL, MySQL, Oracle), NoSQL-хранилищах (MongoDB, Cassandra), аналитических озерах данных (Amazon S3, ClickHouse, Apache Iceberg) и поисковых индексах (Elasticsearch, OpenSearch).</p>
 <p>Исторически разработчики пытались решить проблему интеграции самым очевидным способом: писали самодельные микросервисы-адаптеры (custom consumers и producers). Очень скоро это приводило к архитектурному кошмару:<br />
 - Десятки разнородных сервисов на разных языках, каждый из которых по-своему реализует парсинг, батчинг, ретраи при сетевых сбоях и коммит смещений;<br />
@@ -381,7 +380,6 @@
 <p>Для Go-разработчика Kafka Connect важен в двух ипостасях: как надежный фундамент для захвата изменений из БД (CDC / Debezium) и как управляемый через REST API компонент, жизненным циклом которого можно управлять прямо из инфраструктурного кода на Go.</p>
 <hr />
 <h2 id="arkhitektura-workers-connectors-tasks">Архитектура: Workers, Connectors, Tasks</h2>
-
 <p>Архитектурная модель Kafka Connect строится на четком разделении обязанностей между тремя сущностями:</p>
 <ul>
 <li><strong>Worker (Воркер):</strong> Физический процесс операционной системы (JVM-процесс), исполняемый на сервере или в контейнере Kubernetes. Воркер предоставляет вычислительные ресурсы (потоки CPU, память, сетевой ввод-вывод) и REST API управления. Бывает в двух режимах: <code>standalone</code> (один процесс, для локальной разработки и тестирования) и <code>distributed</code> (кластер воркеров, для продакшена). Воркеры объединяются в кластер и автоматически распределяют нагрузку.</li>
@@ -453,13 +451,11 @@ flowchart TD
 
 
 <h3 id="pochemu-razdelenie-na-connector-i-task">Почему разделение на Connector и Task?</h3>
-
 <p>Разделение на Connector и Task — это классическое разделение уровня управления (Control Plane) и уровня передачи данных (Data Plane):<br />
 1. <strong>Connector (Control Plane):</strong> Оценивает фронт работ. Например, <code>PostgresSourceConnector</code> опрашивает каталог базы данных, находит 20 таблиц, подлежащих репликации, и решает: «Я создам 4 параллельные задачи <code>Task</code>, назначив каждой по 5 таблиц».<br />
 2. <strong>Task (Data Plane):</strong> Занимается исключительно высокопроизводительным вводом-выводом, не отвлекаясь на перераспределение задач. Если падает один из воркеров, кластер перемещает конкретную <code>Task</code> на оставшийся живой воркер без перезапуска всей конфигурации коннектора.</p>
 <hr />
 <h2 id="pod-kapotom-khranenie-konfiguratsiy-smeshcheniy-i-statusov">Под капотом: хранение конфигураций, смещений и статусов</h2>
-
 <p>Где распределенный кластер Kafka Connect хранит свои метаданные?<br />
 Архитекторы Connect приняли гениальное решение: <strong>хранить всё состояние в самой же Kafka!</strong> Кластеру Connect не требуется внешняя реляционная база данных, ZooKeeper или etcd. Все метаданные живут в трех служебных системных топиках:</p>
 <ul>
@@ -510,7 +506,6 @@ flowchart LR
 
 
 <h3 id="mekhanicheskaya-simpatiya-pochemu-connect-ne-izobretaet-velosiped">Механическая симпатия: почему Connect не изобретает велосипед</h3>
-
 <p>Хранение состояния в топиках — не просто "удобно". Это означает, что координация worker'ов, восстановление после сбоев и распределение задач реализуются через стандартные механизмы Kafka:</p>
 <ul>
 <li><strong>Групповая координация:</strong> Worker'ы соединяются в Consumer Group (<a href="4-consumer-groups.html" class="wikilink">4. Consumer groups</a>) на служебных топиках, что даёт автоматическое обнаружение живых узлов и перебалансировку задач при падении worker'а.</li>
@@ -519,23 +514,19 @@ flowchart LR
 </ul>
 <hr />
 <h2 id="modeli-dannykh-source-i-sink">Модели данных: Source и Sink</h2>
-
 <h3 id="source-connector">Source Connector</h3>
-
 <p>Source-коннектор запускает задачи, которые опрашивают внешнюю систему, преобразуют записи в <code>SourceRecord</code> и отправляют их в Kafka. Ключевая проблема — отслеживание прогресса, чтобы не пропустить данные и не продублировать их. Для этого SourceTask использует <code>SourceTaskContext</code>, который позволяет атомарно сохранять offset во внешней системе и offset storage топик.</p>
 <p>Примеры встроенных Source-коннекторов:<br />
 - <strong>JDBC Source Connector:</strong> Опрашивает таблицы SQL-баз периодическими запросами <code>SELECT ... WHERE updated_at &gt; :last_timestamp</code>. Прост, но создает нагрузку на базу данных и не перехватывает удаление строк (DELETE).<br />
 - <strong>Debezium Connectors:</strong> Современный золотой стандарт Change Data Capture (CDC). Читает бинарный журнал упреждающей записи СУБД (PostgreSQL WAL, MySQL binlog, MongoDB Change Streams) на уровне байтовых инструкций репликации. Гарантирует перехват 100% событий (INSERT, UPDATE, DELETE) с субмиллисекундной задержкой и нулевой нагрузкой на оптимизатор запросов СУБД.<br />
 - <strong>FileStream Source:</strong> Читает текстовый файл и построчно отправляет данные в топик (используется для локального тестирования).</p>
 <h3 id="sink-connector">Sink Connector</h3>
-
 <p>Sink-коннектор читает топики, преобразует записи в <code>SinkRecord</code> и вставляет/обновляет данные во внешней системе. Задачи используют обычного Kafka Consumer с ручным коммитом offset'ов: offset коммитится только после успешной записи во внешнюю систему, обеспечивая at-least-once семантику.</p>
 <p>Примеры Sink-коннекторов:<br />
 - <strong>JDBC Sink:</strong> Сохраняет записи в реляционные таблицы, поддерживая режимы INSERT и UPSERT (по первичному ключу).<br />
 - <strong>Elasticsearch Sink:</strong> Преобразует JSON/Avro сообщения в документы и индексирует их в Elasticsearch пачками через Bulk API.<br />
 - <strong>S3 Sink:</strong> Агрегирует события из топика во временные буферы памяти и при заполнении окна сбрасывает файлы в бакеты Amazon S3 в сжатых форматах (Snappy, GZIP, Parquet, Avro).</p>
 <h3 id="converters-i-transformations">Converters и Transformations</h3>
-
 <p>В процессе перемещения данные проходят сквозной конвейер преобразования:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -579,7 +570,6 @@ flowchart LR
 </ol>
 <hr />
 <h2 id="raspredelyonnyy-rezhim-i-otkazoustoychivost">Распределённый режим и отказоустойчивость</h2>
-
 <p>В промышленной эксплуатации Kafka Connect всегда запускается в распределенном режиме (<strong>Distributed Mode</strong>). Воркеры объединяются в кластер (задается единым параметром <code>group.id</code>, например <code>group.id=connect-cluster</code>).</p>
 <p>Жизненный цикл кластера:<br />
 1. Воркер стартует и регистрируется через служебный протокол членства групп.<br />
@@ -600,7 +590,6 @@ flowchart LR
 
 <hr />
 <h2 id="mechanical-sympathy-vliyanie-na-vvod-vyvod-i-cpu">Mechanical Sympathy: влияние на ввод-вывод и CPU</h2>
-
 <p>Kafka Connect работает как высоконагруженное промежуточное звено:</p>
 <ul>
 <li><strong>Батчинг на отправке:</strong> Source-задачи накапливают записи перед отправкой в топики Kafka, используя параметры <code>batch.size</code> и <code>linger.ms</code> внутреннего продюсера. Правильная настройка этих параметров (например, <code>linger.ms=10</code>) драматически повышает пропускную способность ввода-вывода.</li>
@@ -609,7 +598,6 @@ flowchart LR
 </ul>
 <hr />
 <h2 id="integratsiya-s-go-upravlenie-kafka-connect-cherez-rest-api">Интеграция с Go: управление Kafka Connect через REST API</h2>
-
 <p>Поскольку Kafka Connect полностью управляется через стандартизированный REST API, Go-приложения могут автоматически создавать, масштабировать и мониторить интеграции, реализуя паттерн <strong>Infrastructure as Code (IaC)</strong>.</p>
 <p>Основные эндпоинты REST API Connect:<br />
 - <code>GET /connectors</code> — получить список всех активных коннекторов;<br />
@@ -696,7 +684,6 @@ func main() {
 
 <hr />
 <h2 id="kafka-connect-vs-napisat-svoego-konsyumera">Kafka Connect vs "написать своего консьюмера"</h2>
-
 <p>Частый вопрос на архитектурных комитетах: «Зачем разворачивать дополнительный кластер Kafka Connect, если наш разработчик на Go может за день написать сервис, который читает из топика и делает <code>INSERT</code> в базу?»</p>
 <p>Сравнение инженерных затрат:</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
@@ -746,7 +733,6 @@ func main() {
 <hr />
 <h2 id="voprosy-dlya-sobesedovaniya">Вопросы для собеседования</h2>
 
-
 <aside class="callout callout-interview" aria-label="Собеседование">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -761,7 +747,6 @@ func main() {
 
 <hr />
 <h2 id="zaklyuchenie-i-dalneyshie-shagi">Заключение и дальнейшие шаги</h2>
-
 <p>Kafka Connect превращает Kafka из изолированного распределенного журнала в универсальную магистраль корпоративных данных, стандартизируя интеграцию со всеми классами хранилищ. Понимание его трехзвенной архитектуры (Worker $\to$ Connector $\to$ Task) и способов хранения состояния внутри служебных топиков позволяет системным архитекторам грамотно балансировать между готовыми коннекторами и кастомной разработкой.</p>
 <p>Но как гарантировать, что продюсеры и консьюмеры (включая коннекторы Connect) одинаково понимают структуру передаваемых бинарных данных при обновлении версий сервисов?</p>
 <p>В следующей статье мы разберем критически важный компонент экосистемы — <a href="11-schema-registry-i-evolyutsiya-skhem.html" class="wikilink">11. Schema Registry и эволюция схем</a>.</p>

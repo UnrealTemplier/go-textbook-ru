@@ -301,7 +301,6 @@
 
           <div class="article-markdown">
             <h2 id="filosofiya-node-based-kollektsiy-i-tsena-ukazateley">Философия node-based коллекций и цена указателей</h2>
-
 <p>В классических академических учебниках по структурам данных двусвязные списки и деревья всегда преподносятся как венец алгоритмической мысли: константное время $O(1)$ на вставку и удаление узлов в любом месте кажется безусловным триумфом над «неуклюжими» непрерывными массивами. Стандартная библиотека Go отдает дань этой традиции в пакете <code>container</code>, предоставляющем три проверенные временем структуры данных: <code>list</code>, <code>heap</code> и <code>ring</code>.</p>
 <p>Однако в реалиях современных вычислительных систем с многоуровневыми кэшами CPU и сборщиками мусора эти структуры требуют критического переосмысления. Как любил замечать Роб Пайк, «сложные алгоритмы медленны при малых $N$, а $N$ почти всегда мало. У сложных алгоритмов огромные константы». Инженеры уровня Senior всё чаще заменяют узловые (node-based) коллекции кастомными реализациями на плоских слайсах. Причина кроется не в отсутствии функциональности, а в Mechanical Sympathy: узловые коллекции генерируют фрагментацию кучи, вызывают <code>cache miss</code> и создают колоссальное давление на Garbage Collector. Понимание их внутреннего устройства помогает принимать взвешенные инженерные решения.</p>
 
@@ -317,7 +316,6 @@
 
 
 <h2 id="1-containerlist-dvusvyaznyy-spisok-i-pointer-chasing">1. container/list. Двусвязный список и pointer chasing</h2>
-
 <p>Пакет <code>container/list</code> реализует классический двусвязный кольцевой список с фиктивным корневым узлом. Каждый элемент хранится в структуре <code>list.Element</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -338,7 +336,6 @@
 
 <p>Операции <code>PushFront</code>, <code>PushBack</code>, <code>InsertAfter</code>, <code>Remove</code> выполняются за строгое математическое <code>O(1)</code>, так как требуют лишь изменения пары указателей. Однако аппаратная цена этой теоретической константы чрезвычайно высока.</p>
 <h3 id="pochemu-spisok-proigryvaet-slaysu-v-90-stsenariev">Почему список проигрывает слайсу в 90% сценариев</h3>
-
 <ol>
 <li><strong>Аллокация на каждый узел</strong>: Вызов <code>list.PushBack(val)</code> вызывает внутренний вызов <code>runtime.newElement</code>, который выделяет память в куче для <code>Element</code>. В цикле на 100k элементов это 100k отдельных аллокаций. Слайс с <code>make</code> выделяет память один раз и использует её повторно в непрерывном блоке.</li>
 <li><strong>Pointer Chasing (Погоня за указателями)</strong>: При итерации CPU вынужден переходить по указателям <code>next</code>. Эти указатели ведут в случайные, хаотично разбросанные области кучи. Аппаратный предвыборщик (<code>prefetcher</code>) не может предугадать адрес следующего узла, что приводит к постоянным <code>L1/L2 cache miss</code> и простою конвейера процессора.</li>
@@ -387,7 +384,6 @@ for _, v := range slice {
 
 
 <h2 id="2-containerheap-prioritetnaya-ochered-cherez-interfeysy">2. container/heap. Приоритетная очередь через интерфейсы</h2>
-
 <p>В отличие от списка, пакет <code>container/heap</code> не предоставляет готовый конкретный тип. Это обобщенная реализация алгоритма двоичной минимальной кучи (binary min-heap), которая оперирует любой коллекцией, реализующей интерфейс <code>heap.Interface</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -408,7 +404,6 @@ for _, v := range slice {
 
 <p>Куча компактно упаковывается прямо в непрерывный слайс: корень дерева находится по индексу <code>0</code>, а дочерние элементы узла <code>i</code> располагаются по индексам <code>2*i + 1</code> и <code>2*i + 2</code>. Здесь нет узлов с указателями, что гарантирует отличную локальность данных!</p>
 <h3 id="under-the-hood-sift-up-i-sift-down">Under the hood: Sift-Up и Sift-Down</h3>
-
 <p>Операции <code>Push</code> и <code>Pop</code> используют канонические алгоритмы восстановления свойств кучи:</p>
 <ol>
 <li><code>Push</code> добавляет элемент в конец слайса и "всплывает" его вверх (<code>siftUp</code>), сравнивая с родителем. Сложность <code>O(log n)</code>.</li>
@@ -456,14 +451,11 @@ flowchart TD
 </figure>
 
 
-<h3 id="kogda-ispolzovat-kastomnuyu-realizatsiyu-vmesto-containerheap">Когда использовать кастомную реализацию вместо `container/heap`</h3>
-
+<h3 id="kogda-ispolzovat-kastomnuyu-realizatsiyu-vmesto-containerheap">Когда использовать кастомную реализацию вместо <code>container/heap</code></h3>
 <p>Интерфейс <code>heap.Interface</code> требует передачи <code>any</code> в <code>Push</code> и возврата <code>any</code> в <code>Pop</code>. Это создает аллокации при упаковке/распаковке примитивных значений в интерфейсные боксы. В Go 1.18+ часто эффективнее реализовать кучу напрямую на типизированном слайсе <code>[]Task</code>, инкапсулировав <code>siftUp</code>/<code>siftDown</code> методы. Это устраняет интерфейсный overhead и позволяет компилятору инлайнить <code>Less</code>.</p>
 <h2 id="3-containerring-koltsevoy-bufer-i-ego-ogranicheniya">3. container/ring. Кольцевой буфер и его ограничения</h2>
-
 <p><code>ring.Ring</code> представляет замкнутый двусвязный список из <code>n</code> элементов. Каждая нода содержит <code>Value</code> и <code>next</code>. Методы <code>Link</code>, <code>Unlink</code>, <code>Move</code> позволяют соединять кольца или смещать указатель.</p>
 <h3 id="pochemu-on-redko-primenyaetsya-v-prodakshene">Почему он редко применяется в продакшене</h3>
-
 <ol>
 <li><strong>Фиксированная емкость с указателями</strong>: Вызов <code>ring.New(1000)</code> сразу выделяет 1000 узлов в куче. Память резервируется навсегда через отдельные структуры.</li>
 <li><strong>Нет поддержки IO-оптимизаций</strong>: В отличие от слайсовых кольцевых буферов, <code>ring</code> не позволяет использовать <code>unsafe.Slice</code> для передачи данных в <code>net.Conn</code> или <code>os.File</code> одним системным вызовом.</li>
@@ -484,7 +476,6 @@ flowchart TD
 
 
 <h2 id="mechanical-sympathy-slays-protiv-konteynerov">Mechanical Sympathy. Слайс против контейнеров</h2>
-
 <p>Разница в производительности между node-based коллекциями и слайсами обусловлена архитектурой современных CPU:</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
@@ -528,7 +519,6 @@ flowchart TD
 * Вы пишете образовательный код или прототип, где скорость разработки важнее latency.</p>
 <p>В остальных случаях пишите типизированные обертки над слайсами. Они компилируются в нативный код, используют SIMD-инструкции при копировании и не фрагментируют кучу.</p>
 <h2 id="lovushki-i-voprosy-s-sobesedovaniy">Ловушки и вопросы с собеседований</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -574,7 +564,6 @@ flowchart TD
 
 
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><code>container</code> пакеты предоставляют корректные алгоритмы, но жертвуют механической симпатией ради универсальности.</li>
 <li><code>list.List</code> генерирует <code>pointer chasing</code> и давление на GC. Используйте его только для <code>O(1)</code> операций по указателю.</li>

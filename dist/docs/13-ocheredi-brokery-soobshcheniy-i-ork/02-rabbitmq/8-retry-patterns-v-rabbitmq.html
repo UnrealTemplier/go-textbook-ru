@@ -359,7 +359,6 @@
 <p>В таких сценариях выбрасывать сообщение в корзину недопустимо — его необходимо обработать повторно, но <strong>с выверенной паузой (Backoff)</strong>, дав сбоящей системе время восстановиться. В этой лекции мы разберем архитектуру и реализацию <strong>Retry Patterns (Паттернов повторных попыток)</strong> в RabbitMQ.</p>
 <hr />
 <h2 id="1-naivnyy-podkhod-sleep-v-gorutine-opasnyy-antipattern">1. Наивный подход: Sleep в горутине (Опасный антипаттерн)</h2>
-
 <p>Самая распространенная ошибка начинающего разработчика при встрече с ошибками внешних сервисов — поставить <code>time.Sleep</code> прямо в рабочей горутине перед повторным выполнением запроса или перед вызовом <code>Nack(requeue=true)</code>.</p>
 
 <div class="code-block" data-lang="go">
@@ -400,7 +399,6 @@ if err != nil {
 
 <hr />
 <h2 id="2-pattern-ttl-dlx-ocheredi-ozhidaniya-wait-queues">2. Паттерн: TTL + DLX (Очереди ожидания / Wait Queues)</h2>
-
 <p>Это классический, нативный и самый надежный паттерн отложенной повторной обработки в чистом RabbitMQ, не требующий установки сторонних плагинов. Он строится на комбинации двух базовых возможностей брокера: <strong>Time-To-Live (TTL)</strong> и <strong>Dead Letter Exchange (DLX)</strong>.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -456,7 +454,6 @@ flowchart TD
 </ol>
 <hr />
 <h3 id="podvodnyy-kamen-head-of-line-blocking-na-urovne-ttl-soobshcheniy">Подводный камень: Head-of-Line Blocking на уровне TTL сообщений</h3>
-
 <p>В протоколе AMQP 0-9-1 время жизни можно задать двумя способами:<br />
 1. На всю очередь целиком через аргумент <code>x-message-ttl</code>.<br />
 2. Индивидуально для каждого отдельного сообщения через свойство <code>Expiration</code> при вызове <code>ch.Publish(...)</code>.</p>
@@ -483,8 +480,7 @@ flowchart TD
 - <code>wait_q_5m</code> (параметр очереди <code>x-message-ttl = 300000</code>)</p>
 <p>Воркер на основе текущего номера попытки направляет сообщение в соответствующую очередь задержки. Поскольку внутри каждой очереди все сообщения имеют строго одинаковый TTL, эффект HoL-blocking полностью исключен: сообщения выходят строго в порядке поступления (FIFO).</p>
 <hr />
-<h2 id="3-pattern-delayed-message-plugin-rabbitmq-delayed-message-exchange">3. Паттерн: Delayed Message Plugin (`rabbitmq-delayed-message-exchange`)</h2>
-
+<h2 id="3-pattern-delayed-message-plugin-rabbitmq-delayed-message-exchange">3. Паттерн: Delayed Message Plugin (<code>rabbitmq-delayed-message-exchange</code>)</h2>
 <p>Если создание нескольких служебных очередей ожидания кажется вам избыточным, сообщество RabbitMQ разработало официальный плагин — <code>rabbitmq-delayed-message-exchange</code>.</p>
 <p>Плагин вводит специализированный тип обменника: <strong><code>x-delayed-message</code></strong>. </p>
 
@@ -540,7 +536,6 @@ graph LR
 
 <hr />
 <h2 id="realizatsiya-exponential-backoff-na-go">Реализация Exponential Backoff на Go</h2>
-
 <p>Ниже приведен эталонный пример реализации функции повторной обработки с нарастающей задержкой (Exponential Backoff), использованием кастомного заголовка <code>x-retry-count</code> и безопасным сбросом в постоянную DLQ при превышении лимита попыток.</p>
 
 <aside class="callout callout-interview" aria-label="Собеседование: Почему x-retry-count лучше, чем массив x-death?">
@@ -668,7 +663,6 @@ func doBusinessLogic(payload []byte) error {
 </ol>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Запрет <code>time.Sleep</code>:</strong> Никогда не усыпляйте горутины-воркеры. Это исчерпывает окно QoS <code>prefetch_count</code> и блокирует продвижение независимых задач в очереди.</li>
 <li><strong>Wait Queues (TTL + DLX):</strong> Самый отказоустойчивый нативный подход. Для исключения эффекта <strong>Head-of-Line Blocking</strong> используйте отдельные очереди под каждый интервал задержки (<code>5s</code>, <code>30s</code>, <code>5m</code>).</li>

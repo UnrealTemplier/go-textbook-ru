@@ -375,7 +375,6 @@
 
           <div class="article-markdown">
             <h2 id="anatomiya-seti-ot-gorutiny-do-data-tsentra">Анатомия сети: От горутины до дата-центра</h2>
-
 <blockquote>
 <p><em>«Вся магия распределенных систем исчезает, как только вы понимаете, как ядро операционной системы перекладывает байты из одного сетевого сокета в другой».</em><br />
 — Принцип демистификации инфраструктуры</p>
@@ -391,7 +390,6 @@
 <p>В этой финальной лекции раздела «Kubernetes и деплой» мы разберем внутреннее устройство Container Network Interface (CNI), вскроем печально известную проблему резолвинга DNS в Go (<code>ndots:5</code>), разберем физику переполнения таблицы <code>nf_conntrack</code> ядра Linux и сконфигурируем образцовый сетевой транспорт Go для работы в высоконагруженном кластере.</p>
 <hr />
 <h2 id="1-ploskaya-set-i-cni-container-network-interface">1. Плоская сеть и CNI (Container Network Interface)</h2>
-
 <p>Архитектура сети Kubernetes построена на концепции <strong>«плоской сети» (Flat Network)</strong>, которая формулируется четырьмя фундаментальными инвариантами:</p>
 <ol>
 <li><strong>Каждый Pod получает собственный уникальный IP-адрес</strong> в рамках всего кластера.</li>
@@ -403,7 +401,6 @@
 <p>За реализацию этих правил на уровне ядра Linux отвечает <strong>CNI-плагин</strong> (Container Network Interface) — такие сетевые драйверы, как <strong>Calico</strong>, <strong>Cilium</strong>, <strong>Flannel</strong> или облачные AWS-VPC CNI.</p>
 <hr />
 <h3 id="mechanical-sympathy-kak-pod-poluchaet-set">Mechanical Sympathy: Как под получает сеть?</h3>
-
 <p>Когда агент <code>kubelet</code> дает команду рантайму контейнеров (<code>containerd</code>) развернуть новый Pod с Go-приложением, разворачивается следующая цепочка системных вызовов:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -507,7 +504,6 @@ flowchart TD
 - <strong>eBPF (Cilium):</strong> Сетевые пакеты перехватываются на уровне сокетов с помощью программ ядра eBPF, полностью обходя традиционные тяжелые стеки <code>iptables</code> и подсистемы Linux TC (Traffic Control).</p>
 <hr />
 <h2 id="2-vneshniy-trafik-ingress-i-obkhod-kube-proxy">2. Внешний трафик: Ingress и обход kube-proxy</h2>
-
 <p>В лекции <a href="3-pod-deployment-service.html" class="wikilink">3. Pod, Deployment, Service</a> мы подробно разобрали, как виртуальный IP-адрес <code>Service</code> (ClusterIP) преобразуется демоном <code>kube-proxy</code> через цепочки <code>iptables</code> или таблицы IPVS. Но как входящий интернет-трафик попадает внутрь кластера?</p>
 <p>Для этого используется <strong>Ingress Controller</strong> (наиболее распространенные решения: Ingress-NGINX, Envoy, Traefik).</p>
 <p>Ingress Controller — это специализированный Pod (или группа подов), развернутый на пограничных нодах кластера и смотрящий наружу через облачный балансировщик (Cloud Load Balancer). Но у Ingress Controller есть колоссальное преимущество перед стандартным Service: <strong>он полностью обходит <code>kube-proxy</code></strong>!</p>
@@ -561,10 +557,9 @@ flowchart TD
 <li>Пакет не проходит через цепочки <code>iptables</code> ClusterIP, избавляя ядро от лишней операции DNAT и сокращая сетевую задержку до абсолютного минимума.</li>
 </ol>
 <hr />
-<h2 id="3-proklyatie-dns-problema-ndots5-v-go">3. Проклятие DNS: Проблема `ndots:5` в Go</h2>
-
+<h2 id="3-proklyatie-dns-problema-ndots5-v-go">3. Проклятие DNS: Проблема <code>ndots:5</code> в Go</h2>
 <p>Среди архитекторов высоконагруженных систем на Go проблема <strong><code>ndots:5</code></strong> стала легендарной. Этот скрытый нюанс работы сетевого стека породил сотни сбоев и падений боевых кластеров под пиковыми нагрузками.</p>
-<h3 id="mekhanika-etcresolv-conf">Механика `/etc/resolv.conf`</h3>
+<h3 id="mekhanika-etcresolv-conf">Механика <code>/etc/resolv.conf</code></h3>
 <p>В кластере за разрешение доменных имен отвечает распределенный DNS-сервер <strong>CoreDNS</strong>. При создании любого контейнера агент <code>kubelet</code> монтирует в него файл конфигурации DNS-клиента <code>/etc/resolv.conf</code>:</p>
 
 <div class="code-block" data-lang="text">
@@ -656,8 +651,7 @@ sequenceDiagram
 1. CoreDNS утилизирует 100% CPU, переполняет очереди сетевых сокетов и начинает терять UDP-пакеты.<br />
 2. Go-резолвер сталкивается с сетевыми таймаутами (дефолтный таймаут UDP-ответа — 5 секунд!). Вся latency бизнес-транзакций взлетает с миллисекунд до десятков секунд, сервис парализуется.</p>
 <hr />
-<h3 id="kak-pobedit-problemu-ndots5">Как победить проблему `ndots:5`:</h3>
-
+<h3 id="kak-pobedit-problemu-ndots5">Как победить проблему <code>ndots:5</code>:</h3>
 <h4 id="1-ispolzovanie-fqdn-s-zamykayushchey-tochkoy-v-go-kode">1. Использование FQDN с замыкающей точкой в Go-коде</h4>
 <p>В коде на Go при обращении к внешним интернет-ресурсам всегда используйте полностью определенные доменные имена (Fully Qualified Domain Name, FQDN) с <strong>замыкающей точкой на конце</strong>:</p>
 
@@ -675,7 +669,7 @@ resp, err := http.Get(&quot;https://api.stripe.com.&quot;)
 </div>
 
 <p>Встретив точку на конце (<code>api.stripe.com.</code>), резолвер Go мгновенно понимает, что домен уже является абсолютным корнем, и отправляет ровно <strong>один</strong> DNS-запрос сразу во внешний мир, полностью минуя мусорные суффиксы <code>svc.cluster.local</code>.</p>
-<h4 id="2-tyuning-manifesta-pod-spec-dnsconfig">2. Тюнинг манифеста Pod Spec (`dnsConfig`)</h4>
+<h4 id="2-tyuning-manifesta-pod-spec-dnsconfig">2. Тюнинг манифеста Pod Spec (<code>dnsConfig</code>)</h4>
 <p>В спецификации Deployment можно переопределить параметр <code>ndots</code> для конкретного приложения:</p>
 
 <div class="code-block" data-lang="yaml">
@@ -701,7 +695,6 @@ resp, err := http.Get(&quot;https://api.stripe.com.&quot;)
 <p>В зрелых кластерах Kubernetes на каждом узле разворачивают легковесный кэширующий DNS-демон (<code>NodeLocal DNSCache</code> как <code>DaemonSet</code>). Он перехватывает все UDP-запросы на локальном loopback-интерфейсе ноды, исключая сетевые задержки при обращениях к центральному CoreDNS.</p>
 <hr />
 <h2 id="4-egress-i-perepolnenie-tablitsy-conntrack">4. Egress и переполнение таблицы Conntrack</h2>
-
 <p>Когда ваше Go-приложение обращается к внешним сервисам за пределами кластера (например, к базе данных AWS RDS, брокеру Kafka или сторонним API), сетевой пакет покидает Worker Node.</p>
 <p>В этот момент ядро Linux выполняет операцию <strong>SNAT (Source NAT)</strong>: оно подменяет частный IP-адрес пода (<code>10.244.x.x</code>) на публичный или маршрутизируемый IP-адрес самого физического сервера ноды. Иначе внешний сервер ответит на адрес пода, о котором глобальная сеть дата-центра ничего не знает.</p>
 <p>Чтобы вернуть ответный пакет из внешней сети ровно в тот сокет пода, который его запросил, подсистема <code>Netfilter</code> ядра Linux ведет специальную хэш-таблицу учета всех активных сетевых соединений — <strong><code>nf_conntrack</code> (Connection Tracking)</strong>.</p>
@@ -768,7 +761,6 @@ flowchart LR
 
 <hr />
 <h2 id="5-idiomatichnyy-http-transport-dlya-k8s">5. Идиоматичный HTTP Transport для K8s</h2>
-
 <p>С учетом всех тонкостей сетевого взаимодействия в кластере, таймаутов (см. <a href="../05-nadezhnost/3-timeout.html" class="wikilink">3. Timeout</a>), защиты таблицы <code>conntrack</code> и предотвращения утечек горутин, вот как выглядит эталонная конфигурация сетевого клиента Go для работы в Kubernetes:</p>
 
 <div class="code-block" data-lang="go">
@@ -837,7 +829,6 @@ func NewK8sHTTPClient() *http.Client {
 <hr />
 <h2 id="voprosy-dlya-sobesedovaniya">Вопросы для собеседования</h2>
 
-
 <aside class="callout callout-interview" aria-label="Вопросы сеньорного собеседования по сетям в Kubernetes">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -858,7 +849,6 @@ func NewK8sHTTPClient() *http.Client {
 
 <hr />
 <h2 id="itog-razdela-kubernetes-i-deploy">Итог раздела "Kubernetes и деплой"</h2>
-
 <ol>
 <li><strong>Изоляция и Namespaces:</strong> Сеть пода изолирована сетевым пространством имен ядра Linux. CNI-плагин соединяет его с физической сетью хоста через пару виртуальных интерфейсов <code>veth pair</code>.</li>
 <li><strong>Ingress Controller:</strong> Интеллектуальный L7-маршрутизатор, оптимизирующий путь пакета и обходящий накладные расходы <code>kube-proxy</code> и <code>iptables</code> за счет прямого соединения с подами.</li>

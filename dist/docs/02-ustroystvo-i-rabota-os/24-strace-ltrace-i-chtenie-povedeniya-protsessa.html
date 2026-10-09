@@ -315,7 +315,6 @@
 
           <div class="article-markdown">
             <h2 id="zachem-lezt-v-protsessy-bez-gdb">Зачем лезть в процессы без gdb?</h2>
-
 <p>Когда бэкенд-приложение виснет, медленно отвечает или потребляет память, логи часто молчат. Они не показывают, <em>какие</em> системные ресурсы блокируют поток, или <em>почему</em> процесс не возвращается с сетевого вызова. </p>
 <blockquote>
 <p><em>"Логи программы — это всего лишь дневник ее благих намерений. Когда процесс намертво зависает, он уже не может ничего записать в лог. Но ядро операционной системы помнит каждый сделанный шаг и никогда не врет."</em></p>
@@ -324,10 +323,8 @@
 <p>Для Go-разработчика понимание этих утилит критично, потому что Go скрывает от нас нативные потоки, планирует горутины в пользовательском пространстве и по умолчанию линкуется статически. Это ломает привычные паттерны отладки из C/C++ или Java. Запустить отладчик <code>gdb</code> на боевом сервере под нагрузкой — верный способ уронить сервис. А вот умение быстро снять трассировку системных вызовов — ключевой навык инженера при разборе инцидентов.</p>
 <hr />
 <h2 id="strace-trassirovka-sistemnykh-vyzovov">strace: Трассировка системных вызовов</h2>
-
 <p><code>strace</code> перехватывает все системные вызовы (syscalls) и сигналы, передаваемые процессом ядру. Это самый надежный способ понять, с чем процесс взаимодействует на уровне ОС.</p>
 <h3 id="printsip-raboty-i-klyuchevye-flagi">Принцип работы и ключевые флаги</h3>
-
 
 <div class="code-block" data-lang="bash">
   <header class="code-header">
@@ -379,7 +376,6 @@ strace -e trace=network,read,write,epoll_pwait -p $(pidof myapp)
 </tbody>
 </table></div>
 <h3 id="pod-kapotom-ptrace-i-tsena-perekhvata">Под капотом: ptrace и цена перехвата</h3>
-
 <p><code>strace</code> работает через системный вызов <code>ptrace(2)</code>. Это не магия, а официально поддерживаемый ядром механизм отладки (сродни тому, как работает GDB или Go debugger <code>dlv</code>).</p>
 <ol>
 <li>Трассировщик вызывает <code>ptrace(PTRACE_ATTACH, pid, 0, 0)</code>.</li>
@@ -469,10 +465,8 @@ sequenceDiagram
 
 <hr />
 <h2 id="ltrace-trassirovka-bibliotechnykh-vyzovov">ltrace: Трассировка библиотечных вызовов</h2>
-
 <p><code>ltrace</code> перехватывает вызовы динамических библиотек (<code>libpthread</code>, <code>libc</code>, <code>libssl</code> и т.д.). Как и <code>strace</code>, он работает через <code>ptrace</code> (и требует тех же прав на трассировку процесса), но перехватывает не системные вызовы, а вызовы библиотечных функций.</p>
 <h3 id="printsip-raboty">Принцип работы</h3>
-
 <p><code>ltrace</code> не перехватывает системные вызовы, а ловит вход в библиотечные функции, используя <code>ptrace</code> и точки останова:<br />
 1. При старте процесса <code>ld.so</code> загружает нужные <code>.so</code> файлы.<br />
 2. <code>ltrace</code> через <code>ptrace</code> (<code>PTRACE_TRACEME</code> / <code>PTRACE_ATTACH</code>) берёт процесс под контроль.<br />
@@ -524,7 +518,6 @@ flowchart LR
 
 
 <h3 id="pochemu-ltrace-pochti-bespolezen-v-go">Почему ltrace почти бесполезен в Go?</h3>
-
 <p>Go-компилятор по умолчанию создает статически линкованные бинарники (<code>-linkmode=external</code> или встроенные библиотеки). Это означает:<br />
 1. <strong>Нет динамических символов</strong>: <code>ld.so</code> не знает, какие функции нужно перехватывать.<br />
 2. <strong>CGO меняет правила</strong>: Если приложение использует CGO, <code>ltrace</code> может видеть вызовы C-библиотек, но не видит вызовы внутри Go-рантайма (<code>runtime.malloc</code>, <code>netpoll</code>, <code>epoll_pwait</code>).<br />
@@ -544,7 +537,6 @@ flowchart LR
 
 <hr />
 <h2 id="prakticheskiy-payplayn-otladki-dlya-backend">Практический пайплайн отладки для Backend</h2>
-
 <p>Как Senior-инженер, я не запускаю <code>strace</code> наугад. Я использую его как диагностический скальпель:</p>
 <h3 id="1-poisk-blokirovok-i-hang-sostoyaniy">1. Поиск блокировок и hang-состояний</h3>
 <p>Если сервис не отвечает, подключаемся к PID и смотрим, где он застрял:</p>
@@ -568,7 +560,6 @@ flowchart LR
 </ul>
 <h3 id="2-analiz-disbalansa-io">2. Анализ дисбаланса IO</h3>
 
-
 <div class="code-block" data-lang="bash">
   <header class="code-header">
     <span class="code-lang-tag">Bash</span>
@@ -583,7 +574,6 @@ flowchart LR
 
 <p>Вывод покажет, на какие вызовы уходит 90% времени. Если <code>write</code> или <code>read</code> доминируют — проблема в синхронном IO или отсутствии буферизации. Если <code>epoll_pwait</code> занимает много времени — проверьте, не переключает ли Go слишком много горутин в user-space без реального ожидания.</p>
 <h3 id="3-setevye-problemy">3. Сетевые проблемы</h3>
-
 
 <div class="code-block" data-lang="bash">
   <header class="code-header">
@@ -618,7 +608,6 @@ flowchart LR
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <p><code>strace</code> и <code>ltrace</code> — это диагностические инструменты, которые показывают "честный" слой взаимодействия приложения с ОС. Для Go-разработчика важно помнить:<br />
 1. <code>strace</code> видит только ОС-потоки (M), а не горутины. Планирование горутин происходит в user-space и невидимо для трассировщика.<br />
 2. Оверхед <code>ptrace</code> делает <code>strace</code> инструментом для разработки и staging, а не для production-мониторинга.<br />

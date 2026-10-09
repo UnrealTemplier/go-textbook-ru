@@ -312,7 +312,6 @@
 <p>Инфраструктурное логирование в Kubernetes требует фундаментальной смены парадигмы: <strong>отказ от локальных файлов в пользу бесконечных потоков данных (Streaming I/O) и централизованной агрегации</strong>.</p>
 <hr />
 <h2 id="1-filosofiya-unix-vsyo-est-potok-stream-io">1. Философия Unix: Всё есть поток (Stream I/O)</h2>
-
 <p>Один из основополагающих принципов операционной системы Unix гласит: <em>«Программа должна читать из стандартного ввода и писать в стандартный вывод, ничего не зная о том, куда направлен этот поток»</em>.</p>
 <p>В Linux любой процесс при старте получает три открытых системных файловых дескриптора:<br />
 * <code>FD 0</code>: <code>stdin</code> (стандартный ввод);<br />
@@ -372,7 +371,6 @@ flowchart TD
 
 <hr />
 <h2 id="2-opasnost-neogranichennykh-logov-lovushka-disk-pressure">2. Опасность неограниченных логов: Ловушка Disk Pressure</h2>
-
 <p>По умолчанию классический лог-драйвер Docker <code>json-file</code> не имеет встроенных лимитов на размер файлов. Если в вашем Go-коде закрался бесконечный цикл, спамящий ошибками через <code>log.Printf</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -413,7 +411,6 @@ containerLogMaxFiles: 5        # Сколько архивных копий хр
 <p>Как только объем логов достигает 50 МБ, <code>containerd</code> мгновенно ротирует файл (<code>0.log</code> -&gt; <code>0.log.1</code>) и создает чистый файл, защищая диск сервера от переполнения.</p>
 <hr />
 <h2 id="3-mechanical-sympathy-blokirovka-na-sistemnom-vyzove-write-blocking-writes">3. Mechanical Sympathy: Блокировка на системном вызове write (Blocking Writes)</h2>
-
 <p>Это одна из самых коварных ловушек логирования в высоконагруженных Go-сервисах, которую практически невозможно диагностировать обычными профилировщиками CPU.</p>
 <p>По умолчанию системный вывод <code>stdout</code> в Unix-системах — это <strong>блокирующий анонимный канал (UNIX Pipe)</strong>. Когда Go-приложение вызывает <code>slog.Info()</code>, рантайм вызывает системный вызов ядра:</p>
 
@@ -483,7 +480,6 @@ sequenceDiagram
 
 <hr />
 <h2 id="4-arkhitektura-agregatsii-logov-daemonset-vs-sidecar">4. Архитектура агрегации логов: DaemonSet vs Sidecar</h2>
-
 <p>Чтобы логи попали в Grafana Loki или Elasticsearch, их нужно собрать с нод. В K8s есть два паттерна:</p>
 <h3 id="1-daemonset-standart-industrii">1. DaemonSet (Стандарт индустрии)</h3>
 <p>На каждой ноде запускается один Pod с агентом сбора (Fluent Bit, Promtail, Filebeat). Он монтирует <code>/var/log/pods</code> хоста и читает логи всех контейнеров напрямую.<br />
@@ -530,7 +526,6 @@ flowchart LR
 
 <hr />
 <h2 id="5-spetsifika-go-strukturirovannoe-logirovanie-s-logslog">5. Специфика Go: Структурированное логирование с log/slog</h2>
-
 <p>До релиза Go 1.21 стандартный пакет <code>log</code> умел генерировать лишь неструктурированные текстовые строки:<br />
 <code>2024/05/10 12:00:00 User 42 bought item 100</code></p>
 <p>Для систем агрегации логов (Loki, ELK) парсинг такого текста с помощью регулярных выражений превращается в вычислительный ад и сжигает процессорные мощности сборщиков логов.</p>
@@ -607,7 +602,6 @@ func main() {
 
 <hr />
 <h2 id="6-bezopasnost-sekrety-v-logakh">6. Безопасность: Секреты в логах</h2>
-
 <p>В статье <a href="../04-kubernetes/3-configmap-i-secret.html" class="wikilink">3. ConfigMap и Secret</a> мы подробно изучили, как безопасно хранить пароли, API-ключи и сертификаты. Однако самая частая причина утечки закрытых данных в продакшене — банальная неосторожность разработчика при логировании:</p>
 
 <div class="code-block" data-lang="go">
@@ -632,7 +626,6 @@ slog.Info(&quot;попытка авторизации&quot;, slog.Any(&quot;body
 </ol>
 <hr />
 <h2 id="rezyume">Резюме</h2>
-
 <ol>
 <li><strong>Иммутабельность и эфемерность:</strong> Поды не хранят логи на внутренних дисках. Всё логирование строится как непрерывный поток данных в дескрипторы <code>stdout</code> (FD 1) и <code>stderr</code> (FD 2).</li>
 <li><strong>Kubelet и пути:</strong> Логи физически хранятся на хосте в <code>/var/log/pods/</code>. Утилита <code>kubectl logs</code> читает их напрямую через <code>kubelet</code>.</li>

@@ -313,7 +313,6 @@
 <p>Для управления приложениями, обладающими состоянием, в Kubernetes существует специализированный контроллер — <strong>StatefulSet</strong>.</p>
 <hr />
 <h2 id="1-pochemu-deployment-ne-podkhodit-dlya-state">1. Почему Deployment не подходит для State?</h2>
-
 <p>Представьте, что наивный инженер попытался запустить отказоустойчивый кластер PostgreSQL из 3 узлов обычным манифестом <code>Deployment</code>:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -359,7 +358,6 @@ flowchart TD
 3. <strong>Разделяемое дисковое хранилище (Катастрофа ФС):</strong> В спецификации Deployment все три реплики ссылаются на один и тот же <code>PersistentVolumeClaim</code> (PVC). Если три независимых процесса PostgreSQL одновременно примонтируют один и тот же блочный том и начнут параллельно модифицировать системные файлы каталога <code>$PGDATA</code>, файловая система разрушится (Data Corruption) за секунды.</p>
 <hr />
 <h2 id="2-statefulset-identichnost-v-mire-khaosa">2. StatefulSet: Идентичность в мире хаоса</h2>
-
 <p>Контроллер <strong>StatefulSet</strong> радикально меняет правила игры, гарантируя <strong>строгую идентичность (Sticky Identity)</strong> для каждого пода на протяжении всей его жизни.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -421,7 +419,6 @@ flowchart TD
 
 <hr />
 <h2 id="3-headless-service-setevoy-yakor-i-pryamoy-dostup-k-nodam">3. Headless Service: Сетевой якорь и прямой доступ к нодам</h2>
-
 <p>Обычный Kubernetes Service агрегирует поды за единым виртуальным IP-адресом (<code>ClusterIP</code>) и случайным образом раскидывает трафик. Но как нашему Go-приложению отправить запрос на запись строго в Master-ноду <code>postgres-0</code>, а тяжелые аналитические <code>SELECT</code> запросы распределить по репликам <code>postgres-1</code> и <code>postgres-2</code>?</p>
 <p>Для этого создается специальный сервис без виртуального IP — <strong>Headless Service</strong> (задается директивой <code>clusterIP: None</code>):</p>
 
@@ -526,7 +523,6 @@ func main() {
 
 <hr />
 <h2 id="4-go-i-raft-pishem-svoy-sobstvennyy-raspredelennyy-servis">4. Go и Raft: Пишем свой собственный распределенный сервис</h2>
-
 <p>Язык Go стал признанным стандартом для создания распределенных систем высокой надежности: Kubernetes, etcd, CockroachDB, Consul, HashiCorp Vault — все они написаны на Go.</p>
 <p>Сердцем большинства этих систем является алгоритм распределенного консенсуса <strong>Raft</strong> (реализованный в виде библиотек <code>hashicorp/raft</code> или <code>etcd-io/raft</code>). Если вы разрабатываете отказоустойчивое хранилище на Go, вам неизбежно потребуется запускать его в Kubernetes как StatefulSet.</p>
 
@@ -571,7 +567,6 @@ flowchart TD
 2. <strong>Персистентность Write-Ahead Log (WAL):</strong> Все изменения состояния сначала сериализуются на диск в журнал упреждающей записи (Write-Ahead Log). Потеря диска при перезапуске пода означает потерю локальной истории коммитов и необходимость долгой передачи снапшота от лидера по сети. <code>volumeClaimTemplates</code> гарантирует, что том с WAL останется привязанным к тому же пиру.</p>
 <hr />
 <h2 id="5-lovushki-statefulset-v-production-o-chem-molchit-dokumentatsiya">5. Ловушки StatefulSet в Production: О чем молчит документация</h2>
-
 <p>Эксплуатация StatefulSet в боевых условиях требует железной дисциплины: здесь ошибки конфигурации не прощаются планировщиком.</p>
 <h3 id="5-1-rolling-updates-i-poterya-kvoruma">5.1. Rolling Updates и потеря Кворума</h3>
 <p>По умолчанию стратегия обновления StatefulSet — <code>RollingUpdate</code>. Контроллер начинает последовательное обновление с пода с наибольшим индексом: обновляет <code>postgres-2</code>, дожидается готовности, затем переходит к <code>postgres-1</code>, и наконец к <code>postgres-0</code>.</p>
@@ -640,7 +635,6 @@ flowchart TD
 
 <hr />
 <h2 id="rezyume">Резюме</h2>
-
 <ol>
 <li><strong>Deployment vs StatefulSet:</strong> Deployment предназначен для взаимозаменяемых stateless-подов. StatefulSet необходим для сервисов с состоянием, требующих стабильных сетевых имен и персональных томов.</li>
 <li><strong>Гарантия идентичности:</strong> Имена подов индексируются (<code>0, 1, 2...</code>), поды запускаются и удаляются в строгом порядке, а <code>volumeClaimTemplates</code> привязывает выделенный PVC к конкретному индексу.</li>

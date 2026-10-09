@@ -370,7 +370,6 @@
 
 <hr />
 <h2 id="problema-dublikatov-v-asinkhronnom-mire">Проблема дубликатов в асинхронном мире</h2>
-
 <p>В распределенных системах действуют суровые законы физики: невозможно построить абсолютно надежную сеть. </p>
 <p>Паттерн <a href="6-outbox-pattern.html" class="wikilink">6. Outbox pattern</a> гарантирует, что продюсер отправит событие в брокер как минимум один раз (<strong>At-least-once delivery</strong>). Но что происходит на принимающей стороне?</p>
 <p>Рассмотрим типичные сбои на консьюмере:<br />
@@ -381,7 +380,6 @@
 <p>Чтобы избежать этого, обработчик обязан быть <strong>идемпотентным</strong> (см. <a href="../01-fundament-asinkhronnosti/10-idempotency-v-message-processing.html" class="wikilink">10. Idempotency в message processing</a>). И если Outbox — это меч для надежной отправки, то <strong>Inbox Pattern (Входящие сообщения)</strong> — это наш надежный щит на стороне приема. Вместе они формируют стандарт надежности: <strong>Effectively-once processing (Обработка ровно один раз на прикладном уровне)</strong>.</p>
 <hr />
 <h2 id="anatomiya-patterna-inbox">Анатомия паттерна Inbox</h2>
-
 <p>Суть паттерна Inbox абсолютно симметрична паттерну Outbox: мы используем строгие свойства локальных ACID-транзакций реляционной базы данных (PostgreSQL/MySQL), чтобы <strong>атомарно объединить дедупликацию и выполнение бизнес-логики</strong>.</p>
 
 <div class="code-block" data-lang="text">
@@ -451,7 +449,6 @@ flowchart TD
 <hr />
 <h2 id="mechanical-sympathy-isklyuchenie-sostoyaniya-gonki-na-urovne-yadra-subd">Mechanical Sympathy: Исключение состояния гонки на уровне ядра СУБД</h2>
 
-
 <aside class="callout callout-info" aria-label="Под капотом: Row-level locks, B-Tree и параллельные воркеры">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚙️</span>
@@ -472,7 +469,6 @@ flowchart TD
 
 <hr />
 <h2 id="idiomatichnyy-go-realizatsiya-inbox">Идиоматичный Go: Реализация Inbox</h2>
-
 <p>Для реализации создается компактная таблица в реляционной базе данных:</p>
 
 <div class="code-block" data-lang="sql">
@@ -592,9 +588,7 @@ func (p *OrderProcessor) applyBusinessLogic(ctx context.Context, tx *sql.Tx, pay
 
 <hr />
 <h2 id="arkhitekturnye-nyuansy-inbox">Архитектурные нюансы Inbox</h2>
-
 <h3 id="1-perepolnenie-tablitsy-inbox-table-bloat">1. Переполнение таблицы Inbox (Table Bloat)</h3>
-
 <p>Таблица <code>inbox</code> пополняется на каждое успешно обработанное входящее событие. В высоконагруженных системах она может прирастать на десятки миллионов записей в сутки. Хранить эти записи вечно нет необходимости: дубликаты обычно прилетают в течение минут или часов после сбоя.</p>
 <p>Решения для очистки:<br />
 - <strong>Background Cleanup (Фоновый сборщик мусора):</strong> Регулярный фоновый процесс (CronJob) на Go, удаляющий записи старше 7 дней:<br />
@@ -603,7 +597,6 @@ func (p *OrderProcessor) applyBusinessLogic(ctx context.Context, tx *sql.Tx, pay
 - <strong>Партиционирование по датам (Table Partitioning):</strong> Создание дневных партиций <code>inbox_YYYY_MM_DD</code> и удаление устаревших секций через мгновенный <code>DROP TABLE</code> без нагрузки на планировщик вакуума (Vacuum).</p>
 <hr />
 <h3 id="2-masshtabirovanie-vynos-inbox-v-redis">2. Масштабирование: Вынос Inbox в Redis</h3>
-
 <p>Когда пропускная способность базы данных становится узким местом, инженеры часто пытаются вынести дедупликацию в Redis с помощью быстрой атомарной команды <code>SETNX</code> (Set if Not Exists).</p>
 <p><strong>Почему это опасно для транзакционных бизнес-процессов?</strong></p>
 <p>Как только проверка дубликатов выносится из базы данных, где лежат ваши бизнес-данные (PostgreSQL), вы <strong>мгновенно теряете ACID-гарантию</strong> и снова попадаете в ловушку Dual Write:<br />
@@ -625,7 +618,6 @@ func (p *OrderProcessor) applyBusinessLogic(ctx context.Context, tx *sql.Tx, pay
 
 <hr />
 <h3 id="3-middleware-podkhod-v-go">3. Middleware подход в Go</h3>
-
 <p>В зрелых микросервисных проектах логика Inbox выносится в обобщенные компоненты промежуточного слоя (<strong>Middleware</strong>). Декоратор консьюмера автоматически:<br />
 1. Открывает транзакцию <code>*sql.Tx</code>;<br />
 2. Проверяет и резервирует <code>message_id</code> в таблице <code>inbox</code>;<br />
@@ -634,7 +626,6 @@ func (p *OrderProcessor) applyBusinessLogic(ctx context.Context, tx *sql.Tx, pay
 <p>Это освобождает продуктовых инженеров от написания инфраструктурного бойлерплейта в каждом микросервисе.</p>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Inbox Pattern</strong> — фундаментальный механизм дедупликации сообщений на стороне консьюмера с опорой на локальные ACID-транзакции СУБД.</li>
 <li>Архитектурная связка <strong>Outbox (на отправке) + Inbox (на приеме)</strong> обеспечивает надежность класса <strong>Effectively-once</strong> поверх ненадежной сети и брокеров с гарантией At-least-once.</li>

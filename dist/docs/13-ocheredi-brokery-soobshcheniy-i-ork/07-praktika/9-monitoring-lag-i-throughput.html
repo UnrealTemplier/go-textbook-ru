@@ -369,7 +369,6 @@
 <p>Главные пульсометры здоровья распределенного асинхронного конвейера — это <strong>Lag (Отставание)</strong> и <strong>Throughput (Пропускная способность)</strong>. В этой лекции мы разберем их физическую природу, особенности в RabbitMQ и Kafka, ловушки подсчета и инженерные практики Prometheus-инструментации в Go.</p>
 <hr />
 <h2 id="letet-vslepuyu-plokhaya-ideya">Лететь вслепую — плохая идея</h2>
-
 <p>Представьте приборную панель самолета в густом тумане. Синхронный HTTP — это полет по визуальным ориентирам: если перед вами гора (база данных не отвечает), вы сразу это видите. Асинхронный брокер — это полет исключительно по приборам. Если датчики высоты и скорости отключены, самолет летит в землю с прежней крейсерской скоростью.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -419,13 +418,11 @@ flowchart LR
 3. <strong>Нарушение SLA бизнеса:</strong> Клиенты оплатили заказ, но чек и активация подписки приходят через 4 часа вместо 2 секунд.</p>
 <hr />
 <h2 id="anatomiya-lag-otstavaniya">Анатомия Lag (Отставания)</h2>
-
 <p><strong>Lag</strong> — это объем работы, который уже отправлен продюсерами в систему, но еще не завершен консьюмерами.<br />
 Если Throughput — это скорость, с которой насос откачивает воду из трюма, то Lag — это текущий уровень воды в трюме корабля.</p>
 <p>Однако то, <em>как именно</em> измеряется и вычисляется Lag, радикально зависит от архитектуры брокера.</p>
 <hr />
 <h3 id="smart-broker-rabbitmq">Smart Broker (RabbitMQ)</h3>
-
 <p>В брокере RabbitMQ концепция очереди реализована на уровне самого ядра (Erlang Actor Model). Брокер сам следит за каждым отдельным сообщением и выставляет наружу две ключевые метрики для каждой очереди:</p>
 <ol>
 <li><code>messages_ready</code>: количество сообщений, которые находятся в оперативной памяти или на диске и готовы к немедленной выдаче любому свободному консьюмеру. Это <strong>чистый Lag очереди</strong>.</li>
@@ -486,7 +483,6 @@ flowchart LR
 
 <hr />
 <h3 id="dumb-broker-kafka">Dumb Broker (Kafka)</h3>
-
 <p>В архитектуре Apache Kafka брокер глух и нем относительно состояния консьюмеров. У Kafka нет очередей; есть упорядоченный append-only лог на диске (партиция), а состояние консьюмера определяется единственным числом — смещением (<strong>Offset</strong>).</p>
 <p>Для любой консьюмер-группы <strong>Consumer Lag</strong> в партиции вычисляется строго математически:</p>
 <p>$$\text{Consumer Lag} = \text{High Watermark (LEO)} - \text{Committed Offset}$$</p>
@@ -536,7 +532,6 @@ flowchart LR
 <hr />
 <h3 id="glavnaya-lovushka-message-count-vs-time-lag">Главная ловушка: Message Count vs Time Lag</h3>
 
-
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Абсолютное количество vs Реальное время задержки">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -559,7 +554,6 @@ $$\text{Time Lag} = \text{Time}<em>{\text{consume}} - \text{timestamp}</em>{\tex
 
 <hr />
 <h2 id="throughput-propusknaya-sposobnost">Throughput (Пропускная способность)</h2>
-
 <p><strong>Throughput</strong> характеризует производительность системы во времени. В асинхронных конвейерах его измеряют в двух плоскостях:</p>
 <ol>
 <li><strong>MPS / RPS (Messages / Records Per Second):</strong> Скорость в сообщениях в секунду. Критична для CPU и памяти: каждое сообщение требует десериализации JSON/Protobuf, аллокаций в куче Go и вызовов сборщика мусора GC.</li>
@@ -570,7 +564,6 @@ $$\text{Time Lag} = \text{Time}<em>{\text{consume}} - \text{timestamp}</em>{\tex
 <p>Если продюсеры стабильно пишут 5 000 сообщений в секунду, а консьюмеры способны разбирать только 4 500, система накапливает 500 сообщений в секунду (30 000 в минуту, 1.8 миллиона в час). Рано или поздно наступит исчерпание ресурсов.</p>
 <hr />
 <h2 id="praktika-v-go-prometheus-instrumentation">Практика в Go: Prometheus Instrumentation</h2>
-
 <p>Чтобы не раздувать бизнес-код обработчиков служебной логикой снятия метрик, в Go применяется идиоматичный паттерн <strong>Middleware / Decorator</strong>. Для сбора метрик используется официальный пакет <code>prometheus/client_golang</code>.</p>
 <p>Ниже представлен production-ready декоратор обработчика сообщений, фиксирующий Throughput, Latency выполнения и Time Lag сообщения из его заголовка:</p>
 
@@ -696,7 +689,6 @@ func (e *NonRetryableError) Error() string {
 
 <hr />
 <h2 id="alerting-chto-dolzhno-budit-inzhenera-nochyu">Alerting: Что должно будить инженера ночью?</h2>
-
 <p>Грамотный алертинг строится по принципу минимального шума (Alert Fatigue Prevention). Если алерт сработал ночью, он обязан требовать немедленного инженерного вмешательства, а не констатировать факт временного скачка нагрузки.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -739,7 +731,6 @@ flowchart TD
 <li><code>Consumer CPU &gt; 80%</code>: Высокая загрузка CPU при обработке данных — признак эффективного использования оплаченного кремния. Беспокоиться нужно, когда CPU загружен на 5%, а очередь при этом стоит.</li>
 </ul>
 <h3 id="khoroshie-alerty-production-standard-na-promql">✅ Хорошие алерты (Production Standard на PromQL)</h3>
-
 <ol>
 <li>
 <p><strong>Time Lag превышает бизнес-SLA (Critical Pager):</strong><br />
@@ -767,7 +758,6 @@ flowchart TD
 </ol>
 <hr />
 <h2 id="mechanical-sympathy-optimizatsiya-throughput">Mechanical Sympathy: Оптимизация Throughput</h2>
-
 <p>Если вы зафиксировали на графиках, что консьюмер уперся в потолок по Throughput (лаг растет, скорость вычитки застыла на 200 сообщений/сек), а системный мониторинг показывает, что CPU загружен на 15%, а сетевой интерфейс пустует — узкое место кроется в <strong>системных блокировках и дисковом I/O базы данных</strong>.</p>
 <p>Классическая ошибка — выполнять отдельный сетевой запрос в PostgreSQL на каждый входящий пакет:</p>
 
@@ -790,7 +780,6 @@ UPDATE user_balances SET balance = balance - 10 WHERE user_id = $1;
 2. <strong>Батчинг (Групповая обработка):</strong> Накопление пачки сообщений и отправка одного пакетного запроса на запись через <code>UNNEST</code> или <code>COPY</code> (подробно разобранный в лекции <a href="5-batch-processing-soobshcheniy.html" class="wikilink">5. Batch processing сообщений</a>). Это поднимает Throughput с 500 до 50 000 сообщений в секунду на том же самом железе за счет амортизации накладных расходов планировщика и дискового контроллера.</p>
 <hr />
 <h2 id="itog-razdela">Итог раздела</h2>
-
 <p>Эта лекция подводит логическую черту под практическим циклом разработки асинхронных консьюмеров. Мы прошли фундаментальный путь:<br />
 1. Разобрали базовые паттерны работы с очередями в Go (<a href="1-rabota-s-ocheredyami-v-go.html" class="wikilink">1. Работа с очередями в Go</a>).<br />
 2. Реализовали безупречный Graceful Shutdown с сохранением данных (<a href="2-konsyumery-i-graceful-shutdown.html" class="wikilink">2. Консьюмеры и graceful shutdown</a>).<br />

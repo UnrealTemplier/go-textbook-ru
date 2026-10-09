@@ -315,7 +315,6 @@
 
           <div class="article-markdown">
             <h2 id="klassicheskiy-put-io-i-ego-fundamentalnaya-problema">Классический путь IO и его фундаментальная проблема</h2>
-
 <p>Прежде чем приступать к оптимизациям ввода-вывода, любой серьезный инженер обязан досконально понимать: <strong>а что именно мы пытаемся оптимизировать?</strong></p>
 <p>В классической модели POSIX при передаче данных — например, когда веб-сервер считывает статический файл с диска и отправляет его клиенту по сети через TCP-сокет — данные совершают чудовищный и расточительный кругосветный маршрут:</p>
 
@@ -366,7 +365,6 @@ flowchart TD
 <p>Для высоконагруженных систем (базы данных, прокси-серверы вроде Nginx/Envoy, стриминг видео, брокеры Kafka) эти накладные расходы становятся непреодолимым барьером производительности. На помощь приходят технологии <a href="43-direct-io-i-zero-copy.html" class="wikilink"><code>43. Direct IO и Zero Copy</code></a>, кардинально меняющие физику движения байтов в операционной системе.</p>
 <hr />
 <h2 id="direct-io-odirect-obkhod-page-cache">Direct IO (O_DIRECT): Обход Page Cache</h2>
-
 <p><strong>Direct IO</strong> — это специализированный режим работы с файловой системой, при котором поток данных передается напрямую между оперативной памятью пользовательского процесса и блочным накопителем, полностью минуя <code>Page Cache</code>.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -400,7 +398,6 @@ flowchart LR
 
 
 <h3 id="kak-eto-rabotaet-pod-kapotom">Как это работает под капотом</h3>
-
 <p>Когда файл открывается с флагом <code>O_DIRECT</code>, ядро Linux переключает обработчик в таблице операций виртуальной файловой системы <code>struct file_operations</code>:<br />
 - <strong>Обычный путь VFS:</strong> <code>read_iter</code> → <code>filemap_read</code> → <code>page_cache_read</code>.<br />
 - <strong>Путь Direct IO:</strong> <code>read_iter</code> → <code>direct_IO</code> → <code>blk_rq_map_user</code> → DMA.</p>
@@ -434,7 +431,6 @@ Direct IO <strong>жестко требует</strong> выравнивания 
 </ul>
 <hr />
 <h2 id="zero-copy-ustranenie-kopirovaniya-na-urovne-yadra">Zero Copy: Устранение копирования на уровне ядра</h2>
-
 <p><strong>Zero Copy</strong> — это фундаментальный архитектурный паттерн проектирования операционных систем, при котором данные передаются между двумя дескрипторами в пространстве ядра (например, из дискового файла напрямую в сетевой сокет) без единого копирования байтов в пространство пользователя.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -467,7 +463,6 @@ flowchart TD
 
 
 <h3 id="mekhanizm-raboty">Механизм работы</h3>
-
 <p>Классический сценарий: веб-сервер отдает статический файл (HTML, картинку, видео) через сокет.<br />
 1. Приложение вызывает системный вызов <code>sendfile()</code>.<br />
 2. Ядро Linux считывает блок файла с диска в <code>Page Cache</code> с помощью DMA.<br />
@@ -488,7 +483,6 @@ flowchart TD
 
 
 <h3 id="go-realizatsiya-zero-copy">Go-реализация Zero Copy</h3>
-
 <p>В языке Go вам не требуется вручную писать сложные си-библиотеки для вызова <code>sendfile</code>. Стандартная библиотека применяет Zero Copy прозрачно:</p>
 
 <div class="code-block" data-lang="go">
@@ -559,7 +553,6 @@ func mapLargeFile(filename string) ([]byte, error) {
 
 <hr />
 <h2 id="sravnenie-strategiy-i-mechanical-sympathy">Сравнение стратегий и Mechanical Sympathy</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -626,10 +619,8 @@ func mapLargeFile(filename string) ([]byte, error) {
 
 <hr />
 <h2 id="go-spetsifika-i-prakticheskaya-realizatsiya">Go-специфика и практическая реализация</h2>
-
 <p>При переходе с PHP/Java/C# на Go важно понять: <strong>Go не скрывает от инженера реальность операционной системы</strong>.</p>
-<h3 id="1-rabota-s-odirect-v-go">1. Работа с `O_DIRECT` в Go</h3>
-
+<h3 id="1-rabota-s-odirect-v-go">1. Работа с <code>O_DIRECT</code> в Go</h3>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -688,13 +679,11 @@ func writeDirectIO(path string, data []byte) error {
 
 
 <h3 id="2-upravlenie-gc-davleniem">2. Управление GC давлением</h3>
-
 <p>Применение Direct IO и Zero Copy является мощнейшим оружием против давления на сборщик мусора (GC Pressure).</p>
 <p>Если ваш сервис перекачивает 20 ГБ логов в минуту через стандартные слайсы <code>make([]byte, 64*1024)</code>, сборщик мусора Go вынужден непрерывно сканировать и утилизировать миллионы короткоживущих объектов в куче. Это провоцирует частые микропаузы и сжигает процессорные ядра.</p>
 <p>Используя <code>io.Copy</code> (который активирует <code>sendfile</code>), <code>splice()</code> или отображение через <code>syscall.Mmap</code>, вы передаете управление ядру: данные вообще не попадают в кучу Go, а сборщик мусора видит лишь скромные дескрипторы файлов!</p>
 <hr />
 <h2 id="lovushki-i-voprosy-s-sobesedovaniy">Ловушки и вопросы с собеседований</h2>
-
 <h3 id="corner-cases">Corner Cases</h3>
 <ol>
 <li><strong><code>O_DIRECT</code> на SSD vs HDD:</strong> На механических HDD Direct IO дает взрывной прирост на последовательных операциях, но губителен при случайном доступе без кэша. На SSD разница в случайном доступе сглаживается скоростью контроллера, но Direct IO критичен для продления ресурса ячеек NAND.</li>
@@ -709,7 +698,6 @@ func writeDirectIO(path string, data []byte) error {
 </ul>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Классический I/O</strong> прост и надежен, но оплачивается двойным копированием процессором (<code>memcpy</code>) и вымыванием кэшей L1/L2/L3.</li>
 <li><strong>Direct IO (<code>syscall.O_DIRECT</code>)</strong> исключает Page Cache ядра, соединяя буфер приложения напрямую с диском через DMA. Требует строгого выравнивания по 4096 байт и незаменим для СУБД.</li>

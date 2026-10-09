@@ -311,7 +311,6 @@
 <p>Триада <strong><code>Pod</code></strong>, <strong><code>Deployment</code></strong> и <strong><code>Service</code></strong> — это краеугольный камень оркестрации в K8s. Понимание их взаимодействия, скрытой роли служебного контейнера <code>pause</code>, механики зондирования (Probes) и асинхронного выбывания из сетевой балансировки критически важно для развертывания высоконагруженных сервисов на Go с истинным нулевым временем простоя (<strong>Zero-Downtime Deployment</strong>).</p>
 <hr />
 <h2 id="1-pod-atomarnaya-chastitsa-kubernetes-i-konteyner-pause">1. Pod: Атомарная частица Kubernetes и контейнер Pause</h2>
-
 <p>В Docker базовой единицей изоляции выступает отдельный контейнер. В Kubernetes минимальной неделимой единицей планирования и развертывания является <strong>Pod (Под)</strong>.</p>
 <p>Под — это не контейнер, а <strong>группа из одного или нескольких тесно связанных контейнеров</strong>, помещенных в единую изолированную среду (<strong>Sandbox</strong>). </p>
 <p>Все контейнеры внутри одного Пода:<br />
@@ -386,7 +385,6 @@ flowchart TD
 
 <hr />
 <h2 id="2-deployment-upravlenie-zhiznennym-tsiklom-i-replikatsiey">2. Deployment: Управление жизненным циклом и репликацией</h2>
-
 <p>В продакшен-средах «голые» поды напрямую практически никогда не создаются вручную. Если физический сервер перезагрузится, одиночный Pod погибнет навсегда.</p>
 <p>Управление жизненным циклом делегируется контроллеру <strong><code>Deployment</code></strong>:<br />
 1. Deployment описывает желаемое состояние: версию образа, стратегию выкатки и количество реплик.<br />
@@ -427,12 +425,11 @@ flowchart TD
 
 <hr />
 <h2 id="3-proby-zhiznesposobnosti-probes-simbioz-kubelet-i-rantayma-go">3. Пробы жизнеспособности (Probes): Симбиоз Kubelet и рантайма Go</h2>
-
 <p>Kubernetes не может знать внутреннее состояние вашего приложения, просто глядя на статус процесса в ОС. Процесс Go может не падать, но намертво зависнуть в бесконечном цикле или дедлоке мьютексов. </p>
 <p>Для проверки реального здоровья Kubelet использует три типа проб:</p>
-<h3 id="1-startupprobe-proba-zapuska">1. `startupProbe` (Проба запуска)</h3>
+<h3 id="1-startupprobe-proba-zapuska">1. <code>startupProbe</code> (Проба запуска)</h3>
 <p>Предназначена для медленно инициализирующихся сервисов. Если ваш Go-бэкенд при холодном старте выполняет миграции БД, прогревает тяжелые кэши или вычитывает гигабайтные справочники в память, <code>startupProbe</code> дает ему запас времени (например, до 2 минут). Пока startup-проба не вернет статус <code>Success</code>, остальные пробы даже не запускаются.</p>
-<h3 id="2-livenessprobe-proba-zhivuchesti">2. `livenessProbe` (Проба живучести)</h3>
+<h3 id="2-livenessprobe-proba-zhivuchesti">2. <code>livenessProbe</code> (Проба живучести)</h3>
 <p>Проверяет, способен ли процесс выполнять работу в принципе. Если liveness-проба падает (например, 3 раза подряд вернула HTTP-код 500 или таймаут), Kubelet безжалостно <strong>уничтожает Pod</strong> сигналом <code>SIGTERM</code>, а затем <code>SIGKILL</code>, и перезапускает контейнер.</p>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Каскадный блэкаут при внешней проверке в Liveness Probe">
@@ -448,7 +445,7 @@ flowchart TD
 </aside>
 
 
-<h3 id="3-readinessprobe-proba-gotovnosti">3. `readinessProbe` (Проба готовности)</h3>
+<h3 id="3-readinessprobe-proba-gotovnosti">3. <code>readinessProbe</code> (Проба готовности)</h3>
 <p>Проверяет, готов ли сервис принимать входящий пользовательский трафик в данный момент. Если readiness-проба возвращает ошибку, Kubernetes <strong>не убивает контейнер</strong>! Он просто временно <strong>исключает IP-адрес этого пода из балансировщика Service</strong>. Это идеальное место для проверки доступности БД и прогрева кэшей.</p>
 
 <aside class="callout callout-info" aria-label="Под капотом: Задержки распространения статуса Readiness">
@@ -466,7 +463,6 @@ flowchart TD
 
 <hr />
 <h2 id="4-service-stabilnaya-tochka-vkhoda-v-mire-efemernykh-podov">4. Service: Стабильная точка входа в мире эфемерных подов</h2>
-
 <p>Поскольку поды постоянно пересоздаются, их IP-адреса непрерывно меняются. Чтобы клиенты могли стабильно обращаться к пулу бэкендов, Kubernetes предоставляет абстракцию <strong><code>Service</code></strong>.</p>
 <p>Service объединяет поды с помощью строкового селектора меток (например, <code>selector: app=my-go-app</code>) и выделяет виртуальный неизменяемый адрес <strong>ClusterIP</strong> (VIP):</p>
 <ol>
@@ -498,7 +494,6 @@ resp, err := http.Get(&quot;http://billing-service:8080/api/charge&quot;)
 <p>Это критически важно для развертывания распределенных Stateful-систем на Go (кластеры Raft, CockroachDB, Kafka, Cassandra), где узлам необходимо напрямую общаться с конкретными пирами, а не балансироваться случайным образом.</p>
 <hr />
 <h2 id="5-samaya-strashnaya-gonka-anatomiya-zero-downtime-graceful-shutdown">5. Самая страшная гонка: Анатомия Zero-Downtime Graceful Shutdown</h2>
-
 <p>Пожалуй, самая распространенная эксплуатационная ошибка, приводящая к появлению ошибок <code>502 Bad Gateway</code> и <code>Connection Refused</code> во время деплоя, — это неправильно реализованный <strong>Graceful Shutdown</strong> в Go.</p>
 <h3 id="v-chem-sut-raspredelennoy-gonki-race-condition">В чем суть распределенной гонки (Race Condition)?</h3>
 <p>Когда Kubernetes обновляет Deployment, для старого пода происходят два независимых асинхронных процесса:<br />
@@ -555,7 +550,6 @@ srv.Shutdown(ctx) // Закрываем сокет НЕМЕДЛЕННО
 <p>то сервер мгновенно закроет слушающий порт <code>:8080</code>. Но в течение следующих 2–5 секунд <code>kube-proxy</code> на соседних серверах <em>еще не успеет обновить таблицы iptables ядра</em>! </p>
 <p>Внешние балансировщики и соседние микросервисы продолжат слать запросы на старый IP-адрес, получая в ответ немедленный сброс соединения (<strong>TCP RST / Connection Refused</strong>) и выбивая ошибки пользователям.</p>
 <h3 id="kanonicheskiy-pattern-graceful-shutdown-dlya-go-v-kubernetes">Канонический паттерн Graceful Shutdown для Go в Kubernetes</h3>
-
 <p>Чтобы гарантировать 100% Zero-Downtime, Go-сервис обязан выдержать <strong>паузу тишины (Draining Delay)</strong> перед закрытием слушающего сокета:</p>
 
 <div class="code-block" data-lang="go">
@@ -650,7 +644,6 @@ $$\text{Задержка сети (Sleep)} + \text{Таймаут Shutdown} &lt;
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Под как песочница:</strong> Контейнеры внутри Пода разделяют сеть через спящий процесс <code>pause</code> и общаются по <code>localhost</code>.</li>
 <li><strong>Иерархия Deployment -&gt; ReplicaSet -&gt; Pod:</strong> Гарантирует поддержание желаемого числа реплик и плавный Rolling Update.</li>

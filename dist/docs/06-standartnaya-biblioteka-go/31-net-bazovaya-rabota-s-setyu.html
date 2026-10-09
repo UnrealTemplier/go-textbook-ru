@@ -300,7 +300,6 @@
 
           <div class="article-markdown">
             <h2 id="fundament-setevogo-steka-i-neblokiruyushchiy-vvod-vyvod">Фундамент сетевого стека и неблокирующий ввод-вывод</h2>
-
 <p>В классическом программировании на C сетевой ввод-вывод всегда был разделен на два одинаково неудобных лагеря: либо блокирующие сокеты, требующие выделения отдельного тяжелого потока ОС на каждого клиента, либо неблокирующий мультиплексированный ввод-вывод (<code>select</code>, <code>poll</code>, <code>epoll</code>), низвергающий разработчика в пучину конечных автоматов, буферов фрагментов и сложнейших асинхронных колбэков.</p>
 <p>Пакет <code>net</code> в Go совершил тихую инженерную революцию. Это не просто тонкая обертка над POSIX-сокетами. Это глубоко интегрированная в рантайм Go подсистема, реализующая высокоуровневую асинхронную модель программирования без колбэков, промисов или event-loop'ов, видимых разработчику. Благодаря ему, сетевой код на Go выглядит синхронным, прямолинейным и чистым, но под капотом исполняется предельно асинхронно на уровне планировщика горутин и ядра операционной системы.</p>
 <p>Для инженера уровня Senior понимание <code>net</code> — это понимание того, как десятки и сотни тысяч соединений обслуживаются одним бинарником с минимальным потреблением памяти и CPU, как работает интеграция с <code>epoll</code>/<code>kqueue</code>, и почему сетевые таймауты в Go фундаментально отличаются от таймаутов на уровне <code>context</code>.</p>
@@ -317,7 +316,6 @@
 
 
 <h2 id="under-the-hood-netpoller-g-m-p-i-asinkhronnost-bez-kolbekov">Under the hood: netpoller, G-M-P и асинхронность без колбэков</h2>
-
 <p>Классический блокирующий socket API (<code>read</code>, <code>write</code>, <code>accept</code>) останавливает выполнение потока ОС до готовности данных или завершения записи. В Go сокеты создаются в неблокирующем режиме (<code>O_NONBLOCK</code> на Linux, <code>ioctlsocket</code> на Windows). </p>
 <p>Механика работы при вызове <code>conn.Read()</code>:<br />
 1. Вызывается syscall <code>read()</code>. Если данные есть в сетевом буфере ядра, они копируются в буфер приложения мгновенно.<br />
@@ -364,9 +362,7 @@ flowchart TD
 
 <p>Эта архитектура позволяет обрабатывать сотни тысяч одновременных соединений, используя лишь десятки системных тредов. Планировщик Go и <code>netpoller</code> работают как единый механизм, скрывая сложность асинхронности за синхронным API.</p>
 <h2 id="1-interfeysy-conn-i-listener-kontrakty-i-dedlayny">1. Интерфейсы Conn и Listener: контракты и дедлайны</h2>
-
 <h3 id="net-conn">net.Conn</h3>
-
 <p>Интерфейс <code>net.Conn</code> объединяет поток ввода-вывода с управлением сетевым адресом и таймаутами:</p>
 
 <div class="code-block" data-lang="go">
@@ -392,7 +388,6 @@ flowchart TD
 
 <p><strong>Ключевая особенность:</strong> <code>net.Conn</code> <strong>потокобезопасен</strong> для дуплексного режима. Вы можете безопасно вызывать <code>Read</code> в одной горутине и <code>Write</code> в другой горутине одновременно для одного и того же сокета (в отличие от <code>bufio</code>, который требует внешней синхронизации). Однако две параллельные горутины, одновременно пишущие в сокет, перемешают свои байты, нарушив целостность протокола.</p>
 <h3 id="net-listener">net.Listener</h3>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -426,12 +421,9 @@ flowchart TD
 
 
 <h2 id="2-mechanical-sympathy-faylovye-deskriptory-epoll-i-tsena-syscall">2. Mechanical Sympathy: Файловые дескрипторы, epoll и цена syscall</h2>
-
 <h3 id="faylovye-deskriptory-i-limity-os">Файловые дескрипторы и лимиты ОС</h3>
-
 <p>Каждый <code>net.Conn</code> потребляет 1 файловый дескриптор (FD). В Linux лимит задается <code>ulimit -n</code> (часто 1024 по умолчанию). Для production-сервисов это катастрофически мало. Настройте <code>fs.file-max</code> и <code>LimitNOFILE</code> в systemd до <code>65535</code> или выше. Утечка FD из-за забытого <code>conn.Close()</code> — одна из самых частых причин падения сервисов.</p>
 <h3 id="bufery-yadra-i-nagles-algorithm">Буферы ядра и Nagle's Algorithm</h3>
-
 <p>Сокеты имеют буферы на уровне ядра (<code>SO_SNDBUF</code>, <code>SO_RCVBUF</code>). В Go для всех TCP-соединений флаг <code>TCP_NODELAY</code> <strong>включен по умолчанию</strong> (<code>setNoDelay(fd, true)</code> при инициализации сокета), то есть алгоритм Нагла отключен. Это сделано намеренно для минимизации задержек (latency) в RPC и веб-сервисах. Если вам требуется включить алгоритм Нагла для коалесценции мелких пакетов при массивной потоковой передаче, это делается явно:</p>
 
 <div class="code-block" data-lang="go">
@@ -451,16 +443,13 @@ if ok {
 
 <p>По умолчанию Go ориентирован на минимальную сетевую задержку, отправляя данные сразу после вызова <code>Write</code>.</p>
 <h3 id="tsena-sozdaniya-soketa">Цена создания сокета</h3>
-
 <p><code>net.Dial</code> выполняет:<br />
 1. <code>socket()</code> — создание FD (syscall)<br />
 2. <code>setsockopt()</code> — настройка неблокирующего режима, буферов, таймаутов (syscall)<br />
 3. <code>connect()</code> — TCP handshake (syscall)</p>
 <p>При высокой нагрузке (десятки подключений в секунду к внешним API) это создает заметный overhead. Используйте пулы соединений (<code>http.Transport</code>, <code>pgxpool</code>), чтобы переиспользовать установленные сокеты.</p>
 <h2 id="3-idiomatichnye-patterny-accept-loop-i-konkurentnye-zapisi">3. Идиоматичные паттерны: Accept loop и конкурентные записи</h2>
-
 <h3 id="pravilnyy-accept-loop">Правильный Accept loop</h3>
-
 <p>Никогда не используйте <code>Accept</code> в цикле без обработки ошибок и контекста. Это приводит к busy-loop при закрытии листенера или утечке горутин.</p>
 
 <div class="code-block" data-lang="go">
@@ -515,7 +504,6 @@ func handleConnection(conn net.Conn) {
 </div>
 
 <h2 id="4-razreshenie-imen-i-asinkhronnyy-dns">4. Разрешение имен и асинхронный DNS</h2>
-
 <p>Функции <code>net.LookupIP</code>, <code>net.Dial</code> используют <code>net.DefaultResolver</code>. До Go 1.14 DNS-резолвер использовал <code>cgo</code> (<code>getaddrinfo</code>), что блокировало системный тред и могло вызывать deadlocks в высоконагруженных сервисах.</p>
 <p>С Go 1.14+ по умолчанию используется <strong>чисто Go'шный асинхронный резолвер</strong>. Он читает <code>/etc/resolv.conf</code>, отправляет UDP-запросы напрямую через сокет и парсит ответ без блокировки OS-тредов.</p>
 
@@ -552,7 +540,6 @@ ips, err := resolver.LookupIPAddr(context.Background(), &quot;api.example.com&qu
 
 
 <h2 id="lovushki-i-khardkornye-voprosy-s-sobesedovaniy">Ловушки и хардкорные вопросы с собеседований</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -605,7 +592,6 @@ ips, err := resolver.LookupIPAddr(context.Background(), &quot;api.example.com&qu
 
 
 <h2 id="sravnenie-s-ekosistemami-drugikh-yazykov">Сравнение с экосистемами других языков</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -643,7 +629,6 @@ ips, err := resolver.LookupIPAddr(context.Background(), &quot;api.example.com&qu
 </tbody>
 </table></div>
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><code>net</code> предоставляет синхронный API поверх асинхронного <code>netpoller</code>, интегрированного с планировщиком G-M-P. Это устраняет callback hell и event-loop boilerplate.</li>
 <li><code>net.Conn</code> потокобезопасен, но требует явного <code>Close()</code> и управления дедлайнами для предотвращения утечек FD и зомби-соединений.</li>

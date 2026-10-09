@@ -315,7 +315,6 @@
 <p>В этой главе мы исследуем паттерн CQRS в экосистеме Go. Мы разберём, как организовать структуры команд и запросов, как построить асинхронную проекцию через события брокера, как оптимизировать чтение с помощью <code>sync.Pool</code> и батчинга <code>pgx.Batch</code>, и как управлять конечной согласованностью (Eventual Consistency) в распределённых системах.</p>
 <hr />
 <h3 id="chto-takoe-cqrs">Что такое CQRS</h3>
-
 <p>Концепция CQRS была сформулирована Грегом Янгом (Greg Young) как развитие принципа <strong>CQS (Command Query Separation)</strong> Бертрана Мейера. </p>
 <p>Классическое правило CQS гласит:</p>
 <blockquote>
@@ -377,7 +376,6 @@ flowchart LR
 
 <hr />
 <h3 id="zachem-razdelyat-chtenie-i-zapis">Зачем разделять чтение и запись</h3>
-
 <p>Посмотрим на конфликт требований сквозь призму системного инжиниринга:</p>
 <ol>
 <li><strong>Разные формы данных</strong>:<br />
@@ -391,10 +389,8 @@ flowchart LR
 </ol>
 <hr />
 <h3 id="prosteyshaya-realizatsiya-cqrs-na-go">Простейшая реализация CQRS на Go</h3>
-
 <p>В языке Go разделение ответственности начинается с явного разграничения пакетов и интерфейсов.</p>
 <h4 id="storona-zapisi-command-side">Сторона записи (Command Side)</h4>
-
 <p>Команда — это структура параметров. Обработчик команды проверяет инварианты, сохраняет агрегат в репозиторий записи и генерирует событие:</p>
 
 <div class="code-block" data-lang="go">
@@ -462,7 +458,6 @@ func (h *CommandHandler) CreateOrder(ctx context.Context, cmd CreateOrderCommand
 </div>
 
 <h4 id="storona-chteniya-query-side">Сторона чтения (Query Side)</h4>
-
 <p>Запрос — это параметры фильтрации. Обработчик обращается к оптимизированному хранилищу чтения и возвращает готовую модель представления <code>OrderView</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -512,7 +507,6 @@ func (h *QueryHandler) GetOrder(ctx context.Context, q GetOrderQuery) (*OrderVie
 
 <hr />
 <h3 id="razdelenie-modeley-dannykh">Разделение моделей данных</h3>
-
 <p>Истинная мощь CQRS проявляется, когда модели чтения и записи разделяются на уровне физических хранилищ:</p>
 <p><strong>1. Write Model (PostgreSQL — строгая 3НФ нормализация):</strong></p>
 
@@ -559,7 +553,6 @@ CREATE TABLE order_views (
 <p>При чтении запрос <code>SELECT * FROM order_views WHERE order_id = $1</code> выполняется за доли миллисекунды, читая единственную непрерывную дисковую страницу.</p>
 <hr />
 <h3 id="sinkhronizatsiya-modeley-sinkhronnaya-i-asinkhronnaya">Синхронизация моделей: синхронная и асинхронная</h3>
-
 <p>Как изменения из Write Model попадают в Read Model?</p>
 <h4 id="1-sinkhronnaya-sinkhronizatsiya-v-ramkakh-odnoy-tranzaktsii">1. Синхронная синхронизация (В рамках одной транзакции)</h4>
 <p>Команда одновременно обновляет и Write Model, и Read Model в рамках единой ACID-транзакции с помощью <code>SaveWithTx</code>:</p>
@@ -629,7 +622,6 @@ func (p *OrderProjector) OnOrderCreated(ctx context.Context, event OrderCreated)
 
 <hr />
 <h3 id="mechanical-sympathy-cqrs-i-go">Mechanical Sympathy: CQRS и Go</h3>
-
 <p>Как архитектура CQRS влияет на кремний, ядра процессора и память?</p>
 <h4 id="1-razdelenie-pulov-gorutin-i-soedineniy">1. Разделение пулов горутин и соединений</h4>
 <p>Команды и запросы обладают совершенно разным профилем нагрузки. Для Query side мы выделяем массивный пул соединений к репликам чтения через библиотеку <strong><code>pgxpool</code></strong> (<code>github.com/jackc/pgx/v5/pgxpool</code>). Для горячих ключей мы используем in-memory кэширование без блокировок — потокобезопасный <code>sync.Map</code> или библиотеки с сегментированной памятью вроде <strong><code>bigcache</code></strong>, предотвращающие накладные расходы на сборщик мусора.</p>
@@ -689,14 +681,12 @@ func (h *QueryHandler) GetOrder(ctx context.Context, q GetOrderQuery) (*OrderVie
 
 <hr />
 <h3 id="svyaz-s-event-sourcing">Связь с Event Sourcing</h3>
-
 <p>Паттерны CQRS и <strong>Event Sourcing</strong> (<a href="24-event-sourcing-khranenie-sobytiy-vmesto-sostoyaniya.html" class="wikilink">24. Event Sourcing. Хранение событий вместо состояния</a>) великолепно дополняют друг друга, но концептуально независимы:<br />
 - Можно использовать CQRS с классическими таблицами в PostgreSQL на стороне записи.<br />
 - Можно использовать Event Sourcing без разделения моделей чтения.</p>
 <p>Однако их синергия идеальна: если Write Model хранит историю событий, то Read Models — это просто вторичные проекции, которые можно в любой момент пересоздать с нуля, проиграв лог событий Kafka заново!</p>
 <hr />
 <h3 id="kogda-primenyat-cqrs">Когда применять CQRS</h3>
-
 <p><strong>Оправдано:</strong><br />
 - Системы со сверхвысоким дисбалансом чтений и записей (каталоги товаров, социальные сети, медиаплатформы).<br />
 - Домены, где форма данных при редактировании кардинально отличается от формы отображения.<br />
@@ -718,7 +708,6 @@ func (h *QueryHandler) GetOrder(ctx context.Context, q GetOrderQuery) (*OrderVie
 
 <hr />
 <h3 id="antipatterny-i-tipichnye-oshibki">Антипаттерны и типичные ошибки</h3>
-
 <ol>
 <li><strong>CQRS ради резюме (Overengineering)</strong>: Внедрение разделения моделей в проект, обслуживающий 5 запросов в секунду.</li>
 <li><strong>Общая структура для команд и запросов</strong>: Если вы используете один и тот же <code>struct Order</code> и в <code>CommandHandler</code>, и в <code>QueryHandler</code>, вы убили смысл паттерна. Модель чтения обязана быть самостоятельной и оптимизированной под клиента.</li>
@@ -726,7 +715,6 @@ func (h *QueryHandler) GetOrder(ctx context.Context, q GetOrderQuery) (*OrderVie
 </ol>
 <hr />
 <h3 id="itog">Итог</h3>
-
 <p>CQRS — это мощнейшее архитектурное оружие, разрушающее компромисс между нормализацией записи и денормализацией чтения. Вы получаете максимальную скорость вставок на Write Side и мгновенные выборки без <code>JOIN</code> на Query Side.</p>
 <p>Теперь, разобравшись с разделением моделей, мы готовы подойти к высшей ступени работы с данными — полному отказу от хранения текущего состояния в пользу непрерывного потока фактов: <a href="24-event-sourcing-khranenie-sobytiy-vmesto-sostoyaniya.html" class="wikilink">24. Event Sourcing. Хранение событий вместо состояния</a>.</p>
           </div>

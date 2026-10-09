@@ -438,7 +438,6 @@
 
           <div class="article-markdown">
             <h2 id="vvedenie-mekhanizm-uborki-musora-v-bazakh-dannykh">Введение: Механизм уборки мусора в базах данных</h2>
-
 <p>В системах с многоверсионным управлением конкурентным доступом (MVCC) ни один оператор <code>UPDATE</code> или <code>DELETE</code> не стирает физические байты с диска немедленно. Вместо этого СУБД помечает старую версию строки («мертвый кортеж» — dead tuple) как неактивную, сохраняя ее в страницах таблицы до тех пор, пока хотя бы одна активная транзакция теоретически может к ней обратиться.</p>
 <p>Без специального автоматического механизма уборки база данных за считанные недели превратилась бы в гигантскую свалку отживших свой век версий: таблицы раздувались бы до сотен гигабайт, сканирования индексов деградировали бы в десятки раз, а свободное место на дисках стремительно испарялось.</p>
 <p>Процесс очистки мусора в реляционных базах данных во многом подобен сборщику мусора (Garbage Collector) в рантайме Go, но оперирует не байтами оперативной памяти, а 8-килобайтными дисковыми страницами и индексами. Для инженера уровня Senior/Lead понимание этого механизма критично, потому что:<br />
@@ -483,7 +482,6 @@ flowchart TD
 
 <hr />
 <h2 id="arkhitektura-mvcc-i-vozniknovenie-myortvykh-dannykh">Архитектура MVCC и возникновение мёртвых данных</h2>
-
 <p>При изменении строки СУБД создаёт новую версию с новым <code>xmin</code>, а у старой версии проставляется <code>xmax</code>. Пока существует хотя бы одна транзакция, снимок которой (<code>snapshot</code>) включает <code>xmin</code> старой версии, эта версия остаётся «живой» для неё.</p>
 <p>Момент, с которого все мёртвые строки гарантированно не нужны ни одной транзакции, называется <strong>горизонтом очистки (cleanup horizon)</strong>. В PostgreSQL это значение <code>xmin</code> минус количество активных транзакций на момент запуска <code>VACUUM</code>. Всё, что старше этого горизонта (<code>xmin_horizon</code>), можно безопасно удалять или помечать как свободное.</p>
 
@@ -500,17 +498,14 @@ flowchart TD
 
 <hr />
 <h2 id="realizatsiya-pod-kapotom-dva-arkhitekturnykh-lagerya">Реализация под капотом: Два архитектурных лагеря</h2>
-
 <p>Подходы к сборке мусора в современных СУБД радикально различаются по внутренней механике.</p>
 <h3 id="1-postgresql-inline-vacuum">1. PostgreSQL: Inline VACUUM</h3>
-
 <p>Процесс <code>autovacuum</code> (или ручной <code>VACUUM</code>) работает непосредственно с файлами данных таблицы:<br />
 * <strong>Сканирование</strong>: Фоновый процесс последовательно читает страницы данных.<br />
 * <strong>Удаление кортежей</strong>: Находит строки с <code>xmax &lt; horizon</code>, стирает их заголовки.<br />
 * <strong>Обновление структур</strong>: Заполняет <code>Free Space Map (FSM)</code> информацией о свободных слотах на страницах. Обновляет <code>Visibility Map (VM)</code>, помечая страницы, где все строки видны всем, что ускоряет <code>Index Only Scan</code>.<br />
 * <strong>Важно</strong>: Пространство <strong>не возвращается операционной системе</strong>. Файл <code>.md</code> остаётся того же размера, но внутри появляются «дыры», которые переиспользуются для новых <code>INSERT</code>/<code>UPDATE</code>.</p>
 <h3 id="2-mysqlinnodb-background-purge">2. MySQL/InnoDB: Background Purge</h3>
-
 <p>InnoDB не делает <code>VACUUM</code> в классическом понимании. Вместо этого работает <code>purge thread</code>:<br />
 * <strong>Undo Log</strong>: При <code>UPDATE/DELETE</code> старая версия копируется в сегменты отката (undo tablespace).<br />
 * <strong>Purge</strong>: Фоновый поток сканирует историю отката, удаляет старые версии из undo-логов и сбрасывает информацию о «призраках» из кластерного и вторичных индексов.<br />
@@ -530,19 +525,15 @@ flowchart TD
 
 <hr />
 <h2 id="mekhanicheskaya-simpatiya-tsena-uborki-dlya-zheleza-i-os">Механическая симпатия: Цена уборки для железа и ОС</h2>
-
 <p>Запуск <code>VACUUM</code> — это не бесплатная фоновая задача. Он создаёт серьёзную нагрузку на дисковую подсистему и память.</p>
 <h3 id="diskovyy-io-i-kesh-stranits-os">Дисковый I/O и кэш страниц ОС</h3>
-
 <p><code>VACUUM</code> выполняет последовательное чтение файлов данных. Это эффективно заполняет кэш страниц ОС (<code>page cache</code>). Однако при обновлении <code>FSM</code> и <code>VM</code> происходят случайные записи небольших блоков. Ядро ОС переводит эти записи в <code>dirty pages</code>, которые позже сбрасываются через <code>writeback</code> threads.<br />
 * <strong>Влияние на latency</strong>: Если <code>autovacuum</code> настроен слишком агрессивно, он конкурирует с пользовательскими запросами за <code>I/O queue</code>. В облачных средах с ограниченным <code>burst IOPS</code> это приводит к таймаутам <code>QueryContext</code> в Go.<br />
 * <strong>syscalls</strong>: Активно используются <code>posix_fadvise(POSIX_FADV_DONTNEED)</code> для очистки кэша ОС от страниц, которые уже обработаны, чтобы не вытеснять «горячие» данные рабочих процессов.</p>
 <h3 id="cpu-i-predskazanie-vetvleniy">CPU и предсказание ветвлений</h3>
-
 <p>Сканирование страниц на наличие мёртвых кортежей — это линейный обход памяти с проверкой флагов в заголовке каждой строки (<code>HeapTupleHeader</code>). Современные <code>autovacuum</code> реализации используют векторные инструкции и оптимизированные циклы, но высокая фрагментация таблиц приводит к промахам кэша <code>L3</code>. Проход по разряженным страницам увеличивает <code>IPC</code> (Instructions Per Cycle) и время ожидания памяти.</p>
 <hr />
 <h2 id="vacuum-full-i-vozvrat-prostranstva-operatsionnoy-sisteme">VACUUM FULL и возврат пространства операционной системе</h2>
-
 <p>Обычный <code>VACUUM</code> не уменьшает размер файла на диске. Для возврата места ОС требуется <code>VACUUM FULL</code> (PostgreSQL) или <code>OPTIMIZE TABLE</code> / <code>ALTER TABLE ... FORCE</code> (MySQL).</p>
 <p>Этот процесс:<br />
 1. Создаёт копию таблицы в новом файле, переписывая только живые строки.<br />
@@ -563,10 +554,8 @@ flowchart TD
 
 <hr />
 <h2 id="praktika-v-go-upravlenie-dolgozhivushchimi-tranzaktsiyami">Практика в Go: Управление долгоживущими транзакциями</h2>
-
 <p>Ваша задача — не мешать <code>autovacuum</code> и отслеживать его прогресс.</p>
 <h3 id="pattern-monitoring-vozrasta-tranzaktsiy">Паттерн: Мониторинг возраста транзакций</h3>
-
 <p>В PostgreSQL переполнение счётчика <code>txid</code> (32-бит) приводит к потере данных. <code>VACUUM</code> должен сбрасывать <code>frozenxid</code>. Отслеживайте <code>age(datfrozenxid)</code> в метриках.</p>
 
 <div class="code-block" data-lang="go">
@@ -604,7 +593,6 @@ flowchart TD
 </div>
 
 <h3 id="pattern-izbeganie-blokirovok-gorizonta">Паттерн: Избегание блокировок горизонта</h3>
-
 <p>Вместо удержания открытой транзакции для чтения данных, используйте моментальные снимки на уровне приложения или короткие транзакции с <code>REPEATABLE READ</code>.</p>
 
 <div class="code-block" data-lang="go">
@@ -665,7 +653,6 @@ func ProcessDataSafe(ctx context.Context, db *sql.DB, data []byte) error {
 
 <hr />
 <h2 id="parallel-s-garbage-collector-v-go">Параллель с Garbage Collector в Go</h2>
-
 <p>Понимание <code>VACUUM</code> через призму <code>runtime.GC</code> Go помогает лучше усвоить оба механизма:</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
@@ -711,7 +698,6 @@ func ProcessDataSafe(ctx context.Context, db *sql.DB, data []byte) error {
 <p>Обе системы жертвуют мгновенным возвратом ресурсов ради гарантии согласованности и минимизации влияния на основную работу. Главный враг и в Go, и в БД — долгоживущие ссылки на старые объекты.</p>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Назначение</strong>: <code>VACUUM</code> и <code>Purge</code> удаляют мёртвые версии строк, обновляют карты видимости и освобождают место для переиспользования.</li>
 <li><strong>Архитектура</strong>: PostgreSQL обновляет <code>FSM/VM</code> внутри файлов, InnoDB очищает <code>undo logs</code> и индексы фоновым потоком.</li>

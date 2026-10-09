@@ -296,7 +296,6 @@
 
           <div class="article-markdown">
             <h2 id="finalnaya-sinkhronizatsiya-setevoy-stek-v-kontekste-go">Финальная синхронизация: Сетевой стек в контексте Go</h2>
-
 <blockquote>
 <p><em>«Единственный способ писать хорошие программы — писать их просто, ясно и внимательно».</em>  <br />
 — Брайан Керниган</p>
@@ -310,7 +309,6 @@
 <p>В этой финальной лекции мы сведем все разрозненные знания в единую, кристалльно ясную инженерную картину.</p>
 <hr />
 <h3 id="bolshaya-kartina-ot-mednogo-provoda-do-gorutiny-v-go">Большая картина: От медного провода до горутины в Go</h3>
-
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -366,7 +364,6 @@ flowchart TD
 
 <hr />
 <h2 id="arkhitektura-vzaimodeystviya-go-i-os">Архитектура взаимодействия Go и ОС</h2>
-
 <p>Go не реализует собственный стек TCP/IP в пространстве пользователя (как это делает DPDK). Он использует стандартные POSIX-сокеты операционной системы, но кардинально меняет фундаментальный подход к их диспетчеризации. </p>
 <p>В классических языках программирования (C, C++, Java, C#, PHP) разработчик сталкивается с дилеммой:<br />
 - Либо блокировать поток ОС на каждом сетевом вызове <code>read</code>/<code>write</code> (что губит сервер при масштабировании до тысяч клиентов);<br />
@@ -429,10 +426,8 @@ flowchart TD
 
 <hr />
 <h2 id="klyuchevye-patterny-i-mechanical-sympathy">Ключевые паттерны и Mechanical Sympathy</h2>
-
 <p>Понимание сетевого стека без глубокого учета кремния и ядра ОС неизбежно приводит к тяжелым архитектурным ошибкам. Вот критические точки, где логика Go встречается с физической реальностью машины.</p>
 <h3 id="1-stoimost-sistemnykh-vyzovov-i-buferizatsiya">1. Стоимость системных вызовов и буферизация</h3>
-
 <p>Каждый сетевой вызов <code>read</code> или <code>write</code> через сокет — это полноценное переключение контекста процессора из пользовательского режима (Ring 3) в режим ядра (Ring 0). Если отправлять данные в сеть порциями по 10 байт, процессор потратит 99% времени на сброс конвейера и переключение таблиц страниц памяти.</p>
 <p>В стандартной библиотеке Go <code>[[6. Стандартная библиотека Go]]</code> пакеты <code>bufio</code>, <code>bytes</code> и клиентский транспорт <code>http.Transport</code> активно используют буферизацию. Однако на уровне архитектуры приложения вы обязаны жестко контролировать параметры пула соединений:<br />
 - <code>http.Transport.MaxIdleConns</code> — суммарный лимит простаивающих соединений в пуле;<br />
@@ -452,24 +447,19 @@ flowchart TD
 
 
 <h3 id="2-zero-copy-i-yadro">2. Zero-Copy и ядро</h3>
-
 <p>Классическая отправка файла через сеть требует четырех операций копирования памяти (Диск $\to$ Page Cache $\to$ Userspace $\to$ Socket Buffer $\to$ NIC). Go не делает лишний <code>memcpy</code> между пользовательским буфером и ядром при записи в сокет, если буфер выровнен и соответствует внутренним структурам <code>syscall.Sendmsg</code> или <code>unix.Sendmsg</code>. </p>
 <p>В высоконагруженных прокси, файловых хранилищах и стриминговых платформах используйте <code>syscall.Sendmsg</code> с векторными буферами <code>iovec</code>, системный вызов <code>sendfile</code> (через <code>io.Copy</code> для файлов на диске) или <code>splice</code> для передачи данных напрямую из кэша страниц ядра в сетевую карту с нулевым участием CPU.</p>
 <h3 id="3-dns-i-blokirovka-planirovshchika">3. DNS и блокировка планировщика</h3>
-
 <p>Стандартный вызов <code>net.LookupIP()</code> — это синхронная операция, которая блокирует текущую горутину до получения ответа от DNS-сервера. У <code>net.Resolver</code> есть методы с контекстом (<code>LookupHost</code>, <code>LookupIPAddr</code>, <code>LookupNetIP</code>), но при определенных конфигурациях CGO он все равно может вызывать блокирующие системные вызовы операционной системы (<code>getaddrinfo</code>). </p>
 <p>В микросервисной архитектуре DNS-резолвер обязан быть либо асинхронным, либо агрессивно кэшироваться в памяти приложения. Обратитесь к материалам лекции <a href="17-dns-pod-kapotom-record-types-ttl-recursive-resolver.html" class="wikilink"><code>17. DNS под капотом. Record Types, TTL, Recursive Resolver, кеширование</code></a>, чтобы досконально понимать, почему <code>dig</code> может работать быстрее, чем ваш код, и как избежать задержек CoreDNS из-за <code>ndots:5</code> в Kubernetes.</p>
 <hr />
 <h2 id="sistemnyy-dizayn-i-raspredelennye-sistemy">Системный дизайн и распределенные системы</h2>
-
 <p>Сеть — это не абстрактное математическое пространство, а физическая среда с конечной пропускной способностью, конечной емкостью буферов и ненулевой задержкой.</p>
 <h3 id="protokolnyy-vybor-http2-vs-http3">Протокольный выбор: HTTP/2 vs HTTP/3</h3>
-
 <p>Развитие веб-протоколов отражает непрерывную борьбу инженеров с задержками:<br />
 - Стандарт HTTP/2 <a href="22-http-2-multiplexing-frames-hpack.html" class="wikilink"><code>22. HTTP 2. Multiplexing, Frames, HPACK</code></a> устранил проблему Head-of-Line Blocking на уровне прикладных запросов благодаря мультиплексированию фреймов внутри одного TCP-соединения. Но если в сети теряется хотя бы один TCP-пакет, ядро останавливает выдачу байт для всех параллельных потоков HTTP/2 сразу!<br />
 - Протокол HTTP/3 и транспорт QUIC <a href="23-http-3-i-quic-pochemu-budushchee-ukhodit-ot-tcp.html" class="wikilink"><code>23. HTTP 3 и QUIC. Почему будущее уходит от TCP</code></a>, <a href="24-deep-dive-v-quic-pakety-stream-loss-recovery.html" class="wikilink"><code>24. Deep Dive в QUIC. Пакеты, Stream, Loss Recovery</code></a> полностью ликвидировали блокировку очередей на транспортном уровне, перенеся управление независимыми потоками поверх датаграмм UDP. Поддержка HTTP/3 в Go обеспечивается сторонней библиотекой через <code>http3.Transport</code> из <code>github.com/quic-go/quic-go/http3</code> (в стандартной библиотеке <code>net/http</code> HTTP/3 пока нет). Для чувствительных к потерям пакетов и задержкам сервисов (мобильный трафик, стриминг, финансовые шлюзы) переход на QUIC становится стандартом индустрии.</p>
 <h3 id="otkazoustoychivost-i-circuit-breaker">Отказоустойчивость и Circuit Breaker</h3>
-
 <p>В распределенных системах архитектурные паттерны <a href="43-setevye-patterny-raspredelennykh-sistem.html" class="wikilink"><code>43. Сетевые паттерны распределенных систем</code></a> требуют жесткого управления деградацией. Таймауты в системе обязаны быть строго иерархичными:<br />
 - <code>context.WithTimeout</code> — верхнеуровневый дедлайн всей бизнес-операции;<br />
 - <code>ReadHeaderTimeout</code> и <code>WriteTimeout</code> — защита от атак медленных клиентов;<br />
@@ -491,7 +481,6 @@ flowchart TD
 
 <hr />
 <h2 id="lovushki-i-voprosy-na-sobesedovaniyakh">Ловушки и вопросы на собеседованиях</h2>
-
 <ol>
 <li><strong><code>net.Dial</code> vs <code>net.Listen</code>:</strong> Вызов <code>Dial</code> блокирует горутину до завершения трехэтапного рукопожатия TCP Handshake или истечения таймаута. В Go нет асинхронных сокетов "из коробки" без участия планировщика <code>netpoller</code>. Вызов <code>Dial</code> без <code>context.Context</code> и таймаута может надолго подвесить горутину при сетевом сбое (установление соединения ограничивается лишь системным таймаутом <code>connect</code>); утечку вызывает вообще любой блокирующий <code>Read</code>/<code>Write</code> без дедлайна.</li>
 <li><strong><code>SO_REUSEPORT</code>:</strong> Механизм Linux, позволяющий нескольким процессам или потокам привязаться (<code>bind</code>) к одному и тому же сетевому порту, при этом ядро распределяет входящие соединения между такими сокетами. Go эту опцию сам <strong>не</strong> включает (на слушающих сокетах он ставит <code>SO_REUSEADDR</code>); <code>SO_REUSEPORT</code> имеет смысл, только если приложение само открывает несколько listener'ов на один порт (<code>net.ListenConfig.Control</code>).</li>
@@ -501,7 +490,6 @@ flowchart TD
 </ol>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <p>Сетевой стек в Go — это не просто библиотека сокетов, а виртуозный инженерный симбиоз между рантайм-планировщиком <code>netpoller</code>, ядром Linux, структурами памяти <code>sk_buff</code> и физическими возможностями кремния.</p>
 <p>Настоящий Senior-инженер:<br />
 - Знает, когда нужен <code>SO_REUSEPORT</code> (Go сам его не включает) и что алгоритм Нагла в Go отключён по умолчанию;<br />

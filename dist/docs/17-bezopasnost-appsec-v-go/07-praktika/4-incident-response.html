@@ -327,7 +327,6 @@
 
           <div class="article-markdown">
             <h2 id="intsident-menedzhment-v-vysokonagruzhennom-go-bekende">Инцидент-менеджмент в высоконагруженном Go-бэкенде</h2>
-
 <p>Реагирование на инциденты безопасности и сбои (Incident Response, IR) в распределенных высоконагруженных системах — это не хаотичное «тушение пожара на проде» дрожащими руками. Это строгий инженерный алгоритм локализации, сохранения улик, изоляции скомпрометированных узлов и восстановления штатной работы. В критической ситуации каждая минута простоя сервиса или продолжающейся эксфильтрации данных оборачивается миллионными финансовыми потерями и разрушением репутации компании.</p>
 <p>В экосистеме Go реагирование на инциденты обладает уникальной технической спецификой:<br />
 - <strong>Отсутствие виртуальной машины:</strong> Бинарник исполняется непосредственно на голом железе или в легковесном контейнере, взаимодействуя с ядром через системные вызовы.<br />
@@ -367,7 +366,6 @@ flowchart TD
 
 <hr />
 <h3 id="pod-kapotom-rantayma-chto-proiskhodit-vo-vremya-intsidenta">Под капотом рантайма: что происходит во время инцидента</h3>
-
 <p>Когда сервис подвергается DoS-атаке, эксплойту переполнения или сталкивается с критической утечкой ресурсов, внутренние механизмы рантайма Go начинают взаимодействовать с ядром Linux по жестким физическим законам:</p>
 <ol>
 <li><strong>Утечка горутин (Goroutine Leak) и системные лимиты ядра:</strong><br />
@@ -395,17 +393,14 @@ flowchart TD
 
 <hr />
 <h2 id="live-forensics-v-go-instrumenty-i-mekhanika">Live Forensics в Go: инструменты и механика</h2>
-
 <p>В мире Go разработчики избавлены от необходимости запускать тяжелые внешние утилиты уровня <code>jstack</code>/<code>jmap</code> или анализировать многогигабайтные дампы ядра операционной системы (Core Dumps). Все инструменты глубокой интроспекции уже встроены непосредственно в стандартный рантайм.</p>
-<h3 id="1-nethttppprof-i-struktura-rantayma">1 - `net/http/pprof` и структура рантайма</h3>
-
+<h3 id="1-nethttppprof-i-struktura-rantayma">1 - <code>net/http/pprof</code> и структура рантайма</h3>
 <p>Эндпоинты стандартного профилировщика обращаются напрямую к ключевым структурам данных рантайма:<br />
 - <code>goroutine</code>: Итерирует глобальный массив <code>allg</code> (связный список всех дескрипторов горутин <code>g</code>), агрегируя их по текущим состояниям (<code>running</code>, <code>runnable</code>, <code>syscall</code>, <code>waiting</code>).<br />
 - <code>heap</code>: Сканирует арены аллокатора <code>mheap</code>, вычисляя объем реально используемой памяти и отсекая мусорные указатели.<br />
 - <code>mutex</code> и <code>block</code>: Извлекают статистику блокировок и конкурентных задержек из системных профилей <code>runtime.mutexprofile</code> и <code>runtime.blockprofile</code>.</p>
 <p>Все операции выполняются в пространстве пользователя (User Space). В продакшене эндпоинты <code>pprof</code> ни в коем случае не должны смотреть в публичный интернет — их защищают авторизацией <code>BasicAuth</code> или изолируют на внутреннем порту sidecar-контейнера (<code>localhost</code>).</p>
-<h3 id="2-programmatic-dumps-i-runtimedebug">2 - Programmatic Dumps и `runtime/debug`</h3>
-
+<h3 id="2-programmatic-dumps-i-runtimedebug">2 - Programmatic Dumps и <code>runtime/debug</code></h3>
 <p>Для автоматического сбора улик в критический момент можно использовать программные вызовы <code>runtime/pprof.Lookup("goroutine").WriteTo(w, 2)</code> или низкоуровневый <code>debug.WriteHeapDump(fd)</code>. Однако помните: вызов <code>WriteHeapDump</code> блокирует процесс на все время линейной записи дампа на диск. Надежный паттерн — асинхронный сброс через конвейер <code>io.Pipe</code> с фоновой отправкой в объектное хранилище S3:</p>
 
 <div class="code-block" data-lang="go">
@@ -459,7 +454,6 @@ func CaptureDumps(ctx context.Context, dir string) error {
 
 <hr />
 <h2 id="graceful-shutdown-i-izolyatsiya-povrezhdyonnykh-komponentov">Graceful Shutdown и изоляция повреждённых компонентов</h2>
-
 <p>В момент аварии инстинктивное желание «прибить зависший процесс» командой <code>kill -9</code> (<code>SIGKILL</code>) губительно: оборвутся активные банковские транзакции, повредятся локальные файлы базы данных, а буферы логов в оперативной памяти будут потеряны без следа.</p>
 <p>Индустриальный стандарт управления жизненным циклом — плавное завершение работы (Graceful Shutdown) через <code>context.Context</code> и метод <code>http.Server.Shutdown()</code>:</p>
 
@@ -514,7 +508,6 @@ func RunWithGracefulShutdown(srv *http.Server, timeout time.Duration) {
 Если бизнес-логика игнорирует отмену контекста, процесс зависнет на интервал <code>timeout</code> и будет жестко уничтожен оркестратором (Kubernetes) по сигналу <code>SIGKILL</code>. Это приводит к потере несохраненных логов в <code>bufio</code>, повреждению структур кэша и зависанию сокетов в состоянии <code>FIN_WAIT</code>.</p>
 <hr />
 <h2 id="arkhitektura-observability-dlya-ir">Архитектура Observability для IR</h2>
-
 <p>Инструменты профилирования бесполезны, если инцидент не был вовремя зафиксирован системами мониторинга. Надежный наблюдаемый контур сервиса на Go строится на четырех компонентах:</p>
 <ol>
 <li><strong>Метрики времени выполнения (Prometheus):</strong><br />
@@ -569,7 +562,6 @@ func RunWithGracefulShutdown(srv *http.Server, timeout time.Duration) {
 
 <hr />
 <h2 id="sravnenie-podkhodov-go-java-php">Сравнение подходов: Go, Java, PHP</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -614,7 +606,6 @@ func RunWithGracefulShutdown(srv *http.Server, timeout time.Duration) {
 </table></div>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li>Инцидент-менеджмент в высоконагруженных системах на Go опирается на четкое понимание внутренних механизмов рантайма: планировщика <code>G-M-P</code>, аллокатора <code>mheap</code> и поведения <code>GC</code> под стрессом.</li>
 <li>Встроенные средства криминалистики (<code>net/http/pprof</code>, <code>runtime/debug</code>) обеспечивают глубокую интроспекцию процесса, однако их запуск на горячей ноде под нагрузкой способен вызвать тяжелый <code>Stop-The-World</code> и добить сервис. Снятие дампов допустимо только после изоляции узла от сетевого трафика.</li>

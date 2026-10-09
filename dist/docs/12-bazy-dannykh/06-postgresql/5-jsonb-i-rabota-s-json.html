@@ -439,7 +439,6 @@
 
           <div class="article-markdown">
             <h2 id="gibrid-dvukh-mirov-sql-i-nosql">Гибрид двух миров: SQL и NoSQL</h2>
-
 <p>В классической реляционной модели данных во главу угла ставится строгая схема (DDL): каждая колонка таблицы обязана иметь неизменный тип, размер и ограничения целостности. Это защищает базу от мусора, но в реальной разработке бэкенда мы непрерывно сталкиваемся с полуструктурированными данными переменного формата:<br />
 * Полезная нагрузка внешних вебхуков (<code>payload</code> от сторонних платежных шлюзов и API), чья внутренняя структура меняется без предупреждения.<br />
 * Пользовательские настройки и динамические флаги конфигурации, где новые параметры появляются каждую неделю.<br />
@@ -448,7 +447,6 @@
 <p>Инженеры PostgreSQL решили эту дилемму блестяще, внедрив нативную поддержку формата JSON. Настоящая технологическая революция произошла с релизом PostgreSQL 9.4, когда в ядре появился бинарный оптимизированный формат хранения <strong>JSONB</strong>.</p>
 <hr />
 <h2 id="json-vs-jsonb-pochemu-vy-dolzhny-zabyt-pro-tip-json">JSON vs JSONB: Почему вы должны забыть про тип JSON</h2>
-
 <p>В арсенале PostgreSQL присутствуют два типа данных для работы с документами: классический <code>json</code> и бинарный <code>jsonb</code>.</p>
 
 <aside class="callout callout-interview" aria-label="Собеседование">
@@ -466,7 +464,6 @@
 
 <hr />
 <h3 id="mechanical-sympathy-vnutrennee-ustroystvo-jsonb-pod-kapotom">Mechanical Sympathy: Внутреннее устройство JSONB под капотом</h3>
-
 <p>Как физически <code>jsonb</code> укладывается в 8-килобайтную страницу дискового хранилища Heap (<a href="2-storage-engine-postgresql.html" class="wikilink">2. Storage engine PostgreSQL</a>)?</p>
 <p>PostgreSQL не хранит внутри <code>jsonb</code> текстовые токены или кавычки. Данные компилируются в бинарную структуру, во главе которой находится плоский массив метаописателей — <strong>JEntry (JSON Entry)</strong>.</p>
 <p><code>JEntry</code> представляет собой 32-битное машинное слово, кодирующее тип элемента (число, строка, boolean, null, вложенный объект или массив) и байтовое смещение (<code>offset</code>) до его фактического тела в блоке полезной нагрузки:</p>
@@ -527,7 +524,6 @@ flowchart TD
 <p>Если результирующий размер документа <code>jsonb</code> превышает порог в 2 КБ, в дело автоматически вступает механизм <strong>TOAST</strong>: документ сжимается алгоритмом LZ4 или pglz и нарезается на чанки по 2 КБ в отдельной системной таблице, оставляя в Heap-странице легковесный указатель.</p>
 <hr />
 <h2 id="osnovnye-operatory-izvlecheniya-i-poiska">Основные операторы извлечения и поиска</h2>
-
 <p>PostgreSQL предоставляет богатый инструментарий компактных операторов для навигации по бинарным JSONB-деревьям:</p>
 <ol>
 <li><strong><code>-&gt;</code> (Стрелка)</strong>: Извлекает поле объекта или элемент массива по ключу/индексу. Возвращает результат в виде типа <strong><code>jsonb</code></strong>. Идеален для построения цепочек вложенной навигации (<code>data-&gt;'user'-&gt;'address'</code>).</li>
@@ -559,13 +555,11 @@ WHERE payload @&gt; '{&quot;user&quot;: {&quot;role&quot;: &quot;admin&quot;}}';
 
 <hr />
 <h2 id="indeksatsiya-dokumentov-cherez-gin-generalized-inverted-index">Индексация документов через GIN (Generalized Inverted Index)</h2>
-
 <p>Классический индекс B-Tree (<a href="4-indeksy-v-postgresql.html" class="wikilink">4. Индексы в PostgreSQL</a>) великолепен при сравнении скалярных значений (<code>=</code>, <code>&lt;</code>, <code>&gt;</code>). Но если перед нами стоит задача найти документ, в котором <em>где-то в глубине</em> ключ <code>role</code> равен <code>'admin'</code>, B-Tree бессилен: он может проиндексировать документ только как неделимый монолитный массив байтов.</p>
 <p>Для полуструктурированных деревьев применяется <strong>GIN (Generalized Inverted Index — Обобщенный инвертированный индекс)</strong>.<br />
 GIN «взрывает» документ на элементарные составляющие (пары "путь-ключ-значение") и формирует инвертированную карту: <em>какой термин в каких физических строках таблицы (<code>CTID</code>) встречается</em>.</p>
 <p>В PostgreSQL предусмотрено два фундаментальных класса операторов (Operator Classes) для построения GIN-индексов по JSONB:</p>
-<h3 id="1-defoltnyy-klass-jsonbops">1. Дефолтный класс: `jsonb_ops`</h3>
-
+<h3 id="1-defoltnyy-klass-jsonbops">1. Дефолтный класс: <code>jsonb_ops</code></h3>
 
 <div class="code-block" data-lang="sql">
   <header class="code-header">
@@ -582,8 +576,7 @@ GIN «взрывает» документ на элементарные сост
 <p>При таком определении GIN индексирует абсолютно каждый ключ и каждое отдельное значение как независимые элементы.<br />
 <em> </em><em>Преимущества:</em><em> Поддерживает широкий спектр операторов поиска: проверку наличия ключа (<code>?</code>), проверку наличия любого из ключей (<code>?|</code>), всех ключей (<code>?&amp;</code>) и оператор включения (<code>@&gt;</code>).<br />
 * </em><em>Недостатки:</em>* Индекс получается тяжелым, занимает огромный объем дискового пространства и существенно замедляет операции <code>INSERT</code>/<code>UPDATE</code>.</p>
-<h3 id="2-optimizirovannyy-klass-putey-jsonbpathops">2. Оптимизированный класс путей: `jsonb_path_ops`</h3>
-
+<h3 id="2-optimizirovannyy-klass-putey-jsonbpathops">2. Оптимизированный класс путей: <code>jsonb_path_ops</code></h3>
 
 <div class="code-block" data-lang="sql">
   <header class="code-header">
@@ -602,9 +595,8 @@ GIN «взрывает» документ на элементарные сост
 * </em><em>Ограничение:</em><em> Поддерживает </em><em>исключительно оператор включения <code>@&gt;</code></em>*. Если ваша бизнес-логика в Go всегда формулирует условия вида <code>WHERE payload @&gt; '{"status": "active"}'</code>, безоговорочно выбирайте <code>jsonb_path_ops</code>!</p>
 <hr />
 <h2 id="integratsiya-s-yazykom-go">Интеграция с языком Go</h2>
-
 <p>Взаимодействие Go с колонками <code>jsonb</code> не требует тяжеловесных ORM: стандартный интерфейс <code>database/sql</code> и современный драйвер <code>pgx</code> предоставляют два чистых архитектурных паттерна:</p>
-<h3 id="pattern-1-prozrachnyy-probros-cherez-json-rawmessage">Паттерн 1: Прозрачный проброс через `json.RawMessage`</h3>
+<h3 id="pattern-1-prozrachnyy-probros-cherez-json-rawmessage">Паттерн 1: Прозрачный проброс через <code>json.RawMessage</code></h3>
 <p>Идеально подходит для шлюзов и API, когда Go-сервис выступает транзитным звеном: читает JSON из базы данных и без десериализации отдает его в HTTP-ответ:</p>
 
 <div class="code-block" data-lang="go">
@@ -638,7 +630,7 @@ func GetEvent(db *sql.DB, id int) (*Event, error) {
 </code></pre>
 </div>
 
-<h3 id="pattern-2-strogaya-tipizatsiya-cherez-sql-scanner-i-driver-valuer">Паттерн 2: Строгая типизация через `sql.Scanner` и `driver.Valuer`</h3>
+<h3 id="pattern-2-strogaya-tipizatsiya-cherez-sql-scanner-i-driver-valuer">Паттерн 2: Строгая типизация через <code>sql.Scanner</code> и <code>driver.Valuer</code></h3>
 <p>Когда структура документа стабильна, идиоматично мапить <code>jsonb</code> непосредственно в строго типизированную структуру Go. Для этого тип обязан реализовать два интерфейса: <code>driver.Valuer</code> (маршалинг при записи в базу) и <code>sql.Scanner</code> (демаршалинг при вычитке из базы):</p>
 
 <div class="code-block" data-lang="go">
@@ -682,7 +674,6 @@ func (c *Config) Scan(value interface{}) error {
 <hr />
 <h2 id="lovushki-i-antipatterny">Ловушки и Антипаттерны</h2>
 
-
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Мутация JSONB наносит сокрушительный удар по базе">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">⚠️</span>
@@ -715,7 +706,6 @@ func (c *Config) Scan(value interface{}) error {
 2. <strong>Схемы, поддающиеся нормализации:</strong> Если все документы в вашей таблице имеют строго одинаковый набор полей <code>{"name": "...", "age": ...}</code>, использование <code>jsonb</code> является неоправданным усложнением. Вы теряете валидацию на уровне БД, контроль типов и тратите такты процессора на десериализацию.</p>
 <hr />
 <h2 id="rezyume-dlya-inzhenera">Резюме для инженера</h2>
-
 <ol>
 <li><strong>Только <code>jsonb</code>:</strong> Забудьте про тип <code>json</code>. Бинарный <code>jsonb</code> форматируется при записи и обеспечивает мгновенный доступ к полям без разбора всей строки.</li>
 <li><strong>JEntry и бинарный поиск:</strong> Документ хранится в виде плоского массива указателей и значений, что превращает извлечение по ключу в эффективный бинарный поиск в памяти.</li>

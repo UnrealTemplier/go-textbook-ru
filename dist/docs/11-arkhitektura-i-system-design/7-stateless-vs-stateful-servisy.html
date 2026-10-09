@@ -316,7 +316,6 @@
 <hr />
 <h3 id="opredeleniya">Определения</h3>
 
-
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
     <div class="mermaid-title">
@@ -373,7 +372,6 @@ flowchart LR
 <em>Примеры:</em> реляционные базы данных, брокеры сообщений, распределенные кэши, серверы сетевых игр реального времени.</p>
 <hr />
 <h3 id="pochemu-stateless-osnova-gorizontalnogo-masshtabirovaniya">Почему Stateless — основа горизонтального масштабирования</h3>
-
 <p>При горизонтальном масштабировании балансировщик (L4/L7) отправляет сетевые пакеты по алгоритмам <code>Round Robin</code> или <code>Least Connections</code>. Запрос №1 от пользователя может прийти на Инстанс 1, а запрос №2 через секунду — на Инстанс 5. В Stateless-архитектуре это тривиально: оба инстанса одинаково готовы к работе.</p>
 <p>Если же сервис спроектирован как Stateful (хранит сессии в локальной памяти), архитектура вынуждена внедрять костыли в виде <strong>привязки сессий (Session Affinity / Sticky Sessions)</strong>. Балансировщик обязан вычислять хэш от IP-клиента или проверять специальную cookie, направляя трафик строго на один и тот же сервер.</p>
 <p><strong>Почему Sticky Sessions — это архитектурный тупик:</strong><br />
@@ -394,10 +392,8 @@ flowchart LR
 
 <hr />
 <h3 id="go-i-stateless-estestvennaya-para">Go и Stateless: естественная пара</h3>
-
 <p>Философия языка Go — явность, простота и механическая строгость — идеально согласуется со Stateless-парадигмой.</p>
 <h4 id="request-scoped-kontekst">Request-scoped контекст</h4>
-
 <p>Пакет <code>context</code> — фундаментальная основа stateless-обработки в Go. Контекст зарождается в момент принятия HTTP-сокета, пронизывает все слои бизнес-логики и базы данных, неся таймауты, сигналы отмены и сквозные ID трассировки, специфичные для <em>конкретного</em> запроса. Как только обработчик завершает работу, контекст и все связанные с ним объекты утилизируются сборщиком мусора.</p>
 
 <div class="code-block" data-lang="go">
@@ -448,7 +444,6 @@ func HandleOrder(w http.ResponseWriter, r *http.Request) {
 
 
 <h4 id="otsutstvie-globalnykh-peremennykh-po-umolchaniyu">Отсутствие глобальных переменных по умолчанию</h4>
-
 <p>В идиоматичном Go-коде глобальное изменяемое состояние считается дурным тоном. Вместо опасных глобальных карт <code>var globalCache map[string]User</code> зависимости передаются явно в структуры через параметры конструктора:</p>
 
 <div class="code-block" data-lang="go">
@@ -479,7 +474,6 @@ func NewService(cache *redis.Client, db *sql.DB) *Service {
 
 <p>Каждый экземпляр микросервиса получает собственные независимые пулы сокетов к внешним базам данных, не сохраняя локального состояния в памяти.</p>
 <h4 id="gorutiny-i-lokalnoe-sostoyanie">Горутины и локальное состояние</h4>
-
 <p>Горутины внутри одного процесса делят общее адресное пространство. Соблазн использовать <code>sync.Map</code> или глобальные срезы для кэширования между вызовами часто подталкивает разработчиков к созданию неявных stateful-ловушек:</p>
 
 <div class="code-block" data-lang="go">
@@ -515,7 +509,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 <p>Такой сервис невозможно надежно масштабировать за балансировщиком: кэш инстанса А невидим инстансу Б. Пользователи будут наблюдать непредсказуемое мерцание данных в зависимости от того, на какой под смаршрутизируется очередной запрос.</p>
 <hr />
 <h3 id="upravlenie-sostoyaniem-v-go-vynosim-naruzhu">Управление состоянием в Go: выносим наружу</h3>
-
 <p>Если бизнес-логике требуется хранить состояние, системный архитектор обязан вынести его в специализированные отказоустойчивые сервисы.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -549,7 +542,6 @@ flowchart TD
 
 
 <h4 id="1-sessii-polzovateley-redis">1. Сессии пользователей → Redis</h4>
-
 <p>Вместо локальных карт <code>map[sessionID]User</code> сессия сохраняется в распределенном Redis с автоматическим временем жизни (TTL):</p>
 
 <div class="code-block" data-lang="go">
@@ -599,10 +591,8 @@ func (s *SessionManager) GetUserFromSession(ctx context.Context, sessionID strin
 </div>
 
 <h4 id="2-kesh-redis-ili-memcached">2. Кэш → Redis или Memcached</h4>
-
 <p>Внешний кэш решает проблему согласованности между репликами приложения и сохраняет накопленные данные при плановом перезапуске подов в Kubernetes.</p>
 <h4 id="3-dlitelnye-operatsii-i-workflow-temporal-ili-ocheredi">3. Длительные операции и workflow → Temporal или очереди</h4>
-
 <p>Если бизнес-процесс длится минуты, часы или дни (например, оплата заказа, ожидание подтверждения банком, доставка), ни в коем случае нельзя держать состояние в памяти Go-приложения:<br />
 - <strong>База данных:</strong> запись статуса процесса в таблицу <code>OrderProcess</code>.<br />
 - <strong>Оркестратор Temporal.io:</strong> движок распределенных workflow, гарантирующий детерминированное сохранение и восстановление состояния.<br />
@@ -645,7 +635,6 @@ func (s *Service) UpdateOrderStatus(ctx context.Context, orderID, status string)
 
 <hr />
 <h3 id="mechanical-sympathy-fizicheskaya-tsena-sostoyaniya">Mechanical Sympathy: физическая цена состояния</h3>
-
 <p>Хранение состояния в памяти процесса влечет прямые аппаратные последствия:</p>
 <h4 id="pamyat-i-garbage-collector">Память и Garbage Collector</h4>
 <p>Локальный кэш на миллионы записей раздувает кучу (Heap). При каждом цикле сборки мусора GC вынужден тратить такты процессора на обход миллионов долгоживущих указателей. При горизонтальном масштабировании память мультиплицируется: 10 подов по 2 ГБ кэша съедят 20 ГБ физической памяти нод. Вынос кэша в Redis оставляет кучу Go компактной, сводя паузы GC к микросекундам.</p>
@@ -655,7 +644,6 @@ func (s *Service) UpdateOrderStatus(ctx context.Context, orderID, status string)
 <p>Если сервис сохраняет файлы (аватары пользователей, PDF-отчеты) на локальный диск сервера, горизонтальное масштабирование невозможно без использования распределенных файловых систем (NFS, EFS) или масштабируемого объектного хранилища (<strong>S3</strong>).</p>
 <hr />
 <h3 id="kogda-stateful-opravdan">Когда Stateful оправдан</h3>
-
 <p>Не все компоненты обязаны быть stateless. Существуют фундаментальные классы систем, чье предназначение — надежно хранить состояние:</p>
 <ol>
 <li><strong>Реляционные и распределенные базы данных</strong> (PostgreSQL, Cassandra) — реализуют алгоритмы консенсуса (Raft, Paxos), репликацию и дисковые WAL-журналы.</li>
@@ -681,7 +669,6 @@ func (s *Service) UpdateOrderStatus(ctx context.Context, orderID, status string)
 
 <hr />
 <h3 id="patterny-proektirovaniya-stateless-servisov-v-go">Паттерны проектирования Stateless сервисов в Go</h3>
-
 <h4 id="1-dependency-injection-cherez-konstruktory">1. Dependency Injection через конструкторы</h4>
 <p>Все внешние ресурсы (клиенты баз данных, Redis, сетевые интерфейсы) внедряются явно при создании сервиса. Глобальное состояние исключено:</p>
 
@@ -759,13 +746,11 @@ func AuthMiddleware(next http.Handler) http.Handler {
 <p>Использование <code>http.Server.Shutdown()</code> с контекстом таймаута гарантирует, что при выводе пода из кластера активные HTTP-транзакции завершатся корректно без обрыва клиентских соединений (как мы разбирали в <a href="6-vertikalnoe-i-gorizontalnoe-masshtabirovanie.html" class="wikilink">6. Вертикальное и горизонтальное масштабирование</a>).</p>
 <hr />
 <h3 id="svyaz-s-cap-teoremoy-i-raspredelennymi-sistemami">Связь с CAP-теоремой и распределенными системами</h3>
-
 <p>Выбор между stateless и stateful архитектурой напрямую соотносится с компромиссами CAP-теоремы (<a href="30-cap-teorema-i-realnye-kompromissy.html" class="wikilink">30. CAP теорема и реальные компромиссы</a>):<br />
 - <strong>Stateless-сервисы</strong> тяготеют к высокой доступности (<strong>AP</strong>), так как любая нода взаимозаменяема.<br />
 - <strong>Stateful-хранилища</strong> (например, реляционные базы с синхронной репликацией) обязаны строго блюсти согласованность (<strong>CP</strong>), жертвуя доступностью при сетевых разделениях кластера.</p>
 <hr />
 <h3 id="itog">Итог</h3>
-
 <ol>
 <li><strong>Stateless-сервисы</strong> не сохраняют данные о клиенте в локальной памяти. Они идеально подходят для горизонтального масштабирования, отказоустойчивы и не требуют сложных механизмов Sticky Sessions.</li>
 <li>Язык Go органически поощряет stateless-подход благодаря сквозному <code>context.Context</code>, явному Dependency Injection и отсутствию глобальных мутаций.</li>

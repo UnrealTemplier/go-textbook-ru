@@ -402,14 +402,12 @@
 
           <div class="article-markdown">
             <h2 id="sravnitelnaya-stoimost-primitivov-sinkhronizatsii-v-go">Сравнительная стоимость примитивов синхронизации в Go</h2>
-
 <p>В лекции <a href="4-kontekstnye-pereklyucheniya.html" class="wikilink">4. Контекстные переключения</a> мы детально исследовали физику смены задач и выяснили, что каждое переключение горутины или потока ОС обходится машине в измеримую цену — от десятков наносекунд в пространстве пользователя до единиц и десятков микросекунд при погружении в ядро. Теперь мы переходим к исследованию первопричины большинства контекстных переключений в высоконагруженных системах — к <strong>примитивам синхронизации</strong>. Именно они заставляют горутины притормаживать, уступать процессор, парковаться в системных очередях и бороться за доступ к разделяемым ресурсам.</p>
 <p>В распоряжении разработчика на Go находится богатый и выразительный арсенал средств координации: классический взаимный замок <code>sync.Mutex</code>, многопоточный <code>sync.RWMutex</code>, аппаратные инструкции <code>sync/atomic</code>, идиоматичные каналы (<code>chan</code>), барьеры ожидания <code>sync.WaitGroup</code>, однократная инициализация <code>sync.Once</code> и условные переменные <code>sync.Cond</code>. В повседневной разработке выбор между ними часто диктуется поверхностной интуицией: «каналы идиоматичнее мьютексов», «RWMutex всегда быстрее обычного Mutex», «atomic вообще бесплатен». </p>
 <p>Однако в реальных распределенных сервисах под предельными нагрузками эти стереотипы разбиваются о суровую физику кремния. Неверно выбранный примитив синхронизации может обернуться скрытым падением пропускной способности на 30–50% и неконтролируемым раздуванием хвостовой задержки p99. Senior-инженер обязан оперировать точными количественными характеристиками каждого инструмента: знать его стоимость на быстром и медленном путях, понимать внутреннее устройство в рантайме Go и ясно представлять, что происходит на уровне кэш-линий процессора и шины межъядерной когерентности MESI (<a href="../01-fundament/5-mechanical-sympathy-v-backend-razrabotke.html" class="wikilink">5. Mechanical sympathy в backend разработке</a>).</p>
 <p>Эта лекция дает всесторонний сравнительный анализ всех ключевых примитивов синхронизации, связывая их с моделью планировщика G-M-P (<a href="1-scheduler-go-g-m-p-model.html" class="wikilink">1. Scheduler Go. G-M-P модель</a>, <a href="1-scheduler-go-g-m-p-model.html" class="wikilink">1. Scheduler Go. G-M-P модель</a>) и системными вызовами ядра Linux (<a href="../07-io-i-sistemnyy-uroven/1-sistemnye-vyzovy-i-ikh-stoimost.html" class="wikilink">1. Системные вызовы и их стоимость</a>). Материал послужит фундаментом для батла «мьютексы против каналов» (<a href="6-mutex-vs-channel.html" class="wikilink">6. Mutex vs channel</a>) и методологии поиска блокировок (<a href="7-contention-i-lock-profiling.html" class="wikilink">7. Contention и lock profiling</a>).</p>
 <hr />
 <h2 id="mutex-bystryy-put-medlennyy-put-i-golodanie">Mutex: быстрый путь, медленный путь и голодание</h2>
-
 <p>Мьютекс <code>sync.Mutex</code> — самый распространенный и фундаментальный примитив синхронизации в Go. Его исходное определение в файле <code>src/sync/mutex.go</code> выглядит обманчиво минималистичным:</p>
 
 <div class="code-block" data-lang="go">
@@ -471,7 +469,6 @@ flowchart TD
 
 
 <h3 id="1-bystryy-put-fast-path">1. Быстрый путь (Fast Path)</h3>
-
 <p>Если мьютекс свободен и за него нет конкуренции, вызов <code>sync.Mutex.Lock()</code> сводится к единственной атомарной инструкции процессора: <strong>Compare-And-Swap (CAS)</strong>. Она атомарно проверяет, равен ли <code>state</code> нулю, и выставляет бит <code>mutexLocked</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -491,7 +488,6 @@ if atomic.CompareAndSwapInt32(&amp;m.state, 0, mutexLocked) {
 
 <p>На быстром пути нет ни обращений к планировщику, ни системных вызовов ядра. При отсутствии contention (например, когда <code>GOMAXPROCS=1</code> или при низкой конкурентности) мьютекс практически всегда идет по быстрому пути, и стоимость операции составляет всего <strong>10–20 наносекунд</strong> (время выполнения инструкции <code>LOCK CMPXCHG</code> на x86).</p>
 <h3 id="2-medlennyy-put-slow-path">2. Медленный путь (Slow Path)</h3>
-
 <p>Если мьютекс уже удерживается другой горутиной, выполнение немедленно переходит в функцию <code>lockSlow</code>. Здесь рантайм Go применяет двухфазную стратегию:</p>
 <ol>
 <li><strong>Фаза активного спин-ожидания (Active Spinning):</strong><br />
@@ -507,7 +503,6 @@ if atomic.CompareAndSwapInt32(&amp;m.state, 0, mutexLocked) {
    При вызове <code>Mutex.Unlock</code> владелец сбрасывает бит <code>mutexLocked</code>. Если счетчик ожидающих не равен нулю, вызывается процедура <code>runtime.semrelease</code>, которая с помощью системного вызова <code>futex(FUTEX_WAKE)</code> пробуждает спящую горутину.</li>
 </ol>
 <h3 id="rezhim-golodaniya-starvation-mode">Режим голодания (starvation mode)</h3>
-
 <p>В стандартном («нормальном») режиме освобожденный мьютекс не передается напрямую спящей горутине: проснувшаяся горутина вступает в честную конкуренцию с новыми горутинами, которые только что подошли к <code>Lock()</code> на быстром пути. Поскольку новые горутины уже выполняются на ядрах CPU и их данные прогреты в кэше, они почти всегда выигрывают гонку у только что проснувшейся горутины.</p>
 <p>Чтобы предотвратить бесконечное откладывание спящих задач, начиная с Go 1.9 был внедрен <strong>режим голодания (starvation mode)</strong>:<br />
 - Если проснувшаяся горутина обнаруживает, что она провела в очереди ожидания <strong>дольше 1 миллисекунды</strong>, она принудительно переводит мьютекс в режим голодания (выставляется бит <code>mutexStarving</code>).<br />
@@ -515,7 +510,6 @@ if atomic.CompareAndSwapInt32(&amp;m.state, 0, mutexLocked) {
 - При вызове <code>Unlock</code> владелец замка выполняет прямую эстафетную передачу владения (<strong>Handoff</strong>) первой горутине в очереди семафора.<br />
 - Мьютекс возвращается в нормальный режим, когда очередь опустеет или время ожидания последней горутины окажется менее 1 мс.</p>
 <h3 id="sostoyaniya-mutex">Состояния Mutex</h3>
-
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -567,7 +561,6 @@ flowchart LR
 
 <hr />
 <h2 id="rwmutex-chitateli-i-pisateli">RWMutex: читатели и писатели</h2>
-
 <p>Тип <code>sync.RWMutex</code> реализует классический паттерн Single-Writer / Multiple-Readers. Он позволяет неограниченному количеству читателей одновременно удерживать блокировку на чтение, предоставляя писателю право эксклюзивного доступа.</p>
 <p>Внутренняя анатомия <code>sync.RWMutex</code> в <code>src/sync/rwmutex.go</code>:</p>
 
@@ -590,7 +583,6 @@ flowchart LR
 </div>
 
 <h3 id="mekhanika-raboty">Механика работы</h3>
-
 <ol>
 <li><strong>Захват читателем (<code>RLock</code> / <code>RUnlock</code>):</strong><br />
    Быстрый путь <code>RLock</code> тривиален: атомарный инкремент счетчика <code>readerCount</code>.<br />
@@ -617,7 +609,6 @@ flowchart LR
 
 <hr />
 <h2 id="atomic-samyy-deshyovyy-primitiv">Atomic: самый дешёвый примитив</h2>
-
 <p>Пакет <code>sync/atomic</code> предоставляет прямой доступ к аппаратным атомарным инструкциям кремниевого процессора:<br />
 - x86-64: инструкции с префиксом шинной блокировки <code>LOCK ADD</code>, <code>LOCK CMPXCHG</code>, <code>XCHG</code>;<br />
 - ARM64: эксклюзивные пары инструкций <code>LDXR</code>/<code>STXR</code> или атомарные расширения Large System Extensions (LSE: <code>LDADD</code>, <code>SWP</code>, <code>CAS</code>).</p>
@@ -649,7 +640,6 @@ flowchart LR
 
 <hr />
 <h2 id="kanaly-dorozhe-chem-kazhetsya">Каналы: дороже, чем кажется</h2>
-
 <p>Каналы (<code>chan</code>) — визитная карточка языка Go, воплощающая философию Тони Хоара: <em>«Не общайтесь через разделяемую память, разделяйте память через общение»</em>. Однако с микроархитектурной точки зрения канал — это самый сложный и дорогостоящий примитив синхронизации в языке.</p>
 <p>Внутренняя структура канала <code>hchan</code> (объявленная в <code>runtime/chan.go</code>) включает:</p>
 
@@ -683,7 +673,6 @@ flowchart LR
 4. При наличии свободного места в буфере — скопировать данные в кольцевой буфер <code>buf</code>.<br />
 5. При невозможности операции — аллоцировать или извлечь дескриптор ожидания <code>sudog</code>, привязать текущую горутину к очереди <code>sendq</code>/<code>recvq</code>, отпустить замок <code>hchan.lock</code> и уснуть в <code>gopark</code>.</p>
 <h3 id="apparatnaya-stoimost-kanalov">Аппаратная стоимость каналов</h3>
-
 <ul>
 <li><strong>Небуферизованный канал (Rendezvous):</strong> успешная передача требует захвата блокировки, координации двух горутин и вызова планировщика. Стоимость: <strong>100–300 наносекунд</strong>.</li>
 <li><strong>Буферизованный канал (Buffered, без блокировки):</strong> доступ к кольцевому буферу под защитой <code>hchan.lock</code>. Стоимость: <strong>50–150 наносекунд</strong>.</li>
@@ -692,26 +681,21 @@ flowchart LR
 <p>Вывод: канал в 3–10 раз дороже обычного <code>sync.Mutex</code> даже на быстром пути! Никогда не используйте каналы для тривиальной защиты внутренних полей структур от гонок данных. Каналы созданы для передачи владения данными и оркестрации потоков управления, а не для синхронизации доступа к разделяемым переменным.</p>
 <hr />
 <h2 id="waitgroup-once-cond-spetsializirovannye-primitivy">WaitGroup, Once, Cond: специализированные примитивы</h2>
-
 <h3 id="sync-waitgroup">sync.WaitGroup</h3>
-
 <p><code>sync.WaitGroup</code> координирует завершение группы параллельных горутин. Под капотом она содержит атомарный 64-битный счетчик (объединяющий число ожидаемых задач и число спящих горутин) и семафор:<br />
 - Методы <code>Add</code> и <code>Done</code>: быстрый атомарный инкремент/декремент счетчика (стоимость <code>WaitGroup.Done</code> — <strong>~10 наносекунд</strong>).<br />
 - Метод <code>Wait</code>: если счетчик равен нулю, возврат мгновенен; если счетчик положителен — вызов <code>WaitGroup.Wait</code> паркует горутину на внутреннем семафоре рантайма.</p>
 <h3 id="sync-once">sync.Once</h3>
-
 <p><code>sync.Once</code> гарантирует, что инициализирующая функция выполнится строго один раз за все время жизни процесса:<br />
 - Внутри содержит флаг <code>atomic.Uint32</code> и <code>sync.Mutex</code>.<br />
 - Быстрый путь вызова <code>Once.Do</code>: после того как инициализация завершена, последующие миллионы вызовов выполняют лишь одно атомарное чтение флага с семантикой Acquire, что обходится всего в <strong>~2 наносекунды</strong>!</p>
 <h3 id="sync-cond">sync.Cond</h3>
-
 <p><code>sync.Cond</code> реализует условную переменную (Condition Variable), позволяя горутинам ждать наступления сложного составного события:<br />
 - Работает исключительно в связке с переданным <code>sync.Locker</code> (обычно <code>sync.Mutex</code>).<br />
 - Метод <code>Wait</code> атомарно отпускает мьютекс и усыпляет горутину в очереди ожидания <code>sync.Cond</code>.<br />
 - Методы <code>Signal</code> (пробуждение одной горутины) и <code>Broadcast</code> (широковещательное пробуждение всех горутин) выводят ожидающие задачи из спячки.</p>
 <hr />
 <h2 id="sravnitelnaya-tablitsa-stoimosti">Сравнительная таблица стоимости</h2>
-
 <p>Сводные результаты измерений аппаратной стоимости примитивов на процессоре x86-64 с частотой 3.0 ГГц при отсутствии конкуренции (Uncontended Fast Path) и в условиях конфликта (Contention Slow Path):</p>
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
@@ -801,23 +785,18 @@ flowchart LR
 
 <hr />
 <h2 id="instrumenty-izmereniya-stoimosti-sinkhronizatsii">Инструменты измерения стоимости синхронизации</h2>
-
 <p>Senior-инженер никогда не полагается на догадки — он измеряет задержки примитивов объективными инструментами профилирования:</p>
 <h3 id="mutex-profile">Mutex profile</h3>
-
 <p>Профилировщик мьютексов измеряет время, которое горутины проводят в ожидании освобождения замков <code>sync.Mutex</code> и <code>sync.RWMutex</code>:<br />
 - Запуск тестов: <code>go test -mutexprofile=mutex.out</code><br />
 - В боевом приложении: подключение эндпоинта <code>/debug/pprof/mutex</code> после активации сбора сэмплирования через <code>runtime.SetMutexProfileFraction(1)</code>. Детальный разбор представлен в лекции <a href="../08-runtime-i-instrumenty/6-mutex-profile.html" class="wikilink">6. mutex profile</a>.</p>
 <h3 id="block-profile">Block profile</h3>
-
 <p>Профилировщик блокировок отслеживает задержки, возникающие при ожидании каналов, мьютексов, таймеров и системных вызовов:<br />
 - Запуск тестов: <code>go test -blockprofile=block.out</code><br />
 - В боевом коде: эндпоинт <code>/debug/pprof/block</code> с включением сбора через <code>runtime.SetBlockProfileRate(1)</code>. Детальный разбор в лекции <a href="../08-runtime-i-instrumenty/5-block-profile.html" class="wikilink">5. block profile</a>.</p>
 <h3 id="execution-tracer">Execution tracer</h3>
-
 <p>Утилита <code>go tool trace</code> визуализирует блокировки на временной шкале: вы можете увидеть, какие именно горутины выстроились в очередь к замку и как долго поток простаивал в ожидании пробуждения.</p>
 <h3 id="benchmarki">Бенчмарки</h3>
-
 <p>Написание точных микробенчмарков пакета <code>testing</code> с флагами детального замера памяти и многократных прогонов:</p>
 
 <div class="code-block" data-lang="bash">
@@ -835,7 +814,6 @@ flowchart LR
 <p>позволяет с абсолютной достоверностью сравнить производительность <code>sync.Mutex</code> против <code>sync/atomic</code> в вашем конкретном сценарии.</p>
 <hr />
 <h2 id="mechanical-sympathy-kak-sinkhronizatsiya-vliyaet-na-protsessor-i-kesh">Mechanical Sympathy: как синхронизация влияет на процессор и кэш</h2>
-
 <p>Чтобы по-настоящему понять, почему конкурирующий код начинает тормозить, нужно спуститься на уровень кремния:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -884,7 +862,6 @@ flowchart LR
 </ol>
 <hr />
 <h2 id="kogda-kakoy-primitiv-vybirat">Когда какой примитив выбирать</h2>
-
 <p>Сформулируем золотые правила архитектурного выбора инструментов синхронизации:</p>
 <ul>
 <li><strong>Используйте <code>sync/atomic</code>:</strong> для изолированных числовых счетчиков, флагов состояния, указателей конфигурации (<code>atomic.Pointer</code>) и оптимистичных lock-free циклов. Это самый быстрый примитив, не нагружающий планировщик.</li>
@@ -896,7 +873,6 @@ flowchart LR
 </ul>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ul>
 <li>Стоимость примитивов синхронизации в Go варьируется от <strong>1 наносекунды</strong> (атомарное чтение) до <strong>десятков микросекунд</strong> при глубоком конфликте за ресурсы (Contention).</li>
 <li><code>sync.Mutex</code> идеален для общего применения: на быстром пути он стоит <strong>10–20 нс</strong> (1 атомарный CAS), на медленном — задействует активный спиннинг и засыпает на <code>futex(FUTEX_WAIT)</code>. Режим голодания защищает долго ожидающие горутины от starvation.</li>

@@ -307,7 +307,6 @@
 
           <div class="article-markdown">
             <h2 id="keshirovanie-ot-kremniya-do-raspredelyonnykh-klasterov">Кэширование: от кремния до распределённых кластеров</h2>
-
 <blockquote>
 <p><em>«В компьютерных науках есть только две сложные вещи: инвалидация кэша и придумывание имен».</em>  <br />
 — Фил Карлтон (Phil Karlton)</p>
@@ -317,7 +316,6 @@
 <p>В этой главе мы подробно исследуем четыре базовых паттерна кэширования, детально разберём их реализацию на Go, погрузимся в механику влияния локального кэша на сборщик мусора (GC) и рантайм, а также вооружимся инженерными паттернами защиты от классических катастроф: Cache Stampede, Cache Penetration и Cache Avalanche.</p>
 <hr />
 <h3 id="chetyre-patterna-keshirovaniya">Четыре паттерна кэширования</h3>
-
 <p>Кэш может располагаться на разных физических уровнях архитектуры:<br />
 - <strong>Локальный in-memory кэш</strong> непосредственно в адресном пространстве процесса Go (чтение за наносекунды, нулевые сетевые издержки, но данные изолированы внутри одного инстанса).<br />
 - <strong>Внешний распределённый кэш</strong> вроде Redis, Dragonfly или Memcached (доступен всем репликам сервиса, латентность порядка сотен микросекунд или единиц миллисекунд).</p>
@@ -367,7 +365,6 @@ flowchart TD
 
 <hr />
 <h4 id="cache-aside-look-aside-lazy-loading">Cache-Aside (Look-Aside, Lazy Loading)</h4>
-
 <p><strong>Cache-Aside</strong> — это наиболее распространённая и универсальная стратегия в микросервисной архитектуре.<br />
 Здесь приложение выступает главным координатором:<br />
 1. При чтении сервис сначала запрашивает ключ в кэше.<br />
@@ -534,7 +531,6 @@ func (s *UserService) updateInDB(ctx context.Context, tx *sql.Tx, user *User) er
 
 <hr />
 <h4 id="read-through">Read-Through</h4>
-
 <p>В паттерне <strong>Read-Through</strong> приложение обращается исключительно к интерфейсу кэша. Само приложение вообще не знает о существовании базы данных для операций чтения. При возникновении промаха кэширующий плагин или специализированная библиотека автоматически обращается к хранилищу данных, наполняет кэш и возвращает результат приложению.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -621,7 +617,6 @@ func (c *ReadThroughCache[T]) Get(ctx context.Context, key string) (*T, error) {
 
 <hr />
 <h4 id="write-through">Write-Through</h4>
-
 <p>В паттерне <strong>Write-Through</strong> запись данных также полностью делегируется слою кэша. Приложение отправляет команду записи в кэш, а кэш <strong>синхронно</strong> выполняет запись в реляционную базу данных и только после успешного ответа СУБД подтверждает операцию приложению.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -656,7 +651,6 @@ flowchart LR
 - <strong>Загрязнение кэша (Cache Churn)</strong>: Если сущность записывается один раз, а читается редко или никогда, она неэффективно расходует дорогую оперативную память.</p>
 <hr />
 <h4 id="write-behind-write-back">Write-Behind (Write-Back)</h4>
-
 <p>Паттерн <strong>Write-Behind</strong> (также известный как Write-Back) — это полная противоположность Write-Through. Приложение производит запись в кэш, кэш моментально подтверждает сохранение клиенту, а сброс данных в постоянную базу данных происходит <strong>асинхронно</strong> — с задержкой, пакетами (batching) в фоновом потоке.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -788,10 +782,8 @@ func (c *WriteBehindCache) flush(batch []writeOp) {
 
 <hr />
 <h3 id="mechanical-sympathy-vliyanie-kesha-na-go-rantaym">Mechanical Sympathy: влияние кэша на Go-рантайм</h3>
-
 <p>Любое решение о введении кэша обязано учитывать архитектуру среды исполнения Go, поведение Garbage Collector и устройство подсистемы ввода-вывода Linux.</p>
 <h4 id="lokalnyy-kesh-vs-vneshniy-kesh">Локальный кэш vs Внешний кэш</h4>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -829,7 +821,6 @@ func (c *WriteBehindCache) flush(batch []writeOp) {
 </tbody>
 </table></div>
 <h4 id="nalog-na-garbage-collector-lovushka-ukazateley">Налог на Garbage Collector: ловушка указателей</h4>
-
 <p>Стандартный in-memory кэш на базе <code>sync.Map</code> или <code>map + sync.RWMutex</code> со структурами <code>map[string]*User</code> скрывает в себе смертельную ловушку для высоконагруженных сервисов. Для повторного использования временных буферов и объектов без лишней нагрузки на аллокатор применяется <code>sync.Pool</code>.<br />
 Сборщик мусора Go использует алгоритм трёхцветной маркировки (Tri-color Mark and Sweep). Во время фазы разметки рантайм обязан <strong>обойти каждый указатель в куче (heap)</strong>, чтобы определить, жив объект или нет.</p>
 <p>Если вы положите в <code>map[string]*User</code> 5 000 000 объектов, GC будет сканировать миллионы указателей каждые несколько секунд. Фаза Stop-The-World (STW) и время работы марк-воркеров (<code>gcMarkWorker</code>) резко возрастут, пожирая до 25–30% процессорной мощности CPU!</p>
@@ -848,12 +839,10 @@ func (c *WriteBehindCache) flush(batch []writeOp) {
 
 
 <h4 id="setevoy-stek-i-netpoller-v-redis">Сетевой стек и Netpoller в Redis</h4>
-
 <p>Каждая команда к Redis — это системный вызов <code>write/read</code> (или <code>sendto</code>/<code>recvfrom</code>) к сетевому сокету. Сетевой поллер Go (<code>netpoller</code>) паркует горутину на время ожидания ответа сокета через <code>epoll_wait</code> в Linux. Хотя горутины в ожидании очень дешевы, при 100 000 RPS сетевые накладные расходы на системные вызовы ядра становятся доминирующими.<br />
 <strong>Решение:</strong> Использование конвейеризации (Redis Pipelining) для отправки пачек команд за один сетевой системный вызов и пулов соединений (<code>github.com/redis/go-redis/v9</code> управляет ими под капотом).</p>
 <hr />
 <h3 id="invalidatsiya-i-eyo-grabli">Инвалидация и её грабли</h3>
-
 <p>Существует четыре базовых механизма инвалидации кэшированных записей:</p>
 <ol>
 <li><strong>TTL (Time To Live)</strong>:<br />
@@ -867,7 +856,6 @@ func (c *WriteBehindCache) flush(batch []writeOp) {
 </ol>
 <hr />
 <h3 id="problema-thundering-herd-stampede">Проблема Thundering Herd (Stampede)</h3>
-
 <p><strong>Cache Stampede</strong> (или эффект стада бизонов / лавина промахов) возникает в момент, когда истекает TTL очень популярного («горячего») ключа (например, курс валют или карточка товара на главной странице маркетплейса).</p>
 <p>В одну миллисекунду сотни входящих горутин получают <code>Cache Miss</code> и одновременно направляют одинаковый тяжелый SQL-запрос в базу данных. База данных захлёбывается в лавине одинаковых запросов, время ответа деградирует, а сервер падает в каскадный отказ.</p>
 
@@ -897,8 +885,7 @@ flowchart TD
 </figure>
 
 
-<h4 id="zashchita-cherez-golang-orgxsyncsingleflight">Защита через `golang.org/x/sync/singleflight`</h4>
-
+<h4 id="zashchita-cherez-golang-orgxsyncsingleflight">Защита через <code>golang.org/x/sync/singleflight</code></h4>
 <p>В стандартной экосистеме Go существует идеальный инструмент для решения этой проблемы на уровне процесса — пакет <code>singleflight</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -959,14 +946,12 @@ func (s *SafeCacheService) loadFromDB(ctx context.Context, id string) (*UserProf
 </div>
 
 <h4 id="veroyatnostnaya-dosrochnaya-regeneratsiya-algoritm-xfetch">Вероятностная досрочная регенерация (Алгоритм XFetch)</h4>
-
 <p>В распределённых системах с сотнями инстансов <code>singleflight</code> защищает только локальный процесс. Для распределённого мьютекса между подами применяется внешний механизм (например, команда <code>SETNX</code> в Redis с TTL). Для распределённого кэша применяется вероятностный алгоритм <strong>XFetch</strong> (разработанный исследователями Стэнфорда).<br />
 Суть алгоритма: клиент, читая запись незадолго до истечения её TTL, с некоторой вероятностью берёт на себя задачу фоновой регенерации кэша до того, как ключ реально протухнет:<br />
 $$\text{Time} - (\beta \times \delta \times \ln(\text{rand}())) &gt; \text{Expiry}$$<br />
 где $\delta$ — время, затраченное на прошлую загрузку из БД, а $\beta &gt; 0$ — коэффициент агрессивности. В результате ключ в кэше обновляется бесшовно, и промахов вообще не происходит.</p>
 <hr />
 <h3 id="vybor-patterna-v-arkhitekture">Выбор паттерна в архитектуре</h3>
-
 <ul>
 <li><strong>Cache-Aside</strong> — выбор по умолчанию для 90% задач. Идеален для систем с высокой долей чтения (Read-Heavy), где холодный старт не критичен, а данные должны быть согласованы в конечном счёте.</li>
 <li><strong>Read-Through</strong> — идеален для построения унифицированных SDK и библиотек доступа к данным внутри крупных компаний, изолируя команды от деталей хранилищ.</li>
@@ -976,7 +961,6 @@ $$\text{Time} - (\beta \times \delta \times \ln(\text{rand}())) &gt; \text{Expir
 <p>Сравнение со свойствами согласованности (<a href="29-consistency-modeli-strong-eventual-causal.html" class="wikilink">29. Consistency модели. Strong, Eventual, Causal</a>) и теоремой CAP (<a href="30-cap-teorema-i-realnye-kompromissy.html" class="wikilink">30. CAP теорема и реальные компромиссы</a>): введение любого кэша — это всегда осознанный компромисс: отказ от строгой линеаризуемости (Strong Consistency) ради пропускной способности и субмиллисекундного времени отклика.</p>
 <hr />
 <h3 id="keshirovanie-i-ustoychivost-k-otkazam">Кэширование и устойчивость к отказам</h3>
-
 <p>Кэш — это <strong>не авторитетный источник правды</strong>.<br />
 Если кластер Redis перегружен, потерял сетевую связность или перезагружается, приложение Go не имеет права падать с паникой или возвращать пользователю <code>500 Internal Server Error</code>.</p>
 <ol>
@@ -1041,7 +1025,6 @@ func (s *UserService) getFromCache(ctx context.Context, id string) (*User, error
 
 <hr />
 <h3 id="itog">Итог</h3>
-
 <p>Кэширование — это искусство управления компромиссами между скоростью света в кремнии и энтропией распределённых данных. Выбор между Cache-Aside, Read-Through, Write-Through и Write-Behind определяется не модой, а конкретными требованиями к допустимости потери данных и профилем нагрузки (чтение или запись).</p>
 <p>Инженер, пишущий на Go, обязан помнить об устройстве машины: не забивать кучу миллионами указателей, помнить о стоимости системных вызовов сетевого сокета и защищать свою систему от «стада бизонов» через <code>singleflight</code>.</p>
 <p>В следующей главе мы поднимемся на фундаментальный уровень распределённых систем и разберём спектр моделей согласованности: <a href="29-consistency-modeli-strong-eventual-causal.html" class="wikilink">29. Consistency модели. Strong, Eventual, Causal</a>.</p>

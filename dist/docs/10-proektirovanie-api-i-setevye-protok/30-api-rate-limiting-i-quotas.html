@@ -300,7 +300,6 @@
 <p>Инженер уровня Senior обязан четко проводить границу между тремя смежными понятиями: <strong>Rate Limiting</strong>, <strong>Throttling</strong> и <strong>Quotas</strong>. Смешивание этих концепций в коде одного сервиса (или, что еще хуже, в одной таблице реляционной базы данных) неизбежно приводит к разрушительному падению производительности кластера под нагрузкой.</p>
 <hr />
 <h2 id="1-zashchita-biznesa-i-zheleza-razdelenie-ponyatiy">1. Защита бизнеса и железа: Разделение понятий</h2>
-
 <p>Чтобы осознать разницу между этими тремя механизмами, полезна физическая дорожная аналогия:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -340,7 +339,6 @@ flowchart LR
 
 <hr />
 <h2 id="2-terminologiya-limit-vs-throttling-vs-quota">2. Терминология: Limit vs Throttling vs Quota</h2>
-
 <h3 id="1-rate-limit-limit-chastoty">1. Rate Limit (Лимит частоты)</h3>
 <ul>
 <li><strong>Назначение:</strong> Защита физической инфраструктуры от деградации.</li>
@@ -360,7 +358,6 @@ flowchart LR
 </ul>
 <hr />
 <h2 id="3-throttling-mekhanika-leaky-bucket-v-go">3. Throttling: Механика Leaky Bucket в Go</h2>
-
 <p>Для сглаживания пульсирующего потока запросов классическим стандартом является алгоритм <strong>Leaky Bucket (Протекающее ведро)</strong>.</p>
 <p>Представьте ведро с узким калиброванным отверстием в дне:<br />
 - Запросы от клиентов наливаются в ведро сверху неравномерно — бурными всплесками (Bursts).<br />
@@ -384,10 +381,8 @@ flowchart LR
 
 <hr />
 <h2 id="4-arkhitektura-kvot-problema-raspredelennogo-schetchika">4. Архитектура Квот: Проблема распределенного счетчика</h2>
-
 <p>Квоты оперируют большими временными горизонтами (дни и месяцы). Их нельзя хранить только в локальной памяти пода (при перезапуске пода в Kubernetes счетчики обнулятся, и клиент бесплатно получит миллион повторных запросов). Данные о квотах <strong>обязаны быть персистентными</strong>.</p>
 <h3 id="naivnyy-podkhod-pryamoy-update-v-relyatsionnuyu-bd-antipattern">Наивный подход: Прямой UPDATE в реляционную БД (Антипаттерн)</h3>
-
 <p>Неопытные инженеры часто пытаются реализовать учет квот «в лоб», выполняя SQL-запрос на каждый входящий HTTP-вызов:</p>
 
 <div class="code-block" data-lang="sql">
@@ -420,7 +415,6 @@ WHERE client_id = 42;
 
 <hr />
 <h2 id="5-industrialnyy-podkhod-async-batching-asinkhronnoe-paketirovanie">5. Индустриальный подход: Async Batching (Асинхронное пакетирование)</h2>
-
 <p>Чтобы изолировать центральное хранилище от шторма транзакций, архитекторы применяют паттерн <strong>Async Batching (Асинхронный сброс)</strong>:</p>
 <ol>
 <li><strong>Локальный учет в памяти:</strong> На уровне экземпляра Go-приложения каждый HTTP-запрос инкрементирует счетчик в оперативной памяти за <strong>единицы наносекунд</strong> с помощью атомарных процессорных инструкций (<code>sync/atomic</code>).</li>
@@ -459,7 +453,6 @@ flowchart TD
 
 <hr />
 <h2 id="6-idiomatichnyy-go-realizatsiya-async-flusher">6. Идиоматичный Go: Реализация Async Flusher</h2>
-
 <p>Ниже приведена образцовая реализация высокопроизводительного менеджера локальных квот. Для исключения мьютексных блокировок используется структура <code>sync.Map</code>, где ключом является строковый ID клиента, а значением — <strong>указатель на <code>uint64</code></strong>. Это позволяет производить инкремент через атомарные инструкции процессора без захвата глобальных блокировок:</p>
 
 <div class="code-block" data-lang="go">
@@ -575,7 +568,6 @@ func (m *Manager) flushToRedis() {
 
 <hr />
 <h2 id="7-kontrakt-kvot-v-http">7. Контракт квот в HTTP</h2>
-
 <p>Когда квота или лимит исчерпаны, крайне важно предоставить клиенту прозрачный и структурированный HTTP-ответ.</p>
 <h3 id="statusy-zaversheniya">Статусы завершения:</h3>
 <ul>
@@ -584,7 +576,6 @@ func (m *Manager) flushToRedis() {
 <li><strong><code>403 Forbidden</code>:</strong> Классический запасной статус, если инфраструктурные шлюзы компании не поддерживают код 402.</li>
 </ul>
 <h3 id="zagolovki-standarta-ietf-ratelimit">Заголовки стандарта IETF RateLimit</h3>
-
 <p>Чтобы клиенты не бомбардировали сервис слепыми повторными запросами, сервер обязан возвращать стандартизированные метаданные (RFC Draft IETF <code>RateLimit</code>):</p>
 
 <div class="code-block" data-lang="http">
@@ -617,7 +608,6 @@ Retry-After: 60
 </ul>
 <hr />
 <h2 id="8-itog">8. Итог</h2>
-
 <ol>
 <li><strong>Разделяйте зоны ответственности:</strong> Rate Limiting защищает железную инфраструктуру на уровне <a href="25-api-gateway.html" class="wikilink">25. API Gateway</a>, Throttling сглаживает скачки нагрузки, а Quotas управляют бизнес-тарифами и биллингом.</li>
 <li><strong>Throttling</strong> в Go реализуется через <code>limiter.Wait()</code> (<code>limiter.Wait(ctx)</code>) из <code>golang.org/x/time/rate</code>, блокируя горутины без сжигания тактов процессора (Mechanical Sympathy).</li>

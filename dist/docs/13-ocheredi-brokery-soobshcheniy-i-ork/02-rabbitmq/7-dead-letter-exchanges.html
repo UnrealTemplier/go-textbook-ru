@@ -356,7 +356,6 @@
 <p>Нам требуется безопасная штрафстоянка («карантин») для бракованных данных. В экосистеме RabbitMQ этот фундаментальный механизм называется <strong>Dead Letter Exchange (DLX)</strong>.</p>
 <hr />
 <h2 id="chto-takoe-dlx">Что такое DLX?</h2>
-
 <p>Вопреки распространенному заблуждению среди начинающих инженеров, <strong>Dead Letter Exchange (Обменник мертвых писем)</strong> — это <strong>не</strong> какой-то специфический закрытый тип обменника. Это абсолютно стандартный Exchange (Direct, Topic, Fanout или Headers), которому в архитектуре системы делегирована служебная роль: <em>принимать сообщения, отвергнутые очередями</em>.</p>
 <p>Любая очередь в RabbitMQ может быть сконфигурирована аргументом <code>x-dead-letter-exchange</code>. При наступлении условий «смерти» процесс очереди автоматически перенаправляет проблемное сообщение в этот обменник.</p>
 
@@ -413,7 +412,6 @@ flowchart TD
 
 <hr />
 <h2 id="3-prichiny-smerti-soobshcheniya">3 причины «смерти» сообщения</h2>
-
 <p>RabbitMQ не отправляет сообщения в DLX произвольно. Процесс очереди выполняет Dead-Lettering строго при наступлении одного из трех предопределенных системных событий:</p>
 <ol>
 <li><strong>Rejected / Nacked:</strong> Воркер на стороне приложения явно отклонил сообщение через <code>Basic.Reject</code> или <code>Basic.Nack</code> с обязательным указанием флага <strong><code>requeue = false</code></strong>.</li>
@@ -435,19 +433,17 @@ flowchart TD
 
 <hr />
 <h2 id="marshrutizatsiya-mertvetsov-routing-keys">Маршрутизация «мертвецов» (Routing Keys)</h2>
-
 <p>При пересылке сообщения в Dead Letter Exchange процесс очереди по умолчанию <strong>сохраняет оригинальный Routing Key</strong>, с которым сообщение было изначально опубликовано в систему.</p>
 <p><em>Пример:</em><br />
 1. Издатель опубликовал заказ с ключом <code>order.created</code>.<br />
 2. Сообщение попало в рабочую очередь <code>orders_queue</code>.<br />
 3. Воркер сделал <code>d.Nack(false, false)</code>.<br />
 4. Очередь направляет сообщение в обменник <code>orders_dlx</code> с неизменным ключом <code>order.created</code>.</p>
-<h3 id="pereopredelenie-klyucha-x-dead-letter-routing-key">Переопределение ключа: `x-dead-letter-routing-key`</h3>
+<h3 id="pereopredelenie-klyucha-x-dead-letter-routing-key">Переопределение ключа: <code>x-dead-letter-routing-key</code></h3>
 <p>Однако в крупных архитектурах часто требуется собирать брак из десятка различных очередей в единую общую штрафстоянку <code>global_dlq</code> через один <code>global_dlx</code>. Если ключи маршрутизации у всех очередей разные, настроить биндинги к общему DLX становится неудобно.</p>
 <p>Для решения этой проблемы при создании очереди можно указать аргумент <strong><code>x-dead-letter-routing-key</code></strong>. Если этот параметр задан, процесс очереди сотрет оригинальный <code>Routing Key</code> и подставит вместо него указанную строку перед отправкой в DLX (например, <code>dead.processing</code>).</p>
 <hr />
-<h2 id="zagolovok-x-death-anatomiya-tragedii">Заголовок `x-death`: Анатомия трагедии</h2>
-
+<h2 id="zagolovok-x-death-anatomiya-tragedii">Заголовок <code>x-death</code>: Анатомия трагедии</h2>
 <p>Когда брокер выполняет Dead-Lettering, он не просто перекладывает байты — он прикрепляет к сообщению подробнейший «протокол вскрытия». В словаре пользовательских заголовков (<code>Headers</code>) появляется служебный массив <strong><code>x-death</code></strong>.</p>
 <p>Каждый элемент этого массива представляет собой ассоциативный массив со следующими полями:<br />
 - <strong><code>reason</code>:</strong> Конкретная причина смерти. Принимает одно из трех значений:<br />
@@ -476,7 +472,6 @@ flowchart TD
 
 <hr />
 <h2 id="realizatsiya-infrastruktury-na-go">Реализация инфраструктуры на Go</h2>
-
 <p>Ниже приведен эталонный пример создания надежного контура обработки на Go: объявляются основной обменник, целевая Quorum-очередь со связкой с DLX и выделенная очередь брака (<code>DLQ</code>).</p>
 
 <div class="code-block" data-lang="go">
@@ -601,7 +596,6 @@ func DeclareQueueWithDLX(ch *amqp.Channel) error {
 
 <hr />
 <h2 id="kak-pravilno-obrabatyvat-dlq">Как правильно обрабатывать DLQ?</h2>
-
 <p>Создать очередь <code>processing_dlq</code> — лишь половина задачи. Что с ней делать дальше в реальной эксплуатации? Существует две основные стратегии:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -658,7 +652,6 @@ graph LR
 </ol>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>DLX — гарантия от потери данных:</strong> Всегда используйте <code>Nack(requeue=false)</code> в связке с DLX вместо опасного <code>Nack(requeue=true)</code>, порождающего циклы отравленных сообщений.</li>
 <li><strong>DLX — это стандартный Exchange:</strong> Любой обменник может выполнять функции DLX. Маршрутизация в него выполняется процессом очереди в Erlang.</li>

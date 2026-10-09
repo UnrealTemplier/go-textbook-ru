@@ -438,7 +438,6 @@
 
           <div class="article-markdown">
             <h2 id="vvedenie-anomalii-konkurentnogo-dostupa-k-dannym">Введение: Аномалии конкурентного доступа к данным</h2>
-
 <p>Когда десятки и сотни параллельных горутин обращаются к одним и тем же таблицам базы данных, иллюзия упорядоченного мира начинает трещать по швам. Без надежных барьеров изоляции и осознанно расставленных блокировок многопоточная среда неминуемо сталкивается с аномалиями параллелизма.</p>
 <p>В отличие от синтаксических ошибок, которые компилятор Go отлавливает на этапе сборки, транзакционные аномалии коварны тем, что они абсолютно беззвучны. Запросы завершаются со статусом <code>OK</code>, транзакции успешно коммитятся, логи чисты — но на счетах клиентов испаряются деньги, отчеты за прошлый месяц не сходятся с остатками на складе, а один покупатель перезаписывает заказ другого.</p>
 <p>Для инженера уровня Senior/Lead умение распознавать и предотвращать эти аномалии — обязательный навык. В этой статье мы разберём три классические проблемы: <code>Dirty Read</code>, <code>Lost Update</code> и <code>Phantom Read</code>. Мы покажем, как они возникают на уровне страниц данных и версий строк, как их воспроизвести в тестах, и какие идиоматичные паттерны в Go гарантируют безопасность.</p>
@@ -474,10 +473,8 @@ flowchart TD
 
 <hr />
 <h2 id="1-dirty-read-chtenie-gryaznykh-dannykh">1. Dirty Read: Чтение «грязных» данных</h2>
-
 <p><strong>Определение:</strong> Транзакция читает данные, которые были изменены другой транзакцией, но ещё не зафиксированы. Если вторая транзакция выполнит <code>ROLLBACK</code>, первая транзакция окажется с данными, которых официально никогда не существовало.</p>
 <h3 id="mekhanika-vozniknoveniya">Механика возникновения</h3>
-
 <p>В системах, основанных на блокировках, <code>Dirty Read</code> возможен, если читатель не запрашивает разделяющую блокировку (<code>Shared Lock</code>), а писатель не ожидает её освобождения. В MVCC-системах это означало бы чтение «черновика» версии строки до того, как транзакция-автор получила <code>commit lsn</code>.</p>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
@@ -495,7 +492,6 @@ flowchart TD
 
 
 <h3 id="kak-eto-vyglyadit-v-zaprosakh">Как это выглядит в запросах</h3>
-
 
 <div class="code-block" data-lang="sql">
   <header class="code-header">
@@ -522,10 +518,8 @@ ROLLBACK; -- баланс вернулся к 1000
 
 <hr />
 <h2 id="2-lost-update-poteryannoe-obnovlenie">2. Lost Update: Потерянное обновление</h2>
-
 <p><strong>Определение:</strong> Две транзакции читают одно и то же значение, независимо вычисляют новое и записывают его. Результат второй транзакции полностью перезаписывает изменения первой. Первая транзакция «не замечает», что её работа была утеряна.</p>
 <h3 id="mekhanika-na-urovne-versiy-strok">Механика на уровне версий строк</h3>
-
 <p>Это самая коварная аномалия, потому что она <strong>не нарушает стандарт SQL для <code>READ COMMITTED</code> или <code>REPEATABLE READ</code></strong>, если разработчик явно не просит защиту.</p>
 <ol>
 <li>Транзакция A читает строку <code>X</code> (версия <code>v1</code>, значение <code>100</code>).</li>
@@ -548,10 +542,8 @@ ROLLBACK; -- баланс вернулся к 1000
 
 
 <h3 id="idiomatichnoe-predotvrashchenie-v-go">Идиоматичное предотвращение в Go</h3>
-
 <p>Существует два промышленно принятых подхода:</p>
-<h4 id="1-pessimisticheskaya-blokirovka-select-for-update">1. Пессимистическая блокировка (`SELECT ... FOR UPDATE`)</h4>
-
+<h4 id="1-pessimisticheskaya-blokirovka-select-for-update">1. Пессимистическая блокировка (<code>SELECT ... FOR UPDATE</code>)</h4>
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -592,7 +584,6 @@ ROLLBACK; -- баланс вернулся к 1000
 
 <p><code>FOR UPDATE</code> устанавливает эксклюзивную блокировку строки. Любая вторая транзакция, пытающаяся выполнить <code>SELECT ... FOR UPDATE</code> или <code>UPDATE</code> на эту строку, будет поставлена в очередь ядра ОС до <code>COMMIT</code>/<code>ROLLBACK</code> первой.</p>
 <h4 id="2-optimisticheskaya-blokirovka-versionirovanie">2. Оптимистическая блокировка (Версионирование)</h4>
-
 <p>Идеально для сценариев с высокой читаемостью и редкими конфликтами записи.</p>
 
 <div class="code-block" data-lang="go">
@@ -647,10 +638,8 @@ func UpdateBalanceOptimistic(ctx context.Context, db *sql.DB, acc Account, newBa
 
 <hr />
 <h2 id="3-phantom-read-fantomnoe-chtenie">3. Phantom Read: Фантомное чтение</h2>
-
 <p><strong>Определение:</strong> Транзакция дважды выполняет запрос с одним и тем же предикатом <code>WHERE</code>, но получает разный набор строк, потому что другая параллельная транзакция вставила или удалила строки, удовлетворяющие условию.</p>
 <h3 id="mekhanika-pochemu-blokirovki-strok-ne-pomogayut">Механика: Почему блокировки строк не помогают</h3>
-
 <p>Блокировка строк (<code>FOR UPDATE</code>) защищает только <strong>существующие</strong> строки. Она не блокирует вставку новых строк в диапазон, который покрывает ваш <code>WHERE</code>.</p>
 
 <div class="code-block" data-lang="sql">
@@ -676,7 +665,6 @@ SELECT COUNT(*) FROM orders WHERE status = 'new'; -- вернёт 11!
 </div>
 
 <h3 id="kak-subd-predotvrashchayut-fantomov">Как СУБД предотвращают фантомов</h3>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -711,7 +699,6 @@ SELECT COUNT(*) FROM orders WHERE status = 'new'; -- вернёт 11!
 
 
 <h3 id="praktika-v-go-otchyoty-i-agregatsii">Практика в Go: Отчёты и агрегации</h3>
-
 <p>Если вы формируете отчёт в несколько шагов, <code>READ COMMITTED</code> даст несогласованные цифры. Используйте <code>REPEATABLE READ</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -744,7 +731,6 @@ SELECT COUNT(*) FROM orders WHERE status = 'new'; -- вернёт 11!
 
 <hr />
 <h2 id="4-mekhanicheskaya-simpatiya-tsena-blokirovok-i-versiy-na-urovne-zheleza">4. Механическая симпатия: Цена блокировок и версий на уровне железа</h2>
-
 <p>Понимание аномалий бесполезно без оценки их стоимости для инфраструктуры.</p>
 <h3 id="kesh-linii-cpu-i-false-sharing">Кэш-линии CPU и False Sharing</h3>
 <p>При использовании <code>FOR UPDATE</code> СУБД часто хранит состояния блокировок в общих структурах памяти. Если два ядра CPU одновременно пытаются захватить или проверить блокировки для строк, находящихся на одной странице данных, происходит <strong>invalidation cache lines</strong> через протокол MESI. Это приводит к «шторму» когерентности шины, и ядра простаивают в ожидании обновления кэша.</p>
@@ -787,7 +773,6 @@ defer cancel()
 
 <hr />
 <h2 id="5-itog-i-strategiya-vybora">5. Итог и стратегия выбора</h2>
-
 <ol>
 <li><strong>Dirty Read</strong> — решается автоматически переходом на <code>READ COMMITTED</code>. Не требует внимания в современных СУБД.</li>
 <li><strong>Lost Update</strong> — самая опасная аномалия для бизнес-логики. Решается:<br />

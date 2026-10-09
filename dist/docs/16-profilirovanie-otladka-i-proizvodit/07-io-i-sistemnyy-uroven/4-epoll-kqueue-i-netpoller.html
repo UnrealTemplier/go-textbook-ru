@@ -402,14 +402,12 @@
 
           <div class="article-markdown">
             <h2 id="epoll-kqueue-i-netpoller-asinkhronnoe-serdtse-go">Epoll, Kqueue и Netpoller: асинхронное сердце Go</h2>
-
 <p>В предыдущих статьях мы подробно разобрали природу системных вызовов ядра (<a href="1-sistemnye-vyzovy-i-ikh-stoimost.html" class="wikilink">1. Системные вызовы и их стоимость</a>), классифицировали узкие места дискового и сетевого ввода-вывода (<a href="2-io-bottlenecks.html" class="wikilink">2. IO bottlenecks</a>) и препарировали физическую структуру сетевой задержки (<a href="3-network-latency.html" class="wikilink">3. Network latency</a>). Теперь настало время изучить механизм, который является подлинным технологическим фундаментом успеха Go в мире высоконагруженных серверных систем.</p>
 <p>Этот механизм — <strong>сетевой поллер</strong> (netpoller). В его основе лежат передовые системные API мультиплексирования ввода-вывода современных операционных систем: <strong>epoll</strong> в Linux и <strong>kqueue</strong> в macOS и BSD-системах.</p>
 <p>Без netpoller модель конкурентности Go была бы невозможна в её нынешнем виде. Если бы каждая горутина, ожидающая сетевых байтов от клиента или базы данных, вызывала блокирующий системный вызов ядра, операционной системе для обслуживания 50 000 одновременных WebSocket-соединений потребовалось бы создать 50 000 тяжелых потоков ядра (OS threads). Планировщик Linux CFS захлебнулся бы в переключениях контекста, а память исчерпалась бы стеками потоков (по 2–8 МБ на поток).</p>
 <p>Вместо этого сетевой поллер позволяет <strong>горстке системных потоков M</strong> (обычно равной числу физических ядер процессора <code>GOMAXPROCS</code>) асинхронно обслуживать сотни тысяч горутин. Для разработчика код выглядит абсолютно синхронным и линейным, но под капотом рантайм Go дирижирует сложнейшим асинхронным реактором событий.</p>
 <p>Эта статья — глубокое погружение в устройство асинхронного ввода-вывода: от системных вызовов ядра (<code>epoll_create</code>, <code>epoll_ctl</code>, <code>epoll_wait</code>) и их аналогов в BSD (<code>kqueue</code>, <code>kevent</code>) до структур данных <code>pollDesc</code> в рантайме Go и их взаимодействия с планировщиком горутин (<a href="../06-konkurentnost/1-scheduler-go-g-m-p-model.html" class="wikilink">1. Scheduler Go. G-M-P модель</a>).</p>
 <h2 id="zachem-nuzhen-epollkqueue-problema-selectpoll">Зачем нужен epoll/kqueue: проблема select/poll</h2>
-
 <p>Чтобы оценить элегантность epoll, обратимся к истории Unix. Исторически первыми механизмами мультиплексирования ввода-вывода были системные вызовы <strong>select</strong> (появился в 4.2BSD) и <strong>poll</strong> (System V).</p>
 <p>Оба механизма страдали от фундаментального архитектурного порока: <strong>отсутствия памяти состояний в ядре (stateless model)</strong>. При каждом вызове <code>select</code> или <code>poll</code> пользовательский процесс обязан:<br />
 1. Скопировать из пространства пользователя в ядро полный битовый массив или массив структур со всеми десятками тысяч отслеживаемых файловых дескрипторов.<br />
@@ -470,9 +468,7 @@
 </tbody>
 </table></div>
 <h2 id="epoll-v-linux-yadernaya-kukhnya">Epoll в Linux: ядерная кухня</h2>
-
 <h3 id="sistemnye-vyzovy-epoll">Системные вызовы epoll</h3>
-
 <p>Интерфейс подсистемы epoll в ядре Linux опирается на три ключевых системных вызова:</p>
 <ol>
 <li>
@@ -497,7 +493,6 @@
 </li>
 </ol>
 <h3 id="edge-triggered-vs-level-triggered">Edge-triggered vs Level-triggered</h3>
-
 <p>Это ключевое разделение режимов уведомлений:</p>
 <ul>
 <li><strong>Level-triggered (LT, триггер по уровню — режим по умолчанию):</strong><br />
@@ -519,7 +514,6 @@
 
 
 <h2 id="kqueue-v-macos-i-bsd">Kqueue в macOS и BSD</h2>
-
 <p>В операционных системах семейства BSD и macOS аналогом epoll является подсистема <strong>kqueue</strong>. Ее интерфейс концептуально универсальнее:</p>
 <ul>
 <li><strong><code>kqueue()</code></strong> — создает очередь событий в ядре и возвращает дескриптор очереди <code>kq</code>.</li>
@@ -528,10 +522,8 @@
 <p>Kqueue аппаратно спроектирован вокруг концепции «фильтров событий» (<code>EVFILT_READ</code>, <code>EVFILT_WRITE</code>, фильтры файловой системы vnode, процессов, сигналов и таймеров ядра). Внутри ядро использует эффективную хэш-таблицу зарегистрированных дескрипторов, обеспечивая ту же скорость $O(1)$.</p>
 <p>В исходном коде рантайма Go различия между операционными системами аккуратно изолированы: пакет <code>src/runtime/netpoll.go</code> описывает общий интерфейс, а платформенная специфика скрыта в файлах <code>netpoll_epoll.go</code> (Linux), <code>netpoll_kqueue.go</code> (macOS/BSD), <code>netpoll_windows.go</code> (IOCP) и <code>netpoll_aix.go</code>.</p>
 <h2 id="arkhitektura-netpoller-v-go">Архитектура netpoller в Go</h2>
-
 <p>Netpoller — это специализированная подсистема рантайма Go, бесшовно соединяющая горутины, спящие в ожидании сетевого ввода-вывода, с системными очередями epoll/kqueue ядра ОС.</p>
 <h3 id="osnovnye-struktury-dannykh">Основные структуры данных</h3>
-
 <ul>
 <li><strong><code>pollDesc</code> (дескриптор опроса):</strong><br />
   Центральная структура, ассоциированная с каждым открытым сокетом. Она хранит:</li>
@@ -545,10 +537,8 @@
   Глобальный файловый дескриптор инстанса epoll/kqueue, создаваемый один раз на весь процесс Go в функции <code>runtime.netpollinit</code>.</li>
 </ul>
 <h3 id="initsializatsiya">Инициализация</h3>
-
 <p>При старте рантайма вызывается <code>runtime.netpollinit()</code> (или <code>netpollinit()</code>). В Linux она делает <code>epoll_create1(EPOLL_CLOEXEC)</code>, в macOS — <code>kqueue()</code>. Созданный дескриптор сохраняется в глобальной переменной <code>epfd</code>. Для пробуждения спящего netpoller создается неблокирующий pipe или счетчик <code>eventfd</code>, который также добавляется в epoll.</p>
 <h3 id="registratsiya-i-ozhidanie-zhiznennyy-tsikl-gorutiny">Регистрация и ожидание: жизненный цикл горутины</h3>
-
 <p>Проследим по шагам, как выполняется операция <code>conn.Read(b)</code> в Go:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -641,8 +631,7 @@ sequenceDiagram
 </figure>
 
 
-<h3 id="gde-vyzyvaetsya-netpoll">Где вызывается `netpoll()`</h3>
-
+<h3 id="gde-vyzyvaetsya-netpoll">Где вызывается <code>netpoll()</code></h3>
 <p>Как и кто опрашивает <code>epoll_wait</code>, если все потоки M заняты выполнением других горутин? В рантайме Go функция опроса <code>netpoll()</code> вызывается в двух стратегических точках планировщика:</p>
 <ol>
 <li><strong>Планировщик при поиске работы (<code>findRunnable()</code>):</strong><br />
@@ -651,24 +640,19 @@ sequenceDiagram
    Если все процессоры P заняты непрерывными вычислительными CPU-задачами и не заходят в <code>findRunnable()</code>, сетевые события рискуют зависнуть. Для предотвращения этой проблемы поток-надзиратель <code>sysmon</code>, работающий без процессора P, периодически (каждые 10–20 мс) проверяет сетевой поллер. Он вызывает <code>netpoll(true)</code> с бесконечным таймаутом, чтобы гарантированно пробуждать горутины, ожидающие сеть, находит проснувшиеся горутины, переводит их функцией <code>goready</code> в состояние <code>_Grunnable</code> и инжектирует их в глобальную очередь планировщика.</li>
 </ol>
 <h3 id="zakrytie-i-oshibki">Закрытие и ошибки</h3>
-
 <p>Когда сетевое соединение закрывается удаленной стороной или происходит аппаратный сброс (<code>EPOLLERR</code>, <code>EPOLLHUP</code>, <code>EPOLLRDHUP</code>), дескриптор epoll точно так же генерирует событие готовности. Netpoller пробуждает горутину, ожидающую чтения. При повторном <code>read</code> вызов возвращает <code>0</code> (сигнал <code>io.EOF</code>) или системную ошибку <code>ECONNRESET</code>.</p>
 <p>При закрытии сокета в Go (<code>conn.Close()</code>) вызывается функция <code>netpollclose(pd)</code>, которая инвалидирует <code>pollDesc</code> и очищает связи, предотвращая утечки дескрипторов.</p>
 <h2 id="diagnostika-netpoller">Диагностика netpoller</h2>
-
 <p>Для мониторинга эффективности работы сетевого поллера Go-инженеру доступны следующие инструменты:</p>
 <h3 id="1-execution-tracer">1. Execution tracer</h3>
-
 <p>Трассировщик рантайма Go (<a href="../08-runtime-i-instrumenty/3-execution-tracer.html" class="wikilink">3. execution tracer</a>) — эталонный визуальный инструмент для анализа netpoller:<br />
 - На временной диаграмме наглядно отображаются горутины в статусе <code>Waiting</code> с пометкой <code>Network I/O</code>.<br />
 - Видны моменты вызова функции <code>netpoll</code> планировщиком и потоком <code>sysmon</code>.<br />
 - Позволяет мгновенно выявить ситуации, когда сетевой поллер вовремя не опрашивается из-за монополизации CPU тяжелыми циклами.</p>
 <h3 id="2-block-profile">2. Block profile</h3>
-
 <p>Профиль блокировок (<a href="../08-runtime-i-instrumenty/5-block-profile.html" class="wikilink">5. block profile</a>) фиксирует время, проведенное горутинами в ожидании внешних событий:<br />
 - Если в топе отчета доминирует функция <code>runtime.netpollblock</code>, это означает, что сервис уперся в задержки внешних сетевых зависимостей.</p>
-<h3 id="3-godebugschedtrace">3. `GODEBUG=schedtrace`</h3>
-
+<h3 id="3-godebugschedtrace">3. <code>GODEBUG=schedtrace</code></h3>
 <p>Запуск приложения с параметром трассировки:</p>
 
 <div class="code-block" data-lang="bash">
@@ -687,16 +671,13 @@ sequenceDiagram
 - Параметр <code>waiting</code> — суммарное число горутин, ожидающих в netpoller и на примитивах синхронизации.<br />
 - Позволяет отследить пробуждения потоков при сетевых всплесках.</p>
 <h3 id="4-statistika-os">4. Статистика ОС</h3>
-
 <ul>
 <li><code>ss -ti</code> — показывает <code>rtt</code>, <code>rto</code>, размер очередей сокетов (<code>Recv-Q</code> и <code>Send-Q</code>) и потери.</li>
 <li><code>netstat -s</code> — агрегированная статистика стека TCP/IP ядра (ошибки, сброшенные пакеты).</li>
 <li><code>perf top</code> или <code>perf record -e syscalls:sys_enter_epoll_pwait</code> — замеряет частоту и длительность вызовов <code>epoll_wait</code> на уровне ядра Linux.</li>
 </ul>
 <h2 id="preimushchestva-i-ogranicheniya-modeli-netpoller">Преимущества и ограничения модели netpoller</h2>
-
 <h3 id="preimushchestva">Преимущества</h3>
-
 <ul>
 <li><strong>Колоссальная масштабируемость по памяти:</strong><br />
   Вместо 2–8 МБ на поток ОС горутина в ожидании сети требует всего 2 КБ памяти стека. Сервер на Go с 8 ГБ RAM может спокойно удерживать миллион открытых неактивных WebSocket-соединений.</li>
@@ -706,7 +687,6 @@ sequenceDiagram
   Инженеру не нужно писать спагетти из callback-функций, промисов или конечных автоматов (как в Node.js или старом C++). Код пишется последовательно, от строчки к строчке.</li>
 </ul>
 <h3 id="ogranicheniya">Ограничения</h3>
-
 <ul>
 <li><strong>Неприменимость к файловому вводу-выводу:</strong><br />
   Дисковые операции (<code>os.File.Read</code>) блокируют поток M, потому что стандартная библиотека не использует epoll для файлов (в ядре Linux обычные файлы на диске не поддерживают полноценный <code>epoll</code> — дескриптор файла всегда возвращает <code>EPOLLIN</code> и считается «готовым», хотя реальное чтение блокирует поток на миллисекунды). Поэтому файловый ввод-вывод в Go вызывает hand-off потоков M (<a href="1-sistemnye-vyzovy-i-ikh-stoimost.html" class="wikilink">1. Системные вызовы и их стоимость</a>). Полноценный асинхронный дисковый ввод-вывод требует интерфейса <code>io_uring</code>.</li>
@@ -714,7 +694,6 @@ sequenceDiagram
   Если в приложении запущено множество длинных вычислительных горутин без точек прерывания, опрос <code>netpoll</code> может задерживаться до 10 мс (период работы <code>sysmon</code>), увеличивая хвостовую задержку p99.</li>
 </ul>
 <h2 id="mechanical-sympathy-chto-vnutri-epoll-i-kak-eto-vliyaet-na-proizvoditelnost">Mechanical Sympathy: что внутри epoll и как это влияет на производительность</h2>
-
 <ul>
 <li><strong>Память структур ядра:</strong><br />
   Каждый сокет, добавленный в epoll, создает в пространстве ядра структуру <code>struct epitem</code> размером около 160 байт. На миллион соединений ядро Linux выделит около 160 МБ невыгружаемой оперативной памяти (SLAB/SLUB аллокатор) под структуры <code>eventpoll</code>.</li>
@@ -747,7 +726,6 @@ sequenceDiagram
 
 
 <h2 id="zaklyuchenie">Заключение</h2>
-
 <p>Подсистема <strong>netpoller</strong> — это шедевр системного проектирования в рантайме Go. Она объединяет бескомпромиссную мощь событийных механизмов ядра (<code>epoll</code> и <code>kqueue</code>) с непревзойденной элегантностью и простотой модели горутин. </p>
 <p>Понимание того, как устроены структуры <code>pollDesc</code>, как переплетаются фазы парковки <code>gopark</code> и пробуждения <code>findRunnable</code>/<code>sysmon</code>, дает Senior-инженеру четкое понимание того, почему сетевые микросервисы на Go демонстрируют феноменальную плотность и производительность.</p>
 <p>Далее мы перейдем к технологиям, которые позволяют еще сильнее снизить накладные расходы при передаче сетевых и дисковых данных, полностью исключая промежуточное копирование байт в памяти: <a href="5-zero-copy-podkhody.html" class="wikilink">5. Zero copy подходы</a>.</p>

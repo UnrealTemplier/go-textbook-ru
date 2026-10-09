@@ -285,8 +285,7 @@
 — Лесли Лэмпорт</p>
 </blockquote>
 <hr />
-<h3 id="arkhitektura-vybora-sync-map-vs-rwmutex-map">Архитектура выбора: `sync.Map` vs `RWMutex + map`</h3>
-
+<h3 id="arkhitektura-vybora-sync-map-vs-rwmutex-map">Архитектура выбора: <code>sync.Map</code> vs <code>RWMutex + map</code></h3>
 <p>В стандартной библиотеке Go существует два базовых инструмента для конкурентного доступа к ассоциативным массивам. Выбор между ними определяется паттерном нагрузки на кэш-линии процессора:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -320,7 +319,6 @@ flowchart TD
 
 <hr />
 <h3 id="algoritm-neblokiruyushchey-sinkhronizatsii-lock-free-cas-loop">Алгоритм неблокирующей синхронизации (Lock-Free CAS Loop)</h3>
-
 <p>Lock-free структуры данных в Go строятся на базе аппаратных инструкций Compare-And-Swap (<code>CMPXCHG</code> на x86-64, <code>LDREX/STREX</code> или <code>CAS</code> на ARM64) пакета <code>sync/atomic</code>:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -352,8 +350,7 @@ flowchart TD
 
 
 <hr />
-<h3 id="vnutrenniy-zhiznennyy-tsikl-sync-pool-i-svyaz-s-gc">Внутренний жизненный цикл `sync.Pool` и связь с GC</h3>
-
+<h3 id="vnutrenniy-zhiznennyy-tsikl-sync-pool-i-svyaz-s-gc">Внутренний жизненный цикл <code>sync.Pool</code> и связь с GC</h3>
 <p>Пул объектов <code>sync.Pool</code> снижает нагрузку на сборщик мусора за счет локальных очередей логических процессоров <code>P</code> и двухфазной очистки (Victim Cache):</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -423,7 +420,6 @@ flowchart TD
 
 <hr />
 <h3 id="navigator-po-voprosam-glavy">Навигатор по вопросам главы</h3>
-
 <ol>
 <li><a href="#chto-takoe-mutex" class="wikilink">Что такое <code>Mutex</code>?</a></li>
 <li><a href="#kak-rabotaet-mutex-na-nizkom-urovne-sostoyaniya-semafor" class="wikilink">Как работает <code>Mutex</code> на низком уровне (состояния, семафор)?</a></li>
@@ -475,8 +471,7 @@ flowchart TD
 <li><a href="#kak-race-detector-rabotaet-s-atomic-i-unsafe" class="wikilink">Как <code>race detector</code> работает с <code>atomic</code> и <code>unsafe</code>?</a></li>
 </ol>
 <hr />
-<h2 id="chto-takoe-mutex">Что такое `Mutex`?</h2>
-
+<h2 id="chto-takoe-mutex">Что такое <code>Mutex</code>?</h2>
 <h3 id="kratkiy-otvet">Краткий ответ</h3>
 <p><code>sync.Mutex</code> — примитив взаимного исключения, гарантирующий, что только одна горутина может войти в критическую секцию кода. Предоставляет методы <code>Lock()</code> и <code>Unlock()</code>. Построен на основе внутреннего состояния и семафора рантайма для блокировки ожидающих горутин.</p>
 <h3 id="razvyornutyy-otvet">Развёрнутый ответ</h3>
@@ -522,8 +517,7 @@ flowchart TD
 <li><em>Как работает пробуждение ожидающих горутин?</em> Семафор <code>sema</code> разблокирует одну горутину, но из-за эффекта гонок может произойти «ложное пробуждение» (spurious wakeup), поэтому горутина перепроверяет состояние mutex в цикле.</li>
 </ul>
 <hr />
-<h2 id="kak-rabotaet-mutex-na-nizkom-urovne-sostoyaniya-semafor">Как работает `Mutex` на низком уровне (состояния, семафор)?</h2>
-
+<h2 id="kak-rabotaet-mutex-na-nizkom-urovne-sostoyaniya-semafor">Как работает <code>Mutex</code> на низком уровне (состояния, семафор)?</h2>
 <h3 id="kratkiy-otvet-2">Краткий ответ</h3>
 <p>Внутри <code>sync.Mutex</code> — 32-битное слово состояния и семафор. Младший бит — флаг блокировки, второй — флаг пробуждения, остальные — счётчик ожидающих. Реализация использует комбинацию spin-ожидания и блокировку через семафор рантайма (<code>runtime.sema</code>), а также режим голодания для предотвращения долгого ожидания.</p>
 <h3 id="razvyornutyy-otvet-2">Развёрнутый ответ</h3>
@@ -555,8 +549,7 @@ flowchart TD
 <li><em>Когда мьютекс переходит в starvation mode?</em> Если горутина ожидает больше 1 мс, она взводит флаг и при пробуждении получает мьютекс без борьбы, после чего starvation mode выключается при отсутствии других ожидающих.</li>
 </ul>
 <hr />
-<h2 id="chto-takoe-rwmutex">Что такое `RWMutex`?</h2>
-
+<h2 id="chto-takoe-rwmutex">Что такое <code>RWMutex</code>?</h2>
 <h3 id="kratkiy-otvet-3">Краткий ответ</h3>
 <p><code>sync.RWMutex</code> — мьютекс с разделяемым чтением и эксклюзивной записью. Несколько горутин могут одновременно держать <code>RLock</code> (читать), но только одна — <code>Lock</code> (писать). Писатель ждёт завершения всех читателей; новые читатели блокируются, если есть ожидающий писатель, чтобы предотвратить starvation писателя.</p>
 <h3 id="razvyornutyy-otvet-3">Развёрнутый ответ</h3>
@@ -601,8 +594,7 @@ flowchart TD
 <li><em>Можно ли реализовать read-preferring или fair RWMutex?</em> Да, чередуя флаги приоритета, но стандартная библиотека выбрала write-preferring для предотвращения голодания писателя.</li>
 </ul>
 <hr />
-<h2 id="kogda-ispolzovat-rwmutex">Когда использовать `RWMutex`?</h2>
-
+<h2 id="kogda-ispolzovat-rwmutex">Когда использовать <code>RWMutex</code>?</h2>
 <h3 id="kratkiy-otvet-4">Краткий ответ</h3>
 <p><code>RWMutex</code> оправдан, когда операции чтения значительно преобладают (например, соотношение &gt; 10:1), критическая секция чтения не является сверхкороткой, и затраты на дополнительный учёт читателей окупаются параллелизмом. В противном случае обычный <code>Mutex</code> проще и быстрее.</p>
 <h3 id="razvyornutyy-otvet-4">Развёрнутый ответ</h3>
@@ -626,7 +618,6 @@ flowchart TD
 </ul>
 <hr />
 <h2 id="chto-takoe-golodanie-starvation">Что такое голодание (starvation)?</h2>
-
 <h3 id="kratkiy-otvet-5">Краткий ответ</h3>
 <p>Голодание (starvation) — ситуация, когда горутина не может захватить мьютекс в течение длительного времени, потому что его непрерывно перехватывают другие горутины. <code>sync.Mutex</code> решает это специальным режимом голодания (starvation mode), в котором пробуждённая горутина получает мьютекс без конкуренции.</p>
 <h3 id="razvyornutyy-otvet-5">Развёрнутый ответ</h3>
@@ -647,7 +638,6 @@ flowchart TD
 </ul>
 <hr />
 <h2 id="chto-takoe-vzaimnaya-blokirovka-deadlock">Что такое взаимная блокировка (deadlock)?</h2>
-
 <h3 id="kratkiy-otvet-6">Краткий ответ</h3>
 <p>Deadlock — ситуация, когда две или более горутины ожидают друг друга, удерживая ресурсы, и ни одна не может продолжиться. Классические условия: взаимное исключение, удержание и ожидание, отсутствие принудительного освобождения, циклическое ожидание.</p>
 <h3 id="razvyornutyy-otvet-6">Развёрнутый ответ</h3>
@@ -668,7 +658,6 @@ flowchart TD
 </ul>
 <hr />
 <h2 id="chto-takoe-livelock">Что такое livelock?</h2>
-
 <h3 id="kratkiy-otvet-7">Краткий ответ</h3>
 <p>Livelock — ситуация, когда горутины не блокируются, но и не продвигаются вперёд, постоянно изменяя состояние в ответ на действия друг друга. Они активны, но не выполняют полезной работы, как два человека в коридоре, бесконечно уступающие дорогу.</p>
 <h3 id="razvyornutyy-otvet-7">Развёрнутый ответ</h3>
@@ -688,8 +677,7 @@ flowchart TD
 <li><em>Какие инструменты помогут диагностировать livelock?</em> Профилировщик CPU (top функций с высоким потреблением, много CAS-провалов), трассировка конкуренции, добавление метрик попыток/успехов.</li>
 </ul>
 <hr />
-<h2 id="chto-takoe-atomic">Что такое `atomic`?</h2>
-
+<h2 id="chto-takoe-atomic">Что такое <code>atomic</code>?</h2>
 <h3 id="kratkiy-otvet-8">Краткий ответ</h3>
 <p>Пакет <code>sync/atomic</code> предоставляет атомарные операции над примитивными типами и указателями, которые выполняются без прерывания другими горутинами. Они гарантируют последовательную согласованность (sequentially consistent) для выбранных операций, что делает их основой для lock-free программирования.</p>
 <h3 id="razvyornutyy-otvet-8">Развёрнутый ответ</h3>
@@ -709,8 +697,7 @@ flowchart TD
 <li><em>Какую семантику памяти обеспечивает <code>atomic.CompareAndSwap</code>?</em> Полный sequentially consistent барьер, то есть все операции до CAS видны операциям после, плюс сама атомарная замена.</li>
 </ul>
 <hr />
-<h2 id="kogda-ispolzovat-atomic">Когда использовать `atomic`?</h2>
-
+<h2 id="kogda-ispolzovat-atomic">Когда использовать <code>atomic</code>?</h2>
 <h3 id="kratkiy-otvet-9">Краткий ответ</h3>
 <p>Используйте <code>atomic</code>, когда нужно атомарно обновить одну переменную (флаг, счётчик, указатель) без блокировок, и операции очень быстрые. Мьютекс предпочтительнее для защиты композитного состояния или когда критическая секция содержит несколько операций.</p>
 <h3 id="razvyornutyy-otvet-9">Развёрнутый ответ</h3>
@@ -736,7 +723,6 @@ flowchart TD
 </ul>
 <hr />
 <h2 id="chto-takoe-lock-free-struktury-dannykh">Что такое lock-free структуры данных?</h2>
-
 <h3 id="kratkiy-otvet-10">Краткий ответ</h3>
 <p>Lock-free структуры гарантируют, что в любой момент времени хотя бы одна горутина прогрессирует, без использования блокировок. Реализуются на атомарных CAS-циклах. В Go встречаются реже из-за простоты каналов и мьютексов, но полезны для высоконагруженных систем (стеки, очереди).</p>
 <h3 id="razvyornutyy-otvet-10">Развёрнутый ответ</h3>
@@ -756,8 +742,7 @@ flowchart TD
 <li><em>Почему lock-free структуры не всегда быстрее lock-based?</em> Высокое contention может вызывать постоянные повторные CAS-циклы и degraded-производительность.</li>
 </ul>
 <hr />
-<h2 id="kak-rabotaet-atomic-value">Как работает `atomic.Value`?</h2>
-
+<h2 id="kak-rabotaet-atomic-value">Как работает <code>atomic.Value</code>?</h2>
 <h3 id="kratkiy-otvet-11">Краткий ответ</h3>
 <p><code>atomic.Value</code> обеспечивает атомарное хранение и загрузку значения произвольного типа (interface{}). Первое сохранение задаёт конкретный тип; последующие должны быть того же типа. Использует внутри <code>ifaceWords</code> и атомарные операции над указателями данных и таблицы интерфейса.</p>
 <h3 id="razvyornutyy-otvet-11">Развёрнутый ответ</h3>
@@ -810,8 +795,7 @@ cfg := config.Load().(Config)
 <li><em>Чем отличается <code>atomic.Value</code> от <code>any</code> с мьютексом?</em> Не требует блокировки для чтения, что даёт масштабируемость, но тип фиксирован и нет блокировки при обновлении.</li>
 </ul>
 <hr />
-<h2 id="kak-rabotaet-atomic-pointer-go-1-19">Как работает `atomic.Pointer` (Go 1.19+)?</h2>
-
+<h2 id="kak-rabotaet-atomic-pointer-go-1-19">Как работает <code>atomic.Pointer</code> (Go 1.19+)?</h2>
 <h3 id="kratkiy-otvet-12">Краткий ответ</h3>
 <p><code>atomic.Pointer[T]</code> — generic-обёртка над указателем, предоставляющая атомарные <code>Load</code>, <code>Store</code> и <code>CompareAndSwap</code> без unsafe-приведений. Она заменяет старые функции <code>atomic.LoadPointer</code>/<code>StorePointer</code> и улучшает типобезопасность.</p>
 <h3 id="razvyornutyy-otvet-12">Развёрнутый ответ</h3>
@@ -864,8 +848,7 @@ cfg := curConfig.Load()
 <li><em>Как <code>atomic.Pointer</code> связан с unsafe.Pointer?</em> Является безопасной обёрткой, внутри преобразуется в <code>unsafe.Pointer</code> для вызова атомарных операций.</li>
 </ul>
 <hr />
-<h2 id="chto-takoe-sync-map">Что такое `sync.Map`?</h2>
-
+<h2 id="chto-takoe-sync-map">Что такое <code>sync.Map</code>?</h2>
 <h3 id="kratkiy-otvet-13">Краткий ответ</h3>
 <p><code>sync.Map</code> — конкурентная map, оптимизированная для случаев, когда ключи стабильны (записываются единожды, а читаются многократно) или когда операции записи и чтения слабо пересекаются. Не требует отдельного мьютекса, использует внутреннюю сегментацию: read-only map (амортизированный доступ) и dirty map с мьютексом.</p>
 <h3 id="razvyornutyy-otvet-13">Развёрнутый ответ</h3>
@@ -893,8 +876,7 @@ cfg := curConfig.Load()
 <li><em>Как реализовать аналог <code>sync.Map</code> с дженериками?</em> Можно использовать <code>atomic.Pointer</code> на неизменяемую map + copy-on-write, но управление конкуренцией сложное.</li>
 </ul>
 <hr />
-<h2 id="kogda-sync-map-luchshe-chem-map-mutex">Когда `sync.Map` лучше, чем `map` + `Mutex`?</h2>
-
+<h2 id="kogda-sync-map-luchshe-chem-map-mutex">Когда <code>sync.Map</code> лучше, чем <code>map</code> + <code>Mutex</code>?</h2>
 <h3 id="kratkiy-otvet-14">Краткий ответ</h3>
 <p><code>sync.Map</code> предпочтительнее, когда большинство операций — чтение существующих ключей, а запись происходит редко или в отдельной фазе; либо когда много горутин читают непересекающиеся наборы ключей, а dirty-промоция амортизируется. В противном случае обычная map+Mutex/RWMutex эффективнее.</p>
 <h3 id="razvyornutyy-otvet-14">Развёрнутый ответ</h3>
@@ -917,8 +899,7 @@ cfg := curConfig.Load()
 <li><em>Как промотировать dirty в read?</em> При промахе в read и наличии amended, после блокировки проверяется dirty; при последующих операциях, если dirty превышает read, оно поднимается.</li>
 </ul>
 <hr />
-<h2 id="kak-rabotaet-sync-pool">Как работает `sync.Pool`?</h2>
-
+<h2 id="kak-rabotaet-sync-pool">Как работает <code>sync.Pool</code>?</h2>
 <h3 id="kratkiy-otvet-15">Краткий ответ</h3>
 <p><code>sync.Pool</code> — пул временных объектов, позволяющий переиспользовать аллокации и снизить нагрузку на GC. Не гарантирует сохранность объектов между вызовами; может в любой момент очистить пул. Состоит из local-пулов на каждый P (процессор планировщика) и общей очереди.</p>
 <h3 id="razvyornutyy-otvet-15">Развёрнутый ответ</h3>
@@ -970,8 +951,7 @@ type poolLocalInternal struct {
 <li><em>Почему добавили victim cache?</em> Чтобы смягчить пиковые аллокации после GC: старый пул не выбрасывается сразу, а живёт ещё один цикл GC, обеспечивая плавное переиспользование.</li>
 </ul>
 <hr />
-<h2 id="kak-sync-pool-vzaimodeystvuet-s-gc">Как `sync.Pool` взаимодействует с GC?</h2>
-
+<h2 id="kak-sync-pool-vzaimodeystvuet-s-gc">Как <code>sync.Pool</code> взаимодействует с GC?</h2>
 <h3 id="kratkiy-otvet-16">Краткий ответ</h3>
 <p>При каждой сборке мусора <code>sync.Pool</code> очищает пул: все объекты, не защищённые ссылками, становятся недостижимыми и могут быть собраны. Начиная с Go 1.13 добавлен двухуровневый victim-кэш: пул сохраняется на один цикл GC после очистки, чтобы сгладить пики аллокаций.</p>
 <h3 id="razvyornutyy-otvet-16">Развёрнутый ответ</h3>
@@ -990,12 +970,10 @@ type poolLocalInternal struct {
 <li><em>Можно ли вручную запретить GC очищать pool?</em> Нет, это противоречит концепции; для постоянного кеша используйте map.</li>
 </ul>
 <hr />
-<h2 id="chto-takoe-sync-once">Что такое `sync.Once`?</h2>
-
+<h2 id="chto-takoe-sync-once">Что такое <code>sync.Once</code>?</h2>
 <h3 id="kratkiy-otvet-17">Краткий ответ</h3>
 <p><code>sync.Once</code> гарантирует, что функция будет выполнена ровно один раз, независимо от количества вызовов <code>Do</code> из разных горутин. Используется для ленивой инициализации синглтонов.</p>
 <h3 id="razvyornutyy-otvet-17">Развёрнутый ответ</h3>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -1048,8 +1026,7 @@ once.Do(func() { fmt.Println(&quot;init&quot;) })
 <li><em>Можно ли сбросить Once?</em> Нет, стандартного способа нет; при необходимости можно создать кастомный тип с <code>atomic</code>.</li>
 </ul>
 <hr />
-<h2 id="kak-rabotaet-sync-cond">Как работает `sync.Cond`?</h2>
-
+<h2 id="kak-rabotaet-sync-cond">Как работает <code>sync.Cond</code>?</h2>
 <h3 id="kratkiy-otvet-18">Краткий ответ</h3>
 <p><code>sync.Cond</code> — условная переменная, позволяющая горутинам ожидать наступления некоторого условия. Используется с <code>sync.Mutex</code> (или <code>RWMutex</code>): горутина атомарно освобождает мьютекс и засыпает; другая горутина может изменить условие и сигнализировать <code>Signal()</code> или <code>Broadcast()</code> для пробуждения.</p>
 <h3 id="razvyornutyy-otvet-18">Развёрнутый ответ</h3>
@@ -1091,7 +1068,6 @@ cond.L.Unlock()
 </ul>
 <hr />
 <h2 id="kak-realizovat-barer-barrier-dlya-gorutin">Как реализовать барьер (barrier) для горутин?</h2>
-
 <h3 id="kratkiy-otvet-19">Краткий ответ</h3>
 <p>Барьер синхронизации заставляет группу горутин дождаться друг друга на определённой точке перед продолжением. В Go можно реализовать через <code>sync.WaitGroup</code> с дополнительной синхронизацией повторного использования, <code>sync.Cond</code> или канал с широким вещанием (broadcast).</p>
 <h3 id="razvyornutyy-otvet-19">Развёрнутый ответ</h3>
@@ -1152,7 +1128,6 @@ for i := 0; i &lt; n; i++ {
 </ul>
 <hr />
 <h2 id="kak-realizovat-obed-filosofov-na-go">Как реализовать «обед философов» на Go?</h2>
-
 <h3 id="kratkiy-otvet-20">Краткий ответ</h3>
 <p>Классическая задача о пяти философах и вилках решается в Go введением иерархии вилок (lock ordering), разрешением брать вилки только в определённом порядке, или использованием каналов как токенов, или ограничением числа одновременно обедающих (семафор). Это предотвращает deadlock.</p>
 <h3 id="razvyornutyy-otvet-20">Развёрнутый ответ</h3>
@@ -1197,7 +1172,6 @@ func (p *Philosopher) eat() {
 </ul>
 <hr />
 <h2 id="kak-realizovat-producer-consumer-s-backpressure">Как реализовать producer-consumer с backpressure?</h2>
-
 <h3 id="kratkiy-otvet-21">Краткий ответ</h3>
 <p>Backpressure — механизм замедления продюсера, когда потребитель не справляется. В Go достигается буферизированным каналом с ограниченной ёмкостью: продюсер блокируется при отправке, если канал полон. Явный контроль можно добавить через select с сигналом от потребителя или через семафор-канал подтверждений.</p>
 <h3 id="razvyornutyy-otvet-21">Развёрнутый ответ</h3>
@@ -1253,7 +1227,6 @@ for _, item := range items {
 </ul>
 <hr />
 <h2 id="kak-rabotaet-lock-free-stek-ili-ochered-na-atomikakh">Как работает lock-free стек или очередь на атомиках?</h2>
-
 <h3 id="kratkiy-otvet-22">Краткий ответ</h3>
 <p>Lock-free стек (стек Трейбера) реализуется через атомарный CAS на вершине. Lock-free очередь (очередь Майкла-Скотта) — на двух указателях (head, tail) с атомарным добавлением в tail и извлечением из head, с обработкой отставшего tail. В Go используются <code>atomic.Pointer</code> или <code>unsafe.Pointer</code> с CAS.</p>
 <h3 id="razvyornutyy-otvet-22">Развёрнутый ответ</h3>
@@ -1296,7 +1269,6 @@ func (s *Stack[T]) Push(v T) {
 </ul>
 <hr />
 <h2 id="kak-realizovat-pattern-izdatel-podpischik-pub-sub">Как реализовать паттерн «издатель-подписчик» (pub-sub)?</h2>
-
 <h3 id="kratkiy-otvet-23">Краткий ответ</h3>
 <p>Pub-sub в Go делается через каналы: издатель хранит список подписчиков (каналов) под мьютексом, при публикации рассылает сообщение в каждый канал неблокирующим способом или с таймаутом. На высоких нагрузках используют <code>sync.Map</code> для подписок и небуферизированные каналы с дропом сообщений.</p>
 <h3 id="razvyornutyy-otvet-23">Развёрнутый ответ</h3>
@@ -1350,7 +1322,6 @@ func (b *Broker) Publish(msg string) {
 </ul>
 <hr />
 <h2 id="kak-izbezhat-lozhnykh-probuzhdeniy-spurious-wakeups">Как избежать ложных пробуждений (spurious wakeups)?</h2>
-
 <h3 id="kratkiy-otvet-24">Краткий ответ</h3>
 <p>Ложное пробуждение — это ситуация, когда горутина просыпается из <code>Wait</code> (например, <code>sync.Cond.Wait</code>) без явного <code>Signal</code>. Защита всегда используется в цикле: горутина после пробуждения перепроверяет условие, и если оно ложно, снова вызывает <code>Wait</code>. Этот паттерн обязателен.</p>
 <h3 id="razvyornutyy-otvet-24">Развёрнутый ответ</h3>
@@ -1388,8 +1359,7 @@ cond.L.Unlock()
 <li><em>Как отличить ложное пробуждение от потерянного сигнала?</em> Не нужно — достаточно цикла.</li>
 </ul>
 <hr />
-<h2 id="kak-rabotaet-runtime-rwmutex-i-runtime-mutex">Как работает `runtime.RWMutex` и `runtime.Mutex`?</h2>
-
+<h2 id="kak-rabotaet-runtime-rwmutex-i-runtime-mutex">Как работает <code>runtime.RWMutex</code> и <code>runtime.Mutex</code>?</h2>
 <h3 id="kratkiy-otvet-25">Краткий ответ</h3>
 <p>Это низкоуровневые блокировки рантайма, используемые внутри самой среды выполнения (планировщик, аллокатор памяти, GC). <code>runtime.Mutex</code> — простая спин-блокировка с возможностью парковки, <code>runtime.RWMutex</code> — аналогично <code>sync.RWMutex</code>, но без starvation mode, без профилирования. Они не экспортируются.</p>
 <h3 id="razvyornutyy-otvet-25">Развёрнутый ответ</h3>
@@ -1425,7 +1395,6 @@ cond.L.Unlock()
 </ul>
 <hr />
 <h2 id="chto-takoe-aktivnaya-blokirovka-spinlock-i-zachem-ona-nuzhna">Что такое "активная блокировка" (spinlock) и зачем она нужна?</h2>
-
 <h3 id="kratkiy-otvet-26">Краткий ответ</h3>
 <p>Spinlock — блокировка, при которой горутина не паркуется, а циклически проверяет доступность в цикле ("крутится"), ожидая освобождения. Используется для очень коротких критических секций, где накладные расходы на парковку/пробуждение превышают время ожидания.</p>
 <h3 id="razvyornutyy-otvet-26">Развёрнутый ответ</h3>
@@ -1463,8 +1432,7 @@ func (s *Spinlock) Lock() {
 <li><em>Есть ли spinlock в стандартной библиотеке?</em> <code>sync.Mutex</code> включает spin; отдельного нет, но его можно скопировать из рантайма (не рекомендуется).</li>
 </ul>
 <hr />
-<h2 id="kak-runtime-futex-ispolzuetsya-v-go">Как `runtime.futex` используется в Go?</h2>
-
+<h2 id="kak-runtime-futex-ispolzuetsya-v-go">Как <code>runtime.futex</code> используется в Go?</h2>
 <h3 id="kratkiy-otvet-27">Краткий ответ</h3>
 <p><code>futex</code> (fast userspace mutex) — системный вызов Linux, позволяющий атомарно проверять значение в памяти и засыпать или пробуждать поток. Рантайм Go использует <code>futex</code> для реализации <code>runtime.mutex</code> и семафоров (<code>runtime.sema</code>) — блокировка потоков ОС при ожидании горутин.</p>
 <h3 id="razvyornutyy-otvet-27">Развёрнутый ответ</h3>
@@ -1484,8 +1452,7 @@ func (s *Spinlock) Lock() {
 <li><em>Как работает пробуждение нескольких потоков через <code>futex</code>?</em> <code>FUTEX_WAKE</code> с параметром &gt;1 или <code>FUTEX_REQUEUE</code>.</li>
 </ul>
 <hr />
-<h2 id="kak-rabotaet-semafor-runtime-sema-vnutri-go">Как работает "семафор" (`runtime.sema`) внутри Go?</h2>
-
+<h2 id="kak-rabotaet-semafor-runtime-sema-vnutri-go">Как работает "семафор" (<code>runtime.sema</code>) внутри Go?</h2>
 <h3 id="kratkiy-otvet-28">Краткий ответ</h3>
 <p><code>runtime.sema</code> — внутренняя реализация семафора, используемая <code>sync.Mutex</code>, каналами и другими примитивами. Это асинхронная очередь ожидающих горутин, сопоставленных с произвольным адресом памяти. Операции <code>semacquire</code> и <code>semrelease</code> обеспечивают блокировку и пробуждение в режиме FIFO.</p>
 <h3 id="razvyornutyy-otvet-28">Развёрнутый ответ</h3>
@@ -1505,8 +1472,7 @@ func (s *Spinlock) Lock() {
 <li><em>Можно ли использовать один семафор для разных целей?</em> В рантайме да, через разные адреса, но для пользователя это скрыто.</li>
 </ul>
 <hr />
-<h2 id="kak-realizovat-trylock-v-go-1-18">Как реализовать `TryLock` в Go 1.18+?</h2>
-
+<h2 id="kak-realizovat-trylock-v-go-1-18">Как реализовать <code>TryLock</code> в Go 1.18+?</h2>
 <h3 id="kratkiy-otvet-29">Краткий ответ</h3>
 <p>С Go 1.18 <code>sync.Mutex</code> получил метод <code>TryLock() bool</code>, который пытается захватить мьютекс без блокировки, возвращая true в случае успеха. Ранее требовалась ручная реализация через <code>atomic.CompareAndSwap</code> на поле состояния мьютекса, что не рекомендовалось из-за нарушения идиомы.</p>
 <h3 id="razvyornutyy-otvet-29">Развёрнутый ответ</h3>
@@ -1560,7 +1526,6 @@ if atomic.CompareAndSwapInt32(&amp;mu.state, 0, mutexLocked) { /* ... */ }
 </ul>
 <hr />
 <h2 id="chto-takoe-lock-ordering-i-kak-ona-predotvrashchaet-dedloki">Что такое "lock ordering" и как она предотвращает дедлоки?</h2>
-
 <h3 id="kratkiy-otvet-30">Краткий ответ</h3>
 <p>Lock ordering — это правило, требующее всегда захватывать мьютексы в одном и том же порядке во всех горутинах. Это разрушает циклическое ожидание — одно из четырёх условий deadlock, делая deadlock невозможным.</p>
 <h3 id="razvyornutyy-otvet-30">Развёрнутый ответ</h3>
@@ -1582,8 +1547,7 @@ if atomic.CompareAndSwapInt32(&amp;mu.state, 0, mutexLocked) { /* ... */ }
 <li><em>Есть ли инструменты статического анализа?</em> Да, <code>go vet</code> и анализаторы типа <code>copylocks</code>, но не всегда покрывают cross-goroutine паттерны.</li>
 </ul>
 <hr />
-<h2 id="kak-debazhit-dedloki-s-pomoshchyu-godebug-ili-trassirovki">Как дебажить дедлоки с помощью `GODEBUG` или трассировки?</h2>
-
+<h2 id="kak-debazhit-dedloki-s-pomoshchyu-godebug-ili-trassirovki">Как дебажить дедлоки с помощью <code>GODEBUG</code> или трассировки?</h2>
 <h3 id="kratkiy-otvet-31">Краткий ответ</h3>
 <p>Go предоставляет <code>GODEBUG=asyncpreemptoff</code>, <code>GODEBUG=schedtrace=1000</code> и трассировщик (<code>go tool trace</code>). Для дедлоков используют профиль горутин (<code>pprof</code> goroutine), <code>GODEBUG=gotraceback=crash</code>, а в рантайме при полном дедлоке программа падает с полным дампом стеков.</p>
 <h3 id="razvyornutyy-otvet-31">Развёрнутый ответ</h3>
@@ -1607,8 +1571,7 @@ if atomic.CompareAndSwapInt32(&amp;mu.state, 0, mutexLocked) { /* ... */ }
 <li><em>Как <code>go trace</code> показывает взаимные блокировки?</em> Показывает события блокировки и разблокировки, можно увидеть цикл ожидания.</li>
 </ul>
 <hr />
-<h2 id="kak-rabotaet-sync-waitgroup-s-tochki-zreniya-atomarnykh-operatsiy">Как работает `sync.WaitGroup` с точки зрения атомарных операций?</h2>
-
+<h2 id="kak-rabotaet-sync-waitgroup-s-tochki-zreniya-atomarnykh-operatsiy">Как работает <code>sync.WaitGroup</code> с точки зрения атомарных операций?</h2>
 <h3 id="kratkiy-otvet-32">Краткий ответ</h3>
 <p><code>sync.WaitGroup</code> использует атомарные операции над внутренним счётчиком и семафор для ожидающих. <code>Add</code> атомарно изменяет счётчик, <code>Done</code> декрементирует. <code>Wait</code> ждёт, пока счётчик не станет 0, используя <code>runtime_Semacquire</code>/<code>Semrelease</code>.</p>
 <h3 id="razvyornutyy-otvet-32">Развёрнутый ответ</h3>
@@ -1645,8 +1608,7 @@ if atomic.CompareAndSwapInt32(&amp;mu.state, 0, mutexLocked) { /* ... */ }
 <li><em>Можно ли реализовать WaitGroup только на каналах?</em> Да, используя канал с буфером, но будет менее эффективно.</li>
 </ul>
 <hr />
-<h2 id="v-chem-raznitsa-mezhdu-atomic-store-i-atomic-compareandswap">В чем разница между `atomic.Store` и `atomic.CompareAndSwap`?</h2>
-
+<h2 id="v-chem-raznitsa-mezhdu-atomic-store-i-atomic-compareandswap">В чем разница между <code>atomic.Store</code> и <code>atomic.CompareAndSwap</code>?</h2>
 <h3 id="kratkiy-otvet-33">Краткий ответ</h3>
 <p><code>Store</code> атомарно записывает значение без проверки предыдущего; <code>CompareAndSwap</code> атомарно сравнивает текущее значение с ожидаемым и, если они совпадают, записывает новое, возвращая успех. <code>Store</code> — безусловная запись, <code>CAS</code> — условное обновление, основа lock-free программирования.</p>
 <h3 id="razvyornutyy-otvet-33">Развёрнутый ответ</h3>
@@ -1666,7 +1628,6 @@ if atomic.CompareAndSwapInt32(&amp;mu.state, 0, mutexLocked) { /* ... */ }
 </ul>
 <hr />
 <h2 id="kak-rabotaet-cas-tsikl">Как работает "CAS-цикл"?</h2>
-
 <h3 id="kratkiy-otvet-34">Краткий ответ</h3>
 <p>CAS-цикл — шаблон, в котором:<br />
 1. Атомарно читается текущее значение.<br />
@@ -1710,7 +1671,6 @@ if atomic.CompareAndSwapInt32(&amp;mu.state, 0, mutexLocked) { /* ... */ }
 </ul>
 <hr />
 <h2 id="kak-realizovat-parallelnyy-map-filter-reduce">Как реализовать «параллельный map-filter-reduce»?</h2>
-
 <h3 id="kratkiy-otvet-35">Краткий ответ</h3>
 <p>Разбиваем входной слайс на батчи, параллельно применяем map и filter (в одной горутине на батч). Результаты собираем в каналы или с помощью <code>sync.Mutex</code> в общий слайс. Reduce выполняется после сбора всех результатов или параллельно с аккумулированием через атомарные операции.</p>
 <h3 id="razvyornutyy-otvet-35">Развёрнутый ответ</h3>
@@ -1758,7 +1718,6 @@ for r := range results { sum += r } // reduce
 </ul>
 <hr />
 <h2 id="kak-upravlyat-parallelizmom-concurrency-s-pomoshchyu-semafora">Как управлять параллелизмом (concurrency) с помощью семафора?</h2>
-
 <h3 id="kratkiy-otvet-36">Краткий ответ</h3>
 <p>Семафор ограничивает количество одновременно работающих горутин. В Go реализуется буферизированным каналом: захват слота — отправка в канал, освобождение — чтение. <code>golang.org/x/sync/semaphore</code> предоставляет взвешенный семафор.</p>
 <h3 id="razvyornutyy-otvet-36">Развёрнутый ответ</h3>
@@ -1814,7 +1773,6 @@ defer sem.Release(10)
 </ul>
 <hr />
 <h2 id="kak-realizovat-dining-cryptographers-na-go">Как реализовать «Dining Cryptographers» на Go?</h2>
-
 <h3 id="kratkiy-otvet-37">Краткий ответ</h3>
 <p>Задача криптографов: несколько участников сидят за столом, каждый подбрасывает монету, общую с соседом; анонимно вычисляется XOR всех, чтобы определить, кто заплатил за обед. На Go моделируется горутинами, обменивающимися битами через каналы, и сбором результата в общий канал.</p>
 <h3 id="razvyornutyy-otvet-37">Развёрнутый ответ</h3>
@@ -1854,7 +1812,6 @@ defer sem.Release(10)
 </ul>
 <hr />
 <h2 id="kak-rabotaet-semafor-s-prioritetom-v-go-runtime">Как работает "семафор с приоритетом" в Go runtime?</h2>
-
 <h3 id="kratkiy-otvet-38">Краткий ответ</h3>
 <p>В рантайме семафор с приоритетом используется для <code>runtime.netpoll</code> и внутренних нужд: горутины с более высоким приоритетом (например, сетевой поллер) могут быть разбужены раньше. Реализация базируется на <code>runtime.sema</code>, но с дополнительной логикой упорядочивания по типу ожидания.</p>
 <h3 id="razvyornutyy-otvet-38">Развёрнутый ответ</h3>
@@ -1873,7 +1830,6 @@ defer sem.Release(10)
 </ul>
 <hr />
 <h2 id="chto-takoe-kanal-s-dinamicheskim-buferom-i-kak-ego-realizovat">Что такое "канал с динамическим буфером" и как его реализовать?</h2>
-
 <h3 id="kratkiy-otvet-39">Краткий ответ</h3>
 <p>Канал с динамическим буфером расширяет или сжимает ёмкость динамически в зависимости от нагрузки, в отличие от статического <code>make(chan T, cap)</code>. Реализуется через связку: горутина-диспетчер, работающая с небуферизированным каналом и внутренним буфером (slice), переключение новых потребителей на прямой приём.</p>
 <h3 id="razvyornutyy-otvet-39">Развёрнутый ответ</h3>
@@ -1893,12 +1849,10 @@ defer sem.Release(10)
 <li><em>Можно ли использовать <code>container/ring</code>?</em> Да, для кольцевого буфера, потребуется синхронизация.</li>
 </ul>
 <hr />
-<h2 id="kak-rabotaet-errgroup-group-i-kak-on-uproshchaet-upravlenie-gorutinami">Как работает `errgroup.Group` и как он упрощает управление горутинами?</h2>
-
+<h2 id="kak-rabotaet-errgroup-group-i-kak-on-uproshchaet-upravlenie-gorutinami">Как работает <code>errgroup.Group</code> и как он упрощает управление горутинами?</h2>
 <h3 id="kratkiy-otvet-40">Краткий ответ</h3>
 <p><code>errgroup.Group</code> из <code>golang.org/x/sync/errgroup</code> управляет группой горутин, собирая первую ошибку (или все) и обеспечивая ожидание завершения всех через <code>Wait()</code>. Может работать с контекстом: при возникновении первой ошибки контекст отменяется, сигнализируя остальным горутинам остановиться.</p>
 <h3 id="razvyornutyy-otvet-40">Развёрнутый ответ</h3>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -1931,7 +1885,6 @@ if err := g.Wait(); err != nil { ... }
 </ul>
 <hr />
 <h2 id="chto-takoe-structured-concurrency-i-kak-ego-dostich-v-go">Что такое "structured concurrency" и как его достичь в Go?</h2>
-
 <h3 id="kratkiy-otvet-41">Краткий ответ</h3>
 <p>Structured concurrency — парадигма, при которой время жизни горутин жёстко ограничено областью видимости (функцией/блоком), и все порождённые горутины завершаются до выхода из этой области. В Go достигается через <code>errgroup</code>, контексты с отменой, <code>sync.WaitGroup</code> в рамках функции, и правило «каждая горутина должна быть отслежена».</p>
 <h3 id="razvyornutyy-otvet-41">Развёрнутый ответ</h3>
@@ -1970,7 +1923,6 @@ if err := g.Wait(); err != nil { ... }
 </ul>
 <hr />
 <h2 id="kak-realizovat-dvukhfaznyy-kommit-s-pomoshchyu-kanalov-i-myuteksov">Как реализовать «двухфазный коммит» с помощью каналов и мьютексов?</h2>
-
 <h3 id="kratkiy-otvet-42">Краткий ответ</h3>
 <p>Распределённый двухфазный коммит (2PC) моделируется с координатором и участниками. Координатор посылает prepare запросы (через каналы), собирает голоса, затем посылает commit/abort. Мьютексы защищают состояние каждого участника (prepared, committed). В Go это делается горутинами-участниками, ожидающими команд через каналы.</p>
 <h3 id="razvyornutyy-otvet-42">Развёрнутый ответ</h3>
@@ -2033,7 +1985,6 @@ if err := g.Wait(); err != nil { ... }
 </ul>
 <hr />
 <h2 id="kak-obrabatyvat-back-pressure-v-sisteme-s-vysokim-parallelizmom">Как обрабатывать "back-pressure" в системе с высоким параллелизмом?</h2>
-
 <h3 id="kratkiy-otvet-43">Краткий ответ</h3>
 <p>Back-pressure реализуется через ограниченные очереди (каналы), семафоры (каналы-токены), мониторинг длины очередей, отбрасывание запросов с HTTP 429, адаптивное уменьшение параллелизма, использование кредитных систем (рейт-лимитеры). Цель — не допустить перегрузку и каскадные отказы.</p>
 <h3 id="razvyornutyy-otvet-43">Развёрнутый ответ</h3>
@@ -2057,8 +2008,7 @@ if err := g.Wait(); err != nil { ... }
 <li><em>Как сочетать backpressure с graceful shutdown?</em> Перестать принимать новые задачи, дождаться обработки существующих.</li>
 </ul>
 <hr />
-<h2 id="kak-rabotaet-syncrwmutex-go-v-chasti-predotvrashcheniya-starvation-pisateley">Как работает `sync/rwmutex.go` в части предотвращения starvation писателей?</h2>
-
+<h2 id="kak-rabotaet-syncrwmutex-go-v-chasti-predotvrashcheniya-starvation-pisateley">Как работает <code>sync/rwmutex.go</code> в части предотвращения starvation писателей?</h2>
 <h3 id="kratkiy-otvet-44">Краткий ответ</h3>
 <p>В стандартном <code>sync.RWMutex</code> starvation писателей предотвращается write-preferring политикой: как только появляется ожидающий писатель, новые читатели блокируются. Писатель дожидается только тех читателей, которые уже вошли. Плюс используется starvation mode внутреннего мьютекса для ожидающего на writerSem.</p>
 <h3 id="razvyornutyy-otvet-44">Развёрнутый ответ</h3>
@@ -2077,8 +2027,7 @@ if err := g.Wait(); err != nil { ... }
 <li><em>Есть ли read-preferring mutex в стандартной библиотеке?</em> Нет.</li>
 </ul>
 <hr />
-<h2 id="kak-sync-cond-wait-realizovan-i-pochemu-on-trebuet-zakhvachennyy-myuteks">Как `sync.Cond.Wait` реализован и почему он требует захваченный мьютекс?</h2>
-
+<h2 id="kak-sync-cond-wait-realizovan-i-pochemu-on-trebuet-zakhvachennyy-myuteks">Как <code>sync.Cond.Wait</code> реализован и почему он требует захваченный мьютекс?</h2>
 <h3 id="kratkiy-otvet-45">Краткий ответ</h3>
 <p><code>Wait</code> атомарно разблокирует переданный <code>Locker</code>, паркует горутину, а при пробуждении снова захватывает мьютекс перед возвратом. Захваченный мьютекс нужен, потому что условие, которого мы ждём, должно проверяться под защитой этого же мьютекса, чтобы избежать гонок между проверкой и засыпанием.</p>
 <h3 id="razvyornutyy-otvet-45">Развёрнутый ответ</h3>
@@ -2104,7 +2053,6 @@ if err := g.Wait(); err != nil { ... }
 </ul>
 <hr />
 <h2 id="kak-realizovat-flow-control-s-pomoshchyu-kanalov">Как реализовать "flow control" с помощью каналов?</h2>
-
 <h3 id="kratkiy-otvet-46">Краткий ответ</h3>
 <p>Flow control — управление темпом передачи данных, чтобы потребитель успевал обрабатывать. В Go каналы естественно реализуют контроль потока: блокирующая отправка в буферизированный канал при заполнении создаёт противодавление. Явный flow control — через канал обратной связи (ack), семафоры или механизм credit.</p>
 <h3 id="razvyornutyy-otvet-46">Развёрнутый ответ</h3>
@@ -2159,7 +2107,6 @@ for i := 0; i &lt; total; i++ {
 </ul>
 <hr />
 <h2 id="chto-takoe-memory-model-s-tochki-zreniya-atomarnykh-operatsiy">Что такое "memory model" с точки зрения атомарных операций?</h2>
-
 <h3 id="kratkiy-otvet-47">Краткий ответ</h3>
 <p>Модель памяти определяет, как операции с памятью упорядочиваются между горутинами. Атомарные операции в Go гарантируют sequential consistency (по умолчанию) — они ведут себя как если бы все атомарные операции выполнялись в некотором глобальном порядке, с барьерами acquire/release. Это обеспечивает синхронизацию без мьютексов.</p>
 <h3 id="razvyornutyy-otvet-47">Развёрнутый ответ</h3>
@@ -2179,8 +2126,7 @@ for i := 0; i &lt; total; i++ {
 <li><em>Что такое happens-before?</em> Отношение, определяющее, что одна операция гарантированно видна другой.</li>
 </ul>
 <hr />
-<h2 id="kak-race-detector-rabotaet-s-atomic-i-unsafe">Как `race detector` работает с `atomic` и `unsafe`?</h2>
-
+<h2 id="kak-race-detector-rabotaet-s-atomic-i-unsafe">Как <code>race detector</code> работает с <code>atomic</code> и <code>unsafe</code>?</h2>
 <h3 id="kratkiy-otvet-48">Краткий ответ</h3>
 <p>Race detector отслеживает обращения к памяти во времени и предупреждает о гонках данных. Атомарные операции <code>sync/atomic</code> распознаются детектором и не вызывают ложных срабатываний, если весь доступ атомарный. Однако <code>unsafe.Pointer</code> без атомарных операций детектор считает потенциально опасным и может сообщить о гонке, если идёт одновременный доступ.</p>
 <h3 id="razvyornutyy-otvet-48">Развёрнутый ответ</h3>

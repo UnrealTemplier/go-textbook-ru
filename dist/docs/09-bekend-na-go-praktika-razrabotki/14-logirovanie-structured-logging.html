@@ -334,12 +334,10 @@ flowchart TD
 
 <hr />
 <h2 id="filosofiya-strukturirovannogo-logirovaniya">Философия структурированного логирования</h2>
-
 <p>В эпоху микросервисов и распределенных систем текстовые логи в формате <code>time - level - message</code> умерли. Они не машинно-читаемы, не поддаются эффективному агрегированию и требуют дорогостоящего regex-парсинга на стороне сборщиков (Loki, ELK). Структурированное логирование заменяет нечитаемые строки на предсказуемые пары ключ-значение или JSON-объекты, превращая логи из текста для человека в данные для машины.</p>
 <p>До Go 1.21 сообщество полагалось на <code>logrus</code>, <code>zap</code> или <code>zerolog</code>. Начиная с Go 1.21, стандартная библиотека предоставляет <code>log/slog</code> — оптимизированный, типобезопасный и контекстно-ориентированный логгер, который покрывает 95% production-требований без внешних зависимостей.</p>
 <hr />
 <h2 id="pod-kapotom-arkhitektura-logslog">Под капотом. Архитектура log/slog</h2>
-
 <p>В основе <code>slog</code> лежит интерфейс <code>Handler</code>. Это не просто обертка над <code>io.Writer</code>, а конечный автомат, отвечающий за фильтрацию уровней, форматирование и запись.</p>
 
 <div class="code-block" data-lang="go">
@@ -377,7 +375,6 @@ flowchart TD
 
 <hr />
 <h3 id="initsializatsiya-production-loggera">Инициализация production-логгера</h3>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -417,7 +414,6 @@ func setupLogger() *slog.Logger {
 
 <hr />
 <h2 id="mekhanika-zapisi-i-mechanical-sympathy">Механика записи и Mechanical Sympathy</h2>
-
 <p>Запись в <code>os.Stdout</code> или <code>os.Stderr</code> — это прямой системный вызов <code>write()</code>. Каждый <code>Write</code> переключает контекст Ring 3 → Ring 0, сбрасывает буферы ядра и может вызвать блокировку из-за contention на терминальном драйвере или pipe (в Docker/Kubernetes).</p>
 <p>Для высоконагруженных сервисов <strong>всегда</strong> оборачивайте вывод в <code>bufio.Writer</code> или используйте пул буферов. Без буферизации 10 000 RPS с логами на каждый запрос = 10 000 syscall/sec, что легко съедает 15-30% CPU.</p>
 
@@ -469,7 +465,6 @@ func setupBufferedLogger() *slog.Logger {
 
 <hr />
 <h2 id="kontekstualnoe-logirovanie-i-request-scoped-dannye">Контекстуальное логирование и request-scoped данные</h2>
-
 <p>В PHP/Laravel вы можете использовать глобальные массивы или <code>Log::withContext()</code>. В Go контекст передается явно. <code>slog</code> интегрируется с <code>context.Context</code> через <code>slog.WithContext</code> и <code>slog.FromContext</code>.</p>
 
 <div class="code-block" data-lang="go">
@@ -511,7 +506,6 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 <p>Это позволяет строить цепочку логов: <code>Global -&gt; Request -&gt; Handler -&gt; DB</code>, где каждый уровень автоматически наследует атрибуты предыдущего без явного проброса.</p>
 <hr />
 <h2 id="asinkhronnyy-logger-dlya-highload">Асинхронный логгер для Highload</h2>
-
 <p>Стандартный <code>slog</code> синхронный. Если <code>io.Writer</code> блокируется (медленный диск, переполненный pipe), вся горутина обработчика встанет. Для систем с SLO &lt; 50ms требуется асинхронный логгер.</p>
 
 <div class="code-block" data-lang="go">
@@ -585,7 +579,6 @@ func (h *AsyncHandler) Handle(ctx context.Context, r slog.Record) error {
 
 <hr />
 <h2 id="sravnenie-podkhodov">Сравнение подходов</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -629,7 +622,6 @@ func (h *AsyncHandler) Handle(ctx context.Context, r slog.Record) error {
 </table></div>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li>Используйте <code>log/slog</code> с <code>JSONHandler</code> как стандарт для новых проектов на Go 1.21+.</li>
 <li>Избегайте <code>slog.Any</code> для известных типов, используйте <code>slog.String</code>, <code>slog.Int</code> для zero-allocation.</li>

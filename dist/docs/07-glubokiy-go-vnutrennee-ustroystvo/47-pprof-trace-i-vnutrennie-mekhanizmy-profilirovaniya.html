@@ -304,7 +304,6 @@
 <p>В других языках (например, Java или Node.js) подключение профайлера к Production-серверу часто требует перезапусков, установки внешних агентов и влечет чудовищные накладные расходы (Overhead). В Go профайлеры спроектированы так, чтобы работать в Production постоянно с минимальным влиянием на систему. Давайте разберем, как рантайму это удается и что скрывается под капотом этих инструментов.</p>
 <hr />
 <h2 id="1-profilirovanie-cpu-mekhanika-semplinga">1. Профилирование CPU: Механика сэмплинга</h2>
-
 <p>Когда вы запускаете CPU-профайл (<code>go tool pprof http://localhost/debug/pprof/profile</code>), рантайм Go не начинает оборачивать каждую вашу функцию в таймеры (это убило бы производительность и вызвало эффект наблюдателя, когда измерение искажает саму программу). Он использует элегантный механизм <strong>Сэмплинга (Sampling)</strong> на базе прерываний операционной системы.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -349,7 +348,6 @@ sequenceDiagram
 <p><strong>Overhead:</strong> Около 1–5%. Это настолько дешево, что Senior-инженеры оставляют эндпоинты <code>/debug/pprof</code> открытыми во внутренней сети Production-серверов 24/7. В современных версиях Go эти профили также используются для <strong>PGO (Profile-Guided Optimization)</strong>, позволяя компилятору инлайнить горячие функции и оптимально перестраивать машинный код под реальную боевую нагрузку.</p>
 <hr />
 <h2 id="2-profilirovanie-pamyati-illyuziya-perekhvata">2. Профилирование памяти: Иллюзия перехвата</h2>
-
 <p>Memory Profiler (<code>/debug/pprof/heap</code>) показывает, где ваша программа аллоцирует память.<br />
 Но аллокаций могут быть миллионы в секунду. Если записывать каждую, сервер остановится.</p>
 <p>Здесь снова работает сэмплинг, но уже на уровне аллокатора (<code>mcache/mcentral</code>, которые мы разбирали в <a href="21-allokator-pamyati-go-mcache-mcentral-mheap.html" class="wikilink">21. Аллокатор памяти Go. mcache, mcentral, mheap</a>).</p>
@@ -375,7 +373,6 @@ sequenceDiagram
 
 <hr />
 <h2 id="3-block-i-mutex-profilirovanie-poisk-butylochnykh-gorlyshek">3. Block и Mutex профилирование: Поиск бутылочных горлышек</h2>
-
 <p>CPU-профайл показывает, чем занят процессор. Но что если CPU простаивает, а приложение тормозит? Это означает, что горутины спят!</p>
 <ol>
 <li><strong>Mutex Profile:</strong> Анализирует <strong>Lock Contention (Спор за блокировки)</strong>. Когда горутина пытается взять <code>sync.Mutex</code>, но он уже занят, она засыпает. Когда мьютекс освобождается, рантайм замеряет, сколько времени горутина спала, и записывает этот стек вызовов. Позволяет найти мьютексы, которые превращают многопоточный код в однопоточный. <em>(По умолчанию выключен, нужно включать через <code>runtime.SetMutexProfileFraction</code>).</em></li>
@@ -383,7 +380,6 @@ sequenceDiagram
 </ol>
 <hr />
 <h2 id="4-execution-tracer-mikroskop-dlya-planirovshchika">4. Execution Tracer: Микроскоп для планировщика</h2>
-
 <p><code>pprof</code> отвечает на вопросы <strong>"Что?"</strong> и <strong>"Где?"</strong>. Но он слеп к оси времени. Он не может показать, что функция A заблокировала функцию B, или что Garbage Collector вызвал STW паузу на 5 миллисекунд.</p>
 <p>Для анализа причинно-следственных связей и задержек (Latency) существует <strong>Execution Tracer</strong> (<code>go tool trace</code>).</p>
 <h3 id="kak-on-rabotaet">Как он работает:</h3>
@@ -442,7 +438,6 @@ flowchart TD
 <p>Загрузив файл в <code>go tool trace</code>, вы увидите интерактивный таймлайн в браузере. Вы сможете своими глазами увидеть "Смертельную спираль GC" или как <code>sysmon</code> отрывает <code>P</code> от потока ОС — всё то, о чем мы говорили в предыдущих статьях.</p>
 <hr />
 <h2 id="5-mechanical-sympathy-goroutine-profile-i-lovushka-stw">5. Mechanical Sympathy: goroutine profile и ловушка STW</h2>
-
 <p>Есть один эндпоинт, который часто используют неправильно: <code>/debug/pprof/goroutine?debug=2</code>. Он выдает текстовый дамп стеков всех горутин, существующих в системе.</p>
 <p>Это отличный инструмент для поиска "зависших" горутин (Goroutine Leaks), которые заблокированы на мертвом канале или вечно ждут ответа от базы данных без таймаута.</p>
 
@@ -461,7 +456,6 @@ flowchart TD
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong><code>pprof</code> (CPU &amp; Memory)</strong> использует сэмплинг (прерывания ОС и статистику аллокатора), имеет минимальный overhead и должен быть включен в Production всегда.</li>
 <li><strong>Mutex и Block профилирование</strong> помогает искать узкие места в многопоточной логике (ожидания на замках и каналах).</li>

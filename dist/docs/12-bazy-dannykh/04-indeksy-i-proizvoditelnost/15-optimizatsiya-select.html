@@ -443,7 +443,6 @@
 <p>В этой главе мы систематизируем инженерное искусство оптимизации <code>SELECT</code>. Мы разберем, как сделать выборки легкими для процессора, памяти и сети, опираясь на глубокое понимание законов железа (Mechanical Sympathy) и рантайма Go.</p>
 <hr />
 <h3 id="ne-vybirayte-zvyozdochku">Не выбирайте звёздочку</h3>
-
 <p>Среди всех ошибок в SQL самая распространенная и разрушительная — привычка писать <code>SELECT *</code>.</p>
 <p>В кодовой базе на Go, особенно при использовании ORM, разработчики часто тянут всю строку целиком, даже если для бизнес-логики нужны только два поля: <code>id</code> и <code>status</code>. Последствия этого легкомыслия катастрофичны:</p>
 <ol>
@@ -482,7 +481,6 @@
 
 <hr />
 <h3 id="sargable-usloviya-pozvolte-indeksam-rabotat">Sargable условия: позвольте индексам работать</h3>
-
 <p>Термин <strong>Sargable</strong> (Search ARGument ABLE) обозначает условия фильтрации в секции <code>WHERE</code>, которые позволяют оптимизатору использовать индекс для быстрого логарифмического спуска по B-Tree.</p>
 <p>К саргабельным операторам относятся: <code>=</code>, <code>&lt;</code>, <code>&gt;</code>, <code>BETWEEN</code>, <code>LIKE 'prefix%'</code>, <code>IN</code> с константами, а также <code>IS NULL</code> (при определенных индексах).</p>
 <p><strong>Не-саргабельные конструкции (Non-Sargable)</strong> ломают математику индекса, вынуждая базу вычислять функцию для каждой строки таблицы через полный перебор (<code>Seq Scan</code>):</p>
@@ -512,7 +510,6 @@
    ```</p>
 <hr />
 <h3 id="indeksy-dlya-sortirovki-i-predelov">Индексы для сортировки и пределов</h3>
-
 <p>Запросы с <code>ORDER BY</code> и <code>LIMIT</code> — основа любых лент новостей, каталогов и очередей.</p>
 <p>В наивной базе данных запрос:</p>
 
@@ -586,7 +583,6 @@ flowchart TD
 <p>При отсутствии точного индекса планировщик вынужден использовать <strong>top-N heapsort</strong> — алгоритм усеченной пирамидальной сортировки в памяти, что значительно дороже.</p>
 <hr />
 <h3 id="paginatsiya-izbegayte-offset">Пагинация: избегайте OFFSET</h3>
-
 <p>Классическая постраничная навигация через <code>OFFSET</code>:</p>
 
 <div class="code-block" data-lang="sql">
@@ -683,7 +679,6 @@ LIMIT 20;
 
 <hr />
 <h3 id="agregatsiya-i-group-by">Агрегация и GROUP BY</h3>
-
 <p>Агрегатные функции (<code>COUNT</code>, <code>SUM</code>, <code>AVG</code>) требуют сканирования больших массивов данных. Способы их оптимизации:</p>
 <ol>
 <li><strong>Покрывающий индекс для группировки:</strong><br />
@@ -695,7 +690,6 @@ LIMIT 20;
 </ol>
 <hr />
 <h3 id="podzaprosy-cte-i-lateral">Подзапросы, CTE и LATERAL</h3>
-
 <ol>
 <li><strong>CTE (<code>WITH</code>) в современном PostgreSQL:</strong><br />
    До версии PostgreSQL 12 любое CTE-выражение выступало жестким оптимизационным барьером (принудительно материализовалось во временную таблицу). Начиная с PostgreSQL 12, CTE по умолчанию считаются <strong><code>NOT MATERIALIZED</code></strong>: оптимизатор встраивает их в тело основного запроса и оптимизирует совместно. Принудительная материализация задается явно: <code>WITH cte AS MATERIALIZED (...)</code>.</li>
@@ -726,7 +720,6 @@ JOIN LATERAL (
 <p>При наличии составного индекса <code>(user_id, created_at DESC)</code> этот запрос отрабатывает в десятки раз быстрее, чем монструозные оконные функции с <code>ROW_NUMBER() OVER (PARTITION BY user_id)</code>.</p>
 <hr />
 <h3 id="parallelnoe-vypolnenie">Параллельное выполнение</h3>
-
 <p>Для тяжелых аналитических выборок PostgreSQL умеет распараллеливать исполнение между несколькими воркерами процессора.</p>
 <p>Планировщик строит узел <strong><code>Gather</code></strong>, который собирает результаты параллельных сканирований (<code>Parallel Seq Scan</code> или <code>Parallel Index Scan</code>). Управлять этим поведением можно параметрами ядра:<br />
 - <code>max_parallel_workers_per_gather</code> (по умолчанию 2) — максимальное число воркеров на один узел запроса.<br />
@@ -734,7 +727,6 @@ JOIN LATERAL (
 <p>Для быстрых OLTP-запросов параллелизм не активируется, так как накладные расходы на запуск процессов и межпроцессное взаимодействие (IPC) через Shared Memory превышают время самого поиска.</p>
 <hr />
 <h3 id="prakticheskie-priyomy-v-go">Практические приёмы в Go</h3>
-
 <ol>
 <li><strong>Подготовленные запросы (Prepared Statements):</strong><br />
    Использование <code>PREPARE</code> позволяет базе данных один раз распарсить SQL и построить план, а затем многократно выполнять его с новыми аргументами. В драйвере <code>pgx</code> это включено по умолчанию (параметр <code>PreferSimpleProtocol = false</code>).</li>
@@ -757,7 +749,6 @@ JOIN LATERAL (
 
 <hr />
 <h3 id="mechanical-sympathy-set-i-cpu">Mechanical Sympathy: сеть и CPU</h3>
-
 <p>Каждый байт ответа СУБД преодолевает длинный путь:<br />
 - Системный вызов <code>send()</code> ядра Linux на сервере БД.<br />
 - Передача пакетов по сетевому стеку TCP/IP.<br />
@@ -767,7 +758,6 @@ JOIN LATERAL (
 <p>Устранение <code>SELECT *</code> и переход на keyset-пагинацию сокращают сетевой трафик и количество системных вызовов в разы. Меньше аллокаций в Go — меньше пауз GC, выше пропускная способность RPS и стабильнее задержка p99.</p>
 <hr />
 <h3 id="kak-ubeditsya-chto-optimizatsiya-rabotaet">Как убедиться, что оптимизация работает</h3>
-
 <p>После написания любого нетривиального <code>SELECT</code> обязательно выполните:</p>
 
 <div class="code-block" data-lang="sql">
@@ -789,7 +779,6 @@ JOIN LATERAL (
 - [ ] Количество буферов <code>shared hit</code> в разы превышает дисковые чтения <code>read</code>.</p>
 <hr />
 <h3 id="zaklyuchenie">Заключение</h3>
-
 <p>Оптимизация <code>SELECT</code> — это вершина мастерства бэкенд-разработчика. Она объединяет знания кремниевых структур B-Tree (<a href="2-b-tree-indeks-pod-kapotom.html" class="wikilink">2. B Tree индекс под капотом</a>), архитектуры составных и покрывающих индексов (<a href="5-composite-indeksy.html" class="wikilink">5. Composite индексы</a>, <a href="6-covering-indeks.html" class="wikilink">6. Covering индекс</a>), принципов работы стоимостного оптимизатора (<a href="11-cost-based-optimizer.html" class="wikilink">11. Cost based optimizer</a>) и дисциплины сетевого ввода-вывода.</p>
 <p>Отказывайтесь от <code>SELECT *</code>, используйте саргабельные предикаты, внедряйте keyset-пагинацию — и ваша база данных будет работать с предельной грацией даже под многомиллионной нагрузкой.</p>
 <p>В заключительной лекции этого подраздела мы рассмотрим технику максимального уплотнения сетевого трафика: <a href="16-batch-zaprosy.html" class="wikilink">16. Batch запросы</a> — как отправлять сотни операций за один вызов.</p>

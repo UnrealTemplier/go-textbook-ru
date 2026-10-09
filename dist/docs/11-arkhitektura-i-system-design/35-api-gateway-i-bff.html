@@ -307,7 +307,6 @@
 
           <div class="article-markdown">
             <h2 id="edinaya-tochka-vkhoda-i-spetsializirovannye-bekendy">Единая точка входа и специализированные бэкенды</h2>
-
 <p>В микросервисной архитектуре внутренняя экосистема компании может насчитывать сотни независимых сервисов, развёрнутых в изолированных приватных подсетях Kubernetes. Они общаются по бинарному протоколу gRPC, используют взаимную аутентификацию mTLS, динамически регистрируются в etcd и балансируются по алгоритму Power of Two Choices.</p>
 <p>Однако внешний мир устроен совершенно иначе. Снаружи к вашей системе обращаются миллионы недоверенных клиентских устройств: мобильные телефоны на iOS и Android с нестабильным 4G/5G интернетом, веб-браузеры, требующие заголовков CORS и cookies, сторонние партнёрские интеграции и умные устройства (IoT). </p>
 <p>Выставлять внутренние микросервисы напрямую в публичный интернет — самоубийство с точки зрения безопасности, производительности и удобства:<br />
@@ -316,7 +315,6 @@
 <p>Решением этой фундаментальной проблемы выступают два комплементарных архитектурных паттерна: <strong>API Gateway</strong> и <strong>Backend for Frontend (BFF)</strong>. В этой главе мы досконально разберём устройство каждого из них, покажем реализацию параллельной агрегации данных на Go с использованием <code>errgroup</code>, проанализируем влияние трансляции протоколов на аллокации памяти и GC, а также выделим строгие критерии выбора между общим шлюзом и специализированными BFF.</p>
 <hr />
 <h3 id="api-gateway-edinyy-paradnyy-vkhod">API Gateway: единый парадный вход</h3>
-
 <p><strong>API Gateway (Шлюз API)</strong> — это высокопроизводительный обратный прокси-сервер (Reverse Proxy), развёрнутый на границе защищённого периметра (Edge), который принимает все входящие публичные запросы, маршрутизирует их к целевым внутренним микросервисам и возвращает агрегированный ответ клиенту.</p>
 <p>Шлюз изолирует внутреннюю топологию от внешнего мира и концентрирует в себе всю сквозную нефункциональную ответственность (<strong>Cross-Cutting Concerns</strong>):</p>
 
@@ -355,7 +353,6 @@ flowchart LR
 
 
 <h4 id="klyuchevye-obyazannosti-api-gateway">Ключевые обязанности API Gateway:</h4>
-
 <ol>
 <li><strong>Маршрутизация (Routing)</strong>: Сопоставление публичных путей с внутренними сервисами:<br />
    - <code>GET /api/v1/orders/*</code> $\to$ <code>orders-service:8080</code><br />
@@ -368,7 +365,6 @@ flowchart LR
 </ol>
 <hr />
 <h3 id="backend-for-frontend-spetsializirovannyy-shlyuz">Backend for Frontend: специализированный шлюз</h3>
-
 <p>Хотя классический API Gateway прекрасно справляется со сквозными задачами, при росте разнообразия клиентских платформ он неизбежно сталкивается с проблемой <strong>«универсального интерфейса»</strong>:<br />
 - Мобильному приложению на слабом смартфоне нужен минималистичный JSON размером 2 КБ, содержащий только имя пользователя и аватарку, чтобы сэкономить заряд батареи.<br />
 - Десктопному веб-приложению на мониторе 4K требуется развёрнутый дашборд с десятками таблиц и сотнями полей.<br />
@@ -435,7 +431,6 @@ flowchart TD
 </ul>
 <hr />
 <h3 id="sravnenie-i-vybor">Сравнение и выбор</h3>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -475,11 +470,9 @@ flowchart TD
 <p><strong>Золотой стандарт индустрии:</strong> Комбинация обоих подходов! На внешнем периметре стоит легковесный инфраструктурный шлюз (Envoy / Ingress), терминирующий TLS и защищающий от DDoS, а за ним трафик маршрутизируется в специализированные Web BFF и Mobile BFF на Go.</p>
 <hr />
 <h3 id="realizatsiya-v-go">Реализация в Go</h3>
-
 <p>Благодаря непревзойдённой производительности при параллельном вводе-выводе язык Go является абсолютным фаворитом для написания BFF и шлюзов агрегации.</p>
 <hr />
-<h4 id="prosteyshiy-api-gateway-na-nethttp">Простейший API Gateway на `net/http`</h4>
-
+<h4 id="prosteyshiy-api-gateway-na-nethttp">Простейший API Gateway на <code>net/http</code></h4>
 <p>Базовый шлюз маршрутизации в Go строится поверх стандартного компонента <code>httputil.ReverseProxy</code> из пакета <code>net/http/httputil</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -524,7 +517,6 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 <p>Для production-окружения цепочка дополняется middleware аутентификации, rate limiting и circuit breaker (<a href="36-circuit-breaker-retry-timeout-i-backoff.html" class="wikilink">36. Circuit Breaker, Retry, Timeout и Backoff</a>).</p>
 <hr />
 <h4 id="vysokoproizvoditelnyy-bff-s-veernoy-agregatsiey-scatter-gather">Высокопроизводительный BFF с веерной агрегацией (Scatter-Gather)</h4>
-
 <p>Главная задача BFF — собрать данные с нескольких внутренних gRPC-микросервисов параллельно, чтобы общее время ответа определялось не суммой задержек ($\sum T_i$), а временем самого медленного сервиса ($\max T_i$).</p>
 <p>Для этого в Go применяется пакет <code>golang.org/x/sync/errgroup</code>:</p>
 
@@ -636,7 +628,6 @@ func (b *WebBFF) GetDashboard(ctx context.Context, userID string) (*DashboardRes
 
 <hr />
 <h3 id="mechanical-sympathy-vliyanie-gateway-i-bff-na-rantaym-go">Mechanical Sympathy: влияние Gateway и BFF на рантайм Go</h3>
-
 <ol>
 <li><strong>Трансляция протоколов и налог на GC</strong>:<br />
    Когда Gateway принимает входящий публичный JSON и конвертирует его в Protobuf для отправки во внутренний gRPC-сервис, процессор выполняет тяжелейшую работу.<br />
@@ -658,7 +649,6 @@ func (b *WebBFF) GetDashboard(ctx context.Context, userID string) (*DashboardRes
 </ol>
 <hr />
 <h3 id="gotovye-resheniya-na-go-i-ne-tolko">Готовые решения на Go и не только</h3>
-
 <p>При выборе инструментов архитектурная команда оценивает границу между готовыми бинарными прокси и написанием собственного кода:</p>
 <ol>
 <li><strong>Lura (ранее KrakenD)</strong>:<br />
@@ -672,7 +662,6 @@ func (b *WebBFF) GetDashboard(ctx context.Context, userID string) (*DashboardRes
 </ol>
 <hr />
 <h3 id="antipatterny">Антипаттерны</h3>
-
 <ol>
 <li><strong>Gateway как «Распределённый монолит» (God Gateway)</strong>:<br />
    Внедрение сложной доменной бизнес-логики (например, расчёт скидок корзины) непосредственно в код шлюза. Шлюз превращается в хрупкого монстра, который блокирует релизы всех продуктовых команд. Шлюз обязан оставаться тонким маршрутизатором и транслятором!</li>
@@ -683,7 +672,6 @@ func (b *WebBFF) GetDashboard(ctx context.Context, userID string) (*DashboardRes
 </ol>
 <hr />
 <h3 id="svyaz-s-drugimi-kontseptsiyami">Связь с другими концепциями</h3>
-
 <ul>
 <li><strong>Rate Limiting</strong> (<a href="38-rate-limiting-i-zashchita-sistemy.html" class="wikilink">38. Rate Limiting и защита системы</a>): Защита внутреннего периметра от перегрузок и злоупотреблений реализуется в первую очередь на уровне Gateway.</li>
 <li><strong>Circuit Breaker</strong> (<a href="36-circuit-breaker-retry-timeout-i-backoff.html" class="wikilink">36. Circuit Breaker, Retry, Timeout и Backoff</a>): Предотвращает зависание горутин шлюза при деградации внутренних микросервисов.</li>
@@ -713,7 +701,6 @@ func (b *WebBFF) GetDashboard(ctx context.Context, userID string) (*DashboardRes
 
 <hr />
 <h3 id="itog">Итог</h3>
-
 <p>API Gateway и Backend for Frontend — это архитектурные стражи, отделяющие дикий и непредсказуемый внешний интернет от стерильного мира внутренней микросервисной платформы. Они превращают хаос множества микросервисов в стройный, понятный и безопасный интерфейс для конечных пользователей.</p>
 <p>Однако открытие единого шлюза несёт в себе колоссальную ответственность: при отказе зависимого бэкенда шлюз не должен падать сам и утягивать за собой всю платформу.</p>
 <p>О том, как защитить шлюзы и микросервисы от каскадных аварий с помощью тайм-аутов, повторов и автоматических предохранителей, читайте в следующей главе: <a href="36-circuit-breaker-retry-timeout-i-backoff.html" class="wikilink">36. Circuit Breaker, Retry, Timeout и Backoff</a>.</p>

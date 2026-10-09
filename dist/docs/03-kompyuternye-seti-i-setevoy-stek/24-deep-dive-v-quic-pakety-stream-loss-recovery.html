@@ -296,7 +296,6 @@
 
           <div class="article-markdown">
             <h2 id="vvedenie">Введение</h2>
-
 <p>В предыдущей статье <a href="23-http-3-i-quic-pochemu-budushchee-ukhodit-ot-tcp.html" class="wikilink">23. HTTP 3 и QUIC. Почему будущее уходит от TCP</a> мы рассмотрели мотивы перехода от TCP к UDP + QUIC. Теперь мы спустимся на уровень реализации, чтобы понять, как QUIC заменяет ядро ОС, как Go управляет пакетами в userspace и какие инженерные компромиссы это несёт. </p>
 
 <aside class="callout callout-note" aria-label="Заметка">
@@ -366,7 +365,6 @@ flowchart TD
 
 <hr />
 <h3 id="1-anatomiya-paketov-quic">1. Анатомия пакетов QUIC</h3>
-
 <p>QUIC использует два формата заголовка: <strong>Long Header</strong> (для рукопожатия) и <strong>Short Header</strong> (для данных 1-RTT). Ключевое отличие от TCP: заголовок QUIC инкапсулирует всё, включая криптографические токены и Connection ID, а часть заголовка шифруется сразу после Initial-пакета.</p>
 <p><strong>Структура Long Header:</strong><br />
 Используется на начальном этапе установления соединения, когда стороны еще не согласовали рабочие криптографические ключи 1-RTT (типы пакетов: <code>Initial</code>, <code>0-RTT</code>, <code>Handshake</code>, <code>Retry</code>).</p>
@@ -476,7 +474,6 @@ flowchart LR
 
 <hr />
 <h3 id="2-streams-i-multipleksirovanie">2. Streams и мультиплексирование</h3>
-
 <p>QUIC реализует виртуальные каналы (Streams) поверх одного UDP-соединения. Это решает проблему <strong>Head-of-Line Blocking (HOLB)</strong>, которая возникает в TCP: если один TCP-пакет теряется, все последующие блокируются до retransmission.</p>
 <p>Каждый поток представляет собой независимый двунаправленный или однонаправленный упорядоченный байтовый поток. Внутри QUIC-пакета полезная нагрузка разбивается на <strong>фреймы</strong> (<code>STREAM</code>, <code>ACK</code>, <code>MAX_DATA</code>, <code>RESET_STREAM</code>). Один UDP-датаграмма может содержать одновременно фреймы <code>STREAM 4</code>, <code>STREAM 8</code> и подтверждение <code>ACK</code>.</p>
 <p><strong>Идентификатор потока (Stream ID):</strong><br />
@@ -565,7 +562,6 @@ flowchart TD
 
 <hr />
 <h3 id="3-loss-recovery-i-congestion-control-pod-kapotom">3. Loss Recovery и Congestion Control под капотом</h3>
-
 <p>В TCP loss recovery встроен в ядро Linux. В QUIC он реализован в userspace (в пакете <code>quic-go</code>). Это даёт гибкость, но снимает аппаратное ускорение (TSO, GRO, checksum offload).</p>
 <p><strong>Ключевые механизмы:</strong><br />
 * <strong>ACK-фреймы</strong>: Отправляются с задержкой (<code>AckDelay</code>), кодируют диапазон потерянных пакетов и ECN-маркеры. QUIC использует <code>ACK Frequency</code> и <code>ACK Delay</code> для снижения overhead. Вместо единичных подтверждений фрейм <code>ACK</code> передает список диапазонов (ACK Ranges), компактно описывая, какие именно пакеты были получены.<br />
@@ -631,7 +627,6 @@ Go-рантайм компенсирует это за счёт <code>netpoll</c
 
 <hr />
 <h3 id="4-realizatsiya-v-go-netpoll-sync-pool-i-escape-analysis">4. Реализация в Go: netpoll, sync.Pool и Escape Analysis</h3>
-
 <p>Стандартная библиотека Go до сих пор не содержит production-ready QUIC. Индустрия использует <code>github.com/quic-go/quic-go</code>. Архитектура строится вокруг трёх столпов:</p>
 <ol>
 <li><strong><code>net.UDPConn</code></strong>: Работа с UDP-сокетом через стандартную библиотеку; внутри <code>net</code> дескриптор регистрируется в netpoller (epoll/kqueue) для событий <code>readable</code>/<code>writable</code>. (Внутренний пакет <code>internal/poll</code> в <code>quic-go</code> не импортируется.)</li>
@@ -698,7 +693,6 @@ func (c *connection) readLoop(conn *net.UDPConn) error {
 
 <hr />
 <h3 id="5-lovushki-sravnenie-s-tcp-i-voprosy-dlya-sobesedovaniya">5. Ловушки, сравнение с TCP и вопросы для собеседования</h3>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -765,7 +759,6 @@ func (c *connection) readLoop(conn *net.UDPConn) error {
 
 <hr />
 <h2 id="itog">Итог</h2>
-
 <p>QUIC переносит транспортный слой из ядра Linux в пространство пользователя, что даёт Go-разработчикам полный контроль над мультиплексированием, криптографией и congestion control, но требует ручного управления аллокациями (<code>sync.Pool</code>), awareness к Escape Analysis и настройки MTU в контейнеризованных средах. Понимание <code>netpoll</code>, пакетных структур и loss recovery engine критично для написания высоконагруженных QUIC-серверов без утечек памяти и GC pauses.</p>
 <p>Мы завершили глубокое погружение в транспортный уровень и протоколы поверх UDP. В следующей статье мы рассмотрим долгоживущие двунаправленные каналы связи: <a href="25-websocket-sse-i-dolgozhivushchie-soedineniya.html" class="wikilink">25. WebSocket, SSE и долгоживущие соединения</a>, где разберём, как Go управляет keep-alive соединениями, heartbeat-механизмами и backpressure в real-time сценариях.</p>
           </div>

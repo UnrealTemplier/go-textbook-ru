@@ -307,14 +307,12 @@
 
           <div class="article-markdown">
             <h2 id="rate-limiting-i-zashchita-sistemy">Rate Limiting и защита системы</h2>
-
 <p>Рассмотренные ранее защитные механизмы — Timeout, Retry, Circuit Breaker и Bulkhead — виртуозно спасают распределённую систему от медленных зависимостей, сбоев сети и исчерпания внутренних пулов соединений. Однако существует класс угроз, не связанный с поломкой оборудования или багами в коде: <strong>лавинообразный поток входящих запросов</strong>, превышающий физическую пропускную способность всей платформы.</p>
 <p>Это может быть злонамеренная распределённая DDoS-атака, агрессивный парсер цен конкурентов, зациклившийся скрипт неопытного партнёра или внезапный легитимный наплыв сотен тысяч пользователей во время «Чёрной пятницы» (Flash Crowd).</p>
 <p>Если на вход сервиса, рассчитанного на 5 000 RPS, обрушится 100 000 RPS, никакой Bulkhead не спасёт систему: разрешённые семафоры будут мгновенно заняты, сетевые буферы ядра Linux переполнятся, а планировщик Go утонет в бесконечной обработке прерываний. Системе необходим механизм строгого контроля <strong>темпа входящего трафика</strong>.</p>
 <p><strong>Rate Limiting (Ограничение частоты запросов)</strong> — это первая линия обороны распределённой архитектуры, регулирующая частоту входящих или исходящих операций во времени (RPS, RPM) и безжалостно отсекающая избыточный трафик на самом внешнем рубеже, защищая внутренние компоненты от перегрузки.</p>
 <hr />
 <h3 id="zachem-nuzhen-rate-limiting">Зачем нужен Rate Limiting</h3>
-
 <p>В промышленной архитектуре Rate Limiting решает четыре ключевые бизнес-задачи:</p>
 <ol>
 <li><strong>Защита от DDoS и спам-флуда</strong>:<br />
@@ -328,7 +326,6 @@
 </ol>
 <hr />
 <h3 id="osnovnye-algoritmy">Основные алгоритмы</h3>
-
 <p>Индустрия выработала четыре канонических алгоритма ограничения частоты.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -365,7 +362,6 @@ flowchart LR
 
 <hr />
 <h4 id="token-bucket">Token Bucket</h4>
-
 <p><strong>Token Bucket (Ведро с токенами)</strong> — самый гибкий, популярный и математически выверенный алгоритм в бэкенд-разработке.</p>
 <ul>
 <li>В логическое «ведро» вместимостью $b$ (Burst) с постоянной скоростью $r$ токенов в секунду непрерывно капают токены.</li>
@@ -377,7 +373,6 @@ flowchart LR
 <p><strong>Главное достоинство:</strong> Token Bucket идеально сглаживает пики, разрешая <strong>кратковременные всплески (bursts)</strong> вплоть до емкости ведра $b$, при этом строго гарантируя долговременную среднюю скорость на уровне $r$ RPS.</p>
 <hr />
 <h4 id="leaky-bucket">Leaky Bucket</h4>
-
 <p><strong>Leaky Bucket (Протекающее ведро)</strong> представляет собой очередь фиксированного размера.<br />
 - Запросы поступают в ведро с любой случайной скоростью.<br />
 - Из отверстия на дне ведра запросы «вытекают» и передаются на обработку с <strong>абсолютно постоянной, строго заданной скоростью</strong>.<br />
@@ -385,23 +380,19 @@ flowchart LR
 <p><strong>Главное отличие от Token Bucket:</strong> Leaky Bucket полностью уничтожает всплески, навязывая жесткий, фиксированный темп обработки. Идеален для систем, где downstream-сервис не переносит ни малейших флуктуаций трафика.</p>
 <hr />
 <h4 id="fixed-window">Fixed Window</h4>
-
 <p><strong>Fixed Window (Фиксированное окно)</strong> делит временную шкалу на равные интервалы (например, ровно с 12:00 до 12:01, с 12:01 до 12:02). На каждом интервале работает счетчик запросов. По истечении минуты счетчик сбрасывается в ноль.</p>
 <p><strong>Фатальный недостаток («Эффект границы окна» / Boundary Spike):</strong><br />
 Представьте лимит 100 запросов в минуту. Клиент отправляет 100 запросов в 12:00:59, а затем следующие 100 запросов в 12:01:01. Оба пакета уложились в свои минутные окна, но <strong>за 2 секунды система приняла 200 запросов!</strong> Пиковая нагрузка удвоилась, что может пробить защиту бэкенда.</p>
 <hr />
 <h4 id="sliding-window">Sliding Window</h4>
-
 <p><strong>Sliding Window (Скользящее окно)</strong> устраняет дефект границы, учитывая пропорциональный вклад предыдущего окна:<br />
 $$\text{Count} = \text{Count}<em>{\text{current}} + \text{Count}</em>{\text{prev}} \times (1 - \text{TimeInCurrentWindow})$$</p>
 <p>Если прошла треть текущей минуты, вес предыдущей минуты принимается за $2/3$. Это даёт плавное, реалистичное ограничение без резких граничных скачков.</p>
 <hr />
 <h3 id="realizatsiya-v-go">Реализация в Go</h3>
-
 <p>Экосистема Go предоставляет великолепные инструменты как для локального, так и для распределённого Rate Limiting.</p>
 <hr />
-<h4 id="golang-orgxtimerate-token-bucket">`golang.org/x/time/rate` — Token Bucket</h4>
-
+<h4 id="golang-orgxtimerate-token-bucket"><code>golang.org/x/time/rate</code> — Token Bucket</h4>
 <p>Стандартная полубиблиотека Go содержит образцовую, lock-free реализацию алгоритма Token Bucket:</p>
 
 <div class="code-block" data-lang="go">
@@ -468,7 +459,6 @@ func TokenBucketMiddleware(next http.Handler) http.Handler {
 
 <hr />
 <h4 id="raspredelyonnyy-rate-limiting-cherez-redis">Распределённый Rate Limiting через Redis</h4>
-
 <p>В горизонтально масштабированном кластере Kubernetes запущены десятки независимых подов сервиса. Локальный <code>rate.NewLimiter</code> изолирован внутри одного пода: если выставить лимит 100 RPS, а в кластере работает 10 подов, суммарный пропущенный трафик составит $10 \times 100 = 1 000$ RPS!</p>
 <p>Для согласованного глобального ограничения используется распределённое хранилище <strong>Redis</strong>:</p>
 
@@ -525,7 +515,6 @@ func IsAllowedDistributed(ctx context.Context, rdb *redis.Client, clientID strin
 <p>Для скользящего лога (Sliding Window Log) в Redis традиционно используют сортированные множества (<code>ZSET</code>), где в качестве score выступает Unix-время запроса в миллисекундах (<code>ZADD</code>, <code>ZREMRANGEBYSCORE</code>, <code>ZCARD</code>). Для высоконагруженного промышленного применения стандартом является библиотека <strong><code>github.com/go-redis/redis_rate/v10</code></strong>, реализующая алгоритм <strong>GCRA (Generic Cell Rate Algorithm)</strong> на базе встроенных Lua-скриптов в Redis с микросекундной точностью.</p>
 <hr />
 <h4 id="middleware-dlya-populyarnykh-routerov">Middleware для популярных роутеров</h4>
-
 <p>Написание middleware для <code>chi</code>, <code>gin</code> или <code>echo</code> требует единой дисциплины оформления HTTP-заголовков:</p>
 
 <div class="code-block" data-lang="go">
@@ -575,7 +564,6 @@ func RateLimitMiddleware(limiter *rate.Limiter) func(http.Handler) http.Handler 
 
 <hr />
 <h3 id="mechanical-sympathy-vliyanie-rate-limiting-na-rantaym-go">Mechanical Sympathy: влияние Rate Limiting на рантайм Go</h3>
-
 <ol>
 <li><strong>Локальный Token Bucket (<code>golang.org/x/time/rate</code>)</strong>:<br />
    - Внутреннее состояние лимитера обновляется математически: при вызове <code>Allow()</code> рантайм не запускает фоновый тикер, а вычисляет разницу времени $\Delta t = \text{now} - \text{lastUpdate}$ и прибавляет $\Delta t \times r$ токенов.<br />
@@ -586,7 +574,6 @@ func RateLimitMiddleware(limiter *rate.Limiter) func(http.Handler) http.Handler 
 </ol>
 <hr />
 <h3 id="urovni-rate-limiting-v-arkhitekture">Уровни Rate Limiting в архитектуре</h3>
-
 <p>Надёжная архитектура строит эшелонированный рубеж обороны:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -625,7 +612,6 @@ flowchart TD
 </ol>
 <hr />
 <h3 id="svyaz-s-drugimi-patternami">Связь с другими паттернами</h3>
-
 <ul>
 <li><strong>Circuit Breaker</strong> (<a href="36-circuit-breaker-retry-timeout-i-backoff.html" class="wikilink">36. Circuit Breaker, Retry, Timeout и Backoff</a>): Реагирует на уже возникшие ошибки в downstream-сервисах. Rate Limiting предотвращает перегрузку, которая гарантированно вызвала бы эти ошибки.</li>
 <li><strong>Bulkhead</strong> (<a href="37-bulkhead-i-izolyatsiya-otkazov.html" class="wikilink">37. Bulkhead и изоляция отказов</a>): Изолирует ресурсы (пулы коннектов и горутин) внутри сервиса. Rate Limiting ограничивает темп, с которым внешние клиенты расходуют эти ресурсы.</li>
@@ -633,7 +619,6 @@ flowchart TD
 </ul>
 <hr />
 <h3 id="antipatterny-i-tipichnye-oshibki">Антипаттерны и типичные ошибки</h3>
-
 <ol>
 <li><strong>Жёсткий лимит без права на всплеск (No Burst)</strong>:<br />
    Использование алгоритма без поддержки всплесков приводит к тому, что обычный пользователь, случайно обновивший страницу дважды, получает ошибку <code>429</code>. Всегда настраивайте емкость всплеска (<code>burst</code>) в 2–3 раза выше базового RPS.</li>
@@ -670,7 +655,6 @@ flowchart TD
 
 <hr />
 <h3 id="itog">Итог</h3>
-
 <p>Rate Limiting — это непреодолимый щит, защищающий архитектуру от безумия внешнего сетевого мира. Сочетание локальных Token Bucket для защиты отдельных процессов и распределённых скользящих окон на Redis для защиты платформы гарантирует, что система останется стабильной и предсказуемой под любым шквалом трафика.</p>
 <p>Вместе с Timeout, Retry, Circuit Breaker и Bulkhead мы завершили построение несокрушимого эшелона отказоустойчивости и надежности данных.</p>
 <p>Но как понять, что происходит внутри этого сложнейшего распределённого механизма в каждую долю секунды? Настало время включить свет в темноте распределённых систем.</p>

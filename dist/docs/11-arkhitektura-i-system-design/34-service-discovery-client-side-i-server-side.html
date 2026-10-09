@@ -307,14 +307,12 @@
 
           <div class="article-markdown">
             <h2 id="service-discovery-client-side-i-server-side-modeli">Service Discovery: Client-side и Server-side модели</h2>
-
 <p>В эпоху классических монолитных систем топология сети была статичной и предсказуемой: адрес сервера реляционной базы данных или вспомогательного демона прописывался в конфигурационном файле <code>config.yaml</code> в виде неизменного IP-адреса и порта. Серверы жили годами, перезагружались по расписанию и обладали постоянными сетевыми интерфейсами.</p>
 <p>Но стоило архитектуре шагнуть в мир контейнеров, Kubernetes, динамического автомасштабирования (Horizontal Pod Autoscaler) и спотовых виртуальных машин в облаке, как иллюзия статичности растаяла. В современном микросервисном кластере инстансы сервисов рождаются, масштабируются при всплеске нагрузки, перемещаются между физическими нодами и умирают каждую минуту. Назначенный поду динамический IP-адрес живёт лишь до первого перезапуска контейнера.</p>
 <p>В таких условиях жестко зашитые IP-адреса превращаются в рецепт гарантированного отказа. Системе необходим динамический механизм регистрации и обнаружения узлов — <strong>Service Discovery</strong>. Без него балансировщик нагрузки остаётся слепым, а микросервисы теряют способность взаимодействовать друг с другом.</p>
 <p>В этой главе мы подробно исследуем архитектурные модели <strong>Client-Side</strong> и <strong>Server-Side Discovery</strong>, вскроем их сетевую физику и влияние на рантайм Go, изучим протокол gRPC resolver, а также разберём устройство реестров на базе etcd, Consul и Kubernetes EndpointSlices.</p>
 <hr />
 <h3 id="zachem-nuzhen-service-discovery">Зачем нужен Service Discovery</h3>
-
 <p>Архитектурный шаблон Service Discovery решает три фундаментальные задачи распределённой среды:</p>
 <ol>
 <li><strong>Динамическая регистрация и дерегистрация (Service Registry)</strong>:<br />
@@ -326,11 +324,9 @@
 </ol>
 <hr />
 <h3 id="modeli-service-discovery">Модели Service Discovery</h3>
-
 <p>Существуют две принципиально разные архитектурные парадигмы обнаружения сервисов: децентрализованная клиентская (<strong>Client-Side</strong>) и централизованная серверная (<strong>Server-Side</strong>).</p>
 <hr />
 <h4 id="client-side-discovery">Client-Side Discovery</h4>
-
 <p>В модели <strong>Client-Side Discovery</strong> клиентский микросервис берёт всю интеллектуальную работу на себя. Он напрямую опрашивает реестр сервисов (Service Registry), кэширует список активных IP-адресов в локальной памяти, самостоятельно применяет алгоритм балансировки нагрузки (Round-Robin, P2C) и отправляет RPC-запрос <strong>напрямую на выбранный узел бэкенда</strong>.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -375,7 +371,6 @@ flowchart LR
 - <strong>Связывание с технологическим стеком</strong>: Связывает клиента с конкретным реестром и его SDK (например, <code>consul-api</code>). Если в компании используются микросервисы на разных языках, придётся поддерживать клиентские библиотеки под каждый стек.</p>
 <hr />
 <h4 id="server-side-discovery">Server-Side Discovery</h4>
-
 <p>В модели <strong>Server-Side Discovery</strong> клиентский сервис предельно упрощён. Он не знает ни о каком реестре сервисов и отправляет запросы на единственный стабильный виртуальный адрес (VIP) или DNS-имя балансировщика нагрузки (например, Ingress-контроллера, Envoy или AWS ALB). Балансировщик сам непрерывно синхронизируется с реестром и перенаправляет входящий запрос на конкретный инстанс бэкенда.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -423,11 +418,9 @@ flowchart LR
 - <strong>Балансировщик — потенциальное узкое горлышко</strong>: Требует масштабирования и резервирования самого слоя прокси.</p>
 <hr />
 <h3 id="realizatsiya-v-go">Реализация в Go</h3>
-
 <p>Благодаря развитой экосистеме, в Go обе модели обнаружения реализуются естественно и лаконично.</p>
 <hr />
 <h4 id="client-side-discovery-s-grpc">Client-Side Discovery с gRPC</h4>
-
 <p>В фреймворке gRPC встроен мощный механизм client-side discovery через интерфейс <code>resolver.Resolver</code> (и фабрику <code>resolver.Builder</code>). Библиотека резолвера подписывается на изменения в реестре и передаёт обновлённый список адресов (<code>resolver.Address</code>) внутреннему балансировщику gRPC.</p>
 <p>Пример подключения gRPC-клиента с использованием Consul:</p>
 
@@ -476,12 +469,10 @@ func InitConsulGRPCClient(ctx context.Context) (*grpc.ClientConn, error) {
 <p>Клиент периодически получает обновления от Consul через long-polling. При падении инстанса gRPC мгновенно перенаправляет новые RPC-вызовы на живые узлы.</p>
 <hr />
 <h4 id="server-side-discovery-s-envoy-i-xds">Server-Side Discovery с Envoy и xDS</h4>
-
 <p>В архитектуре <strong>Service Mesh</strong> (Istio, Linkerd) на каждом поде рядом с контейнером Go разворачивается вспомогательный sidecar-прокси <strong>Envoy</strong>.</p>
 <p>Envoy подключается к управляющему серверу (Control Plane, например, Istiod) по протоколу <strong>xDS</strong> (Endpoint Discovery Service, EDS). Как только в кластере запускается новый под, Istiod по gRPC-стриму отправляет в Envoy дельту изменений. Приложению Go достаточно отправить запрос на <code>localhost:15001</code>, а Envoy прозрачно выполнит маршрутизацию.</p>
 <hr />
 <h4 id="pryamoe-ispolzovanie-etcd">Прямое использование etcd</h4>
-
 <p>Если ваш сервис использует собственный протокол или HTTP, etcd предоставляет готовые примитивы регистрации с механизмом аренды (<strong>Lease</strong>):</p>
 
 <div class="code-block" data-lang="go">
@@ -571,7 +562,6 @@ func (r *ServiceRegistrar) RegisterService(ctx context.Context, serviceName, ins
 
 <hr />
 <h3 id="mechanical-sympathy-service-discovery-i-rantaym-go">Mechanical Sympathy: Service Discovery и рантайм Go</h3>
-
 <ol>
 <li><strong>Сетевые сокеты и Long Polling</strong>:<br />
    При клиентском обнаружении горутина клиента удерживает открытый TCP-сокет к реестру (etcd/Consul) через <code>Watch API</code>. В протоколе etcd v3 используется один мультиплексированный HTTP/2 gRPC-стрим. Горутина паркуется сетевым поллером Go (<code>netpoller</code>) в ожидании входящих событий дельты. Память стека (~2 КБ) удерживается, но такты процессора в ожидании равны нулю.</li>
@@ -597,7 +587,6 @@ func (r *ServiceRegistrar) RegisterService(ctx context.Context, serviceName, ins
 
 <hr />
 <h3 id="health-checks-i-isklyuchenie-uzlov">Health Checks и исключение узлов</h3>
-
 <p>Реестр обязан мгновенно исключать деградировавшие узлы:</p>
 <ol>
 <li><strong>Пассивный мониторинг</strong>:<br />
@@ -613,7 +602,6 @@ func (r *ServiceRegistrar) RegisterService(ctx context.Context, serviceName, ins
 </ol>
 <hr />
 <h3 id="svyaz-s-arkhitekturoy-i-cap">Связь с архитектурой и CAP</h3>
-
 <p>Реестр сервисов — это сам по себе распределённое хранилище, подчиняющееся теореме CAP (<a href="30-cap-teorema-i-realnye-kompromissy.html" class="wikilink">30. CAP теорема и реальные компромиссы</a>):</p>
 <ul>
 <li><strong>etcd (Raft) — строгая CP-система</strong>: При сетевом разделении кластера etcd узлы в меньшинстве откажутся регистрировать новые поды, защищая кластер от расщепления мозга (Split-Brain). Kubernetes выбрал etcd именно за бескомпромиссную целостность метаданных.</li>
@@ -622,7 +610,6 @@ func (r *ServiceRegistrar) RegisterService(ctx context.Context, serviceName, ins
 </ul>
 <hr />
 <h3 id="sravnenie-client-side-i-server-side">Сравнение Client-Side и Server-Side</h3>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -679,7 +666,6 @@ func (r *ServiceRegistrar) RegisterService(ctx context.Context, serviceName, ins
 
 <hr />
 <h3 id="itog">Итог</h3>
-
 <p>Service Discovery — это фундамент, вдохнувший жизнь в динамические облачные среды. Понимание различий между клиентским и серверным подходами позволяет архитектору точно сбалансировать систему: получить субмиллисекундную скорость прямого взаимодействия внутри кластера через gRPC и сохранить простоту внешнего контура через шлюзы.</p>
 <p>Теперь, когда сервисы умеют динамически находить друг друга, встаёт задача организации внешнего периметра: как безопасно впустить миллионы клиентских мобильных устройств в наш микросервисный мир?</p>
 <p>Об этом читайте в следующей главе: <a href="35-api-gateway-i-bff.html" class="wikilink">35. API Gateway и BFF</a>.</p>

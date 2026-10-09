@@ -296,7 +296,6 @@
 
           <div class="article-markdown">
             <h2 id="vvedenie-proksi-kak-arkhitekturnyy-primitiv">Введение: Прокси как архитектурный примитив</h2>
-
 <p>В компьютерных сетях слово «прокси» (от латинского <em>procurator</em> — уполномоченный представитель) означает посредника, принимающего полномочия действовать от чужого имени. </p>
 <p>В современной backend-архитектуре прокси-серверы — это не просто «перенаправители трафика», а критический слой абстракции между клиентом и бизнес-логикой. Если бы микросервисы напрямую выставлялись в публичный интернет, каждый из них был бы вынужден самостоятельно заниматься валидацией TLS-сертификатов, отражением атак Slowloris, парсингом разношерстных клиентских заголовков, ограничением частоты запросов (rate limiting) и балансировкой.</p>
 <p>Для Go-разработчика понимание проксирования выходит за рамки конфигурации Nginx: это знание того, как управлять соединениями, TLS-сессиями, пулами горутин и сетевым стеком ОС на уровне runtime.</p>
@@ -307,7 +306,6 @@
 - Предотвращения утечек горутин и истощения портов при высокой нагрузке.</p>
 <hr />
 <h2 id="forward-vs-reverse-proxy-fundamentalnoe-otlichie">Forward vs Reverse Proxy: Фундаментальное отличие</h2>
-
 <p>Клиентский (Forward) и обратный (Reverse) прокси решают диаметрально противоположные задачи и работают на разных границах системы.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -399,7 +397,6 @@ flowchart LR
 
 <hr />
 <h2 id="reverse-proxy-ustroystvo-i-rol-v-bekende">Reverse Proxy: Устройство и роль в бэкенде</h2>
-
 <p>Обратный прокси выполняет несколько системных задач, которые критичны для production-нагрузки:</p>
 <ol>
 <li><strong>SSL/TLS Termination</strong>: Расшифровка HTTPS на прокси, передача незашифрованного HTTP на бэкенды. Экономит CPU на сервисах, но требует безопасного канала (или повторного шифрования).</li>
@@ -410,7 +407,6 @@ flowchart LR
 </ol>
 <hr />
 <h2 id="api-gateway-nadstroyka-nad-obratnym-proksi">API Gateway: Надстройка над обратным прокси</h2>
-
 <p><strong>API Gateway</strong> — это reverse proxy с бизнес-логикой. Он не просто пересылает байты, а понимает семантику протоколов (HTTP/gRPC), управляет жизненным циклом API, обеспечивает observability и безопасность.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -498,7 +494,6 @@ flowchart TD
 <p>В Go API Gateway часто реализуется как standalone-сервис или embedded-компонент, так как <code>net/http</code> предоставляет все необходимые примитивы для написания кастомных middleware, динамического роутинга и интеграции с распределенными системами.</p>
 <hr />
 <h2 id="reverse-proxy-v-go-pod-kapotom-i-idiomy">Reverse Proxy в Go: Под капотом и идиомы</h2>
-
 <p>Go предоставляет <code>httputil.ReverseProxy</code> — production-ready реализацию обратного прокси. Он работает через паттерн <code>Director</code>: функция, которая модифицирует <code>*http.Request</code> перед отправкой на бэкенд.</p>
 
 <div class="code-block" data-lang="go">
@@ -547,8 +542,7 @@ func main() {
 </code></pre>
 </div>
 
-<h3 id="kak-rabotaet-httputil-reverseproxy-pod-kapotom">Как работает `httputil.ReverseProxy` под капотом</h3>
-
+<h3 id="kak-rabotaet-httputil-reverseproxy-pod-kapotom">Как работает <code>httputil.ReverseProxy</code> под капотом</h3>
 <p>Внутренний конвейер обработки запроса в <code>httputil.ReverseProxy</code> состоит из пяти строгих шагов:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -604,13 +598,12 @@ flowchart TD
 
 <hr />
 <h2 id="proizvoditelnost-i-mechanical-sympathy">Производительность и Mechanical Sympathy</h2>
-
 <p>Прокси-сервис — это узкое место в сети. Каждое решение влияет на использование CPU, памяти и сетевых ресурсов ОС.</p>
-<h3 id="setevoy-stek-i-netpoll">Сетевой стек и `netpoll`</h3>
+<h3 id="setevoy-stek-i-netpoll">Сетевой стек и <code>netpoll</code></h3>
 <p>Go использует <code>netpoll</code> (epoll на Linux, kqueue на BSD/macOS, IOCP на Windows) для асинхронного I/O. Когда горутина ждет ответа от бэкенда, она блокируется не на syscall-е, а регистрируется в поллере. Это позволяет одной горутине обслуживать десятки тысяч соединений с минимальным расходом стека (2 КБ).</p>
 <h3 id="tls-handshake-i-cpu-cache">TLS Handshake и CPU Cache</h3>
 <p>TLS Termination на прокси снимает нагрузку с бэкендов, но требует собственных вычислений. Go использует <code>crypto/tls</code> с оптимизированными реализациями AES-GCM через аппаратные инструкции (AES-NI). Кэш-линии L1/L2 критичны для шифрования: неаллоцированные буферы и <code>sync.Pool</code> для <code>tls.Config</code> снижают cache misses.</p>
-<h3 id="connection-pooling-i-http-transport">Connection Pooling и `http.Transport`</h3>
+<h3 id="connection-pooling-i-http-transport">Connection Pooling и <code>http.Transport</code></h3>
 <p><code>http.Transport</code> управляет пулом TCP-соединений. При высокой нагрузке:<br />
 - <code>MaxIdleConnsPerHost</code> должен соответствовать ожидаемому QPS.<br />
 - <code>IdleConnTimeout</code> предотвращает утечку соединений, когда бэкенды отваливаются.<br />
@@ -650,11 +643,10 @@ transport := &amp;http.Transport{
 
 <hr />
 <h2 id="lovushki-i-voprosy-na-sobesedovaniyakh">Ловушки и вопросы на собеседованиях</h2>
-
 <h3 id="1-utechka-gorutin-pri-otklyuchenii-klienta">1. Утечка горутин при отключении клиента</h3>
 <p>Если клиент разрывает соединение до получения ответа, горутина, читающая бэкенд, может зависнуть. <br />
 <strong>Решение:</strong> Всегда используйте <code>context.Context</code> с таймаутом. <code>httputil.ReverseProxy</code> поддерживает <code>http.Server.ReadHeaderTimeout</code> и <code>http.Server.IdleTimeout</code>, но для гарантированного cleanup используйте <code>context.WithTimeout</code> на уровне middleware.</p>
-<h3 id="2-zagolovok-host">2. Заголовок `Host`</h3>
+<h3 id="2-zagolovok-host">2. Заголовок <code>Host</code></h3>
 <p>Бэкенды (особенно Go <code>http.Server</code>) требуют корректного <code>Host</code>. <code>httputil.ReverseProxy</code> (в том числе <code>NewSingleHostReverseProxy</code>) сам заголовок <code>Host</code> на хост бэкенда <strong>не</strong> переписывает: бэкенд получит исходный <code>Host</code> клиента (например, <code>api.example.com</code>). Если бэкенду нужен собственный <code>Host</code>, задайте <code>req.Host = target.Host</code> в <code>Director</code> (или используйте <code>Rewrite</code> с <code>SetURL</code>), и обязательно проверьте <code>req.Host</code>, если вы модифицируете URI.</p>
 <h3 id="3-http2-i-multiplexing">3. HTTP/2 и multiplexing</h3>
 <p>Go автоматически использует HTTP/2 для соединений к бэкендам по TLS, если они поддерживают ALPN (клиентская поддержка HTTP/2 в <code>net/http</code> — с Go 1.6; у кастомного <code>http.Transport</code>, где заданы <code>DialContext</code> или <code>TLSClientConfig</code>, автоматический HTTP/2 отключается, пока не выставлен <code>ForceAttemptHTTP2: true</code>, появившийся в Go 1.13). Это устраняет <strong>Head of Line Blocking</strong> (статья <a href="23-http-3-i-quic-pochemu-budushchee-ukhodit-ot-tcp.html" class="wikilink">23. HTTP 3 и QUIC. Почему будущее уходит от TCP</a>). В прокси-слое это критично: один TCP-сокет обслуживает сотни потоков запросов, экономя память CPU и сетевой стек.</p>
@@ -674,7 +666,6 @@ transport := &amp;http.Transport{
 
 <hr />
 <h2 id="sravnenie-go-vs-nginxenvoy">Сравнение: Go vs Nginx/Envoy</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -714,7 +705,6 @@ transport := &amp;http.Transport{
 <p>Go-прокси выигрывает, когда логика маршрутизации зависит от состояния (базы данных, KV-хранилища, кастомные алгоритмы балансировки). Nginx/Envoy выигрывают в чистой пропускной способности и latency.</p>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Reverse Proxy</strong> — прозрачный слой, который управляет соединениями, TLS и маршрутизацией, скрывая архитектуру бэкендов.</li>
 <li><strong>API Gateway</strong> — reverse proxy с бизнес-логикой: auth, rate limiting, observability, трансформация.</li>

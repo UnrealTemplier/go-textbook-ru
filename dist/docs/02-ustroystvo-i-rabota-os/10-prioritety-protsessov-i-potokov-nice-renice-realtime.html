@@ -316,7 +316,6 @@
 
           <div class="article-markdown">
             <h2 id="zachem-bekenderu-ponimat-prioritety-protsessov">Зачем бэкендеру понимать приоритеты процессов</h2>
-
 <blockquote>
 <p><em>«Грамотно спроектированная система при перегрузке деградирует плавно и достойно. Плохо спроектированная — попросту рушится под тяжестью собственных амбиций».</em>  <br />
 — Принцип устойчивости распределенных систем</p>
@@ -332,7 +331,6 @@
 - <strong>Диагностика аномалий:</strong> Понимание ситуаций, когда утилита <code>top</code> показывает 100% CPU, но приложение не отвечает на запросы из-за того, что процессор монополизирован сторонней задачей.</p>
 <hr />
 <h2 id="model-prioritetov-v-linux-nice-vs-real-time">Модель приоритетов в Linux: nice vs Real-Time</h2>
-
 <p>В ядре Linux существует строгая иерархия из <strong>140 уровней приоритета</strong> (от 0 до 139). Все планируемые задачи разделены на два фундаментально непересекающихся пространства:</p>
 
 <div class="code-block" data-lang="ascii">
@@ -424,7 +422,6 @@ flowchart TD
 
 <hr />
 <h2 id="pod-kapotom-kak-yadro-khranit-prioritety">Под капотом: Как ядро хранит приоритеты</h2>
-
 <p>В ядре Linux каждый исполняемый поток представлен дескриптором <code>task_struct</code>. Внутри него находятся ключевые поля, определяющие политику планирования:</p>
 <ul>
 <li><code>static_prio</code>: Базовый приоритет процесса, заданный при создании или измененный через системные вызовы <code>nice</code> / <code>renice</code> или <code>sched_setscheduler</code>. Для обычных задач вычисляется по формуле: $static_prio = 120 + nice$.</li>
@@ -434,7 +431,6 @@ flowchart TD
 </ul>
 <p>Для планирования задач реального времени ядро использует выделенную очередь <code>rt_rq</code>. Алгоритм планировщика тривиален и безжалостен: перед тем как взглянуть на красно-черное дерево CFS, ядро <strong>всегда проверяет очередь <code>rt_rq</code></strong>. Если в ней есть хотя бы один готовый поток, обычные CFS-процессы остаются без CPU! Оговорка: ядро по умолчанию страхуется от полного голодания обычных задач throttling-ом RT (<code>sched_rt_runtime_us</code> из <code>sched_rt_period_us</code>; в документации ядра дефолт — 950000 из 1000000 мкс, то есть 5% времени резервируется для остальных), но значение зависит от дистрибутива и версии ядра: на некоторых системах оно равно <code>1000000</code> (throttling фактически нет) или <code>-1</code>.</p>
 <h3 id="kak-izmenit-prioritet-v-go-na-praktike">Как изменить приоритет в Go на практике</h3>
-
 <p>В стандартной библиотеке Go нет несуществующего метода <code>debug.SetPriority</code> (иногда ошибочно упоминаемого начинающими). Настройка приоритетов в Go осуществляется через прямой системный вызов ядра <code>syscall.Setpriority</code> или пакет <code>golang.org/x/sys/unix</code>:</p>
 
 <div class="code-block" data-lang="go">
@@ -478,7 +474,6 @@ func main() {
 
 <hr />
 <h2 id="go-rantaym-i-prioritety-vazhnye-nyuansy">Go-рантайм и приоритеты: Важные нюансы</h2>
-
 <p>Здесь кроется фундаментальная архитектурная граница, о которой обязан помнить каждый бэкенд-разработчик: <strong>планировщик Go (<code>runtime.schedule</code>, <code>runtime.gosched</code>) и планировщик ОС Linux работают на совершенно разных уровнях абстракции!</strong></p>
 <ol>
 <li><strong>Горутины не имеют приоритетов:</strong><br />
@@ -513,9 +508,7 @@ func main() {
 
 <hr />
 <h2 id="praktika-kogda-i-kak-ispolzovat">Практика: когда и как использовать</h2>
-
-<h3 id="1-nice-renice-dlya-balansirovki-fonovoy-nagruzki">1. `nice` / `renice` для балансировки фоновой нагрузки</h3>
-
+<h3 id="1-nice-renice-dlya-balansirovki-fonovoy-nagruzki">1. <code>nice</code> / <code>renice</code> для балансировки фоновой нагрузки</h3>
 <p>Утилиты <code>nice</code> и <code>renice</code> — прекрасный инструмент для сглаживания пиков нагрузки:</p>
 
 <div class="code-block" data-lang="bash">
@@ -554,7 +547,6 @@ chrt -f 50 ./my-realtime-app
 <p><strong>Когда оправдан RT-режим?</strong><br />
 Только в узкоспециализированных низкоуровневых сценариях: софт для управления робототехникой, высокочастотный трейдинг (HFT), обработка студийного аудио/видео в реальном времени. Для обычных сетевых бэкендов на Go (HTTP REST, gRPC) RT-приоритеты не нужны и опасны.</p>
 <h3 id="3-vzaimodeystvie-s-docker-i-kubernetes">3. Взаимодействие с Docker и Kubernetes</h3>
-
 <p>В облачной инфраструктуре Kubernetes вы не используете <code>nice</code> вручную. Вместо этого задействуются механизмы ядра Linux cgroups:</p>
 <ul>
 <li><strong>Классы обслуживания Kubernetes QoS (Quality of Service):</strong></li>
@@ -568,7 +560,6 @@ chrt -f 50 ./my-realtime-app
 </ul>
 <hr />
 <h2 id="mekhanika-i-proizvoditelnost">Механика и производительность</h2>
-
 <p>С точки зрения кремния и микроархитектуры CPU изменение приоритета влечет глубокие физические последствия:</p>
 <ol>
 <li><strong>Кэш-локальность и Cache Warm-up:</strong><br />
@@ -592,7 +583,6 @@ chrt -f 50 ./my-realtime-app
 
 <hr />
 <h2 id="rezyume-dlya-sobesedovaniya">Резюме для собеседования</h2>
-
 <ul>
 <li>Шкала <code>nice</code> (от <code>-20</code> до <code>19</code>) управляет поведением планировщика CFS/EEVDF, определяя относительный вес процесса в формуле расчета <code>vruntime</code>. Высокий <code>nice</code> означает низкий приоритет.</li>
 <li>Приоритеты реального времени (RT от 1 до 99) используют политики <code>SCHED_FIFO</code> и <code>SCHED_RR</code>. RT-задачи абсолютно доминируют над любыми CFS-процессами.</li>

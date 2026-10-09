@@ -439,7 +439,6 @@
           <div class="article-markdown">
             <h1>Работа с БД в Go: архитектура database/sql, жизненный цикл соединений и Mechanical Sympathy</h1>
 <h2 id="vvedenie-pochemu-databasesql-eto-fundament">Введение: Почему database/sql — это фундамент</h2>
-
 <p>Пакет <code>database/sql</code> — это не просто обертка над драйверами баз данных. Это продуманная до мелочей абстракция, которая предоставляет унифицированный интерфейс для работы с реляционными СУБД, скрывая за собой сложную механику управления соединениями, пуллинга, транзакций и обработки ошибок.</p>
 <p>Для бэкенд-инженера уровня Senior/Lead понимание того, как работает <code>database/sql</code> «под капотом», критически важно. Не зная внутренней механики, легко допустить утечку соединений, создать скрытый бутылнек в конкурентном коде или неправильно настроить таймауты, что в продакшене выльется в <code>connection pool exhausted</code> и падение сервиса под нагрузкой.</p>
 <p>В этой статье мы разберем:<br />
@@ -462,7 +461,6 @@
 
 <hr />
 <h2 id="arkhitektura-interfeysy-i-realizatsiya">Архитектура: Интерфейсы и реализация</h2>
-
 <p>Ключевой принцип работы пакета — разделение ответственности. Ваша бизнес-логика работает с высокоуровневыми типами <code>*sql.DB</code>, <code>*sql.Tx</code>, <code>*sql.Rows</code>, в то время как драйвер работает с низкоуровневыми примитивами.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -492,7 +490,6 @@ flowchart LR
 
 
 <h3 id="rol-sql-db">Роль *sql.DB</h3>
-
 <p>Тип <code>*sql.DB</code> — это не одно соединение с базой данных. Это <strong>абстракция пула соединений</strong> (pool of connections). Она потокобезопасна и предназначена для длительного использования в течение всего времени жизни приложения.</p>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha">
@@ -526,7 +523,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 
 <h3 id="initsializatsiya-i-drayvery">Инициализация и драйверы</h3>
-
 <p>Для регистрации драйвера используется механизм <code>init()</code> и глобальный реестр в <code>database/sql</code>.</p>
 
 <div class="code-block" data-lang="go">
@@ -578,10 +574,8 @@ func main() {
 
 <hr />
 <h2 id="vnutrennee-ustroystvo-pula-soedineniy">Внутреннее устройство пула соединений</h2>
-
 <p>Понимание механики пула — это ключ к настройке производительности. Пул в <code>database/sql</code> — это сложная структура, управляющая состоянием множества горутин и сетевых соединений.</p>
 <h3 id="sostoyaniya-soedineniya-connstate">Состояния соединения (connState)</h3>
-
 <p>Каждое физическое соединение (<code>driver.Conn</code>) в пуле может находиться в одном из состояний:<br />
 1.  <strong>idle</strong>: Свободно, ожидает запроса в пуле.<br />
 2.  <strong>inUse</strong>: Выдано горутине для выполнения запроса.<br />
@@ -600,7 +594,6 @@ func main() {
 
 
 <h3 id="strategiya-vydachi-soedineniy">Стратегия выдачи соединений</h3>
-
 <p>Когда вы вызываете <code>db.QueryContext</code>, происходит следующее:<br />
 1.  <strong>Проверка <code>idle</code></strong>: Если в пуле есть свободное соединение, оно помечается как <code>inUse</code> и выдается вам.<br />
 2.  <strong>Создание нового</strong>: Если <code>idle</code> пусты, но <code>open &lt; maxOpen</code>, запускается создание нового (или оно берется из кэша созданных).<br />
@@ -637,10 +630,8 @@ flowchart TD
 
 <hr />
 <h2 id="zhiznennyy-tsikl-zaprosa-ot-koda-do-syscall">Жизненный цикл запроса: От кода до Syscall</h2>
-
 <p>Разберем путь данных при выполнении простого <code>SELECT</code>. Это важно для понимания задержек (latency) и накладных расходов.</p>
 <h3 id="1-podgotovka-i-kontekst">1. Подготовка и Контекст</h3>
-
 <p>Всегда используйте <code>Context</code>. Это стандарт де-факто для управления временем жизни запроса и отмены операций.</p>
 
 <div class="code-block" data-lang="go">
@@ -676,7 +667,6 @@ if err != nil {
 
 
 <h3 id="2-chtenie-dannykh-i-iteratsiya">2. Чтение данных и итерация</h3>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -718,7 +708,6 @@ if err := rows.Err(); err != nil {
 
 
 <h3 id="3-skanirovanie-i-allokatsii-escape-analysis">3. Сканирование и аллокации (Escape Analysis)</h3>
-
 <p>Метод <code>rows.Scan</code> принимает указатели <code>&amp;var</code>. Почему? Потому что драйвер должен записать данные, полученные из сети, в вашу память.</p>
 
 <aside class="callout callout-info" aria-label="Под капотом: Escape Analysis">
@@ -737,7 +726,6 @@ if err := rows.Err(); err != nil {
 
 <hr />
 <h2 id="tranzaktsii-upravlenie-sostoyaniem">Транзакции: Управление состоянием</h2>
-
 <p>Транзакция в <code>database/sql</code> привязывается к <strong>одному конкретному физическому соединению</strong> на все время своей жизни.</p>
 
 <div class="code-block" data-lang="go">
@@ -793,7 +781,6 @@ err = tx.Commit() // Фиксация изменений
 
 <hr />
 <h2 id="prepared-statements-pereispolzovanie-planov">Prepared Statements: Переиспользование планов</h2>
-
 <p>Подготовленные выражения (<code>Prepare</code>) полезны для безопасности (защита от SQL Injection) и производительности (БД парсит и планирует запрос один раз).</p>
 
 <div class="code-block" data-lang="go">
@@ -831,7 +818,6 @@ err = stmt.QueryRowContext(ctx, 123).Scan(&amp;name)
 
 <hr />
 <h2 id="obrabotka-oshibok-idiomaticheskiy-podkhod">Обработка ошибок: Идиоматический подход</h2>
-
 <p>В Go ошибки — это значения. В контексте БД важно различать типы ошибок.</p>
 
 <div class="code-block" data-lang="go">
@@ -901,9 +887,7 @@ func GetUser(ctx context.Context, db *sql.DB, id int) (*User, error) {
 
 <hr />
 <h2 id="proizvoditelnost-tyuning-i-mechanical-sympathy">Производительность: Тюнинг и Mechanical Sympathy</h2>
-
 <h3 id="nastroyka-pula-tuning">Настройка пула (Tuning)</h3>
-
 <p>Параметры по умолчанию (<code>0</code> — безлимит) опасны для продакшена.</p>
 
 <div class="code-block" data-lang="go">
@@ -935,7 +919,6 @@ db.SetConnMaxIdleTime(10 * time.Minute) // Как долго держать idle
 
 
 <h3 id="vliyanie-na-gc-i-allokatsii">Влияние на GC и аллокации</h3>
-
 <p>Каждый вызов <code>Query</code> и <code>Scan</code> создает аллокации:<br />
 1.  Слайс аргументов <code>[]driver.NamedValue</code>.<br />
 2.  Буферы для чтения из сети.<br />
@@ -943,7 +926,6 @@ db.SetConnMaxIdleTime(10 * time.Minute) // Как долго держать idle
 <p><strong>Совет:</strong> Используйте <code>rows.ColumnTypes()</code> для предсказуемого выделения памяти под сканирование, если вы знаете схему заранее и работаете в очень высоконагруженном контуре (хотя обычно это излишняя оптимизация).</p>
 <hr />
 <h2 id="sravnenie-databasesql-vs-orm-gorm-sqlc">Сравнение: database/sql vs ORM (GORM, sqlc)</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -995,7 +977,6 @@ db.SetConnMaxIdleTime(10 * time.Minute) // Как долго держать idle
 
 <hr />
 <h2 id="cheklist-gotovnost-k-prodakshenu">Чеклист: Готовность к продакшену</h2>
-
 <ol>
 <li>[ ] Используется <code>context.Context</code> во всех методах БД.</li>
 <li>[ ] <code>*sql.DB</code> создается один раз и передается через зависимости.</li>
@@ -1007,7 +988,6 @@ db.SetConnMaxIdleTime(10 * time.Minute) // Как долго держать idle
 </ol>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <p>Пакет <code>database/sql</code> предоставляет мощный и гибкий инструмент, но он требует уважения к своей механике. Понимание того, как управляются соединения, как контекст прерывает выполнение и как происходят аллокации памяти, отличает разработчика, который просто "пишет запросы", от инженера, способного построить надежную и масштабируемую систему хранения данных.</p>
 <p>В следующей статье мы углубимся в тему, которую лишь затронули здесь: детально разберем, как именно работает механизм пуллинга, какие стратегии существуют для управления <code>idle</code> и <code>inUse</code> соединениями, и как диагностировать проблемы с пулом с помощью метрик. Читайте далее: <a href="2-connection-pool.html" class="wikilink">2. Connection pool</a>.</p>
           </div>

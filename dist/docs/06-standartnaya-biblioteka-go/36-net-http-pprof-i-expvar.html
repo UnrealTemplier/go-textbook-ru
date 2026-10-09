@@ -300,7 +300,6 @@
 
           <div class="article-markdown">
             <h2 id="filosofiya-nablyudaemosti-i-diagnostiki-iz-korobki">Философия наблюдаемости и диагностики из коробки</h2>
-
 <p>В инженерной культуре Bell Labs всегда господствовало убеждение: программа, внутреннее состояние которой невозможно легко исследовать во время работы, подобна закрытому черному ящику. Когда система развернута на сотнях серверов под реальной нагрузкой, традиционные отладчики вроде GDB становятся бесполезными — они останавливают процесс и вызывают каскадный сбой всей распределенной архитектуры.</p>
 <p>Пакеты <code>net/http/pprof</code> и <code>expvar</code> предоставляют встроенный механизм наблюдаемости (observability) и отладки production-систем. Они позволяют извлекать метрики состояния рантайма, профилировать CPU, память и блокировки без перезапуска приложения или внедрения внешних агентов. Интеграция этих инструментов в стандартную библиотеку отражает философию Go: диагностика должна быть доступна из коробки, но разработчик несет полную ответственность за защиту этих эндпоинтов от несанкционированного доступа.</p>
 <p>Для инженера уровня Senior понимание <code>pprof</code> и <code>expvar</code> — это не просто умение открыть <code>http://localhost:6060</code>, а способность программно собирать дампы, настраивать частоту сэмплирования под нагрузку и интерпретировать результаты с учетом Mechanical Sympathy (влияние профилирования на кэш-линии, GC и планировщик).</p>
@@ -317,10 +316,8 @@
 
 
 <h2 id="under-the-hood-nethttppprof-semplirovanie-i-rantaym-instrumentatsiya">Under the hood. net/http/pprof: Сэмплирование и рантайм-инструментация</h2>
-
 <p><code>pprof</code> не мониторит каждую инструкцию CPU или каждую аллокацию. Это привело бы к падению производительности на порядки. Вместо этого используется <strong>вероятностное сэмплирование</strong> и <strong>инструментация рантайма</strong>.</p>
 <h3 id="cpu-profiling">CPU Profiling</h3>
-
 <p>При запросе <code>/debug/pprof/profile?seconds=30</code> рантайм настраивает системный таймер (<code>setitimer</code> на Linux, <code>CreateTimerQueueTimer</code> на Windows) для генерации сигнала <code>SIGPROF</code> ~100 раз в секунду. Каждый сигнал:<br />
 1. Приостанавливает выполнение текущей горутины.<br />
 2. Снимает стек вызовов (<code>runtime.Callers</code>).<br />
@@ -328,10 +325,8 @@
 4. Возвращает управление.</p>
 <p>Частота 100 Гц выбрана как баланс между детализацией и overhead (~5-10% CPU). При высокой нагрузке ядро ОС может коалесцировать сигналы, но рантайм Go компенсирует это математической экстраполяцией в профайлере.</p>
 <h3 id="heap-i-memory-profiling">Heap и Memory Profiling</h3>
-
 <p>Работает через <code>runtime.MemProfileRate</code>. По умолчанию равен <code>512 * 1024</code> (512 КБ). Это означает, что профилировщик отбирает в среднем одну аллокацию на каждые 512 КБ выделенной памяти (выборка пропорциональна объему, а не просто порядковому номеру аллокации). При запросе <code>/debug/pprof/heap</code> рантайм агрегирует записанные стеки и формирует protobuf-дамп. Установка <code>runtime.MemProfileRate = 1</code> включает запись каждой отдельной аллокации (100% точность), но увеличивает накладные расходы на <code>mallocgc</code>.</p>
 <h3 id="goroutine-i-block-profiles">Goroutine и Block Profiles</h3>
-
 <p><code>goroutine</code> профиль собирает состояние всех активных горутин из <code>runtime.allgs</code>. Это <strong>операция с остановкой мира (STW)</strong> на микросекунды, так как требуется безопасное чтение стеков. <code>block</code> и <code>mutex</code> профили используют атомарные счетчики в примитивах <code>sync</code>, записывая длительность блокировки только если она превысила порог <code>runtime.SetBlockProfileRate</code>.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -371,7 +366,6 @@ flowchart TD
 
 
 <h2 id="expvar-globalnyy-reestr-i-ogranicheniya-formata">expvar: Глобальный реестр и ограничения формата</h2>
-
 <p><code>expvar</code> предоставляет простой способ экспортировать скалярные метрики в формате JSON. Внутренне это структура <code>expvar.Map</code>, защищенная <code>sync.Mutex</code>, содержащая <code>map[string]expvar.Var</code>.</p>
 <p>При вызове <code>expvar.Publish("my_counter", counter)</code> значение регистрируется в глобальном реестре. Эндпоинт <code>/debug/vars</code> итерирует карту, вызывает метод <code>String()</code> у каждого значения и собирает JSON-ответ.</p>
 <p><strong>Критическое ограничение:</strong> <code>expvar</code> не поддерживает гистограммы, квантили, сложную агрегацию или теги. Он предназначен только для монотонных счетчиков (<code>expvar.Int</code>) и гаужей. Метод <code>String()</code> аллоцирует новую строку на каждый запрос <code>/debug/vars</code>, что при высокой частоте опроса мониторингом создает фоновое давление на GC.</p>
@@ -389,7 +383,6 @@ flowchart TD
 
 
 <h2 id="mechanical-sympathy-tsena-profilirovaniya-i-allokatsii">Mechanical Sympathy: Цена профилирования и аллокации</h2>
-
 <p>Профилирование — это не бесплатная операция. Понимание её стоимости необходимо для безопасного использования в продакшене.</p>
 <ol>
 <li><strong>CPU Overhead</strong>: <code>SIGPROF</code> вызывает контекстные переключения и прерывает конвейер CPU. При нагрузке &gt;50k RPS профилировщик может добавить 10-15% latency из-за сброса pipeline и кэш-промахов.</li>
@@ -397,7 +390,6 @@ flowchart TD
 <li><strong>Аллокации <code>expvar</code></strong>: Каждый запрос <code>/debug/vars</code> генерирует новый JSON. Если Prometheus или Grafana опрашивает эндпоинт каждые 5 секунд, аллокации накапливаются. Решается через прокси-кэш или переход на <code>prometheus/client_golang</code>, который использует zero-аллокационные текстовые протоколы.</li>
 </ol>
 <h3 id="idiomy-production-bezopasnosti">Идиомы production-безопасности</h3>
-
 <p>Никогда не выставляйте <code>/debug/</code> в публичную сеть. Используйте базовую аутентификацию, IP-фильтрацию или отдельный админский порт за firewall.</p>
 
 <div class="code-block" data-lang="go">
@@ -435,7 +427,6 @@ flowchart TD
 </div>
 
 <h2 id="lovushki-i-voprosy-s-sobesedovaniy">Ловушки и вопросы с собеседований</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -488,7 +479,6 @@ flowchart TD
 
 
 <h2 id="sravnenie-s-ekosistemami-drugikh-yazykov">Сравнение с экосистемами других языков</h2>
-
 <div class="table-container" role="region" aria-label="Таблица данных" tabindex="0"><table>
 <thead>
 <tr>
@@ -526,7 +516,6 @@ flowchart TD
 </tbody>
 </table></div>
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><code>net/http/pprof</code> использует вероятностное сэмплирование (~100 Гц) для CPU и <code>MemProfileRate</code> для кучи, минимизируя overhead.</li>
 <li><code>expvar</code> — простой реестр скалярных метрик с <code>sync.Mutex</code>. Не поддерживает гистограммы и создает аллокации при <code>/debug/vars</code>.</li>

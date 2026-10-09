@@ -438,13 +438,11 @@
 
           <div class="article-markdown">
             <h2 id="preodolevaya-predely-odnogo-servera">Преодолевая пределы одного сервера</h2>
-
 <p>В предыдущей главе (<a href="4-tranzaktsii-v-mysql.html" class="wikilink">4. Транзакции в MySQL</a>) мы детально исследовали, как движок InnoDB гарантирует свойства ACID и управляет сложнейшими блокировками на уровне одного физического узла. Однако в реальной жизни любой одиночный сервер базы данных — даже вооруженный десятками терабайт NVMe и терабайтами RAM в Buffer Pool — быстро упирается в непреложные законы физики: лимиты тактовой частоты CPU, пропускную способность шины памяти и потолок дисковых IOPS.</p>
 <p>Хуже того, одиночный сервер — это классическая единичная точка отказа (<strong>SPOF — Single Point of Failure</strong>). Сгоревшая материнская плата, обесточенная серверная стойка или авария в стойке ЦОД способны мгновенно парализовать весь бизнес. </p>
 <p>Для преодоления аппаратных ограничений и построения надежных высоконагруженных систем применяется <strong>Репликация (Replication)</strong> — механизм непрерывного, детерминированного копирования потока изменений с основного узла (<strong>Master / Source</strong>) на один или несколько подчиненных серверов (<strong>Replica / Replica Nodes</strong>). В экосистеме MySQL репликация исторически является фундаментальным фундаментом масштабирования операций чтения (Read Scaling), создания резервных копий и обеспечения катастрофоустойчивости (Disaster Recovery).</p>
 <hr />
 <h2 id="binarnyy-log-binlog-istochnik-istiny">Бинарный лог (Binlog): Источник истины</h2>
-
 <p>Прежде чем данные полетят по сетевому кабелю между дата-центрами, нам нужно ответить на фундаментальный вопрос: <em>в каком именно виде изменения фиксируются на диске для передачи?</em></p>
 
 <aside class="callout callout-interview" aria-label="Собеседование: Redo Log против Binlog">
@@ -463,7 +461,6 @@
 
 <p>Чтобы активировать репликацию, на мастере должен быть включен флаг <code>log_bin</code>. Любая транзакция, модифицирующая данные (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>, <code>ALTER</code>), в момент коммита атомарно регистрируется в файлах бинарного журнала.</p>
 <h3 id="formaty-binlog-evolyutsiya-i-kompromissy">Форматы Binlog: Эволюция и компромиссы</h3>
-
 <ol>
 <li><strong>Statement-Based Replication (SBR):</strong><br />
    В лог записывается исходный текст выполненного SQL-запроса (например: <code>UPDATE users SET status = 1 WHERE age &gt; 18</code>).<br />
@@ -490,7 +487,6 @@
 
 <hr />
 <h2 id="arkhitektura-i-potoki-replikatsii-mekhanika-pod-kapotom">Архитектура и потоки репликации: Механика под капотом</h2>
-
 <p>Классическая репликация MySQL опирается на модель <strong>Publish/Subscribe (Push/Pull)</strong> и реализуется согласованной работой трех системных потоков операционной системы:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -546,7 +542,6 @@ flowchart LR
 </ol>
 <hr />
 <h2 id="problema-otstavaniya-replication-lag-i-mnogopotochnyy-applier-mts">Проблема отставания (Replication Lag) и многопоточный Applier (MTS)</h2>
-
 <p>Исторически ахиллесовой пятой репликации MySQL был тот факт, что <strong>SQL Thread на реплике работал в один-единственный поток</strong>.</p>
 
 <aside class="callout callout-warning" aria-label="Ловушка / Gotcha: Бутылочное горлышко реплики">
@@ -563,7 +558,6 @@ flowchart LR
 
 
 <h3 id="spasenie-cherez-mechanical-sympathy-mts-i-logical-clock">Спасение через Mechanical Sympathy: MTS и Logical Clock</h3>
-
 <p>Чтобы устранить этот фундаментальный дисбаланс, в современных версиях MySQL появился механизм <strong>Multi-Threaded Slave / Multi-Threaded Applier (MTS)</strong>:<br />
 - В MySQL 5.7+ и MySQL 8.0 одиночный SQL Thread трансформировался в <strong>Coordinator-поток</strong>, управляющий пулом воркеров (<code>slave_parallel_workers</code> в 5.7 или <code>replica_parallel_workers</code> в 8.0).</p>
 <p>Но как параллельно исполнять зависимые транзакции на реплике и не нарушить хронологический порядок? Если транзакция 1 создала пользователя, а транзакция 2 сразу же списала с него деньги, воркеры не имеют права поменять их местами!</p>
@@ -574,7 +568,6 @@ flowchart LR
 4. Координатор на реплике видит: все транзакции с одинаковым <code>last_committed</code> полностью независимы! Он мгновенно распределяет их по свободным Worker-потокам, достигая десятков тысяч транзакций в секунду на реплике.</p>
 <hr />
 <h2 id="rezhimy-sinkhronizatsii-arkhitekturnye-trade-offs">Режимы синхронизации: Архитектурные Trade-offs</h2>
-
 <p>В распределенных системах мы неизбежно сталкиваемся с компромиссом между скоростью отклика (Latency) и надежностью хранения (Durability).</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -640,7 +633,6 @@ sequenceDiagram
 
 <hr />
 <h2 id="gtid-globalnye-identifikatory-tranzaktsiy">GTID: Глобальные идентификаторы транзакций</h2>
-
 <p>Исторически репликация в MySQL настраивалась по координатам файлов: <code>MASTER_LOG_FILE='mysql-bin.000142', MASTER_LOG_POS=48201</code>. Это было кошмаром системных инженеров: при падении мастера было крайне сложно понять, на какой именно позиции в разных файлах остановились подчиненные реплики, чтобы переключить их на нового лидера.</p>
 <p>Начиная с MySQL 5.6+, де-факто стандартом стал <strong>GTID (Global Transaction Identifier)</strong>.<br />
 Каждая закоммиченная транзакция получает уникальный на весь мир идентификатор вида:</p>
@@ -677,7 +669,6 @@ sequenceDiagram
 <p>Реплика сама сообщает мастеру список уже выполненных ею GTID-диапазонов (<code>Retrieved_Gtid_Set</code>), а мастер автоматически отсылает ей недостающие транзакции. Автоматический Failover (например, через Orchestrator или Patroni-подобные утилиты) с GTID стал простым и надежным.</p>
 <hr />
 <h2 id="inzheneriya-na-go-pattern-readwrite-split-i-read-after-write">Инженерия на Go: Паттерн Read/Write Split и Read-After-Write</h2>
-
 <p>В архитектуре Go-микросервисов масштабирование чтения реализуется разделением потоков запросов (<strong>Read/Write Splitting</strong>): все модифицирующие операции (<code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>) уходят на Master, а тяжелые выборки (<code>SELECT</code>) балансируются по пулу реплик.</p>
 <p>Однако асинхронная природа репликаций создает классическую проблему консистентности:</p>
 
@@ -700,7 +691,6 @@ sequenceDiagram
 
 
 <h3 id="idiomatichnyy-pul-s-marshrutizatsiey-zaprosov-v-go">Идиоматичный пул с маршрутизацией запросов в Go</h3>
-
 <p>Для решения этой проблемы в бэкенд закладывают абстракцию кластера и применяют паттерн <strong>"Sticky Master" (Липкий мастер)</strong>: если пользователь недавно внес изменения, его запросы на чтение временно (в течение 2–3 секунд) принудительно направляются на Master.</p>
 
 <div class="code-block" data-lang="go">
@@ -773,7 +763,6 @@ func (c *DBCluster) QueryWithAffinity(
 
 <hr />
 <h2 id="rezyume">Резюме</h2>
-
 <ol>
 <li><strong>Binlog (Server Layer)</strong> — фундамент репликации в MySQL. Для продакшена обязателен формат <strong>Row-Based Replication (ROW)</strong> в сочетании с глобальными идентификаторами транзакций (<strong>GTID</strong>).</li>
 <li>Репликация приводится в движение тремя системными потоками: <strong>Binlog Dump Thread</strong> (на мастере) отправляет байты по TCP, <strong>IO Thread</strong> (на реплике) сохраняет их в <strong>Relay Log</strong>, а <strong>SQL Thread</strong> накладывает изменения на локальный движок.</li>

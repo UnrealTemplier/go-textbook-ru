@@ -654,7 +654,6 @@
 — Брайан Керниган</p>
 </blockquote>
 <h2 id="lfu-cache-arkhitektura-o1-chastotnye-spiski-i-upravlenie-pamyatyu">LFU Cache: архитектура O(1), частотные списки и управление памятью</h2>
-
 <p>Least Frequently Used (LFU) кэш решает задачу вытеснения элементов, к которым обращались наименьшее количество раз. В отличие от LRU (<a href="3-lru-cache.html" class="wikilink">3. LRU Cache</a>), который ориентирован исключительно на временную локальность (recency), LFU оптимизирован под частотную локальность (frequency). Это делает его естественным выбором для рабочих нагрузок со стабильным ядром «горячих» данных: кэширование популярных каталогов товаров, часто запрашиваемых конфигураций сервисов, схем валидации или системных метаданных.</p>
 <p>Однако плата за частотный учет высока: реализация LFU с гарантированным временем выполнения операций $O(1)$ требует заметно более сложной композиции структур данных, чем LRU, и создает уникальные вызовы для планировщика Go, кэш-линий процессора и сборщика мусора.</p>
 
@@ -698,7 +697,6 @@ flowchart TD
 <p>В этой статье мы разберем, как достичь честного $O(1)$ при работе с частотами, почему наивные подходы порождают скрытые аллокации, как LFU взаимодействует с кэш-линиями CPU, как решается проблема «загрязнения кэша» (cache poisoning) через LFU-Aging и TinyLFU, и как написать эталонную потокобезопасную реализацию на Go.</p>
 <hr />
 <h2 id="1-algoritmicheskaya-mekhanika-pochemu-o1-trebuet-dvukh-khesh-tablits">1. Алгоритмическая механика: почему O(1) требует двух хеш-таблиц</h2>
-
 <p>Наивный подход к LFU заключается в хранении счетчика частоты внутри элемента и использовании очереди с приоритетом (Min-Heap) или сканировании среза при эвикции. Но очередь с приоритетом дает сложность обновления $O(\log N)$, а сканирование — $O(N)$. </p>
 <p>Чтобы получить гарантированное $O(1)$ для <code>Get</code> и <code>Put</code>, нам требуется двухуровневая координатная сетка:<br />
 1. <code>nodeMap: map[K]*Node</code> — мгновенный поиск узла по ключу за $O(1)$.<br />
@@ -732,7 +730,6 @@ flowchart TD
 
 <hr />
 <h2 id="2-idiomatichnaya-realizatsiya-na-go">2. Идиоматичная реализация на Go</h2>
-
 <p>Для корректной и надежной реализации структуры связного списка применим технику фиктивных граничных узлов (<code>dummy Head</code> и <code>dummy Tail</code>). Это полностью избавляет алгоритм от проверки граничных условий <code>node == nil</code>, <code>node.Prev == nil</code> и защищает от случайных паник при разыменовании указателей.</p>
 
 <div class="code-block" data-lang="go">
@@ -919,7 +916,6 @@ func (c *LFUCache) incrementFreq(node *Node) {
 
 <hr />
 <h2 id="3-pod-kapotom-pamyat-gc-i-apparatnye-ogranicheniya">3. Под капотом: память, GC и аппаратные ограничения</h2>
-
 <h3 id="escape-analysis-i-allokatsii">Escape Analysis и аллокации</h3>
 <p>Каждый вызов <code>Put</code> для нового ключа порождает минимум три объекта в динамической памяти:<br />
 1. Структура <code>*Node</code> (56 байт на 64-битной платформе с полями указателей и строкой).<br />
@@ -947,7 +943,6 @@ func (c *LFUCache) incrementFreq(node *Node) {
 
 <hr />
 <h2 id="4-problema-zagryazneniya-kesha-cache-poisoning-i-sovremennye-resheniya">4. Проблема «загрязнения кэша» (Cache Poisoning) и современные решения</h2>
-
 <p>Классический LFU страдает фундаментальным недостатком, из-за которого в чистом виде его редко используют в продакшене без модификаций: <strong>проблема накопленной частоты (Frequency Starvation / Cache Poisoning)</strong>.</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -985,7 +980,6 @@ flowchart LR
 </ol>
 <hr />
 <h2 id="5-shardirovanie-i-mnogopotochnost">5. Шардирование и многопоточность</h2>
-
 <p>Поскольку метод <code>Get</code> в LFU обязан модифицировать частоту и перелинковывать узлы в списках, он является <strong>мутирующей операцией</strong>. Применение <code>sync.RWMutex</code> с вызовом <code>RLock()</code> для <code>Get</code> невозможно — требуется полноценный <code>Lock()</code>.</p>
 <p>Чтобы исключить глобальный контеншн на единственном мьютексе, кэш шардируют по ключу:</p>
 
@@ -1036,7 +1030,6 @@ func (s *ShardedLFU) Put(key string, value any) {
 <hr />
 <h2 id="6-voprosy-dlya-sobesedovaniya">6. Вопросы для собеседования</h2>
 
-
 <aside class="callout callout-interview" aria-label="Вопрос с собеседования">
   <header class="callout-header">
     <span class="callout-icon" aria-hidden="true">🎯</span>
@@ -1064,7 +1057,6 @@ func (s *ShardedLFU) Put(key string, value any) {
 
 <hr />
 <h2 id="rezyume">Резюме</h2>
-
 <ol>
 <li>Реализация LFU за $O(1)$ требует двух хеш-таблиц (<code>nodeMap</code> и <code>freqMap</code>) и глобального отслеживания <code>minFreq</code>.</li>
 <li>Внутри каждой корзины частот элементы связываются в двусвязный список для разрешения конфликтов по политике LRU.</li>

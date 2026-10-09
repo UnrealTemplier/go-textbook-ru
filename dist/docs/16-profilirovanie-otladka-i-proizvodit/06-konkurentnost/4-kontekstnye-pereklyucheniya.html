@@ -402,7 +402,6 @@
 
           <div class="article-markdown">
             <h2 id="kontekstnye-pereklyucheniya-tsena-mnogozadachnosti">Контекстные переключения: цена многозадачности</h2>
-
 <p>В предыдущих главах мы заложили прочный теоретический фундамент конкурентности в Go:<br />
 - изучили фундаментальную модель G-M-P (<a href="1-scheduler-go-g-m-p-model.html" class="wikilink">1. Scheduler Go. G-M-P модель</a>, <a href="1-scheduler-go-g-m-p-model.html" class="wikilink">1. Scheduler Go. G-M-P модель</a>);<br />
 - заглянули под капот структуры <code>g</code> и динамического стека горутины (<a href="2-goroutines-pod-kapotom.html" class="wikilink">2. Goroutines под капотом</a>);<br />
@@ -414,7 +413,6 @@
 <p>Senior-инженер обязан досконально понимать различия между этими уровнями, знать их точную аппаратную стоимость и уметь вовремя диагностировать ситуации, когда система начинает тратить больше энергии на переключение задач, чем на сами вычисления. В этой лекции мы препарируем контекстные переключения на атомарном уровне, научимся измерять их с помощью <code>pidstat/vmstat</code>, pprof и execution tracer, а также подготовимся к анализу примитивов синхронизации (<a href="5-sync-primitives-i-ikh-stoimost.html" class="wikilink">5. Sync primitives и их стоимость</a>).</p>
 <hr />
 <h2 id="dva-vida-kontekstnykh-pereklyucheniy-v-go">Два вида контекстных переключений в Go</h2>
-
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
   <figcaption class="mermaid-header">
@@ -461,7 +459,6 @@ flowchart TD
 
 
 <h3 id="1-pereklyuchenie-mezhdu-gorutinami-userspace-context-switch">1. Переключение между горутинами (userspace context switch)</h3>
-
 <p>Это сверхлегковесное переключение, которое планировщик Go выполняет собственными силами внутри пространства пользователя, не беспокоя ядро операционной системы.</p>
 <p>Оно происходит в следующих штатных точках:<br />
 - <strong>Добровольная уступка процессора:</strong> горутина вызывает <code>runtime.Gosched()</code>.<br />
@@ -475,7 +472,6 @@ flowchart TD
 4. Исполнение продолжается на том же самом потоке <code>M</code>, но с другим стеком и новым программным счетчиком.</p>
 <p>Это <strong>чистая операция в пространстве пользователя (Userspace)</strong>: нет перехода из Ring 3 в Ring 0, нет дорогостоящих системных вызовов, нет смены адресного пространства MMU и нет аппаратного сброса TLB.</p>
 <h3 id="2-pereklyuchenie-potokov-os-kernel-level-context-switch">2. Переключение потоков ОС (kernel-level context switch)</h3>
-
 <p>Это тяжеловесное переключение, выполняемое планировщиком операционной системы. В Go-сервисах оно происходит, когда:<br />
 - Поток <code>M</code> выполняет блокирующий системный вызов (например, синхронное дисковое чтение файла), застревая в ядре.<br />
 - Количество активных потоков <code>M</code> превысило число физических ядер CPU, и ядро Linux вынуждено квантовать их время.<br />
@@ -489,10 +485,8 @@ flowchart TD
 <p>Сравнение масштаба затрат: <strong>десятки наносекунд</strong> для горутин против <strong>единиц микросекунд</strong> для потоков ядра (разница в 50–100 раз!).</p>
 <hr />
 <h2 id="struktura-zatrat-takty-i-kesh">Структура затрат: такты и кэш</h2>
-
 <p>Чтобы почувствовать физику процесса, декомпозируем стоимость переключения по процессорным тактам (CPU Cycles) на современном процессоре с частотой 3.0 ГГц (1 такт $\approx$ 0.33 нс):</p>
 <h3 id="userspace-pereklyuchenie-gorutiny">Userspace-переключение горутины</h3>
-
 <ul>
 <li><strong>Сохранение и восстановление регистров <code>gobuf</code>:</strong> Всего 10–14 регистров общего назначения. Выполняется ассемблерной процедурой <code>gogo</code> за 15–25 тактов CPU (~5–8 нс).</li>
 <li><strong>Логика диспетчеризации <code>schedule()</code>:</strong> Если локальная очередь <code>runq</code> не пуста, выбор следующей задачи занимает 30–50 тактов (~10–15 нс).</li>
@@ -500,7 +494,6 @@ flowchart TD
 <li><strong>Итого:</strong> в штатных условиях переключение горутины укладывается в <strong>50–200 наносекунд</strong>.</li>
 </ul>
 <h3 id="kernel-pereklyuchenie-potoka">Kernel-переключение потока</h3>
-
 <ul>
 <li><strong>Переход Ring 3 $\leftrightarrow$ Ring 0:</strong> Аппаратные инструкции <code>SYSCALL</code>/<code>SYSRET</code> — около 100–150 тактов (~30–50 нс).</li>
 <li><strong>Сохранение расширенного контекста:</strong> Дамп сотен байт (включая AVX/SSE) — 150–300 тактов (~50–100 нс).</li>
@@ -510,7 +503,6 @@ flowchart TD
 </ul>
 <hr />
 <h2 id="kogda-pereklyucheniy-stanovitsya-slishkom-mnogo">Когда переключений становится слишком много</h2>
-
 <p>Контекстное переключение — это спасательный круг многозадачности. Но когда частота переключений переходит критическую черту, система сваливается в режим взаимного торможения (<strong>Context Switch Thrashing</strong>):</p>
 <ol>
 <li><strong>Прямой налог на CPU (Scheduler Overhead):</strong><br />
@@ -554,10 +546,8 @@ flowchart TD
 
 <hr />
 <h2 id="izmerenie-kontekstnykh-pereklyucheniy">Измерение контекстных переключений</h2>
-
 <p>Инженерный протокол локализации аномалий переключения включает как внутренние инструменты Go, так и системную телеметрию Linux:</p>
 <h3 id="1-godebugschedtrace">1. GODEBUG=schedtrace</h3>
-
 <p>Запуск процесса с трассировкой планировщика:</p>
 
 <div class="code-block" data-lang="bash">
@@ -574,19 +564,15 @@ flowchart TD
 
 <p>Если метрика <code>idleprocs</code> стабильно равна нулю (<code>idleprocs=0</code>), а глубина глобальной очереди <code>runqueue</code> непрерывно растет, горутины проводят слишком много времени в очередях в ожидании переключения: ядер CPU критически не хватает.</p>
 <h3 id="2-debugpprofgoroutine">2. /debug/pprof/goroutine</h3>
-
 <p>Эндпоинт <code>/debug/pprof/goroutine?debug=2</code> выдает моментальный срез всех сопрограмм. Если десятки тысяч горутин находятся в статусе <code>_Grunnable</code> при 100% загрузке процессора — вы имеете дело с избытком контекстных переключений и дефицитом квантов времени.</p>
 <h3 id="3-profilirovshchik-blokirovok-i-myuteksov">3. Профилировщик блокировок и мьютексов</h3>
-
 <p>Инструменты <a href="../08-runtime-i-instrumenty/5-block-profile.html" class="wikilink">5. block profile</a> (<code>/debug/pprof/block</code>) и <a href="../08-runtime-i-instrumenty/6-mutex-profile.html" class="wikilink">6. mutex profile</a> (<code>/debug/pprof/mutex</code>) показывают, где именно горутины блокируются, отдавая управление через <code>gopark</code>. Ликвидация contention на мьютексах автоматически снижает частоту переключений.</p>
 <h3 id="4-execution-tracer">4. Execution tracer</h3>
-
 <p>Утилита <code>go tool trace</code> (<a href="../08-runtime-i-instrumenty/3-execution-tracer.html" class="wikilink">3. execution tracer</a>) визуализирует переключения с ювелирной точностью:<br />
 - полоса <strong>Goroutines</strong> наглядно показывает, сколько времени задачи проводят в статусе <code>Runnable</code> перед стартом;<br />
 - подсвечиваются отрезки принудительного вытеснения по преемпции;<br />
 - отображаются миграции горутин между процессорами <code>Proc</code>, вызванные Work Stealing.</p>
 <h3 id="5-sistemnye-metriki-os-linux">5. Системные метрики ОС (Linux)</h3>
-
 <p>Для анализа переключений на уровне ядра используются стандартные утилиты Linux:</p>
 <ol>
 <li><strong><code>vmstat 1</code> или <code>sar -w 1</code>:</strong><br />
@@ -599,7 +585,6 @@ flowchart TD
 <p>Если при <code>GOMAXPROCS</code>, равном числу ядер, утилита <code>pidstat/vmstat</code> фиксирует аномально высокое число недобровольных переключений <code>nvcswch/s</code>, это признак того, что процесс конкурирует за ядра с другими процессами на сервере или страдает от раздутого пула системных потоков <code>M</code>.</p>
 <hr />
 <h2 id="mechanical-sympathy-kesh-i-tlb-pri-pereklyucheniyakh">Mechanical Sympathy: кэш и TLB при переключениях</h2>
-
 <p>С точки зрения кремниевой микроархитектуры центрального процессора контекстное переключение — это тяжелый шок для вычислительного конвейера:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -649,7 +634,6 @@ flowchart LR
 <p>Именно поэтому частые переключения контекста превращают вычислительный (CPU-bound) алгоритм в алгоритм, ограниченный задержками оперативной памяти (Memory-bound).</p>
 <hr />
 <h2 id="strategii-minimizatsii-nakladnykh-raskhodov-na-pereklyucheniya">Стратегии минимизации накладных расходов на переключения</h2>
-
 <ol>
 <li><strong>Ограничение параллелизма (Bounded Concurrency):</strong><br />
    Откажитесь от неконтролируемого создания сопрограмм <code>go handle()</code>. Используйте пулы воркеров или паттерн «семафор» через буферизованный канал:<br />
@@ -668,10 +652,8 @@ flowchart LR
 </ol>
 <hr />
 <h2 id="primer-vliyanie-neogranichennogo-spawna-na-pereklyucheniya">Пример: влияние неограниченного spawn'а на переключения</h2>
-
 <p>Сравним два подхода к реализации сетевого обработчика при нагрузке 50 000 RPS:</p>
 <h3 id="bez-pula-antipattern-unbounded-spawn">Без пула (Антипаттерн: Unbounded Spawn)</h3>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -693,7 +675,6 @@ flowchart LR
 <li>Планировщик тратит колоссальное время на диспетчеризацию, утилита <code>schedtrace</code> рапортует о гигантском значении <code>runqueue</code>, а кэш процессора вымывается. Задержка p99 взлетает в стратосферу.</li>
 </ul>
 <h3 id="s-pulom-pattern-bounded-concurrency-semaphore">С пулом (Паттерн: Bounded Concurrency Semaphore)</h3>
-
 
 <div class="code-block" data-lang="go">
   <header class="code-header">
@@ -722,7 +703,6 @@ func handler(w http.ResponseWriter, r *http.Request) {
 </ul>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ul>
 <li>В Go существуют два уровня контекстных переключений:<br />
   1. <strong>Userspace</strong> (горутины, смена через <code>gopark</code>/<code>gogo</code>, стоимость <strong>~50–200 нс</strong>, без системных вызовов ядра);<br />

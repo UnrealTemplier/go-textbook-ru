@@ -296,7 +296,6 @@
 
           <div class="article-markdown">
             <h2 id="dinamicheskaya-priroda-mikroservisov-i-problema-marshrutizatsii">Динамическая природа микросервисов и проблема маршрутизации</h2>
-
 <p>В классическую эпоху системного администрирования сетевые адреса были железобетонными константами: база данных жила на сервере <code>db.internal:5432</code>, а кэш — на соседней машине <code>cache.internal:6379</code>. Адреса серверов можно было записать в конфигурационный файл или даже приклеить малярным скотчем на серверную стойку в датацентре.</p>
 <p>В современной микросервисной парадигме и контейнерной оркестрации (Kubernetes, Nomad, AWS ECS) экземпляры сервисов рождаются и умирают ежеминутно: автомасштабирование по нагрузке (HPA), rolling update деплои, выселение подов (eviction) из-за нехватки памяти превращают IP-адрес пода в эфемерную сущность, живущую порой всего несколько минут. Захардкоженные конфиги или DNS-записи с долгим TTL приводят к <code>connection refused</code> и <code>timeout</code> при каждом деплое.</p>
 <p><strong>Service Discovery (SD)</strong> решает фундаментальную задачу динамического обнаружения доступных эндпоинтов: как найти живых адресатов в постоянно меняющемся кластере? Для Go-разработчика это не просто абстракция, а критический слой, напрямую влияющий на <code>net/http.Transport</code>, пулы соединений и время отклика.</p>
@@ -347,7 +346,6 @@ flowchart TD
 
 <hr />
 <h2 id="arkhitekturnye-patterny-client-side-vs-server-side">Архитектурные паттерны: Client-Side vs Server-Side</h2>
-
 <p>Существует два фундаментальных подхода к балансировке и обнаружению:</p>
 
 <figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">
@@ -417,7 +415,6 @@ flowchart LR
 
 <hr />
 <h2 id="dns-kak-bazovyy-mekhanizm-discovery-v-go">DNS как базовый механизм discovery в Go</h2>
-
 <p>Kubernetes и многие облачные провайдеры реализуют SD через DNS. При запросе <code>svc.default.svc.cluster.local</code> CoreDNS для обычного Service возвращает один виртуальный <code>ClusterIP</code> (балансировку между подами затем делает kube-proxy на уровне L4), а список IP подов отдаёт только headless-сервис (<code>clusterIP: None</code>). Go использует встроенный <code>net.Resolver</code> для преобразования имени в IP.</p>
 
 <aside class="callout callout-info" aria-label="Под капотом">
@@ -458,7 +455,6 @@ func NewResolver() *net.Resolver {
 
 <hr />
 <h2 id="balansirovka-nagruzki-algoritmy-i-realizatsiya">Балансировка нагрузки: алгоритмы и реализация</h2>
-
 <p>В Go нет встроенного LB-модуля для списка бэкендов. Мы реализуем его через <code>net/http.RoundTripper</code> или кастомный <code>DialContext</code>.</p>
 <p>Основные алгоритмы:<br />
 * <strong>Round Robin</strong>: Простой, но уязвим к <code>cache stampede</code> и неравномерной загрузке.<br />
@@ -560,7 +556,6 @@ func (b *ServiceBalancer) NextEndpoint() (string, error) {
 
 <hr />
 <h2 id="health-checks-i-graceful-degradation">Health Checks и graceful degradation</h2>
-
 <p>Discovery бесполезен без валидации состояния бэкенда. Пассивные health checks (ошибки на уровне TCP/HTTP) приводят к отправке трафика на "больные" инстансы до таймаута соединения. Активные checks (polling <code>/health</code>) требуют собственного цикла.</p>
 <p>В Go это реализуется через <code>http.Client</code> с кастомным <code>CheckRedirect</code> и <code>Transport.DialContext</code>, либо через отдельный <code>goroutine</code> с <code>time.Ticker</code>. При падении check'а инстанс временно исключается из пула.</p>
 
@@ -593,7 +588,6 @@ func (b *ServiceBalancer) dialWithHealth(ctx context.Context, network, addr stri
 
 <hr />
 <h2 id="go-spetsifika-transport-connection-pooling-i-setevoy-stek">Go-специфика: Transport, connection pooling и сетевой стек</h2>
-
 <p><code>net/http.Transport</code> — это ядро сетевого взаимодействия в Go. Он управляет пулом соединений через <code>netpoller</code> (epoll на Linux, kqueue на macOS/BSD). </p>
 <p>Когда DNS меняет IP, старое соединение (<code>net.Conn</code>) не инвалидируется автоматически. Go продолжает использовать его до <code>IdleConnTimeout</code> или пока оно не упадет. Это вызывает <strong>TCP state mismatch</strong>: клиент держит <code>ESTABLISHED</code> соединение, а сервер уже закрыл его (или переназначил порт), что приводит к <code>use of closed network connection</code> или <code>broken pipe</code>.</p>
 
@@ -654,7 +648,6 @@ sequenceDiagram
 4. При <code>IdleConnTimeout</code> или <code>MaxIdleConns</code> соединение закрывается через <code>conn.Close()</code>, что освобождает FD и кэш-линии.</p>
 <hr />
 <h2 id="itog">Итог</h2>
-
 <ol>
 <li><strong>Service Discovery</strong> в Go чаще реализуется через DNS или легковесные клиенты (Consul/etcd), а не тяжелые фреймворки.</li>
 <li><strong>Client-Side LB</strong> дает контроль, но требует ручной реализации health checks и инвалидации кэша. <strong>Server-Side</strong> (Envoy/K8s) снимает нагрузку с кода, но добавляет latency.</li>
