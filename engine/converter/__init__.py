@@ -543,7 +543,7 @@ class MarkdownConverter:
         Улучшение блоков кода: добавление шапки с языком и кнопкой копирования.
         Поддерживает как блоки с явным языком, так и блоки без языка (text/diagram).
         """
-        pattern = re.compile(r'<pre><code(?:\s+class="language-([a-zA-Z0-9_-]+)")?>(.*?)</code></pre>', re.DOTALL)
+        pattern = re.compile(r'<pre><code(?:\s+class="language-([\w#.+-]+)")?>(.*?)</code></pre>', re.DOTALL)
 
         def repl(match):
             lang_match = match.group(1)
