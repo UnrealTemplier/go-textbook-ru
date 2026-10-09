@@ -121,7 +121,7 @@ def build(
 
     start_time = time.time()
     print("=====================================================================")
-    print("🚀 Старт сборки Инженерной веб-энциклопедии бэкенда (Go Workout Style)")
+    print("🚀 Старт сборки книги (html-textbook-engine)")
     print(f"📌 Версия книги: v{project_version}")
     print("=====================================================================")
 
@@ -155,13 +155,12 @@ def build(
     themes_list = build_themed_css(engine_assets, dist_assets)
     generate_search_data_js(all_articles, dist_dir)
     
-    # Копирование favicon в корень dist/ и в dist/assets/
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    for fav in ["favicon.svg", "favicon.ico"]:
-        src_fav = os.path.join(repo_root, fav)
-        if os.path.exists(src_fav):
-            shutil.copy2(src_fav, os.path.join(dist_dir, fav))
-            shutil.copy2(src_fav, os.path.join(dist_assets, fav))
+    # Копирование фавиконок книги в корень dist/ и в dist/assets/
+    for fav in [config.branding.favicon_svg, config.branding.favicon_ico]:
+        if fav:
+            src_fav = config.path(fav)
+            shutil.copy2(src_fav, os.path.join(dist_dir, os.path.basename(fav)))
+            shutil.copy2(src_fav, os.path.join(dist_assets, os.path.basename(fav)))
     print("      Ассеты, иконки favicon и файл search-data.js успешно развернуты.")
 
     # 3. Конвертация Markdown и генерация HTML страниц
@@ -221,10 +220,10 @@ def build(
     print("=====================================================================")
 
 def main():
-    parser = argparse.ArgumentParser(description="Сборщик Инженерной веб-энциклопедии бэкенда")
-    parser.add_argument("--all", action="store_true", help="Собрать все 1 413 статей")
+    parser = argparse.ArgumentParser(description="Сборка книги движком html-textbook-engine")
+    parser.add_argument("--all", action="store_true", help="Собрать все статьи")
     parser.add_argument("--pilot", action="store_true", help="Собрать пилотную версию (первые 15 статей Модуля 1)")
-    parser.add_argument("--module", type=int, help="Собрать конкретный номер модуля (1..22)")
+    parser.add_argument("--module", type=int, help="Собрать конкретный номер модуля")
     parser.add_argument("--limit", type=int, help="Ограничить количество собираемых статей")
     parser.add_argument("--book", default=None, help="Путь к book.toml (по умолчанию ./book.toml)")
     parser.add_argument("--sources", default=None, help="Путь к исходникам (по умолчанию content.root из book.toml)")

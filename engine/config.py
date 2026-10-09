@@ -64,12 +64,54 @@ class NavigationConfig:
 
 
 @dataclass
+class BrandingConfig:
+    # Пути — относительно каталога book.toml; SVG вставляются в страницу как есть
+    logo_icon_svg_file: str = ""
+    logo_title_svg_file: str = ""
+    logo_title_text: str = ""
+    logo_sub: str = ""
+    logo_aria_label: str = ""
+    favicon_ico: str = ""
+    favicon_svg: str = ""
+
+
+@dataclass
+class ArticlePageConfig:
+    # Строки с суффиксом _html вставляются как HTML без экранирования
+    title_suffix_html: str = ""
+    # {title} — экранированное название статьи
+    meta_description_html: str = "{title}"
+    footer_html: List[str] = field(default_factory=list)
+
+
+@dataclass
+class IndexPageConfig:
+    # Подстановки: {modules}, {articles}, {articles_grouped} («1 413»), {mermaid}
+    title_html: str = ""
+    meta_description_html: str = ""
+    hero_badge_html: str = ""
+    hero_title_html: str = ""
+    quote_html: str = ""
+    quote_author_html: str = ""
+    search_placeholder: str = ""
+    stats: List[Dict[str, str]] = field(default_factory=list)          # [{value, label}]
+    catalog_title_html: str = ""
+    catalog_sub_html: str = ""
+    roadmap_title_html: str = ""
+    roadmap_steps: List[Dict[str, str]] = field(default_factory=list)  # [{badge, title_html, text_html}]
+    footer_html: List[str] = field(default_factory=list)
+
+
+@dataclass
 class BookConfig:
     project: ProjectConfig = field(default_factory=ProjectConfig)
     content: ContentConfig = field(default_factory=ContentConfig)
     slug: SlugConfig = field(default_factory=SlugConfig)
     callouts: CalloutsConfig = field(default_factory=CalloutsConfig)
     navigation: NavigationConfig = field(default_factory=NavigationConfig)
+    branding: BrandingConfig = field(default_factory=BrandingConfig)
+    article_page: ArticlePageConfig = field(default_factory=ArticlePageConfig)
+    index_page: IndexPageConfig = field(default_factory=IndexPageConfig)
     # Каталог, относительно которого заданы пути конфига (каталог book.toml)
     root_dir: str = "."
 
@@ -120,6 +162,12 @@ def _validate(cfg: BookConfig) -> None:
     if not (isinstance(sub, (list, tuple)) and len(sub) == 2):
         raise ConfigError("slug.subsection: ожидается пара длин [N, M]")
     cfg.slug.subsection = tuple(sub)
+    for i, st in enumerate(cfg.index_page.stats):
+        if not isinstance(st, dict) or set(st) != {"value", "label"}:
+            raise ConfigError(f"index_page.stats[{i}]: ожидаются ключи value и label")
+    for i, st in enumerate(cfg.index_page.roadmap_steps):
+        if not isinstance(st, dict) or set(st) != {"badge", "title_html", "text_html"}:
+            raise ConfigError(f"index_page.roadmap_steps[{i}]: ожидаются ключи badge, title_html, text_html")
     if cfg.navigation.reading_time.method != "bytes":
         raise ConfigError("navigation.reading_time.method: поддерживается только 'bytes'")
 
@@ -139,6 +187,14 @@ def load_config(path: Optional[str] = None) -> BookConfig:
     cfg.root_dir = os.path.dirname(os.path.abspath(path))
     _validate(cfg)
     return cfg
+
+
+def read_text_asset(cfg: BookConfig, rel: str) -> str:
+    """Текстовый ассет книги (например, SVG логотипа) без завершающих переводов строки."""
+    if not rel:
+        return ""
+    with open(cfg.path(rel), encoding="utf-8") as fp:
+        return fp.read().rstrip("\n")
 
 
 def canonicalize_title(title: str, replacements) -> str:

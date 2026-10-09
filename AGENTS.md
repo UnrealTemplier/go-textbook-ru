@@ -91,14 +91,14 @@ go-textbook/
 │       │   └── paper.css      # [data-theme="paper"] CSS Custom Properties
 │       ├── style.css      # Дизайн-система: :root-токены, компонентные правила (без блоков тем)
 │       ├── main.js        # Клиентская логика (Vanilla JS, без фреймворков)
-│       ├── favicon.ico / favicon.svg  # Копии иконок (сборщик берёт иконки из корня репозитория)
 │       └── vendor/        # Локальные вендорные библиотеки
 │           ├── prism-bundle.min.js    # Prism + языки (подключается страницами статей)
 │           ├── prism*.min.js/.css     # Исходные модули Prism (копируются, но страницами не подключаются)
 │           ├── mermaid.min.js         # Mermaid 10.9.1
 │           └── katex/                 # katex.min.js/.css, contrib/auto-render.min.js, fonts/
-├── book.toml              # Конфигурация книги для движка: версия, storage_prefix, длины slug, канонические названия, клише, выноски, время чтения
+├── book.toml              # Конфигурация книги для движка: версия, storage_prefix, slug, канонические названия, клише, выноски, время чтения, логотип и фавиконки, тексты страниц и главной
 ├── book/                  # Слой книги go-textbook (не ядро)
+│   ├── assets/            # Ассеты книги: logo-icon.svg, logo-go.svg (пути — в book.toml [branding])
 │   ├── tests/             # Книжные тесты: генератор воспроизводит dist/, маска кода на корпусе, см. § 3.3а
 │   └── tools/
 │       └── verify_editorial.py  # Верификация авторской редактуры ДО и ПОСЛЕ, см. § 3.3
@@ -107,7 +107,7 @@ go-textbook/
 ├── .github/workflows/
 │   └── pages.yml          # Деплой каталога dist/ на GitHub Pages при push в main (без сборки в CI)
 ├── dist/                  # Скомпилированный статический сайт (артефакт, коммитится в Git)
-├── favicon.ico / favicon.svg  # Иконки портала (источник для dist/ и dist/assets/)
+├── favicon.ico / favicon.svg  # Иконки портала (book.toml [branding]; сборка копирует их в dist/ и dist/assets/)
 ├── README.md              # Публичная витрина проекта
 ├── requirements.txt       # Зависимость сборки: markdown>=3.10,<3.11
 └── AGENTS.md              # Архитектурный регламент и операционные инструкции для AI-агентов

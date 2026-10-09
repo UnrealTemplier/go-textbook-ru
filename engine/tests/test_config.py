@@ -48,10 +48,25 @@ class LoadConfigTest(unittest.TestCase):
             '[slug]\nsubsection = [1]\n',
             '[navigation.reading_time]\nmethod = "words"\n',
             '[project\n',
+            '[index_page]\nstats = [{ value = "1" }]\n',
+            '[index_page]\nroadmap_steps = [{ badge = "1", title_html = "t" }]\n',
+            '[branding]\nlogo = "x"\n',
         ]
         for text in bad:
             with self.assertRaises(ConfigError, msg=text):
                 self.load(text)
+
+    def test_text_asset_and_fill_counts(self):
+        from engine.config import read_text_asset
+        from engine.template import fill_counts
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "logo.svg"), "w", encoding="utf-8") as fp:
+                fp.write("<svg/>\n\n")
+            cfg = BookConfig(root_dir=tmp)
+            self.assertEqual(read_text_asset(cfg, "logo.svg"), "<svg/>")
+            self.assertEqual(read_text_asset(cfg, ""), "")
+        self.assertEqual(fill_counts("{modules} из {articles_grouped}", {"modules": 22, "articles_grouped": "1 413"}),
+                         "22 из 1 413")
 
     def test_missing_default_file_gives_defaults(self):
         cwd = os.getcwd()

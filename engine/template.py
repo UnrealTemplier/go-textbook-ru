@@ -9,7 +9,7 @@ import re
 import html
 import json
 from typing import Dict, Any, List, Optional
-from .config import BookConfig
+from .config import BookConfig, read_text_asset
 from .scanner import Article
 
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
@@ -80,16 +80,6 @@ def _load_themes_manifest():
             {"key": "dark",  "label": "Dark",  "icon": "moon"},
         ]
 
-GO_LOGO_SVG = (
-    '<svg class="logo-go-icon" viewBox="0 42 165 82" fill="#00ADD8" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
-    '<g transform="translate(9, 46)" fill="#00ADD8" fill-rule="evenodd">'
-    '<path d="m74.1 22.3c-6.3 1.6-10.6 2.8-16.8 4.4-1.5.4-1.6.5-2.9-1-1.5-1.7-2.6-2.8-4.7-3.8-6.3-3.1-12.4-2.2-18.1 1.5-6.8 4.4-10.3 10.9-10.2 19 .1 8 5.6 14.6 13.5 15.7 6.8.9 12.5-1.5 17-6.6.9-1.1 1.7-2.3 2.7-3.7-3.6 0-8.1 0-19.3 0-2.1 0-2.6-1.3-1.9-3 1.3-3.1 3.7-8.3 5.1-10.9.3-.6 1-1.6 2.5-1.6h36.4c-.2 2.7-.2 5.4-.6 8.1-1.1 7.2-3.8 13.8-8.2 19.6-7.2 9.5-16.6 15.4-28.5 17-9.8 1.3-18.9-.6-26.9-6.6-7.4-5.6-11.6-13-12.7-22.2-1.3-10.9 1.9-20.7 8.5-29.3 7.1-9.3 16.5-15.2 28-17.3 9.4-1.7 18.4-.6 26.5 4.9 5.3 3.5 9.1 8.3 11.6 14.1.6.9.2 1.4-1 1.7z"/>'
-    '<path d="m107.2 77.6c-9.1-.2-17.4-2.8-24.4-8.8-5.9-5.1-9.6-11.6-10.8-19.3-1.8-11.3 1.3-21.3 8.1-30.2 7.3-9.6 16.1-14.6 28-16.7 10.2-1.8 19.8-.8 28.5 5.1 7.9 5.4 12.8 12.7 14.1 22.3 1.7 13.5-2.2 24.5-11.5 33.9-6.6 6.7-14.7 10.9-24 12.8-2.7.5-5.4.6-8 .9zm23.8-40.4c-.1-1.3-.1-2.3-.3-3.3-1.8-9.9-10.9-15.5-20.4-13.3-9.3 2.1-15.3 8-17.5 17.4-1.8 7.8 2 15.7 9.2 18.9 5.5 2.4 11 2.1 16.3-.6 7.9-4.1 12.2-10.5 12.7-19.1z" fill-rule="nonzero"/>'
-    '</g>'
-    '</svg>'
-)
-
-
 def make_anti_flicker_script(config: BookConfig) -> str:
     """Генерирует anti-flicker инлайн-скрипт с динамическим списком тем из manifest.json."""
     default_theme, themes = _load_themes_manifest()
@@ -140,6 +130,23 @@ def make_html_tag() -> str:
     theme_keys = ','.join(t['key'] for t in themes)
     theme_labels = ','.join(f"{t['key']}:{t['label']}" for t in themes)
     return f'<html lang="ru" data-theme="{default_theme}" data-available-themes="{theme_keys}" data-theme-labels="{theme_labels}">'
+
+def render_favicon_links(config: BookConfig, rel_root: str) -> str:
+    b = config.branding
+    links = []
+    if b.favicon_ico:
+        links.append(f'<link rel="icon" href="{rel_root}{os.path.basename(b.favicon_ico)}" sizes="32x32">')
+    if b.favicon_svg:
+        links.append(f'<link rel="icon" type="image/svg+xml" href="{rel_root}{os.path.basename(b.favicon_svg)}" sizes="any">')
+    return "\n  ".join(links)
+
+
+def fill_counts(text: str, counts: Dict[str, Any]) -> str:
+    """Подстановки текстов главной: {modules}, {articles}, {articles_grouped}, {mermaid}."""
+    for key, value in counts.items():
+        text = text.replace("{" + key + "}", str(value))
+    return text
+
 
 def get_rel_root(rel_path: str) -> str:
     """Вычисление пути к корню сайта из относительного пути файла."""
@@ -291,6 +298,8 @@ def render_article_page(
     else:
         toc_html = ""
 
+    ap = config.article_page
+    br = config.branding
     rt = config.navigation.reading_time
     reading_time = max(rt.min, int(article.size_bytes / rt.divisor))
 
@@ -299,10 +308,9 @@ def render_article_page(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{html.escape(article.title)} | Инженерная энциклопедия бэкенда</title>
-  <meta name="description" content="Полное руководство: {html.escape(article.title)}. Go, архитектура систем, computer science.">
-  <link rel="icon" href="{rel_root}favicon.ico" sizes="32x32">
-  <link rel="icon" type="image/svg+xml" href="{rel_root}favicon.svg" sizes="any">
+  <title>{html.escape(article.title)}{ap.title_suffix_html}</title>
+  <meta name="description" content="{ap.meta_description_html.replace('{title}', html.escape(article.title))}">
+  {render_favicon_links(config, rel_root)}
   {make_anti_flicker_script(config)}
   <link rel="stylesheet" href="{rel_root}assets/style.css">
   <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">
@@ -314,13 +322,13 @@ def render_article_page(
     <!-- Левый сайдбар -->
     <aside class="app-sidebar" id="app-sidebar" aria-label="Навигация по курсу">
       <header class="sidebar-header">
-        <a href="{rel_root}index.html" class="brand-logo" aria-label="На главную: Go Backend Энциклопедия">
+        <a href="{rel_root}index.html" class="brand-logo" aria-label="{br.logo_aria_label}">
           <div class="logo-icon" aria-hidden="true">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+            {read_text_asset(config, br.logo_icon_svg_file)}
           </div>
           <div class="logo-text">
-            <span class="logo-title">{GO_LOGO_SVG} BACKEND</span>
-            <span class="logo-sub">Энциклопедия</span>
+            <span class="logo-title">{read_text_asset(config, br.logo_title_svg_file)}{br.logo_title_text}</span>
+            <span class="logo-sub">{br.logo_sub}</span>
           </div>
         </a>
       </header>
@@ -385,8 +393,8 @@ def render_article_page(
       </main>
 
       <footer class="app-footer">
-        <p>Инженерная веб-энциклопедия бэкенда и языка Go • Авторский стиль Брайана Кернигана</p>
-        <p>Собрано автономным генератором без внешних зависимостей. 100% Offline Ready.</p>
+        {"""
+        """.join(f"<p>{line}</p>" for line in ap.footer_html)}
       </footer>
     </div>
   </div>
@@ -435,6 +443,23 @@ def render_index_page(
 ) -> str:
     """Генерация главной страницы index.html (Интерактивный дашборд и каталог)."""
     rel_root = "./"
+    ip = config.index_page
+    counts = {"modules": len(modules_tree), "articles": total_articles,
+              "articles_grouped": f"{total_articles:,}".replace(",", " "), "mermaid": total_mermaid}
+    fc = lambda text: fill_counts(text, counts)
+    stats_html = "\n".join(
+        f"""        <div class="stat-box">
+          <span class="stat-number">{fc(st['value'])}</span>
+          <span class="stat-desc">{fc(st['label'])}</span>
+        </div>""" for st in ip.stats)
+    steps_html = "\n".join(
+        f"""        <li class="roadmap-step">
+          <span class="step-badge">{st['badge']}</span>
+          <div class="step-content">
+            <h4>{st['title_html']}</h4>
+            <p>{st['text_html']}</p>
+          </div>
+        </li>""" for st in ip.roadmap_steps)
 
     cards_html = []
     for mod in modules_tree:
@@ -473,10 +498,9 @@ def render_index_page(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Инженерная веб-энциклопедия бэкенда (Go &amp; Computer Science)</title>
-  <meta name="description" content="Фундаментальная энциклопедия бэкенда, распределенных систем и языка Go от Брайана Кернигана. 1 400+ статей, 1 400+ схем Mermaid.">
-  <link rel="icon" href="{rel_root}favicon.ico" sizes="32x32">
-  <link rel="icon" type="image/svg+xml" href="{rel_root}favicon.svg" sizes="any">
+  <title>{fc(ip.title_html)}</title>
+  <meta name="description" content="{fc(ip.meta_description_html)}">
+  {render_favicon_links(config, rel_root)}
   {make_anti_flicker_script(config)}
   <link rel="stylesheet" href="{rel_root}assets/style.css">
 </head>
@@ -485,13 +509,13 @@ def render_index_page(
     <!-- Героическая секция -->
     <header class="index-hero">
       <div class="hero-top-meta">
-        <span class="hero-badge">Энциклопедия Computer Science &amp; Backend</span>
+        <span class="hero-badge">{fc(ip.hero_badge_html)}</span>
         <span class="hero-version">v{version}</span>
       </div>
-      <h1 class="hero-title">Фундаментальный бэкенд на Go: от кремния до распределенных систем</h1>
+      <h1 class="hero-title">{fc(ip.hero_title_html)}</h1>
       <blockquote class="hero-quote">
-        <p><em>«Управление сложностью — вот суть программирования».</em></p>
-        <cite class="quote-author">— Брайан Керниган</cite>
+        <p>{ip.quote_html}</p>
+        <cite class="quote-author">{ip.quote_author_html}</cite>
       </blockquote>
 
       <!-- Полнотекстовый живой поиск -->
@@ -499,37 +523,22 @@ def render_index_page(
         <div class="search-bar-inner">
           <label for="global-search-input" class="visually-hidden">Поиск по лекциям</label>
           <svg class="hero-search-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <input type="search" id="global-search-input" placeholder="Поиск по 1 413 лекциям (например: netpoller, GC, MVCC, Raft, CAS)..." autocomplete="off" aria-label="Поиск по лекциям">
+          <input type="search" id="global-search-input" placeholder="{html.escape(fc(ip.search_placeholder))}" autocomplete="off" aria-label="Поиск по лекциям">
         </div>
         <div class="search-results-dropdown" id="global-search-results" role="listbox" aria-label="Результаты поиска"></div>
       </div>
 
       <!-- Виджеты статистики -->
       <div class="stats-ribbon" role="region" aria-label="Статистика курса">
-        <div class="stat-box">
-          <span class="stat-number">22</span>
-          <span class="stat-desc">Тематических модуля</span>
-        </div>
-        <div class="stat-box">
-          <span class="stat-number">{total_articles}</span>
-          <span class="stat-desc">Инженерных лекций</span>
-        </div>
-        <div class="stat-box">
-          <span class="stat-number">{total_mermaid}</span>
-          <span class="stat-desc">Диаграмм Mermaid</span>
-        </div>
-        <div class="stat-box">
-          <span class="stat-number">100%</span>
-          <span class="stat-desc">Offline &amp; file:///</span>
-        </div>
+{stats_html}
       </div>
     </header>
 
     <!-- Каталог модулей -->
     <section class="modules-catalog" aria-labelledby="catalog-heading">
       <header class="catalog-header">
-        <h2 class="section-title" id="catalog-heading">Каталог учебных модулей</h2>
-        <p class="section-sub">22 всеобъемлющих курса, выстроенных в строгую логическую последовательность</p>
+        <h2 class="section-title" id="catalog-heading">{fc(ip.catalog_title_html)}</h2>
+        <p class="section-sub">{fc(ip.catalog_sub_html)}</p>
       </header>
 
       <ul class="modules-grid">
@@ -540,43 +549,16 @@ def render_index_page(
     <!-- Дорожная карта обучения -->
     <section class="learning-roadmap" aria-labelledby="roadmap-heading">
       <header class="roadmap-header">
-        <h2 class="section-title" id="roadmap-heading">Инженерный трек: как изучать базу</h2>
+        <h2 class="section-title" id="roadmap-heading">{fc(ip.roadmap_title_html)}</h2>
       </header>
       <ol class="roadmap-timeline">
-        <li class="roadmap-step">
-          <span class="step-badge">Шаг 1</span>
-          <div class="step-content">
-            <h4>Кремний и Операционная система (Модули 1–3)</h4>
-            <p>Логические вентили, регистры, конвейеры CPU, кэш-линии, виртуальная память, CFS, epoll и сокеты. Без этого понимание рантайма Go невозможно.</p>
-          </div>
-        </li>
-        <li class="roadmap-step">
-          <span class="step-badge">Шаг 2</span>
-          <div class="step-content">
-            <h4>Глубокий Go и Runtime (Модули 4–9)</h4>
-            <p>GMP-планировщик, стек горутины, аллокатор mheap, сборщик мусора тройной раскраски, сетевой поллер (netpoller) и архитектура сервисов.</p>
-          </div>
-        </li>
-        <li class="roadmap-step">
-          <span class="step-badge">Шаг 3</span>
-          <div class="step-content">
-            <h4>Хранилища и Распределенные системы (Модули 10–14)</h4>
-            <p>B+ Tree vs LSM, MVCC, транзакции, Kafka, NATS, консенсус Raft/Paxos, CAP/PACELC и микросервисы.</p>
-          </div>
-        </li>
-        <li class="roadmap-step">
-          <span class="step-badge">Шаг 4</span>
-          <div class="step-content">
-            <h4>Надежность, Performance &amp; DSA (Модули 15–22)</h4>
-            <p>Профилирование pprof, trace, AppSec, алгоритмы, 218 задач LeetCode и глубокая подготовка к BigTech интервью.</p>
-          </div>
-        </li>
+{steps_html}
       </ol>
     </section>
 
     <footer class="index-footer">
-      <p>Инженерная веб-энциклопедия бэкенда и языка Go • В память о традициях Bell Labs и Брайана Кернигана</p>
-      <p>Полностью автономная сборка. Никаких трекеров, рекламы и внешних серверов.</p>
+      {"""
+      """.join(f"<p>{line}</p>" for line in ip.footer_html)}
     </footer>
   </main>
 
