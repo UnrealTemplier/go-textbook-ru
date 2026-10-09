@@ -82,7 +82,7 @@ go-textbook/
 │   ├── verify_editorial.py# Инструмент верификации авторской редактуры ДО и ПОСЛЕ
 │   ├── batch_runner.py    # ⚠️ Исторический скрипт пакетной конвертации модулей 2–22 (не запускать, см. ниже)
 │   ├── tests/             # Тесты генератора (unittest): характеризационные + книжный тест корпуса, см. § 3.3а
-│   ├── tools/             # Инструменты проверки рефакторинга движка: verify_diff.py (сравнение сборок), см. § 3.3б
+│   ├── tools/             # Инструменты проверки рефакторинга движка: verify_diff.py, runtime_projection.py, см. § 3.3б
 │   └── assets/            # Исходные статические ассеты (стили, скрипты, вендор)
 │       ├── themes/        # Реестр и CSS-токены тем (один файл — одна тема)
 │       │   ├── manifest.json  # Реестр тем: порядок, label, icon, default
@@ -191,6 +191,13 @@ python3 builder/tools/verify_diff.py dist /tmp/dist-new --mode article \
     --normalizers whitespace_between_tags,code_chrome --exceptions content-exceptions.txt --stage А3а
 ```
 Код возврата `0` — расхождений вне реестра исключений нет. Нормализаторы: `whitespace_between_tags`, `code_chrome`, `strip_sidebar`, `strip_conditional_scripts`, `strip_asset_query`; `--dedup-map` — таблица переименованных `id`. Модуль также даёт проекции для оракулов (текст с маркерами списков и выделения, видимый текст заголовков, блоки внутри `<p>`, мультимножество блоков кода). Порядок применения — `engine-extraction/html-textbook-engine-technical-plan.md`.
+
+**Рантайм-проекция** (`builder/tools/runtime_projection.py`) считает, что браузер действительно отрисовал на каждой странице: `.katex`, `.katex-display`, `.katex-error`, блоки и SVG Mermaid, SVG ошибок Mermaid (`.error-text`), JS-ошибки. Побайтная проверка HTML этого не видит.
+```bash
+python3 builder/tools/runtime_projection.py dist --out /tmp/runtime.json        # ~110 с, 12 процессов Firefox
+python3 builder/tools/runtime_projection.py --compare old.json new.json
+```
+Сам `dist/` не трогается: пробные страницы пишутся в зеркало из символьных ссылок во временном каталоге. Эталон для этапов А0–А2 — `engine-extraction/baseline/runtime-bbb4b1f7.json`.
 
 ### 3.4. Текущие базовые метрики (Snapshot Baseline):
 На момент текущего базового среза репозитория (сверено 2026-10-06, `HEAD b237c2e6`):
