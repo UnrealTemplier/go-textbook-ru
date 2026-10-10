@@ -52,7 +52,8 @@ FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
 CALLOUT_PREFIX_RE = re.compile(r"^(\s*>)+\s?")
 INLINE_CODE_RE = re.compile(r"(`+)(.+?)(?<!`)\1(?!`)")
 
-ID_RE = re.compile(r'(?<![\w-])id=["\']([^"\']+)["\']')
+# id только в атрибутах тега: текст «id='app'» внутри экранированного кода (&lt;div id='app'&gt;) — не якорь
+ID_RE = re.compile(r'<[A-Za-z][^<>]*?\sid=["\']([^"\']+)["\']')
 RESOURCE_RE = re.compile(r'<(script|link|img|source|iframe)\b[^>]*?\s(src|href|srcset)=["\']([^"\']*)["\']', re.I)
 EXTERNAL_RE = re.compile(r"^(?:[a-z][a-z0-9+.-]*:)?//", re.I)
 CSS_URL_RE = re.compile(r"url\(\s*[\"']?([^\"')]+)")

@@ -55,6 +55,14 @@ class AuditChecksTest(unittest.TestCase):
         self.assertEqual([(i, n) for _, i, n in a.duplicate_ids], [("a", 2)])
         self.assertEqual(len(a.missing_anchors), 1)
 
+    def test_id_in_escaped_code_is_not_an_anchor(self):
+        code = "<pre><code>&lt;div id='app'&gt;&lt;/div&gt; &lt;p id=\"a\"&gt;</code></pre>"
+        ok, a = self.audit(body=code + code + '<a href="#app">x</a>')
+        self.assertEqual(a.duplicate_ids, [])
+        self.assertEqual(len(a.missing_anchors), 1)
+        ok, a = self.audit(body='<div class="x" data-k="1" id="app"></div><a href="#app">x</a>')
+        self.assertTrue(ok)
+
     def test_missing_asset(self):
         ok, a = self.audit(head='<script src="assets/nav-data.js?v=1" defer></script>')
         self.assertFalse(ok)
