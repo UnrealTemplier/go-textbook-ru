@@ -362,7 +362,7 @@
 /* ===== 1. LAYOUT & TYPOGRAPHY TOKENS (not themed) ===== */
 :root {
   /* Размеры и лейаут */
-  --sidebar-default-width: 320px;
+  --sidebar-width: 320px; /* ширина сайдбара; не больше 30% окна (.app-sidebar) */
   --header-height: 56px;
   --max-content-width: 1040px;
   --prose-max-width: 880px;
@@ -800,28 +800,47 @@ summary:focus-visible,
   transition: width 0.1s ease-out;
 }
 
-/* Двухпанельный лейаут */
+/* Лейаут: сайдбар — оверлей вне потока, поэтому основная область всегда занимает всю ширину окна */
 .app-layout {
   display: flex;
   min-height: 100vh;
   position: relative;
 }
 
-/* Левый сайдбар */
+/* Левый сайдбар: скрыт по умолчанию; открывается, когда курсор у левого края окна (main.js, initSidebar).
+   Появление и исчезновение — те же длительности и кривые, что у оглавления ([toc] autohide).
+   Ширина — не больше 30% окна; ручной ресайза нет. */
 .app-sidebar {
-  width: var(--sidebar-default-width);
-  min-width: 240px;
-  max-width: 550px;
-  height: 100vh;
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  width: min(var(--sidebar-width), 30vw);
+  height: 100vh;
   background-color: var(--bg-surface);
   border-right: 1px solid var(--border);
+  box-shadow: var(--shadow-dropdown);
   display: flex;
   flex-direction: column;
-  z-index: 50;
-  flex-shrink: 0;
+  z-index: 1050;
   user-select: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-12px);
+  transition: opacity 0.12s cubic-bezier(0.4, 0, 0.2, 1), transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 0.12s;
+}
+
+.app-sidebar.is-open {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 0.16s cubic-bezier(0.22, 1, 0.36, 1), transform 0.16s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar,
+  .app-sidebar.is-open {
+    transition: none;
+  }
 }
 
 .sidebar-header {
@@ -994,9 +1013,8 @@ summary:focus-visible,
 
 .mod-text {
   flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .nav-module-content {
@@ -1021,9 +1039,8 @@ summary:focus-visible,
   color: var(--text-secondary);
   text-decoration: none;
   border-radius: var(--radius-sm);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Длинное название переносится внутри панели, а не обрезается: переносы по пробелам, а если их нет — где угодно */
+  overflow-wrap: anywhere;
   transition: all 0.15s ease;
 }
 
@@ -1097,9 +1114,8 @@ summary:focus-visible,
 
 .sub-text {
   flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* Название каталога — ссылка на его заглавную страницу (индексные файлы, U22) */
@@ -1172,21 +1188,6 @@ summary:focus-visible,
   user-select: none;
 }
 
-/* Ресайзер ширины сайдбара */
-.resizer {
-  width: 4px;
-  background-color: var(--border);
-  cursor: col-resize;
-  position: relative;
-  z-index: 60;
-  transition: background-color 0.2s ease;
-  flex-shrink: 0;
-}
-
-.resizer:hover, .resizer.resizing {
-  background-color: var(--accent);
-}
-
 /* Основной контент */
 .app-main {
   flex: 1;
@@ -1209,7 +1210,7 @@ summary:focus-visible,
 }
 
 .btn-toggle-sidebar {
-  display: none;
+  display: block;
   background: none;
   border: none;
   color: var(--text-muted);
@@ -1255,17 +1256,19 @@ summary:focus-visible,
   font-weight: 500;
 }
 
-/* Контейнер статьи + TOC */
+/* Контейнер статьи + TOC: колонка статьи — точно по центру окна. Боковые поля (1fr) равны, поэтому
+   центр не зависит от оглавления и от ширины сайдбара (сайдбар — оверлей, в потоке его нет).
+   Оглавление в потоке стоит в правом поле; при has-toc колонка статьи сужается (см. @media ниже). */
 .content-wrapper {
   margin: 0 auto;
   padding: 36px 32px;
-  display: flex;
-  gap: 40px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--max-content-width)) minmax(0, 1fr);
   width: 100%;
 }
 
 .article-body {
-  flex: 1;
+  grid-column: 2;
   min-width: 0;
   max-width: var(--max-content-width);
 }
@@ -1876,11 +1879,13 @@ tr:hover {
   background-color: var(--overlay-hover);
 }
 
-/* Оглавление статьи (TOC) справа */
+/* Оглавление статьи (TOC) справа: третья колонка сетки, в правом поле за статьёй */
 .article-toc {
+  grid-column: 3;
+  justify-self: start;
   width: max-content;
   max-width: var(--toc-max-width);
-  margin-left: auto;
+  margin-left: 40px;
   position: sticky;
   top: 80px;
   align-self: flex-start;
@@ -1928,6 +1933,16 @@ tr:hover {
 
 .toc-h3 {
   padding-left: 12px;
+}
+
+/* Оглавление в потоке (не [toc] autohide) стоит в правом поле: колонка статьи сужается, чтобы оно
+   влезло при самой широкой ширине (--toc-max-width) и полосе прокрутки; статья остаётся по центру.
+   От 2000px и шире статья — полной ширины --max-content-width. Ниже 1025px оглавление скрыто
+   правилом @media (max-width: 1024px), колонка статьи — обычная. */
+@media (min-width: 1025px) {
+  .content-wrapper.has-toc {
+    grid-template-columns: minmax(0, 1fr) minmax(0, min(var(--max-content-width), calc(100vw - 2 * var(--toc-max-width) - 160px))) minmax(0, 1fr);
+  }
 }
 
 /* Оглавление по наведению ([toc] autohide): блок скрыт, значок в шапке справа открывает его.
@@ -2523,35 +2538,12 @@ tr:hover {
 }
 
 @media (max-width: 768px) {
-  .app-sidebar {
-    position: fixed;
-    left: -100%;
-    transition: left 0.3s ease, box-shadow 0.3s ease;
-    z-index: 1100;
-    width: 280px;
-    box-shadow: none;
-  }
-
-  .app-sidebar.open {
-    left: 0;
-    box-shadow: var(--shadow-dropdown);
-  }
-
-  .resizer {
-    display: none;
-  }
-
-  .btn-toggle-sidebar {
-    display: block;
-  }
-
   .content-header {
     padding: 12px 16px;
   }
 
   .content-wrapper {
     padding: 20px 16px;
-    gap: 0;
   }
 
   .index-container {
