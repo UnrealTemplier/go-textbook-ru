@@ -697,7 +697,7 @@ def render_index_page(
   </div>
   <h3 class="module-card-title">{html.escape(title)}</h3>
   <div class="module-card-meta">
-    <span>{config.t("index.card_mermaid", n=mermaid_count)}</span>
+    {f'<span>{config.t("index.card_mermaid", n=mermaid_count)}</span>' if mermaid_count > 0 else ""}
     {f'<span>{config.t("index.card_sections", n=sub_count)}</span>' if sub_count > 0 else f'<span>{config.t("index.card_basic")}</span>'}
   </div>
   <div class="module-card-actions">
