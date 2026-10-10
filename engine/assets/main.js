@@ -980,6 +980,50 @@
   }
 
   // -------------------------------------------------------------------------
+  // 11. Оглавление по наведению ([toc] autohide): значок в шапке открывает блок, уход мыши прячет.
+  //     Зона отклика — 5% ширины окна: расстояние от курсора до прямоугольника значка или блока.
+  //     Пока блок открыт, «содержимое» — блок и значок вместе. Без значка на странице ничего не делает.
+  // -------------------------------------------------------------------------
+  function initTocAutohide() {
+    const toggle = document.getElementById('toc-toggle');
+    const toc = document.getElementById('article-toc');
+    if (!toggle || !toc) return;
+
+    function distanceTo(x, y, rect) {
+      const dx = Math.max(rect.left - x, 0, x - rect.right);
+      const dy = Math.max(rect.top - y, 0, y - rect.bottom);
+      return Math.hypot(dx, dy);
+    }
+
+    function setOpen(open) {
+      toc.classList.toggle('is-open', open);
+      toggle.setAttribute('aria-expanded', String(open));
+    }
+
+    document.addEventListener('mousemove', function (e) {
+      const radius = window.innerWidth * 0.05;
+      const isOpen = toc.classList.contains('is-open');
+      if (isOpen) {
+        const nearToc = distanceTo(e.clientX, e.clientY, toc.getBoundingClientRect()) <= radius;
+        const nearToggle = distanceTo(e.clientX, e.clientY, toggle.getBoundingClientRect()) <= radius;
+        if (!nearToc && !nearToggle) setOpen(false);
+      } else if (distanceTo(e.clientX, e.clientY, toggle.getBoundingClientRect()) <= radius) {
+        setOpen(true);
+      }
+    });
+
+    // Курсор покинул окно браузера — он заведомо дальше зоны отклика
+    document.addEventListener('mouseout', function (e) {
+      if (!e.relatedTarget) setOpen(false);
+    });
+
+    toggle.addEventListener('click', function () { setOpen(true); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') setOpen(false);
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Запуск при загрузке DOM
   // -------------------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', function () {
@@ -994,6 +1038,7 @@
     initScrollProgress();
     initMobileMenu();
     initGlobalSearch();
+    initTocAutohide();
     if (window.__BOOK__) {         // старый HTML без window.__BOOK__: не запускаем только тему (Е2)
       initThemeSwitcher();
     }

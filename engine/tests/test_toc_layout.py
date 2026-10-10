@@ -5,78 +5,34 @@
 блок по file://. Результаты приходят маячком на локальный сервер. Без Firefox тест пропускается.
 """
 import contextlib
-import http.server
 import io
-import json
 import os
 import re
-import shutil
-import subprocess
 import tempfile
-import threading
-import time
 import unittest
-from urllib.parse import urlparse, parse_qs
 
 from engine.build import build
 from engine.config import load_config
 from engine.tests import DEMO_ROOT, HAS_DEMO
+from engine.tests.firefox import BROWSER, probe
 
-BROWSER = os.environ.get("MERMAID_BROWSER") or shutil.which("firefox")
 PAGE = "docs/01-osnovy/1-spiski-i-kod.html"
 LONG_TITLE = ("Очень длинный пункт оглавления " * 20)[:260]
 TOC_LINK = re.compile(r'(<li class="toc-item toc-h\d"><a href="#[^"]+">)([^<]*)(</a>)')
 
 # Геометрия: блок, его ширина, пункты. Окно отдаёт innerWidth — доля считается от него же.
-MEASURE = """<script>(function(){function go(){
+MEASURE = """(function(){function go(){
 var t=document.getElementById('article-toc'),r={win:window.innerWidth};
 if(t){var b=t.getBoundingClientRect();
 r.toc={w:b.width,left:b.left,right:b.right,sw:t.scrollWidth,cw:t.clientWidth,disp:getComputedStyle(t).display};
 r.items=[].map.call(t.querySelectorAll('li'),function(li){var x=li.getBoundingClientRect();return {top:x.top,bottom:x.bottom,left:x.left,right:x.right};});}
-var im=new Image();im.src='http://127.0.0.1:%(port)d/?d='+encodeURIComponent(JSON.stringify(r));}
-setTimeout(go,1200);})();</script>"""
+send(r);}
+setTimeout(go,1200);})();"""
 
 
 def measure(html_path, transform):
     """Открывает подготовленную страницу в Firefox и возвращает результат маячка."""
-    with open(html_path, encoding="utf-8") as fp:
-        html = transform(fp.read())
-    got = {}
-
-    class Handler(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):
-            q = parse_qs(urlparse(self.path).query)
-            if "d" in q:
-                got["r"] = json.loads(q["d"][0])
-            self.send_response(204)
-            self.end_headers()
-
-        def log_message(self, *a):
-            pass
-
-    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    probe = html_path[:-5] + ".__toc_probe.html"
-    with open(probe, "w", encoding="utf-8") as fp:
-        fp.write(html.replace("</body>", MEASURE % {"port": server.server_address[1]} + "</body>"))
-    try:
-        with tempfile.TemporaryDirectory() as profile:
-            proc = subprocess.Popen([BROWSER, "--headless", "--no-remote", "--profile", profile,
-                                     "--window-size=1440,900", "file://" + probe],
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            try:
-                for _ in range(600):
-                    if "r" in got:
-                        break
-                    time.sleep(0.1)
-            finally:
-                proc.terminate()
-                proc.wait(10)
-    finally:
-        server.shutdown()
-        server.server_close()
-        os.remove(probe)
-    return got.get("r")
+    return probe(html_path, transform, MEASURE)
 
 
 @unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")

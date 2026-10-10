@@ -110,6 +110,13 @@ class FeaturesConfig:
 
 
 @dataclass
+class TocConfig:
+    # true — оглавление «На этой странице» скрыто; значок в шапке открывает его по наведению.
+    # Зона отклика — 5% ширины окна вокруг значка и блока (assets/main.js, initTocAutohide)
+    autohide: bool = False
+
+
+@dataclass
 class AuditConfig:
     # Предел длины относительного пути в репозитории (символов): длинные пути ломают Windows
     path_max: int = 180
@@ -176,6 +183,7 @@ class BookConfig:
     math: MathConfig = field(default_factory=MathConfig)
     layout: LayoutConfig = field(default_factory=LayoutConfig)
     features: FeaturesConfig = field(default_factory=FeaturesConfig)
+    toc: TocConfig = field(default_factory=TocConfig)
     audit: AuditConfig = field(default_factory=AuditConfig)
     branding: BrandingConfig = field(default_factory=BrandingConfig)
     article_page: ArticlePageConfig = field(default_factory=ArticlePageConfig)
