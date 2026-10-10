@@ -229,12 +229,12 @@ class SidebarLayoutTest(unittest.TestCase):
                 self.assertGreaterEqual(r["tocL"], r["artR"], "оглавление залезло на статью")
                 self.assertLessEqual(r["tocR"], r["mainR"], "оглавление вылезло за окно")
 
-    def test_sidebar_never_wider_than_30_percent(self):
+    def test_sidebar_never_wider_than_40_percent(self):
         for width in (800, 1280):
             with self.subTest(width=width):
                 r = self.measure(width, lambda h: h.replace("</head>", WIDTH_CAP + "</head>", 1))
-                self.assertLessEqual(r["sbWidth"], 0.3 * r["win"] + 0.5, "сайдбар шире 30% окна")
-                self.assertGreater(r["sbWidth"], 0.29 * r["win"], "при большой --sidebar-width ширина должна упереться в 30%")
+                self.assertLessEqual(r["sbWidth"], 0.4 * r["win"] + 0.5, "сайдбар шире 40% окна")
+                self.assertGreater(r["sbWidth"], 0.39 * r["win"], "при большой --sidebar-width ширина должна упереться в 40%")
 
     def test_default_sidebar_width_is_320_when_room_allows(self):
         r = self.measure(1440)
