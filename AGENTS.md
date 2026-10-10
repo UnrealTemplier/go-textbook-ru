@@ -14,7 +14,7 @@
 > 3. **QA-харденинг и Mermaid Bugfix:** Устранена синтаксическая регрессия в диаграммах, защищён жизненный цикл Mermaid и расширен сквозной аудит (0 broken links, 0 filesystem errors, 0 Mermaid errors).  
 > 4. **Documentation Sync:** Инженерный регламент `AGENTS.md` приведён в строгое соответствие с кодовой базой и историей Git (последняя сверка — 2026-10-09).  
 > 5. **Фактчек v2 (в работе):** Многоролевой фактчек по первоисточникам (§ 11.4) завершён для модулей 1–4; для модулей 5–22 готовы скаут-отчёты (для 5 и 6 — ещё и alt). Все отчёты лежат в `fact-checks/{N}/`.  
-> 6. **Движок выделен (2026-10-09):** генератор — отдельный продукт `html-textbook-engine` (ядро 1.7.0; `/home/ut/work/html-textbook-engine`), здесь `engine/` — его копия, книга — `book.toml` + `book/` + `sources/` (§ 1.2). Обзор, статус и что дальше — **`engine-extraction/README.md`** (читать первым перед работой с движком или `go-workout`). Трек Б (`go-workout`) выполнен 2026-10-10: тренажёр — Markdown в `go-workout/sources/`, сайт собирает CI.
+> 6. **Движок выделен (2026-10-09):** генератор — отдельный продукт `html-textbook-engine` (ядро 1.8.1; `/home/ut/work/html-textbook-engine`), здесь `engine/` — его копия, книга — `book.toml` + `book/` + `sources/` (§ 1.2). Обзор, статус и что дальше — **`engine-extraction/README.md`** (читать первым перед работой с движком или `go-workout`). Трек Б (`go-workout`) выполнен 2026-10-10: тренажёр — Markdown в `go-workout/sources/`, сайт собирает CI.
 
 ---
 
@@ -81,7 +81,7 @@ go-textbook/
 │   ├── hooks.py           # Хуки книги из book/hooks.py: transform_markdown, render_callout, page_context, extra_audit_checks
 │   ├── checksums.py       # Контрольные суммы ядра; engine/.checksums.json — суммы выпуска, сборка сверяет их
 │   ├── sync.py            # python3 -m engine.sync --from <каталог | git-URL | .tar.gz>: обновление ядра из репозитория движка
-│   ├── VERSION / CHANGELOG.md  # Версия ядра (сейчас 1.7.0) и журнал с пометкой «меняет вывод»
+│   ├── VERSION / CHANGELOG.md  # Версия ядра (сейчас 1.8.1) и журнал с пометкой «меняет вывод»
 │   ├── strings/ru.toml    # Строки интерфейса движка (подписи, aria-label, заголовки выносок); книга переопределяет их в book.toml [strings]
 │   ├── scanner.py         # Рекурсивный обход sources/ любой глубины (ошибки вместо тихих потерь файлов), индексные файлы каталогов, title_source, slugify, граф wikilinks
 │   ├── converter/         # Конвертер Markdown → семантический HTML (пакет)
@@ -278,7 +278,7 @@ python3 -m engine.tools.lists_oracle --book book.toml --report /tmp/lists.json
 2. **Единый плавающий переключатель (Floating Theme Switcher):**  
    Элемент переключения темы вынесен из сайдбара в единую плавающую кнопку в правом нижнем углу экрана (`bottom: 24px, right: 24px`, класс `.floating-theme-switcher`). Это круглая icon-only кнопка с SVG-иконками (Paper — документ, Light — солнце, Dark — луна), доступным атрибутом `aria-label` и тултипом с названием текущей темы. Нажатие циклически переключает тему на клиенте на лету без перезагрузки: `<html data-theme="dark|paper|light">`. Порядок цикла задаётся полем `order` в `manifest.json`: `paper → light → dark → paper`.
 3. **Персистентность в `localStorage`:** Выбранная тема сохраняется под ключом `go_encyclopedia_theme`.
-4. **Рантайм книги и защита от мигания (`window.__BOOK__`, с А3ж):** первым скриптом `<head>` каждой страницы `make_anti_flicker_script()` (`engine/template.py`) объявляет `window.__BOOK__` — данные книги (`storagePrefix` из `book.toml`, `defaultTheme`, `availableThemes`, `themeNames` из `manifest.json`, строки JS, конфиг KaTeX из `[math]`) и функции `storageKey()`, `getTheme()`, `applyTheme()`, `saveTheme()` — и сразу ставит тему до отрисовки. `main.js` вызывает **те же функции**, своих копий логики темы у него нет: так inline-скрипт и `main.js` не могут разойтись (инциденты `27337fe5`/`eb135e7d`). Ключи хранилища строятся `storageKey()`: для `go-textbook` прежние `go_encyclopedia_theme` и `go_encyclopedia_sidebar_width`.
+4. **Рантайм книги и защита от мигания (`window.__BOOK__`, с А3ж):** первым скриптом `<head>` каждой страницы `make_anti_flicker_script()` (`engine/template.py`) объявляет `window.__BOOK__` — данные книги (`storagePrefix` из `book.toml`, `defaultTheme`, `availableThemes`, `themeNames` из `manifest.json`, строки JS, конфиг KaTeX из `[math]`) и функции `storageKey()`, `getTheme()`, `applyTheme()`, `saveTheme()` — и сразу ставит тему до отрисовки. `main.js` вызывает **те же функции**, своих копий логики темы у него нет: так inline-скрипт и `main.js` не могут разойтись (инциденты `27337fe5`/`eb135e7d`). Ключи хранилища строятся `storageKey()`: для `go-textbook` прежний `go_encyclopedia_theme` (ключ ширины сайдбара `go_encyclopedia_sidebar_width` с ядра 1.8.0 не используется).
    > [!IMPORTANT]
    > **Старый HTML с новым `main.js`** (кэш браузера, частичная сборка): без `window.__BOOK__` `main.js` не запускает только переключатель темы, Mermaid, KaTeX (запасной конфиг), копирование, сайдбар и поиск работают. Проверку `if (window.__BOOK__)` держать только вокруг `initThemeSwitcher()`, не выходить из обработчика `DOMContentLoaded`. Тест — `engine/tests/test_runtime.py` (7 сценариев в headless Firefox: пустое хранилище, сохранённая тема при перезагрузке, неизвестное значение, недоступное хранилище, старые ключи ретро-эффектов, переключение с перерисовкой Mermaid, старый HTML без `window.__BOOK__`).
 5. **Семантические токены CSS Custom Properties:**  
@@ -327,7 +327,7 @@ python3 -m engine.tools.lists_oracle --book book.toml --report /tmp/lists.json
 
 * **Лэндмарки документа:**
   - `<aside class="app-sidebar" id="app-sidebar" aria-label="Навигация по курсу">` — боковая навигационная панель. Футер сайдбара (`<footer class="sidebar-footer">`) содержит счётчик лекций (`.catalog-stat`) и чип версии проекта (`.sidebar-version`). Визуальный бейдж `Offline First` полностью удалён из интерфейса (архитектурное свойство offline-first сохраняется на системном уровне).
-  - `<div class="resizer" id="drag-resizer" role="separator" aria-orientation="vertical" ...>` — интерактивный регулятор ширины.
+  - Ползунка ширины (`div.resizer#drag-resizer`) нет с ядра 1.8.0. Сайдбар — оверлей (`position: fixed`) поверх контента: скрыт по умолчанию, открывается, когда курсор у левого края окна (зона 5% ширины окна), ширина `--sidebar-width` (320px), но не больше 30% окна. Статья всегда по центру окна (`.content-wrapper`, сетка с равными боковыми полями; с оглавлением в потоке — класс `has-toc`, колонка статьи сужается).
   - `<header class="content-header">` — верхняя шапка страницы со строкой breadcrumbs и мобильной кнопкой.
   - `<main class="content-wrapper" id="main-content">` — главная контентная область статьи.
   - `<header class="index-hero">` — верхняя героическая секция главной страницы, содержит метаданные (`.hero-top-meta`) с бейджем курса и версией (`.hero-version`).
@@ -375,16 +375,15 @@ python3 -m engine.tools.lists_oracle --book book.toml --report /tmp/lists.json
 * **Основные архитектурные модули в `main.js`:**
   - `saveMermaidSources()` / `initMermaid()` / `rerenderMermaid()` — управление жизненным циклом диаграмм.
   - `initThemeSwitcher()` — переключение тем через функции `window.__BOOK__` (запускается, только если объект есть).
-  - `initSidebarResize()` — изменение ширины сайдбара мышью с сохранением значения.
   - `initHybridSidebar()` — гибридный сайдбар: счётчик статей и достраивание модулей из `window.NAV_DATA` (создаёт модули, которых нет в HTML, если `static_module_list = false`).
   - `initSidebarFilter()` — мгновенный фильтр по дереву лекций (перед поиском достраивает все модули).
   - `initSidebarCentering()` — центрирование активной лекции в дереве сайдбара.
   - `initScrollProgress()` — индикатор прогресса чтения статьи и кнопка «Наверх».
-  - `initMobileMenu()` — мобильное меню-сайдбар (drawer).
+  - `initSidebar()` — сайдбар-оверлей: открытие у левого края окна, закрытие при уходе курсора дальше зоны, кнопка `#toggle-sidebar` (открывает и закрывает), Escape, клик вне панели. Пока фокус внутри сайдбара, он не закрывается (с ядра 1.8.0; до него — `initMobileMenu()` и `initSidebarResize()`).
   - `initGlobalSearch()` — клиентский поиск на главной странице по `window.SEARCH_DATA` из `search-data.js` (поля `title`, `url`, `module`, `sub`, `num`). Это поиск по **названиям**, а не по тексту статей: запрос делится на слова, каждое слово обязано найтись в названии статьи (+10 к рейтингу) или модуля (+3).
   - `initKaTeX()` — локальный рендеринг математических формул LaTeX (разделители `$$…$$`, `$…$`, `\(…\)`, `\[…\]`; код, `pre` и Mermaid игнорируются).
-* **Порядок инициализации на `DOMContentLoaded`:** `saveMermaidSources → initMermaid → initKaTeX → initActionDelegation → initSidebarResize → initHybridSidebar → initSidebarFilter → initSidebarCentering → initScrollProgress → initMobileMenu → initGlobalSearch → initThemeSwitcher`. Функции проверяют наличие своих элементов в DOM и выходят, если их нет, поэтому один `main.js` обслуживает и статьи, и главную.
-* **Ключи `localStorage`:** строятся `window.__BOOK__.storageKey()` из `[project] storage_prefix`: для `go-textbook` — `go_encyclopedia_theme` (тема), `go_encyclopedia_sidebar_width` (ширина сайдбара, допускается 220–550 px; без `window.__BOOK__` не сохраняется). Ключи `go_encyclopedia_retro_effects*` от удалённой подсистемы ретро-эффектов (§ 13) больше не читаются и не пишутся; у старых посетителей они остаются в хранилище и ни на что не влияют. Все обращения обёрнуты в `try/catch`: если хранилище недоступно (например, отключено в браузере), исключение внутри одной `init*`-функции прервало бы весь обработчик `DOMContentLoaded`, и следующие модули не инициализировались бы.
+* **Порядок инициализации на `DOMContentLoaded`:** `saveMermaidSources → initMermaid → initKaTeX → initActionDelegation → initHybridSidebar → initSidebarFilter → initSidebarCentering → initScrollProgress → initSidebar → initGlobalSearch → initTocAutohide → initThemeSwitcher`. Функции проверяют наличие своих элементов в DOM и выходят, если их нет, поэтому один `main.js` обслуживает и статьи, и главную.
+* **Ключи `localStorage`:** строятся `window.__BOOK__.storageKey()` из `[project] storage_prefix`: для `go-textbook` — `go_encyclopedia_theme` (тема). Ключ `go_encyclopedia_sidebar_width` (ширина сайдбара до ядра 1.8.0, допускалось 220–550 px) больше не читается и не пишется: ресайза нет, у старых посетителей он остаётся в хранилище и ни на что не влияет. Ключи `go_encyclopedia_retro_effects*` от удалённой подсистемы ретро-эффектов (§ 13) больше не читаются и не пишутся; у старых посетителей они остаются в хранилище и ни на что не влияют. Все обращения обёрнуты в `try/catch`: если хранилище недоступно (например, отключено в браузере), исключение внутри одной `init*`-функции прервало бы весь обработчик `DOMContentLoaded`, и следующие модули не инициализировались бы.
 
 ---
 
@@ -528,7 +527,7 @@ Markdown Source (sources/**/*.md)
 3. **Двухуровневая ширина контента (Layout Refinement):**  
    - Внешний контейнер статьи (`.article-body`) и широкие технические элементы (`.table-container`, `.code-block`, `.mermaid-wrapper`, `.callout`, `.katex-display`) масштабируются до ширины `--max-content-width: 1040px` (коммит `9ec687c3`), что исключает сжатие сложных архитектурных схем и широких таблиц.
    - Колонка обычной прозы (параграфы `<p>`, списки `<ul>/<ol>`, цитаты `<blockquote>`, заголовки `<h1>`–`<h6>`) ограничена шириной `--prose-max-width: 880px` для поддержания эргономичной длины строки при комфортном многочасовом чтении (межстрочный интервал `line-height: 1.75`).
-4. **Адаптивность:** Точки перелома (breakpoints) `1024px`, `768px`, `480px`. Регулируемый сайдбар сохраняет ширину в `localStorage` и адаптивно переключается в мобильный drawer на узких экранах.
+4. **Адаптивность:** Точки перелома (breakpoints) `1024px`, `768px`, `480px`. Сайдбар — оверлей у левого края окна (с ядра 1.8.0 ширину не меняет мышью и не хранит её, не больше 30% окна); на узких экранах открывается той же кнопкой `#toggle-sidebar`.
 
 ---
 
