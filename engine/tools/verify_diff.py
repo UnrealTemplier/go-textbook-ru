@@ -7,7 +7,7 @@ engine/tools/verify_diff.py
   article  — <article class="article-body"> каждой страницы после нормализаторов (инвариант U8);
   page     — страница целиком после нормализаторов.
 
-Нормализаторы применяются к обеим сторонам. Страницы, перечисленные в реестре исключений
+Нормализаторы применяются к обеим сторонам (кроме full: там сравнение побайтное, нормализаторы запрещены). Страницы, перечисленные в реестре исключений
 для этапа (--exceptions FILE --stage А3x), разрешены и печатаются отдельно.
 Код возврата: 0 — расхождений вне исключений нет, 1 — есть.
 
@@ -309,6 +309,8 @@ def main(argv=None) -> int:
     unknown = [n for n in names if n not in NORMALIZERS]
     if unknown:
         ap.error(f"неизвестные нормализаторы: {unknown}")
+    if args.mode == "full" and names:
+        ap.error("--normalizers не применяется к --mode full (побайтное сравнение); используйте --mode page или article")
 
     if args.mode == "full":
         removed, added, changed = compare_full(args.old, args.new)

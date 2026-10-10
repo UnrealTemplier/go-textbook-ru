@@ -18,10 +18,12 @@ BROWSER = os.environ.get("MERMAID_BROWSER") or shutil.which("firefox")
 SEND_JS = "<script>window.send=function(d){var im=new Image();im.src='http://127.0.0.1:%(port)d/?d='+encodeURIComponent(JSON.stringify(d));};</script>"
 
 
-def probe(html_path, transform, script, timeout=60):
+def probe(html_path, transform, script, timeout=60, frame_width=None):
     """Открывает страницу с добавленным в конец скриптом сценария и возвращает присланный send(obj) или None.
 
     transform(html) — подготовка HTML; script — JS, который вызывает send(...) когда готов.
+    frame_width — страница открывается во вложенном iframe такой ширины: её окно (innerWidth, vw, медиазапросы)
+    равно этой ширине. Окно самого Firefox в headless-режиме размера не принимает, поэтому так задаётся ширина.
     """
     with open(html_path, encoding="utf-8") as fp:
         html = transform(fp.read())
@@ -42,12 +44,18 @@ def probe(html_path, transform, script, timeout=60):
     threading.Thread(target=server.serve_forever, daemon=True).start()
     inject = (SEND_JS % {"port": server.server_address[1]}) + "<script>" + script + "</script>"
     probe_path = html_path[:-5] + ".__probe.html"
+    page_path = probe_path
+    if frame_width:
+        page_path = html_path[:-5] + ".__frame%d.html" % frame_width
+        with open(page_path, "w", encoding="utf-8") as fp:
+            fp.write('<!DOCTYPE html><html><body style="margin:0"><iframe src="file://%s" '
+                     'style="width:%dpx;height:900px;border:0"></iframe></body></html>' % (probe_path, frame_width))
     with open(probe_path, "w", encoding="utf-8") as fp:
         fp.write(html.replace("</body>", inject + "</body>", 1))
     try:
         with tempfile.TemporaryDirectory() as profile:
             proc = subprocess.Popen([BROWSER, "--headless", "--no-remote", "--profile", profile,
-                                     "--window-size=1440,900", "file://" + probe_path],
+                                     "--window-size=1440,900", "file://" + page_path],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
                 for _ in range(int(timeout * 10)):
@@ -61,4 +69,6 @@ def probe(html_path, transform, script, timeout=60):
         server.shutdown()
         server.server_close()
         os.remove(probe_path)
+        if page_path != probe_path:
+            os.remove(page_path)
     return got.get("r")

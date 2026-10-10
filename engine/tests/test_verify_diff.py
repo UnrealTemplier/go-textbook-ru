@@ -1,4 +1,6 @@
 """Тесты инструмента сравнения сборок verify_diff.py на синтетике."""
+import contextlib
+import io
 import os
 import tempfile
 import unittest
@@ -41,6 +43,13 @@ class CompareTest(unittest.TestCase):
         write(self.new, "docs/b.html", "x")
         write(self.new, "docs/a.html", PAGE.format(nav=2, btn="A", hid="h"))
         self.assertEqual(vd.compare_full(self.old, self.new), ([], ["docs/b.html"], ["docs/a.html"]))
+
+    def test_full_rejects_normalizers(self):
+        write(self.old, "docs/a.html", PAGE.format(nav=1, btn="A", hid="h"))
+        write(self.new, "docs/a.html", PAGE.format(nav=1, btn="A", hid="h"))
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as cm:
+            vd.main([self.old, self.new, "--mode", "full", "--normalizers", "strip_asset_query"])
+        self.assertEqual(cm.exception.code, 2)
 
     def test_article_mode_ignores_sidebar(self):
         write(self.old, "docs/a.html", PAGE.format(nav=1, btn="A", hid="h"))

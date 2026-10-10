@@ -151,58 +151,6 @@
   }
 
   // -------------------------------------------------------------------------
-  // 2. Управление шириной сайдбара (drag-to-resize)
-  // -------------------------------------------------------------------------
-  function initSidebarResize() {
-    const sidebar = document.getElementById('app-sidebar');
-    const resizer = document.getElementById('drag-resizer');
-    if (!sidebar || !resizer) return;
-
-    // Ключ строится префиксом книги (window.__BOOK__); без него (старый HTML) ширина не сохраняется
-    const STORAGE_KEY = window.__BOOK__ ? window.__BOOK__.storageKey('sidebar_width') : null;
-    let savedWidth = null;
-    try {
-      if (STORAGE_KEY) savedWidth = localStorage.getItem(STORAGE_KEY);
-    } catch (e) {}
-    if (savedWidth) {
-      const widthNum = parseInt(savedWidth, 10);
-      if (widthNum >= 220 && widthNum <= 550) {
-        sidebar.style.width = widthNum + 'px';
-      }
-    }
-
-    let isResizing = false;
-
-    resizer.addEventListener('mousedown', function (e) {
-      isResizing = true;
-      resizer.classList.add('resizing');
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
-    });
-
-    document.addEventListener('mousemove', function (e) {
-      if (!isResizing) return;
-      const newWidth = e.clientX;
-      if (newWidth >= 220 && newWidth <= 550) {
-        sidebar.style.width = newWidth + 'px';
-      }
-    });
-
-    document.addEventListener('mouseup', function () {
-      if (isResizing) {
-        isResizing = false;
-        resizer.classList.remove('resizing');
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-        try {
-          localStorage.setItem(STORAGE_KEY, parseInt(sidebar.style.width, 10));
-        } catch (e) {}
-        centerActiveLecture(false);
-      }
-    });
-  }
-
-  // -------------------------------------------------------------------------
   // 2а. Гибридный сайдбар: модули, которых нет в HTML страницы, достраиваются из
   //     assets/nav-data.js (window.NAV_DATA) — при раскрытии модуля или при фильтре
   // -------------------------------------------------------------------------
@@ -543,31 +491,73 @@
   }
 
   // -------------------------------------------------------------------------
-  // 7. Мобильное меню сайдбара
+  // 7. Сайдбар-оверлей: скрыт по умолчанию, поверх контента (не в потоке). Курсор у левого края окна
+  //    (зона 5% ширины окна, как у оглавления) открывает его; уход курсора дальше зоны от сайдбара прячет.
+  //    Кнопка в шапке открывает и закрывает его (клавиатура, касание). Пока фокус внутри сайдбара, не прячем.
   // -------------------------------------------------------------------------
-  function initMobileMenu() {
-    const toggleBtn = document.getElementById('toggle-sidebar');
-    const sidebar = document.getElementById('app-sidebar');
-    if (!toggleBtn || !sidebar) return;
+  // Расстояние от точки до прямоугольника (0, если точка внутри); общее для сайдбара и оглавления (11)
+  function distanceToRect(x, y, rect) {
+    const dx = Math.max(rect.left - x, 0, x - rect.right);
+    const dy = Math.max(rect.top - y, 0, y - rect.bottom);
+    return Math.hypot(dx, dy);
+  }
 
-    toggleBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      const isOpen = sidebar.classList.toggle('open');
-      toggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-      if (isOpen) {
-        setTimeout(function () {
-          centerActiveLecture(false);
-        }, 150);
+  function initSidebar() {
+    const sidebar = document.getElementById('app-sidebar');
+    const toggleBtn = document.getElementById('toggle-sidebar');
+    if (!sidebar) return;
+
+    let closedByButton = false; // закрыт кнопкой: снова открывается, только когда курсор покинет зону
+
+    function isOpen() {
+      return sidebar.classList.contains('is-open');
+    }
+
+    function setOpen(open) {
+      sidebar.classList.toggle('is-open', open);
+      if (toggleBtn) toggleBtn.setAttribute('aria-expanded', String(open));
+    }
+
+    document.addEventListener('mousemove', function (e) {
+      const radius = window.innerWidth * 0.05;
+      if (isOpen()) {
+        const focusInside = sidebar.contains(document.activeElement);
+        if (!focusInside && distanceToRect(e.clientX, e.clientY, sidebar.getBoundingClientRect()) > radius) {
+          setOpen(false);
+        }
+      } else if (e.clientX > radius) {
+        closedByButton = false;
+      } else if (!closedByButton) {
+        setOpen(true);
       }
     });
 
-    document.addEventListener('click', function (e) {
-      if (window.innerWidth <= 768 && sidebar.classList.contains('open')) {
-        if (!sidebar.contains(e.target) && e.target !== toggleBtn) {
-          sidebar.classList.remove('open');
-          toggleBtn.setAttribute('aria-expanded', 'false');
+    // Курсор покинул окно браузера — он заведомо дальше зоны отклика
+    document.addEventListener('mouseout', function (e) {
+      if (!e.relatedTarget && !sidebar.contains(document.activeElement)) setOpen(false);
+    });
+
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', function () {
+        const open = !isOpen();
+        setOpen(open);
+        closedByButton = !open;
+        if (open) {
+          setTimeout(function () {
+            centerActiveLecture(false);
+          }, 150);
         }
+      });
+    }
+
+    document.addEventListener('click', function (e) {
+      if (isOpen() && !sidebar.contains(e.target) && !(toggleBtn && toggleBtn.contains(e.target))) {
+        setOpen(false);
       }
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') setOpen(false);
     });
   }
 
@@ -989,12 +979,6 @@
     const toc = document.getElementById('article-toc');
     if (!toggle || !toc) return;
 
-    function distanceTo(x, y, rect) {
-      const dx = Math.max(rect.left - x, 0, x - rect.right);
-      const dy = Math.max(rect.top - y, 0, y - rect.bottom);
-      return Math.hypot(dx, dy);
-    }
-
     function setOpen(open) {
       toc.classList.toggle('is-open', open);
       toggle.setAttribute('aria-expanded', String(open));
@@ -1004,10 +988,10 @@
       const radius = window.innerWidth * 0.05;
       const isOpen = toc.classList.contains('is-open');
       if (isOpen) {
-        const nearToc = distanceTo(e.clientX, e.clientY, toc.getBoundingClientRect()) <= radius;
-        const nearToggle = distanceTo(e.clientX, e.clientY, toggle.getBoundingClientRect()) <= radius;
+        const nearToc = distanceToRect(e.clientX, e.clientY, toc.getBoundingClientRect()) <= radius;
+        const nearToggle = distanceToRect(e.clientX, e.clientY, toggle.getBoundingClientRect()) <= radius;
         if (!nearToc && !nearToggle) setOpen(false);
-      } else if (distanceTo(e.clientX, e.clientY, toggle.getBoundingClientRect()) <= radius) {
+      } else if (distanceToRect(e.clientX, e.clientY, toggle.getBoundingClientRect()) <= radius) {
         setOpen(true);
       }
     });
@@ -1031,12 +1015,11 @@
     initMermaid();
     initKaTeX();
     initActionDelegation();
-    initSidebarResize();
     initHybridSidebar();
     initSidebarFilter();
     initSidebarCentering();
     initScrollProgress();
-    initMobileMenu();
+    initSidebar();
     initGlobalSearch();
     initTocAutohide();
     if (window.__BOOK__) {         // старый HTML без window.__BOOK__: не запускаем только тему (Е2)

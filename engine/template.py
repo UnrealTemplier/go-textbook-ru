@@ -477,7 +477,10 @@ def render_article_page(
     # Оглавление статьи (TOC)
     toc_items = []
     toc_toggle_html = ""
+    # has-toc — оглавление стоит в потоке справа от статьи: колонка статьи сужается, чтобы оно влезло (style.css)
+    main_class = "content-wrapper"
     if toc:
+        main_class = "content-wrapper" if config.toc.autohide else "content-wrapper has-toc"
         for t in toc:
             level = t["level"]
             cls = f"toc-item toc-h{level}"
@@ -563,7 +566,7 @@ def render_article_page(
   <div class="reading-progress-bar" id="reading-progress" role="progressbar" aria-label="{config.t("page.reading_progress_aria")}" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
 
   <div class="app-layout">
-    <!-- Левый сайдбар -->
+    <!-- Левый сайдбар: оверлей (position: fixed), скрыт по умолчанию — открывается у левого края окна -->
     <aside class="app-sidebar" id="app-sidebar" aria-label="{config.t("sidebar.aria")}">
       {partial("sidebar_header", config, ctx)}
 
@@ -588,9 +591,6 @@ def render_article_page(
       </footer>
     </aside>
 
-    <!-- Ползунок изменения ширины сайдбара (drag-to-resize) -->
-    <div class="resizer" id="drag-resizer" role="separator" aria-orientation="vertical" aria-label="{config.t("sidebar.resizer_aria")}" tabindex="0"></div>
-
     <!-- Основная контентная область -->
     <div class="app-main" id="app-main">
       <header class="content-header">
@@ -600,7 +600,7 @@ def render_article_page(
         {breadcrumbs_html}{toc_toggle_html}
       </header>
 
-      <main class="content-wrapper" id="main-content">
+      <main class="{main_class}" id="main-content">
         <article class="article-body">
           {partial("article_header", config, ctx)}
 
