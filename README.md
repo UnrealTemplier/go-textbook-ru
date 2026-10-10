@@ -207,7 +207,7 @@ python3 -m http.server 8080 -d dist
 > [!NOTE]
 > **Управление версией:** Каноническая версия проекта объявляется в `AGENTS.md` (§ 1.4) и автоматически считывается сборщиком в интерфейс страниц (`dist/`). Файл `README.md` документирует релизы для людей и не является источником правды для сборщика.
 
-**Скрипты одним щелчком:** все команды сборки, аудита, тестов и обновления движка лежат в `scripts/` (`*.sh` для Linux и macOS, `*.bat` для Windows); `scripts/menu.sh` / `scripts/menu.bat` — меню со всеми командами. Список — [`scripts/README.md`](scripts/README.md).
+**Скрипты одним щелчком:** полная проверка и пересборка — `scripts/REBUILD_ALL.bat` (Windows) или `scripts/REBUILD_ALL.sh` (Linux). Отдельные команды сборки, аудита, тестов и обновления движка лежат в `scripts/linux/` (`*.sh`) и `scripts/windows/` (`*.bat`); меню — `scripts/linux/menu.sh` / `scripts/windows/menu.bat`. Список — [`scripts/README.md`](scripts/README.md).
 
 #### Подготовка окружения
 ```bash

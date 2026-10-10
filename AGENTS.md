@@ -123,7 +123,7 @@ go-textbook/
 ├── dist/                  # Скомпилированный статический сайт (артефакт, коммитится в Git)
 ├── favicon.ico / favicon.svg  # Иконки портала (book.toml [branding]; сборка копирует их в dist/ и dist/assets/)
 ├── README.md              # Публичная витрина проекта
-├── scripts/               # Скрипты запуска всех команд одним щелчком: <имя>.sh / <имя>.bat, меню menu.sh / menu.bat, scripts/README.md
+├── scripts/               # REBUILD_ALL.sh / REBUILD_ALL.bat — полная проверка и пересборка; linux/<имя>.sh, windows/<имя>.bat — отдельные команды, меню, scripts/README.md
 ├── requirements.txt       # Зависимость сборки: markdown>=3.10,<3.11
 └── AGENTS.md              # Архитектурный регламент и операционные инструкции для AI-агентов
 ```
@@ -139,7 +139,7 @@ go-textbook/
 
 ### 3.1. Сборка портала (`engine/build.py`)
 
-> Все команды этого раздела и § 3.2–3.3а есть готовыми скриптами в `scripts/` (`scripts/build.sh`, `scripts/audit-full.bat`, …; список — `scripts/README.md`), а `scripts/menu.sh` / `scripts/menu.bat` показывает их меню. Скрипты сами переходят в корень репозитория и передают дополнительные аргументы команде.
+> Все команды этого раздела и § 3.2–3.3а есть готовыми скриптами в `scripts/` (`scripts/linux/build.sh`, `scripts/windows/audit-full.bat`, …; список — `scripts/README.md`), а `scripts/linux/menu.sh` / `scripts/windows/menu.bat` показывает их меню. Скрипты сами переходят в корень репозитория и передают дополнительные аргументы команде. Полная проверка и пересборка одним запуском — `scripts/REBUILD_ALL.sh` / `scripts/REBUILD_ALL.bat`.
 
 ```bash
 # Полная сборка всех статей и главной страницы index.html (~12-15 сек):
