@@ -14,7 +14,7 @@
 > 3. **QA-харденинг и Mermaid Bugfix:** Устранена синтаксическая регрессия в диаграммах, защищён жизненный цикл Mermaid и расширен сквозной аудит (0 broken links, 0 filesystem errors, 0 Mermaid errors).  
 > 4. **Documentation Sync:** Инженерный регламент `AGENTS.md` приведён в строгое соответствие с кодовой базой и историей Git (последняя сверка — 2026-10-09).  
 > 5. **Фактчек v2 (в работе):** Многоролевой фактчек по первоисточникам (§ 11.4) завершён для модулей 1–4; для модулей 5–22 готовы скаут-отчёты (для 5 и 6 — ещё и alt). Все отчёты лежат в `fact-checks/{N}/`.  
-> 6. **Движок выделен (2026-10-09):** генератор — отдельный продукт `html-textbook-engine` (ядро 1.4.0; `/home/ut/work/html-textbook-engine`), здесь `engine/` — его копия, книга — `book.toml` + `book/` + `sources/` (§ 1.2). Обзор, статус и что дальше — **`engine-extraction/README.md`** (читать первым перед работой с движком или `go-workout`). Трек Б (`go-workout`) не начат.
+> 6. **Движок выделен (2026-10-09):** генератор — отдельный продукт `html-textbook-engine` (ядро 1.5.0; `/home/ut/work/html-textbook-engine`), здесь `engine/` — его копия, книга — `book.toml` + `book/` + `sources/` (§ 1.2). Обзор, статус и что дальше — **`engine-extraction/README.md`** (читать первым перед работой с движком или `go-workout`). Трек Б (`go-workout`) не начат.
 
 ---
 
@@ -81,7 +81,7 @@ go-textbook/
 │   ├── hooks.py           # Хуки книги из book/hooks.py: transform_markdown, render_callout, page_context, extra_audit_checks
 │   ├── checksums.py       # Контрольные суммы ядра; engine/.checksums.json — суммы выпуска, сборка сверяет их
 │   ├── sync.py            # python3 -m engine.sync --from <каталог | git-URL | .tar.gz>: обновление ядра из репозитория движка
-│   ├── VERSION / CHANGELOG.md  # Версия ядра (сейчас 1.4.0) и журнал с пометкой «меняет вывод»
+│   ├── VERSION / CHANGELOG.md  # Версия ядра (сейчас 1.5.0) и журнал с пометкой «меняет вывод»
 │   ├── strings/ru.toml    # Строки интерфейса движка (подписи, aria-label, заголовки выносок); книга переопределяет их в book.toml [strings]
 │   ├── scanner.py         # Рекурсивный обход sources/ любой глубины (ошибки вместо тихих потерь файлов), индексные файлы каталогов, title_source, slugify, граф wikilinks
 │   ├── converter/         # Конвертер Markdown → семантический HTML (пакет)
