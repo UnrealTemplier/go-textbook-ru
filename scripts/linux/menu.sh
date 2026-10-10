@@ -1,5 +1,6 @@
 #!/usr/bin/env sh
 # Меню всех команд go-textbook: выберите номер, после выполнения — снова меню.
+. "$(dirname "$0")/_lib.sh"
 cd "$(dirname "$0")" || exit 1
 while true; do
   echo ""
