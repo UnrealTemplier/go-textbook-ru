@@ -10,7 +10,7 @@ import unittest
 
 from engine.tests import DEMO_ROOT, HAS_DEMO
 from engine.tests.firefox import BROWSER, probe
-from engine.tests.test_toc_autohide import PAGE, build_site, demo_config
+from engine.tests.test_toc_autohide import build_site, demo_config
 
 ASSETS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets")
 
@@ -104,12 +104,9 @@ class SidebarMarkupTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.off = build_site(demo_config(False), os.path.join(cls.tmp.name, "off"))
-        cls.on = build_site(demo_config(True), os.path.join(cls.tmp.name, "on"))
-        with open(cls.off, encoding="utf-8") as fp:
+        cls.page = build_site(demo_config(), os.path.join(cls.tmp.name, "dist"))
+        with open(cls.page, encoding="utf-8") as fp:
             cls.off_html = fp.read()
-        with open(cls.on, encoding="utf-8") as fp:
-            cls.on_html = fp.read()
 
     @classmethod
     def tearDownClass(cls):
@@ -124,12 +121,10 @@ class SidebarMarkupTest(unittest.TestCase):
         self.assertIn('id="toggle-sidebar"', self.off_html)
         self.assertIn('aria-expanded="false" aria-controls="app-sidebar"', self.off_html)
 
-    def test_toc_in_flow_marks_wrapper(self):
-        self.assertIn('<main class="content-wrapper has-toc" id="main-content">', self.off_html)
-
-    def test_autohide_toc_leaves_wrapper_plain(self):
-        self.assertIn('<main class="content-wrapper" id="main-content">', self.on_html)
-        self.assertNotIn("has-toc", self.on_html)
+    def test_wrapper_is_plain_and_toc_is_the_popup(self):
+        self.assertIn('<main class="content-wrapper" id="main-content">', self.off_html)
+        self.assertNotIn("has-toc", self.off_html)
+        self.assertIn('<aside class="article-toc" id="article-toc"', self.off_html)
 
     def test_assets_have_no_resize_code(self):
         with open(os.path.join(ASSETS, "main.js"), encoding="utf-8") as fp:
@@ -148,7 +143,7 @@ class SidebarBehaviourTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.path = build_site(demo_config(False), os.path.join(cls.tmp.name, "dist"))
+        cls.path = build_site(demo_config(), os.path.join(cls.tmp.name, "dist"))
         cls.r = probe(cls.path, lambda h: h, BEHAVIOUR, timeout=90)
 
     @classmethod
@@ -230,7 +225,7 @@ class SidebarLayoutTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.path = build_site(demo_config(False), os.path.join(cls.tmp.name, "dist"))
+        cls.path = build_site(demo_config(), os.path.join(cls.tmp.name, "dist"))
 
     @classmethod
     def tearDownClass(cls):
@@ -249,14 +244,13 @@ class SidebarLayoutTest(unittest.TestCase):
                 self.assertEqual(r["tocDisplay"], "block", "при этой ширине оглавление видно")
                 centre = (r["artL"] + r["artR"]) / 2
                 self.assertAlmostEqual(centre, (r["mainL"] + r["mainR"]) / 2, delta=1, msg="статья не по центру")
-                self.assertGreaterEqual(r["tocL"], r["artR"], "оглавление залезло на статью")
                 self.assertLessEqual(r["tocR"], r["mainR"], "оглавление вылезло за окно")
 
-    def test_desktop_sidebar_is_exactly_40_percent_of_window(self):
+    def test_desktop_sidebar_is_exactly_30_percent_of_window(self):
         for width in (1025, 1440, 1920):
             with self.subTest(width=width):
                 r = self.measure(width)
-                self.assertAlmostEqual(r["sbWidth"], 0.4 * r["win"], delta=0.5, msg="сайдбар — не 40% окна")
+                self.assertAlmostEqual(r["sbWidth"], 0.3 * r["win"], delta=0.5, msg="сайдбар — не 30% окна")
 
     def test_phone_drawer_is_70_percent_of_window(self):
         r = self.measure(390)
@@ -272,7 +266,7 @@ class SidebarTextTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.path = build_site(demo_config(False), os.path.join(cls.tmp.name, "dist"))
+        cls.path = build_site(demo_config(), os.path.join(cls.tmp.name, "dist"))
 
     @classmethod
     def tearDownClass(cls):
@@ -305,7 +299,7 @@ class SidebarTouchTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.path = build_site(demo_config(False), os.path.join(cls.tmp.name, "dist"))
+        cls.path = build_site(demo_config(), os.path.join(cls.tmp.name, "dist"))
 
     @classmethod
     def tearDownClass(cls):
@@ -338,6 +332,13 @@ window.addEventListener('load',function(){setTimeout(function(){
 })();"""
 
 
+PHONE_HEADER = """(function(){
+window.addEventListener('load',function(){setTimeout(function(){
+  var c=document.querySelector('.breadcrumbs'),b=document.getElementById('toggle-sidebar').getBoundingClientRect();
+  send({display:getComputedStyle(c).display,btnW:b.width});
+},300);});
+})();"""
+
 @unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")
 @unittest.skipUnless(BROWSER, "нет Firefox (PATH или MERMAID_BROWSER)")
 class SidebarHeaderTest(unittest.TestCase):
@@ -346,7 +347,7 @@ class SidebarHeaderTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.path = build_site(demo_config(False), os.path.join(cls.tmp.name, "dist"))
+        cls.path = build_site(demo_config(), os.path.join(cls.tmp.name, "dist"))
 
     @classmethod
     def tearDownClass(cls):
@@ -364,8 +365,11 @@ class SidebarHeaderTest(unittest.TestCase):
     def test_desktop(self):
         self.check(1440)
 
-    def test_phone(self):
-        self.check(390)
+    def test_phone_hides_breadcrumbs_and_keeps_button(self):
+        r = probe(self.path, lambda h: h, PHONE_HEADER, timeout=90, frame_width=390)
+        self.assertIsNotNone(r, "страница не отправила результат в Firefox")
+        self.assertEqual(r["display"], "none", "на телефоне хлебные крошки скрыты")
+        self.assertGreater(r["btnW"], 0, "кнопка меню на телефоне остаётся")
 
 
 # Телефон: нажатие кнопки выдвигает панель на 70% ширины окна, второе нажатие её прячет
@@ -419,7 +423,7 @@ class SidebarScrollbarTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.path = build_site(demo_config(False), os.path.join(cls.tmp.name, "dist"))
+        cls.path = build_site(demo_config(), os.path.join(cls.tmp.name, "dist"))
         cls.r = probe(cls.path, lambda h: h.replace("</head>", SCROLL_CSS + "</head>", 1), SCROLLBAR, timeout=120)
 
     @classmethod
@@ -448,43 +452,3 @@ class SidebarScrollbarTest(unittest.TestCase):
 
     def test_dragging_thumb_scrolls_list(self):
         self.assertGreater(self.r["dragged"], 0, "перетаскивание бегунка вниз должно прокручивать список")
-
-
-
-DEBUG = """(function(){
-window.addEventListener('load',function(){setTimeout(function(){
-  var out={},panel=document.querySelector('.sidebar-debug');out.hasPanel=!!panel;
-  if(panel){var r=panel.querySelector('input'),sb=document.getElementById('app-sidebar');
-    r.value='30';r.dispatchEvent(new Event('input',{bubbles:true}));
-    out.width=sb.getBoundingClientRect().width;out.win=innerWidth;out.text=panel.querySelector('output').textContent;}
-  send(out);
-},300);});
-})();"""
-
-
-@unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")
-@unittest.skipUnless(BROWSER, "нет Firefox (PATH или MERMAID_BROWSER)")
-class SidebarDebugTest(unittest.TestCase):
-    """Отладочный ползунок ширины: виден только с флагом, задаёт ширину в процентах окна и показывает её."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory()
-        cls.path = build_site(demo_config(False), os.path.join(cls.tmp.name, "dist"))
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tmp.cleanup()
-
-    def test_hidden_without_flag(self):
-        r = probe(self.path, lambda h: h, DEBUG, timeout=90, frame_width=1440)
-        self.assertIsNotNone(r)
-        self.assertFalse(r["hasPanel"], "без флага ползунка быть не должно")
-
-    def test_slider_sets_percent_of_window_and_reports_it(self):
-        r = probe(self.path, lambda h: h.replace("</head>", "<script>window.SIDEBAR_DEBUG=true;</script></head>", 1),
-                  DEBUG, timeout=90, frame_width=1440)
-        self.assertIsNotNone(r)
-        self.assertTrue(r["hasPanel"])
-        self.assertAlmostEqual(r["width"], 0.3 * r["win"], delta=0.5, msg="ползунок 30 должен дать 30% окна")
-        self.assertIn("30.0 %", r["text"])

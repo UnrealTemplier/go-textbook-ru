@@ -477,18 +477,14 @@ def render_article_page(
     # Оглавление статьи (TOC)
     toc_items = []
     toc_toggle_html = ""
-    # has-toc — оглавление стоит в потоке справа от статьи: колонка статьи сужается, чтобы оно влезло (style.css)
-    main_class = "content-wrapper"
     if toc:
-        main_class = "content-wrapper" if config.toc.autohide else "content-wrapper has-toc"
         for t in toc:
             level = t["level"]
             cls = f"toc-item toc-h{level}"
             toc_items.append(f'<li class="{cls}"><a href="#{t["anchor"]}">{html.escape(t["title"])}</a></li>')
         toc_list_svg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>'
-        toc_class = "article-toc toc-autohide" if config.toc.autohide else "article-toc"
         toc_html = f"""
-<aside class="{toc_class}" id="article-toc" aria-label="{config.t("article.toc_aria")}">
+<aside class="article-toc" id="article-toc" aria-label="{config.t("article.toc_aria")}">
   <header class="toc-header">
     {toc_list_svg}
     <span>{config.t("article.toc_title")}</span>
@@ -498,10 +494,9 @@ def render_article_page(
   </ul>
 </aside>
 """
-        if config.toc.autohide:
-            toc_toggle_html = (f'<button type="button" class="toc-toggle" id="toc-toggle" aria-controls="article-toc" '
-                               f'aria-expanded="false" aria-label="{config.t("article.toc_toggle_aria")}" '
-                               f'title="{config.t("article.toc_title")}">{toc_list_svg}</button>')
+        toc_toggle_html = (f'<button type="button" class="toc-toggle" id="toc-toggle" aria-controls="article-toc" '
+                           f'aria-expanded="false" aria-label="{config.t("article.toc_toggle_aria")}" '
+                           f'title="{config.t("article.toc_title")}">{toc_list_svg}</button>')
     else:
         toc_html = ""
 
@@ -600,7 +595,7 @@ def render_article_page(
         {breadcrumbs_html}{toc_toggle_html}
       </header>
 
-      <main class="{main_class}" id="main-content">
+      <main class="content-wrapper" id="main-content">
         <article class="article-body">
           {partial("article_header", config, ctx)}
 

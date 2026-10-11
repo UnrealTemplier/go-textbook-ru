@@ -567,36 +567,6 @@
     update();
   }
 
-  // Отладочный ползунок ширины сайдбара: включается адресом ?sidebar-debug или window.SIDEBAR_DEBUG = true.
-  // Задаёт --sidebar-width в процентах окна (на телефоне перекрывает 70%) и показывает фактическую ширину.
-  function initSidebarDebug(sidebar) {
-    if (!(window.SIDEBAR_DEBUG || /[?&]sidebar-debug(?=&|$)/.test(location.search))) return;
-    const panel = document.createElement('div');
-    panel.className = 'sidebar-debug';
-    panel.innerHTML = '<label>Ширина сайдбара <input type="range" min="10" max="90" step="1"></label> <output></output>';
-    document.body.appendChild(panel);
-    const range = panel.querySelector('input');
-    const out = panel.querySelector('output');
-
-    function measure() {
-      const px = sidebar.getBoundingClientRect().width;
-      return { px: px, pct: px / window.innerWidth * 100 };
-    }
-
-    function show() {
-      const m = measure();
-      out.textContent = m.pct.toFixed(1) + ' % · ' + Math.round(m.px) + ' px · окно ' + window.innerWidth + ' px';
-    }
-
-    range.value = Math.round(measure().pct);
-    range.addEventListener('input', function () {
-      document.documentElement.style.setProperty('--sidebar-width', range.value + 'vw');
-      show();
-    });
-    window.addEventListener('resize', show);
-    show();
-  }
-
   function initSidebar() {
     const sidebar = document.getElementById('app-sidebar');
     const toggleBtn = document.getElementById('toggle-sidebar');
@@ -663,7 +633,6 @@
 
     const nav = document.getElementById('sidebar-content');
     if (nav) initSidebarScrollbar(sidebar, nav);
-    initSidebarDebug(sidebar);
   }
 
   // -------------------------------------------------------------------------
@@ -1075,7 +1044,7 @@
   }
 
   // -------------------------------------------------------------------------
-  // 11. Оглавление по наведению ([toc] autohide): значок в шапке открывает блок, уход мыши прячет.
+  // 11. Оглавление по наведению: значок в шапке открывает блок, уход мыши прячет.
   //     Зона отклика — 5% ширины окна: расстояние от курсора до прямоугольника значка или блока.
   //     Пока блок открыт, «содержимое» — блок и значок вместе. Без значка на странице ничего не делает.
   // -------------------------------------------------------------------------

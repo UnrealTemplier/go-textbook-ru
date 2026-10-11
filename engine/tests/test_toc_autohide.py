@@ -1,4 +1,4 @@
-"""Оглавление по наведению ([toc] autohide).
+"""Оглавление по наведению (всегда; ключа [toc] больше нет).
 
 Разметка и конфиг — без браузера. Поведение — в headless Firefox: синтетические mousemove, mouseout и клавиша Escape
 на собранной демо-книге с включённым ключом (сама демо-книга ключ не включает: её эталон меняется только в ?v=).
@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 from engine.build import build
-from engine.config import BookConfig, ConfigError, load_config
+from engine.config import ConfigError, load_config
 from engine.tests import DEMO_ROOT, HAS_DEMO
 from engine.tests.firefox import BROWSER, probe
 
@@ -60,10 +60,8 @@ def build_site(cfg, dist):
     return os.path.join(dist, PAGE)
 
 
-def demo_config(autohide):
-    cfg = load_config(os.path.join(DEMO_ROOT, "book.toml"))
-    cfg.toc.autohide = autohide
-    return cfg
+def demo_config():
+    return load_config(os.path.join(DEMO_ROOT, "book.toml"))
 
 
 @unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")
@@ -71,44 +69,29 @@ class TocAutohideMarkupTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.off = build_site(demo_config(False), os.path.join(cls.tmp.name, "off"))
-        cls.on = build_site(demo_config(True), os.path.join(cls.tmp.name, "on"))
-        with open(cls.off, encoding="utf-8") as fp:
-            cls.off_html = fp.read()
-        with open(cls.on, encoding="utf-8") as fp:
-            cls.on_html = fp.read()
+        cls.page = build_site(demo_config(), os.path.join(cls.tmp.name, "dist"))
+        with open(cls.page, encoding="utf-8") as fp:
+            cls.html = fp.read()
 
     @classmethod
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def test_default_page_has_no_toggle_and_no_autohide_class(self):
-        self.assertNotIn("toc-toggle", self.off_html)
-        self.assertNotIn("toc-autohide", self.off_html)
-        self.assertIn('<aside class="article-toc" id="article-toc"', self.off_html)
+    def test_aside_is_the_hidden_popup(self):
+        self.assertIn('<aside class="article-toc" id="article-toc"', self.html)
 
-    def test_autohide_page_has_toggle_in_header_and_hidden_aside(self):
-        self.assertIn('<aside class="article-toc toc-autohide" id="article-toc"', self.on_html)
-        button = self.on_html.index('<button type="button" class="toc-toggle" id="toc-toggle"')
-        start = self.on_html.index('<header class="content-header">')
-        end = self.on_html.index("</header>", start)
+    def test_toggle_stands_in_header(self):
+        button = self.html.index('<button type="button" class="toc-toggle" id="toc-toggle"')
+        start = self.html.index('<header class="content-header">')
+        end = self.html.index("</header>", start)
         self.assertTrue(start < button < end, "значок должен стоять в шапке страницы")
-        self.assertIn('aria-controls="article-toc" aria-expanded="false"', self.on_html)
+        self.assertIn('aria-controls="article-toc" aria-expanded="false"', self.html)
 
-    def test_autohide_keeps_the_same_items(self):
-        self.assertEqual(self.on_html.count('<li class="toc-item'), self.off_html.count('<li class="toc-item'))
-        self.assertGreater(self.on_html.count('<li class="toc-item'), 1)
-
-    def test_key_defaults_to_off_and_rejects_unknown_keys(self):
-        self.assertFalse(BookConfig().toc.autohide)
+    def test_no_toc_config_key_any_more(self):
         with tempfile.TemporaryDirectory() as tmp:
-            on = os.path.join(tmp, "on.toml")
-            with open(on, "w", encoding="utf-8") as fp:
-                fp.write("[toc]\nautohide = true\n")
-            self.assertTrue(load_config(on).toc.autohide)
-            bad = os.path.join(tmp, "bad.toml")
+            bad = os.path.join(tmp, "toc.toml")
             with open(bad, "w", encoding="utf-8") as fp:
-                fp.write("[toc]\nautohide_typo = true\n")
+                fp.write("[toc]\nautohide = true\n")
             with self.assertRaises(ConfigError):
                 load_config(bad)
 
@@ -119,7 +102,7 @@ class TocAutohideBehaviourTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.path = build_site(demo_config(True), os.path.join(cls.tmp.name, "dist"))
+        cls.path = build_site(demo_config(), os.path.join(cls.tmp.name, "dist"))
         cls.r = probe(cls.path, lambda h: h, SCENARIO, timeout=90)
 
     @classmethod

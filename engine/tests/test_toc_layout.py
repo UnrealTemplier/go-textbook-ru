@@ -66,25 +66,25 @@ class TocLayoutTest(unittest.TestCase):
                 self.assertGreaterEqual(item["top"], items[i - 1]["bottom"] - 0.5, f"пункт {i} начат внутри предыдущего")
         self.assertLessEqual(toc["sw"], toc["cw"], "блок оглавления прокручивается по горизонтали")
 
-    def test_long_item_capped_at_twenty_percent(self):
+    def test_long_item_capped_at_thirty_percent(self):
         r = measure(self.path, self.long_item)
         self.assert_block(r)
         share = r["toc"]["w"] / r["win"]
-        self.assertLessEqual(share, 0.2 + 1e-6)
-        self.assertGreater(share, 0.199, "длинный пункт должен упираться в предел, а не быть уже него")
+        self.assertLessEqual(share, 0.3 + 1e-6)
+        self.assertGreater(share, 0.299, "длинный пункт должен упираться в предел, а не быть уже него")
         first = r["items"][0]
         self.assertGreater(first["bottom"] - first["top"], 40, "длинный пункт должен переноситься на вторую строку")
 
     def test_short_items_do_not_stretch_block(self):
         r = measure(self.path, lambda h: h)
         self.assert_block(r)
-        self.assertLess(r["toc"]["w"] / r["win"], 0.2, "короткое оглавление не должно доходить до предела")
+        self.assertLess(r["toc"]["w"] / r["win"], 0.3, "короткое оглавление не должно доходить до предела")
 
     def test_limit_is_one_variable(self):
-        style = "<style>:root{--toc-max-width:30vw}</style>"
+        style = "<style>:root{--toc-max-width:20vw}</style>"
         r = measure(self.path, lambda h: self.long_item(h).replace("</head>", style + "</head>", 1))
         self.assert_block(r)
-        self.assertAlmostEqual(r["toc"]["w"] / r["win"], 0.30, places=3)
+        self.assertAlmostEqual(r["toc"]["w"] / r["win"], 0.20, places=3)
 
 
 if __name__ == "__main__":
