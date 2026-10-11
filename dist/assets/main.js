@@ -21,8 +21,9 @@
     if (typeof mermaid !== 'undefined') {
       try {
         var cs = getComputedStyle(document.documentElement);
-        var currentTheme = document.documentElement.dataset.theme || 'dark';
-        var isDark = currentTheme === 'dark';
+        var currentTheme = document.documentElement.dataset.theme || 'amber';
+        // Светлые темы — light и paper; остальные (amber, slate и прочие тёмные темы) — тёмные
+        var isDark = currentTheme !== 'light' && currentTheme !== 'paper';
         var isPaper = currentTheme === 'paper';
         var defaultBg = isDark ? '#0e0d0b' : (isPaper ? '#eae1cb' : '#f2f4f7');
         var defaultCard = isDark ? '#201d19' : (isPaper ? '#fbf7ec' : '#ffffff');
