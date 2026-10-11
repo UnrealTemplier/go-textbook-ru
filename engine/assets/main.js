@@ -518,7 +518,10 @@
       if (toggleBtn) toggleBtn.setAttribute('aria-expanded', String(open));
     }
 
-    document.addEventListener('mousemove', function (e) {
+    // Только указатель мыши: касание даёт совместимый mousemove в точке касания. Если она в зоне,
+    // панель открывалась бы до click и накрывала кнопку, а click уходил бы в ссылку «Главная» в её шапке.
+    document.addEventListener('pointermove', function (e) {
+      if (e.pointerType !== 'mouse') return;
       const radius = window.innerWidth * 0.05;
       if (isOpen()) {
         const focusInside = sidebar.contains(document.activeElement);
@@ -559,6 +562,19 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') setOpen(false);
     });
+
+    // Полоса прокрутки дерева видна только во время прокрутки (стили: .sidebar-content.is-scrolling)
+    const nav = document.getElementById('sidebar-content');
+    if (nav) {
+      let hideTimer = null;
+      nav.addEventListener('scroll', function () {
+        nav.classList.add('is-scrolling');
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(function () {
+          nav.classList.remove('is-scrolling');
+        }, 700);
+      }, { passive: true });
+    }
   }
 
   // -------------------------------------------------------------------------

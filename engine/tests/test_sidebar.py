@@ -21,7 +21,7 @@ function wait(ms){var t0=performance.now();return new Promise(function(res){(fun
   if(performance.now()-t0>=ms)res();else requestAnimationFrame(f);})();});}
 var sb=function(){return document.getElementById('app-sidebar');};
 var btn=function(){return document.getElementById('toggle-sidebar');};
-function mv(x,y){document.dispatchEvent(new MouseEvent('mousemove',{clientX:x,clientY:y,bubbles:true}));}
+function mv(x,y){document.dispatchEvent(new PointerEvent('pointermove',{clientX:x,clientY:y,pointerType:'mouse',bubbles:true}));}
 function transitions(){return document.getAnimations().filter(function(a){return a.transitionProperty&&a.effect.target===sb();})
   .map(function(a){var t=a.effect.getTiming();return {prop:a.transitionProperty,duration:t.duration,easing:t.easing};});}
 function state(){var cs=getComputedStyle(sb()),r=sb().getBoundingClientRect(),a=document.querySelector('.article-body').getBoundingClientRect();
@@ -31,6 +31,10 @@ window.addEventListener('load',function(){setTimeout(async function(){
   var out={},W=innerWidth,R=W*0.05,s;
   await wait(300);
   out.initial=state();
+  document.dispatchEvent(new PointerEvent('pointermove',{clientX:R*0.5,clientY:300,pointerType:'touch',bubbles:true}));
+  await wait(300); out.touchInZone=state();
+  document.dispatchEvent(new MouseEvent('mousemove',{clientX:R*0.5,clientY:300,bubbles:true}));
+  await wait(300); out.compatMouseInZone=state();
   mv(R*0.5,300); out.openTransitions=transitions(); await wait(300); out.inZone=state();
   s=sb().getBoundingClientRect(); mv(s.right-2,300); await wait(300); out.insideSidebar=state();
   mv(s.right+0.8*R,300); await wait(300); out.nearEdge=state();
@@ -77,7 +81,22 @@ window.addEventListener('load',function(){setTimeout(function(){
 },300);});
 })();"""
 
-WIDTH_CAP = "<style>:root{--sidebar-width:90vw}</style>"
+
+# Касание кнопки в шапке на узком экране: после него под пальцем не должна оказаться ссылка «Главная»
+TAP = """(function(){
+function wait(ms){var t0=performance.now();return new Promise(function(res){(function f(){
+  if(performance.now()-t0>=ms)res();else requestAnimationFrame(f);})();});}
+window.addEventListener('load',function(){setTimeout(async function(){
+  var b=document.getElementById('toggle-sidebar').getBoundingClientRect(),x=b.left+2,y=b.top+b.height/2,out={};
+  document.dispatchEvent(new PointerEvent('pointermove',{clientX:x,clientY:y,pointerType:'touch',bubbles:true}));
+  document.dispatchEvent(new MouseEvent('mousemove',{clientX:x,clientY:y,bubbles:true}));
+  await wait(300);
+  out.openAfterTouch=document.getElementById('app-sidebar').classList.contains('is-open');
+  var cx=b.left+b.width/2,cy=b.top+b.height/2,el=document.elementFromPoint(cx,cy),a=el&&el.closest('a');
+  out.linkUnderButton=a?a.getAttribute('href'):null;
+  send(out);
+},300);});
+})();"""
 
 
 @unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")
@@ -138,6 +157,10 @@ class SidebarBehaviourTest(unittest.TestCase):
 
     def setUp(self):
         self.assertIsNotNone(self.r, "страница не отправила результат в Firefox")
+
+    def test_touch_and_compat_mouse_do_not_open_it(self):
+        self.assertFalse(self.r["touchInZone"]["open"], "касание в зоне не должно открывать панель")
+        self.assertFalse(self.r["compatMouseInZone"]["open"], "совместимый mousemove от касания не должен открывать панель")
 
     def test_hidden_by_default(self):
         s = self.r["initial"]
@@ -229,16 +252,16 @@ class SidebarLayoutTest(unittest.TestCase):
                 self.assertGreaterEqual(r["tocL"], r["artR"], "оглавление залезло на статью")
                 self.assertLessEqual(r["tocR"], r["mainR"], "оглавление вылезло за окно")
 
-    def test_sidebar_never_wider_than_40_percent(self):
-        for width in (800, 1280):
+    def test_desktop_sidebar_is_exactly_40_percent_of_window(self):
+        for width in (1025, 1440, 1920):
             with self.subTest(width=width):
-                r = self.measure(width, lambda h: h.replace("</head>", WIDTH_CAP + "</head>", 1))
-                self.assertLessEqual(r["sbWidth"], 0.4 * r["win"] + 0.5, "сайдбар шире 40% окна")
-                self.assertGreater(r["sbWidth"], 0.39 * r["win"], "при большой --sidebar-width ширина должна упереться в 40%")
+                r = self.measure(width)
+                self.assertAlmostEqual(r["sbWidth"], 0.4 * r["win"], delta=0.5, msg="сайдбар — не 40% окна")
 
-    def test_default_sidebar_width_is_320_when_room_allows(self):
-        r = self.measure(1440)
-        self.assertAlmostEqual(r["sbWidth"], 320, delta=0.5)
+    def test_phone_drawer_is_70_percent_of_window(self):
+        r = self.measure(390)
+        self.assertAlmostEqual(r["sbWidth"], 0.7 * r["win"], delta=0.5, msg="на телефоне панель — не 70% окна")
+
 
 
 @unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")
@@ -272,3 +295,136 @@ class SidebarTextTest(unittest.TestCase):
 
     def test_wraps_in_narrow_sidebar(self):
         self.check(600)
+
+
+@unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")
+@unittest.skipUnless(BROWSER, "нет Firefox (PATH или MERMAID_BROWSER)")
+class SidebarTouchTest(unittest.TestCase):
+    """Касание кнопки шапки на телефоне не открывает панель сам по себе и не уводит клик на «Главную»."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.path = build_site(demo_config(False), os.path.join(cls.tmp.name, "dist"))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_button_slides_out_70_percent_and_hides_again(self):
+        r = probe(self.path, lambda h: h, PHONE_BUTTON, timeout=90, frame_width=390)
+        self.assertIsNotNone(r, "страница не отправила результат в Firefox")
+        self.assertTrue(r["openAfterClick"])
+        self.assertAlmostEqual(r["widthOpen"], 0.7 * r["win"], delta=0.5, msg="панель — не 70% окна")
+        self.assertEqual(r["leftOpen"], 0)
+        self.assertFalse(r["openAfterSecondClick"])
+        self.assertLess(r["leftClosed"], 0, "закрытая панель должна уехать за левый край")
+
+    def test_tap_on_button_does_not_open_sidebar_or_hit_home_link(self):
+        r = probe(self.path, lambda h: h, TAP, timeout=90, frame_width=390)
+        self.assertIsNotNone(r, "страница не отправила результат в Firefox")
+        self.assertFalse(r["openAfterTouch"], "касание открыло панель до click")
+        self.assertIsNone(r["linkUnderButton"], "под кнопкой оказалась ссылка (например, «Главная»)")
+
+
+HEADER = """(function(){
+window.addEventListener('load',function(){setTimeout(function(){
+  var h=document.querySelector('.content-header').getBoundingClientRect(),c=document.querySelector('.breadcrumbs').getBoundingClientRect();
+  var b=document.getElementById('toggle-sidebar').getBoundingClientRect(),first=document.querySelector('.breadcrumbs a');
+  var f=first.getBoundingClientRect(),el=document.elementFromPoint(f.left+f.width/2,f.top+f.height/2);
+  send({headerL:h.left,headerR:h.right,crumbL:c.left,crumbR:c.right,btnR:b.right,
+        topAtFirstCrumb:el&&el.closest('a')?el.closest('a').getAttribute('href'):null});
+},300);});
+})();"""
+
+
+@unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")
+@unittest.skipUnless(BROWSER, "нет Firefox (PATH или MERMAID_BROWSER)")
+class SidebarHeaderTest(unittest.TestCase):
+    """Хлебные крошки — по центру ширины окна; «Главная» нажимается; кнопка слева их не перекрывает."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.path = build_site(demo_config(False), os.path.join(cls.tmp.name, "dist"))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def check(self, width):
+        r = probe(self.path, lambda h: h, HEADER, timeout=90, frame_width=width)
+        self.assertIsNotNone(r, f"нет результата при ширине {width}")
+        centre_header = (r["headerL"] + r["headerR"]) / 2
+        centre_crumbs = (r["crumbL"] + r["crumbR"]) / 2
+        self.assertAlmostEqual(centre_crumbs, centre_header, delta=1, msg="крошки не по центру окна")
+        self.assertGreaterEqual(r["crumbL"], r["btnR"], "крошки налезают на кнопку меню")
+        self.assertEqual(r["topAtFirstCrumb"], "../../index.html", "под первой крошкой «Главная» — не её ссылка")
+
+    def test_desktop(self):
+        self.check(1440)
+
+    def test_phone(self):
+        self.check(390)
+
+
+# Телефон: нажатие кнопки выдвигает панель на 70% ширины окна, второе нажатие её прячет
+PHONE_BUTTON = """(function(){
+function wait(ms){var t0=performance.now();return new Promise(function(res){(function f(){
+  if(performance.now()-t0>=ms)res();else requestAnimationFrame(f);})();});}
+window.addEventListener('load',function(){setTimeout(async function(){
+  var sb=document.getElementById('app-sidebar'),btn=document.getElementById('toggle-sidebar'),out={win:innerWidth};
+  btn.click(); await wait(400);
+  out.openAfterClick=sb.classList.contains('is-open'); out.widthOpen=sb.getBoundingClientRect().width;
+  out.leftOpen=sb.getBoundingClientRect().left; out.transformOpen=getComputedStyle(sb).transform;
+  btn.click(); await wait(400);
+  out.openAfterSecondClick=sb.classList.contains('is-open'); out.leftClosed=sb.getBoundingClientRect().left;
+  send(out);
+},300);});
+})();"""
+
+
+SCROLLBAR = """(function(){
+function wait(ms){var t0=performance.now();return new Promise(function(res){(function f(){
+  if(performance.now()-t0>=ms)res();else requestAnimationFrame(f);})();});}
+window.addEventListener('load',function(){setTimeout(async function(){
+  var nav=document.getElementById('sidebar-content'),out={};
+  out.colorBefore=getComputedStyle(nav).scrollbarColor;
+  nav.dispatchEvent(new Event('scroll'));
+  out.during=nav.classList.contains('is-scrolling'); out.colorDuring=getComputedStyle(nav).scrollbarColor;
+  await wait(300); out.midway=nav.classList.contains('is-scrolling');
+  await wait(900); out.after=nav.classList.contains('is-scrolling'); out.colorAfter=getComputedStyle(nav).scrollbarColor;
+  send(out);
+},300);});
+})();"""
+
+
+@unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")
+@unittest.skipUnless(BROWSER, "нет Firefox (PATH или MERMAID_BROWSER)")
+class SidebarScrollbarTest(unittest.TestCase):
+    """Полоса прокрутки дерева видна только во время прокрутки и гаснет через ~0.7 с."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.path = build_site(demo_config(False), os.path.join(cls.tmp.name, "dist"))
+        cls.r = probe(cls.path, lambda h: h, SCROLLBAR, timeout=90)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_class_on_while_scrolling(self):
+        self.assertIsNotNone(self.r, "страница не отправила результат в Firefox")
+        self.assertTrue(self.r["during"])
+        self.assertTrue(self.r["midway"], "полоса должна оставаться видимой, пока идёт прокрутка")
+
+    def test_class_off_after_scrolling_stops(self):
+        self.assertFalse(self.r["after"], "через ~1.2 с после прокрутки полоса должна скрыться")
+
+    def test_firefox_scrollbar_colour_follows_class(self):
+        # Firefox читает scrollbar-color; в других браузерах значение может не вычисляться
+        if not self.r["colorBefore"] or self.r["colorBefore"] == "auto":
+            self.skipTest("браузер не отдаёт scrollbar-color")
+        self.assertNotEqual(self.r["colorDuring"], self.r["colorBefore"])
+        self.assertEqual(self.r["colorAfter"], self.r["colorBefore"])
