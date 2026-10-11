@@ -384,16 +384,28 @@ window.addEventListener('load',function(){setTimeout(async function(){
 })();"""
 
 
+# Бегунок полосы дерева: список принудительно ниже содержимого (иначе не прокручивается)
+SCROLL_CSS = "<style>.sidebar-content{height:120px!important;flex:none!important}</style>"
+
 SCROLLBAR = """(function(){
 function wait(ms){var t0=performance.now();return new Promise(function(res){(function f(){
   if(performance.now()-t0>=ms)res();else requestAnimationFrame(f);})();});}
 window.addEventListener('load',function(){setTimeout(async function(){
-  var nav=document.getElementById('sidebar-content'),out={};
-  out.colorBefore=getComputedStyle(nav).scrollbarColor;
-  nav.dispatchEvent(new Event('scroll'));
-  out.during=nav.classList.contains('is-scrolling'); out.colorDuring=getComputedStyle(nav).scrollbarColor;
-  await wait(300); out.midway=nav.classList.contains('is-scrolling');
-  await wait(900); out.after=nav.classList.contains('is-scrolling'); out.colorAfter=getComputedStyle(nav).scrollbarColor;
+  var nav=document.getElementById('sidebar-content'),sb=document.getElementById('app-sidebar'),th=sb.querySelector('.sidebar-thumb'),out={};
+  out.hasThumb=!!th;
+  nav.scrollTop=30; await wait(150);
+  out.duringClass=sb.classList.contains('is-scrolling'); out.duringOpacity=parseFloat(getComputedStyle(th).opacity);
+  var tr=th.getBoundingClientRect(),nr=nav.getBoundingClientRect();
+  out.thumbTop=tr.top-nr.top; out.thumbH=tr.height; out.navH=nr.height; out.thumbRight=nr.right-tr.right;
+  await wait(2000); out.afterClass=sb.classList.contains('is-scrolling'); out.afterOpacity=parseFloat(getComputedStyle(th).opacity);
+  // перетаскивание бегунка: тянем вниз на 30 px
+  var cy=tr.top+tr.height/2, before=nav.scrollTop;
+  nav.scrollTop=0; await wait(100);
+  var t2=th.getBoundingClientRect(), cy2=t2.top+t2.height/2;
+  th.dispatchEvent(new PointerEvent('pointerdown',{clientX:t2.left+2,clientY:cy2,button:0,bubbles:true}));
+  document.dispatchEvent(new PointerEvent('pointermove',{clientX:t2.left+2,clientY:cy2+30,bubbles:true}));
+  document.dispatchEvent(new PointerEvent('pointerup',{clientX:t2.left+2,clientY:cy2+30,bubbles:true}));
+  await wait(100); out.dragged=nav.scrollTop;
   send(out);
 },300);});
 })();"""
@@ -402,29 +414,77 @@ window.addEventListener('load',function(){setTimeout(async function(){
 @unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")
 @unittest.skipUnless(BROWSER, "нет Firefox (PATH или MERMAID_BROWSER)")
 class SidebarScrollbarTest(unittest.TestCase):
-    """Полоса прокрутки дерева видна только во время прокрутки и гаснет через ~0.7 с."""
+    """Бегунок дерева виден при прокрутке, гаснет после неё и тянется мышью."""
 
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.path = build_site(demo_config(False), os.path.join(cls.tmp.name, "dist"))
-        cls.r = probe(cls.path, lambda h: h, SCROLLBAR, timeout=90)
+        cls.r = probe(cls.path, lambda h: h.replace("</head>", SCROLL_CSS + "</head>", 1), SCROLLBAR, timeout=120)
 
     @classmethod
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def test_class_on_while_scrolling(self):
+    def setUp(self):
         self.assertIsNotNone(self.r, "страница не отправила результат в Firefox")
-        self.assertTrue(self.r["during"])
-        self.assertTrue(self.r["midway"], "полоса должна оставаться видимой, пока идёт прокрутка")
 
-    def test_class_off_after_scrolling_stops(self):
-        self.assertFalse(self.r["after"], "через ~1.2 с после прокрутки полоса должна скрыться")
+    def test_thumb_exists(self):
+        self.assertTrue(self.r["hasThumb"])
 
-    def test_firefox_scrollbar_colour_follows_class(self):
-        # Firefox читает scrollbar-color; в других браузерах значение может не вычисляться
-        if not self.r["colorBefore"] or self.r["colorBefore"] == "auto":
-            self.skipTest("браузер не отдаёт scrollbar-color")
-        self.assertNotEqual(self.r["colorDuring"], self.r["colorBefore"])
-        self.assertEqual(self.r["colorAfter"], self.r["colorBefore"])
+    def test_visible_while_scrolling(self):
+        self.assertTrue(self.r["duringClass"])
+        self.assertGreater(self.r["duringOpacity"], 0.9)
+
+    def test_fades_out_after_scrolling_stops(self):
+        self.assertFalse(self.r["afterClass"])
+        self.assertLess(self.r["afterOpacity"], 0.05)
+
+    def test_thumb_is_inside_the_list_and_shorter_than_it(self):
+        self.assertGreater(self.r["thumbH"], 0)
+        self.assertLess(self.r["thumbH"], self.r["navH"], "при прокрутке бегунок короче списка")
+        self.assertGreaterEqual(self.r["thumbTop"], 0)
+        self.assertLessEqual(self.r["thumbTop"] + self.r["thumbH"], self.r["navH"] + 1)
+
+    def test_dragging_thumb_scrolls_list(self):
+        self.assertGreater(self.r["dragged"], 0, "перетаскивание бегунка вниз должно прокручивать список")
+
+
+
+DEBUG = """(function(){
+window.addEventListener('load',function(){setTimeout(function(){
+  var out={},panel=document.querySelector('.sidebar-debug');out.hasPanel=!!panel;
+  if(panel){var r=panel.querySelector('input'),sb=document.getElementById('app-sidebar');
+    r.value='30';r.dispatchEvent(new Event('input',{bubbles:true}));
+    out.width=sb.getBoundingClientRect().width;out.win=innerWidth;out.text=panel.querySelector('output').textContent;}
+  send(out);
+},300);});
+})();"""
+
+
+@unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")
+@unittest.skipUnless(BROWSER, "нет Firefox (PATH или MERMAID_BROWSER)")
+class SidebarDebugTest(unittest.TestCase):
+    """Отладочный ползунок ширины: виден только с флагом, задаёт ширину в процентах окна и показывает её."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.path = build_site(demo_config(False), os.path.join(cls.tmp.name, "dist"))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_hidden_without_flag(self):
+        r = probe(self.path, lambda h: h, DEBUG, timeout=90, frame_width=1440)
+        self.assertIsNotNone(r)
+        self.assertFalse(r["hasPanel"], "без флага ползунка быть не должно")
+
+    def test_slider_sets_percent_of_window_and_reports_it(self):
+        r = probe(self.path, lambda h: h.replace("</head>", "<script>window.SIDEBAR_DEBUG=true;</script></head>", 1),
+                  DEBUG, timeout=90, frame_width=1440)
+        self.assertIsNotNone(r)
+        self.assertTrue(r["hasPanel"])
+        self.assertAlmostEqual(r["width"], 0.3 * r["win"], delta=0.5, msg="ползунок 30 должен дать 30% окна")
+        self.assertIn("30.0 %", r["text"])
