@@ -34,7 +34,7 @@ def contrast(a, b):
     return (hi + 0.05) / (lo + 0.05)
 
 
-ALL_THEMES = ("paper", "light", "amber", "slate", "mirage", "night", "groove", "vintage", "modern-manual", "retro-manual")
+ALL_THEMES = ("light", "paper", "slate", "mirage", "night", "groove", "amber", "vintage", "retro-manual", "modern-manual")
 # Базовые темы paper, light и amber проверены вручную (рефы), здесь — остальные
 DESIGNED = ("slate", "mirage", "night", "groove", "vintage", "modern-manual", "retro-manual")
 LIGHT_THEMES = ("vintage", "modern-manual", "retro-manual")  # остальные — тёмные

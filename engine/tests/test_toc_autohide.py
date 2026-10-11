@@ -160,5 +160,80 @@ class TocAutohideBehaviourTest(unittest.TestCase):
         self.assertFalse(self.r["escape"]["open"])
 
 
+# Телефон: касание — это pointerdown с типом touch и click (как у браузера). Окно 390 px — через iframe.
+# Эмулированный mousemove после касания без pointer-событий блок не трогает.
+TOUCH_SCENARIO = """(function(){
+function sleep(ms){return new Promise(function(res){setTimeout(res,ms);});}
+var toc=function(){return document.getElementById('article-toc');};
+var tg=function(){return document.getElementById('toc-toggle');};
+function tap(el){document.dispatchEvent(new PointerEvent('pointerdown',{pointerType:'touch',bubbles:true}));el.click();}
+function rect(el){var r=el.getBoundingClientRect();return {l:r.left,r:r.right,t:r.top,b:r.bottom};}
+function state(){return {open:toc().classList.contains('is-open'),expanded:tg().getAttribute('aria-expanded'),
+  toggleDisplay:getComputedStyle(tg()).display,toggle:rect(tg()),toc:rect(toc()),win:innerWidth,
+  row:rect(toc().querySelector('.toc-item a'))};}
+window.addEventListener('load',async function(){await sleep(300);
+  var out={};
+  out.initial=state();
+  tap(tg()); await sleep(300); out.tapOpen=state();
+  document.dispatchEvent(new MouseEvent('mousemove',{clientX:5,clientY:700,bubbles:true})); await sleep(300); out.emulatedMove=state();
+  tap(document.querySelector('.article-body')); await sleep(300); out.tapOutside=state();
+  tap(tg()); await sleep(300); out.tapAgain=state();
+  tap(tg()); await sleep(300); out.tapClose=state();
+  tap(tg()); await sleep(300);
+  tap(toc().querySelector('a')); await sleep(300); out.tapLink=state();
+  send(out);
+});})();"""
+
+
+@unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")
+@unittest.skipUnless(BROWSER, "нет Firefox (PATH или MERMAID_BROWSER)")
+class TocTouchBehaviourTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.path = build_site(demo_config(), os.path.join(cls.tmp.name, "dist"))
+        cls.r = probe(cls.path, lambda h: h, TOUCH_SCENARIO, timeout=90, frame_width=390)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def setUp(self):
+        self.assertIsNotNone(self.r, "страница не отправила результат в Firefox")
+
+    def test_toggle_is_visible_at_right_of_header_on_phone(self):
+        s = self.r["initial"]
+        self.assertEqual(s["toggleDisplay"], "flex")
+        self.assertGreater(s["toggle"]["l"], s["win"] / 2, "значок — справа в шапке, как на десктопе")
+        self.assertLessEqual(s["toggle"]["r"], s["win"])
+
+    def test_block_fits_the_phone_window(self):
+        s = self.r["tapOpen"]
+        self.assertGreaterEqual(s["toc"]["l"], 0)
+        self.assertLessEqual(s["toc"]["r"], s["win"])
+
+    def test_item_row_is_tall_enough_for_a_finger(self):
+        row = self.r["initial"]["row"]
+        self.assertGreaterEqual(row["b"] - row["t"], 40, "пункт оглавления не ниже строк сайдбара и списка тем")
+
+    def test_closed_until_tapped(self):
+        self.assertFalse(self.r["initial"]["open"])
+
+    def test_tap_opens_and_emulated_mousemove_keeps_it_open(self):
+        self.assertTrue(self.r["tapOpen"]["open"])
+        self.assertEqual(self.r["tapOpen"]["expanded"], "true")
+        self.assertTrue(self.r["emulatedMove"]["open"])
+
+    def test_tap_outside_closes(self):
+        self.assertFalse(self.r["tapOutside"]["open"])
+
+    def test_second_tap_on_icon_closes(self):
+        self.assertTrue(self.r["tapAgain"]["open"])
+        self.assertFalse(self.r["tapClose"]["open"])
+
+    def test_tap_on_item_jumps_and_closes(self):
+        self.assertFalse(self.r["tapLink"]["open"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -59,7 +59,8 @@ window.addEventListener('load',()=>setTimeout(async()=>{const r={name:%(name)s};
  r.early=window.__early||null; r.late=%(state)s; r.book=!!window.__BOOK__;
  r.mermaid=[document.querySelectorAll('pre.mermaid').length,document.querySelectorAll('pre.mermaid svg').length];
  r.katex=document.querySelectorAll('.katex').length;
- if(%(action)s==='toggle'){document.getElementById('theme-switcher-btn').click();await sleep(800);
+ if(%(action)s==='toggle'){document.getElementById('theme-switcher-btn').click();await sleep(100);
+   document.querySelector('#theme-menu [data-theme-key="slate"]').click();await sleep(800);
    r.afterToggle=document.documentElement.dataset.theme; r.stored=localStorage.getItem('demo_theme');
    r.mermaidAfter=document.querySelectorAll('pre.mermaid svg').length;
    r.syntaxError=document.body.innerText.includes('Syntax error in text');}
