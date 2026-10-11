@@ -1017,21 +1017,87 @@
     btn.setAttribute('aria-label', book.strings.themeLabel.replace('{name}', name));
   }
 
-  function toggleTheme() {
+  // Нажатие на значок открывает список тем над ним (как оглавление). Клик мимо списка или Escape —
+  // закрыть без смены темы; клик по теме — применить, список остаётся открытым (темы сравнивают подряд). Список строится один раз из
+  // window.__BOOK__ и иконок самой кнопки (клонируются, поэтому строки и иконки не дублируются в HTML).
+  function themeMenuElements() {
+    return {
+      btn: document.getElementById('theme-switcher-btn'),
+      menu: document.getElementById('theme-menu')
+    };
+  }
+
+  function setThemeMenuOpen(open) {
+    const { btn, menu } = themeMenuElements();
+    if (!btn || !menu) return;
+    menu.classList.toggle('is-open', open);
+    btn.setAttribute('aria-expanded', String(open));
+    if (open) markCurrentThemeItem();
+  }
+
+  function markCurrentThemeItem() {
     const book = window.__BOOK__;
-    if (!book) return;
-    const themes = book.availableThemes;
+    const { menu } = themeMenuElements();
+    if (!book || !menu) return;
     const current = document.documentElement.dataset.theme || book.defaultTheme;
-    const next = themes[(themes.indexOf(current) + 1) % themes.length];
-    book.applyTheme(next);
-    book.saveTheme(next);
+    menu.querySelectorAll('.theme-menu-item').forEach(function (item) {
+      const on = item.dataset.themeKey === current;
+      item.classList.toggle('is-current', on);
+      if (on) {
+        item.setAttribute('aria-current', 'true');
+      } else {
+        item.removeAttribute('aria-current');
+      }
+    });
+  }
+
+  function applyThemeFromMenu(key) {
+    const book = window.__BOOK__;
+    book.applyTheme(key);
+    book.saveTheme(key);
     updateThemeSwitcherBtn();
+    markCurrentThemeItem();
     if (typeof rerenderMermaid === 'function') {
       setTimeout(rerenderMermaid, 80);
     }
   }
 
-  window.toggleTheme = toggleTheme;
+  function buildThemeMenu(btn) {
+    const book = window.__BOOK__;
+    const menu = document.createElement('div');
+    menu.className = 'theme-menu';
+    menu.id = 'theme-menu';
+    book.availableThemes.forEach(function (key) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'theme-menu-item';
+      item.dataset.themeKey = key;
+      const source = btn.querySelector('.theme-icon-' + key);
+      if (source) {
+        const icon = source.cloneNode(true);
+        icon.setAttribute('class', 'theme-menu-icon');
+        item.appendChild(icon);
+      }
+      const label = document.createElement('span');
+      label.textContent = book.themeNames[key] || key;
+      item.appendChild(label);
+      item.addEventListener('click', function () {
+        applyThemeFromMenu(key);
+      });
+      menu.appendChild(item);
+    });
+    document.body.appendChild(menu);
+    btn.setAttribute('aria-controls', 'theme-menu');
+    btn.setAttribute('aria-expanded', 'false');
+  }
+
+  function toggleThemeMenu() {
+    const { menu } = themeMenuElements();
+    if (!menu) return;
+    setThemeMenuOpen(!menu.classList.contains('is-open'));
+  }
+
+  window.toggleTheme = toggleThemeMenu;
 
   function initThemeSwitcher() {
     const book = window.__BOOK__;
@@ -1039,20 +1105,42 @@
     updateThemeSwitcherBtn();
 
     const btn = document.getElementById('theme-switcher-btn');
-    if (btn && !btn.hasAttribute('data-action')) {
-      btn.addEventListener('click', toggleTheme);
+    if (!btn) return;
+    buildThemeMenu(btn);
+    if (!btn.hasAttribute('data-action')) {
+      btn.addEventListener('click', toggleThemeMenu);
     }
+
+    document.addEventListener('click', function (e) {
+      const { menu } = themeMenuElements();
+      if (!menu.classList.contains('is-open')) return;
+      if (menu.contains(e.target) || btn.contains(e.target)) return;
+      setThemeMenuOpen(false);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') setThemeMenuOpen(false);
+    });
   }
 
   // -------------------------------------------------------------------------
   // 11. Оглавление по наведению: значок в шапке открывает блок, уход мыши прячет.
   //     Зона отклика — 5% ширины окна: расстояние от курсора до прямоугольника значка или блока.
   //     Пока блок открыт, «содержимое» — блок и значок вместе. Без значка на странице ничего не делает.
+  //     Касание (телефон): значок — кнопка. Касание открывает и закрывает блок, касание вне блока
+  //     и переход по пункту закрывают его. Режим задаёт последнее указательное событие: палец или мышь.
+  //     Эмулированный mousemove после касания приходит без pointer-событий, режим не меняет.
   // -------------------------------------------------------------------------
   function initTocAutohide() {
     const toggle = document.getElementById('toc-toggle');
     const toc = document.getElementById('article-toc');
     if (!toggle || !toc) return;
+
+    let touchMode = false;
+    function trackPointer(e) {
+      touchMode = e.pointerType === 'touch';
+    }
+    document.addEventListener('pointerdown', trackPointer);
+    document.addEventListener('pointermove', trackPointer);
 
     function setOpen(open) {
       toc.classList.toggle('is-open', open);
@@ -1060,6 +1148,7 @@
     }
 
     document.addEventListener('mousemove', function (e) {
+      if (touchMode) return;
       const radius = window.innerWidth * 0.05;
       const isOpen = toc.classList.contains('is-open');
       if (isOpen) {
@@ -1073,10 +1162,22 @@
 
     // Курсор покинул окно браузера — он заведомо дальше зоны отклика
     document.addEventListener('mouseout', function (e) {
-      if (!e.relatedTarget) setOpen(false);
+      if (!touchMode && !e.relatedTarget) setOpen(false);
     });
 
-    toggle.addEventListener('click', function () { setOpen(true); });
+    // С мышью наведение уже открыло блок — клик его оставляет; при касании клик переключает
+    toggle.addEventListener('click', function () {
+      setOpen(!touchMode || !toc.classList.contains('is-open'));
+    });
+
+    // При касании: касание вне блока и значка, а также переход по пункту закрывают блок
+    document.addEventListener('click', function (e) {
+      if (!touchMode || !toc.classList.contains('is-open')) return;
+      if (toggle.contains(e.target)) return;
+      if (toc.contains(e.target) && !e.target.closest('a')) return;
+      setOpen(false);
+    });
+
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') setOpen(false);
     });
