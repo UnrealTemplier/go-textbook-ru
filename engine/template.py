@@ -12,6 +12,7 @@ from string import Template
 from typing import Dict, Any, List, Optional
 from .config import BookConfig, read_text_asset
 from .hooks import load_hooks
+from .themes import active_themes
 
 TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
 _PARTIALS: Dict[Any, Template] = {}
@@ -146,22 +147,6 @@ def get_book_version(config: BookConfig) -> str:
     raise ValueError("[VERSION ERROR] book.toml: не задана project.version или project.version_file")
 
 
-def _load_themes_manifest():
-    """Загружает manifest.json из engine/assets/themes/ для динамической генерации тем."""
-    here = os.path.dirname(os.path.abspath(__file__))
-    manifest_path = os.path.join(here, "assets", "themes", "manifest.json")
-    try:
-        with open(manifest_path, encoding="utf-8") as f:
-            data = json.load(f)
-        return data.get("default", "dark"), data.get("themes", [])
-    except Exception:
-        # Fallback к хардкодным значениям
-        return "dark", [
-            {"key": "paper", "label": "Paper", "icon": "document"},
-            {"key": "light", "label": "Light", "icon": "sun"},
-            {"key": "dark",  "label": "Dark",  "icon": "moon"},
-        ]
-
 # Функции рантайма книги (анализ § 4.9): один источник для anti-flicker в <head> и для main.js.
 _BOOK_RUNTIME_JS = (
     "window.__BOOK__=(function(c){"
@@ -178,7 +163,7 @@ _BOOK_RUNTIME_JS = (
 
 
 def book_runtime_data(config: BookConfig) -> Dict[str, Any]:
-    default_theme, themes = _load_themes_manifest()
+    default_theme, themes = active_themes()
     m = config.math
     return {
         "storagePrefix": config.project.storage_prefix,
@@ -220,6 +205,55 @@ def asset_url(rel_root: str, rel_asset_path: str) -> str:
     v = ASSET_VERSIONS.get(rel_asset_path)
     return f"{rel_root}{rel_asset_path}" + (f"?v={v}" if v else "")
 
+# Пути иконок тем сверх трёх базовых (viewBox 24×24); базовые три иконки переключателя — в theme_switcher_html
+_THEME_ICON_PATHS = {
+    "snowflake": [
+        '<line x1="12" y1="2" x2="12" y2="22"></line>',
+        '<line x1="3.34" y1="7" x2="20.66" y2="17"></line>',
+        '<line x1="3.34" y1="17" x2="20.66" y2="7"></line>',
+    ],
+    "mountain": [
+        '<path d="M2 20 L9 8 L13 14 L16 10 L22 20 Z"></path>',
+    ],
+    "stars": [
+        '<path d="M12 3 L13.5 9.5 L20 11 L13.5 12.5 L12 19 L10.5 12.5 L4 11 L10.5 9.5 Z"></path>',
+    ],
+    "record": [
+        '<circle cx="12" cy="12" r="9"></circle>',
+        '<circle cx="12" cy="12" r="3"></circle>',
+    ],
+    "book": [
+        '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>',
+        '<path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>',
+    ],
+    "typewriter": [
+        '<rect x="5" y="3" width="14" height="6"></rect>',
+        '<rect x="2" y="9" width="20" height="10" rx="2"></rect>',
+        '<line x1="6" y1="14" x2="18" y2="14"></line>',
+    ],
+    "newspaper": [
+        '<rect x="3" y="4" width="18" height="16" rx="1"></rect>',
+        '<line x1="7" y1="8" x2="17" y2="8"></line>',
+        '<line x1="7" y1="12" x2="17" y2="12"></line>',
+        '<line x1="7" y1="16" x2="13" y2="16"></line>',
+    ],
+}
+
+
+def _extra_theme_icons() -> str:
+    """SVG-иконки тем сверх базовых трёх (класс theme-icon-<key>)."""
+    _, themes = active_themes()
+    out = []
+    for t in themes:
+        if t["key"] in ("paper", "light", "amber"):
+            continue
+        body = "".join(f"        {el}\n" for el in _THEME_ICON_PATHS.get(t.get("icon"), []))
+        out.append(f'      <svg class="theme-icon theme-icon-{t["key"]}" width="20" height="20" viewBox="0 0 24 24" '
+                   'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">\n'
+                   + body + '      </svg>\n')
+    return "".join(out)
+
+
 def theme_switcher_html(config: BookConfig) -> str:
     aria = config.t("page.theme_switcher_aria")
     return (
@@ -244,16 +278,17 @@ def theme_switcher_html(config: BookConfig) -> str:
     '        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>\n'
     '        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>\n'
     '      </svg>\n'
-    '      <svg class="theme-icon theme-icon-dark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">\n'
+    '      <svg class="theme-icon theme-icon-amber" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">\n'
     '        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>\n'
     '      </svg>\n'
+    f'{_extra_theme_icons()}'
     '    </span>\n'
     '  </button>'
     )
 
 def make_html_tag() -> str:
     """Генерирует открывающий тег <html> с атрибутами тем из manifest.json."""
-    default_theme, themes = _load_themes_manifest()
+    default_theme, themes = active_themes()
     theme_keys = ','.join(t['key'] for t in themes)
     theme_labels = ','.join(f"{t['key']}:{t['label']}" for t in themes)
     return f'<html lang="ru" data-theme="{default_theme}" data-available-themes="{theme_keys}" data-theme-labels="{theme_labels}">'

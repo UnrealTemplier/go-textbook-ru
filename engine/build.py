@@ -43,7 +43,7 @@ def build_themed_css(engine_assets_dir: str, dist_assets_dir: str) -> list:
     """
     Читает manifest.json из themes/, конкатенирует CSS файлы тем
     с основным style.css и записывает итоговый style.css в dist/assets/.
-    Возвращает список словарей тем из манифеста.
+    Возвращает список словарей всех тем манифеста.
     """
     themes_dir = os.path.join(engine_assets_dir, "themes")
     manifest_path = os.path.join(themes_dir, "manifest.json")
@@ -87,6 +87,15 @@ def build_themed_css(engine_assets_dir: str, dist_assets_dir: str) -> list:
 
     print(f"      Темы CSS собраны: {[t['key'] for t in themes_sorted]} → dist/assets/style.css")
     return themes
+
+def copy_theme_assets(engine_assets_dir: str, dist_assets_dir: str, themes: list) -> None:
+    """Ассеты тем (themes/<key>/: шрифты, текстуры) — для всех тем манифеста (themes — из build_themed_css)."""
+    for theme in themes:
+        # assets_from — папка ассетов другой темы (retro-manual берёт шрифты vintage); путь в dist тот же, что в CSS
+        folder = theme.get("assets_from", theme["key"])
+        src = os.path.join(engine_assets_dir, "themes", folder)
+        if os.path.isdir(src):
+            shutil.copytree(src, os.path.join(dist_assets_dir, "themes", folder), dirs_exist_ok=True)
 
 def apply_book_assets(config: BookConfig, dist_assets_dir: str) -> None:
     """Ассеты книги поверх ассетов движка: overrides/assets/** заменяют файлы, extra.css и extra.js добавляются."""
@@ -200,6 +209,7 @@ def build(
     dist_assets = os.path.join(dist_dir, "assets")
     copy_assets(engine_assets, dist_assets)
     themes_list = build_themed_css(engine_assets, dist_assets)
+    copy_theme_assets(engine_assets, dist_assets, themes_list)
     apply_book_assets(config, dist_assets)
     generate_search_data_js(all_articles, dist_dir)
     if config.navigation.mode == "hybrid":

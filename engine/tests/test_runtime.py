@@ -165,25 +165,26 @@ class BookRuntimeTest(unittest.TestCase):
 
     def test_1_empty_storage_default_theme(self):
         res = self.r("empty")
-        self.assert_clean(res, "dark")
+        self.assert_clean(res, "amber")
         self.assertGreater(res["katex"], 0)
 
     def test_2_saved_theme_applied_before_render(self):
         self.assert_clean(self.r("saved"), "paper")
 
     def test_3_unknown_theme(self):
-        self.assert_clean(self.r("unknown"), "dark")
+        self.assert_clean(self.r("unknown"), "amber")
 
     def test_4_storage_unavailable(self):
-        self.assert_clean(self.r("no_storage"), "dark")
+        self.assert_clean(self.r("no_storage"), "amber")
 
     def test_5_old_retro_keys_ignored(self):
-        self.assert_clean(self.r("old_keys"), "dark")
+        self.assert_clean(self.r("old_keys"), "amber")
 
     def test_6_toggle_saves_and_rerenders(self):
         res = self.r("toggle")
-        self.assertEqual(res["afterToggle"], "paper")
-        self.assertEqual(res["stored"], "paper")
+        # После amber в переключателе идёт slate (порядок манифеста)
+        self.assertEqual(res["afterToggle"], "slate")
+        self.assertEqual(res["stored"], "slate")
         self.assertEqual(res["mermaidAfter"], res["mermaid"][0])
         self.assertFalse(res["syntaxError"])
 
