@@ -81,7 +81,7 @@ go-textbook/
 │   ├── hooks.py           # Хуки книги из book/hooks.py: transform_markdown, render_callout, page_context, extra_audit_checks
 │   ├── checksums.py       # Контрольные суммы ядра; engine/.checksums.json — суммы выпуска, сборка сверяет их
 │   ├── sync.py            # python3 -m engine.sync --from <каталог | git-URL | .tar.gz>: обновление ядра из репозитория движка
-│   ├── VERSION / CHANGELOG.md  # Версия ядра (сейчас 1.13.3) и журнал с пометкой «меняет вывод»
+│   ├── VERSION / CHANGELOG.md  # Версия ядра (сейчас 1.13.4) и журнал с пометкой «меняет вывод»
 │   ├── strings/ru.toml    # Строки интерфейса движка (подписи, aria-label, заголовки выносок); книга переопределяет их в book.toml [strings]
 │   ├── scanner.py         # Рекурсивный обход sources/ любой глубины (ошибки вместо тихих потерь файлов), индексные файлы каталогов, title_source, slugify, граф wikilinks
 │   ├── converter/         # Конвертер Markdown → семантический HTML (пакет)
@@ -347,7 +347,7 @@ python3 -m engine.tools.lists_oracle --book book.toml --report /tmp/lists.json
   - Оглавление «На этой странице» всегда всплывающее (ядро 1.9.0): блок скрыт, в шапке справа полупрозрачный значок; значок открывает блок, блок прячется, когда курсор уходит дальше 5% ширины окна от значка и блока. Ключа `[toc]` в `book.toml` больше нет: ядро 1.9.0 удалило его, секцию убрали из книги.
 * **Диаграммы Mermaid:**
   - `<figure class="mermaid-wrapper" role="figure" aria-label="Архитектурная схема">`
-    - `<figcaption class="mermaid-header">` (заголовок схемы и кнопка «На весь экран»)
+    - `<figcaption class="mermaid-header">` (только кнопка «На весь экран», справа; заголовка «Архитектурная схема» с ядра 1.13.4 нет)
     - `<pre class="mermaid">` (экранированный исходный код Mermaid)
 * **Инженерные выноски (Callouts):**
   - `<aside class="callout callout-{type}" role="note" aria-label="...">` с заголовком `<header class="callout-header">`.
