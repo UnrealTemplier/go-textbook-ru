@@ -55,7 +55,7 @@ class TocLayoutTest(unittest.TestCase):
 
     def assert_block(self, r):
         self.assertIsNotNone(r, "страница не отправила результат в Firefox")
-        self.assertGreater(r["win"], 1024, "окно уже порога, при котором оглавление скрыто")
+        self.assertGreater(r["win"], 1024, "окно шире 1024 px: оглавление в нём показано")
         toc, items = r["toc"], r["items"]
         self.assertEqual(toc["disp"], "block")
         self.assertGreater(len(items), 1)

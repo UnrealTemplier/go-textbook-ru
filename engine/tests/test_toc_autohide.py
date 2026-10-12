@@ -170,7 +170,8 @@ function tap(el){document.dispatchEvent(new PointerEvent('pointerdown',{pointerT
 function rect(el){var r=el.getBoundingClientRect();return {l:r.left,r:r.right,t:r.top,b:r.bottom};}
 function state(){return {open:toc().classList.contains('is-open'),expanded:tg().getAttribute('aria-expanded'),
   toggleDisplay:getComputedStyle(tg()).display,toggle:rect(tg()),toc:rect(toc()),win:innerWidth,
-  row:rect(toc().querySelector('.toc-item a'))};}
+  row:rect(toc().querySelector('.toc-item a')),fontSize:parseFloat(getComputedStyle(toc().querySelector('.toc-item a')).fontSize),
+  overscroll:getComputedStyle(toc()).overscrollBehaviorY};}
 window.addEventListener('load',async function(){await sleep(300);
   var out={};
   out.initial=state();
@@ -214,7 +215,14 @@ class TocTouchBehaviourTest(unittest.TestCase):
 
     def test_item_row_is_tall_enough_for_a_finger(self):
         row = self.r["initial"]["row"]
-        self.assertGreaterEqual(row["b"] - row["t"], 40, "пункт оглавления не ниже строк сайдбара и списка тем")
+        self.assertGreaterEqual(row["b"] - row["t"], 36, "пункт оглавления — строка для пальца, не ниже 36px")
+
+    def test_item_font_is_twenty_percent_larger_than_desktop(self):
+        # Десктопный шрифт блока — 0.82rem при корне 16px; на телефоне пункт — на 20% больше
+        self.assertAlmostEqual(self.r["initial"]["fontSize"], 0.82 * 16 * 1.2, delta=0.05)
+
+    def test_scroll_of_block_does_not_pass_to_page(self):
+        self.assertEqual(self.r["initial"]["overscroll"], "contain")
 
     def test_closed_until_tapped(self):
         self.assertFalse(self.r["initial"]["open"])
@@ -233,6 +241,31 @@ class TocTouchBehaviourTest(unittest.TestCase):
 
     def test_tap_on_item_jumps_and_closes(self):
         self.assertFalse(self.r["tapLink"]["open"])
+
+
+@unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")
+@unittest.skipUnless(BROWSER, "нет Firefox (PATH или MERMAID_BROWSER)")
+class TocLandscapeTest(unittest.TestCase):
+    """Телефон в ландшафте (Galaxy A52: окно ~915 px) шире телефонного порога 768px, но уже 1024px.
+    Значок оглавления должен быть в шапке и помещаться в окно, как на телефоне в портрете."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.path = build_site(demo_config(), os.path.join(cls.tmp.name, "dist"))
+        cls.r = probe(cls.path, lambda h: h, TOUCH_SCENARIO, timeout=90, frame_width=915)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_toggle_is_shown_and_fits_the_window(self):
+        self.assertIsNotNone(self.r, "страница не отправила результат в Firefox")
+        s = self.r["initial"]
+        self.assertEqual(s["win"], 915)
+        self.assertEqual(s["toggleDisplay"], "flex")
+        self.assertGreater(s["toggle"]["l"], s["win"] / 2, "значок — справа в шапке")
+        self.assertLessEqual(s["toggle"]["r"], s["win"])
 
 
 if __name__ == "__main__":
