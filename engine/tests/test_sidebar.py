@@ -256,14 +256,14 @@ class SidebarLayoutTest(unittest.TestCase):
                 r = self.measure(width)
                 self.assertAlmostEqual(r["sbWidth"], 0.3 * r["win"], delta=0.5, msg="сайдбар — не 30% окна")
 
-    def test_phone_drawer_is_85_percent_of_window(self):
+    def test_phone_drawer_is_80_percent_of_window(self):
         r = self.measure(390)
-        self.assertAlmostEqual(r["sbWidth"], 0.85 * r["win"], delta=0.5, msg="на телефоне панель — не 85% окна")
+        self.assertAlmostEqual(r["sbWidth"], 0.8 * r["win"], delta=0.5, msg="на телефоне панель — не 80% окна")
 
-    def test_phone_toc_is_85_percent_of_window(self):
+    def test_phone_toc_is_80_percent_of_window(self):
         r = self.measure(390)
         self.assertIsNotNone(r["tocL"], "в демо-книге должно быть оглавление")
-        self.assertAlmostEqual(r["tocR"] - r["tocL"], 0.85 * r["win"], delta=0.5, msg="на телефоне оглавление — не 85% окна")
+        self.assertAlmostEqual(r["tocR"] - r["tocL"], 0.8 * r["win"], delta=0.5, msg="на телефоне оглавление — не 80% окна")
 
 
 
@@ -314,11 +314,11 @@ class SidebarTouchTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def test_button_slides_out_85_percent_and_hides_again(self):
+    def test_button_slides_out_80_percent_and_hides_again(self):
         r = probe(self.path, lambda h: h, PHONE_BUTTON, timeout=90, frame_width=390)
         self.assertIsNotNone(r, "страница не отправила результат в Firefox")
         self.assertTrue(r["openAfterClick"])
-        self.assertAlmostEqual(r["widthOpen"], 0.85 * r["win"], delta=0.5, msg="панель — не 85% окна")
+        self.assertAlmostEqual(r["widthOpen"], 0.8 * r["win"], delta=0.5, msg="панель — не 80% окна")
         self.assertEqual(r["leftOpen"], 0)
         self.assertFalse(r["openAfterSecondClick"])
         self.assertLess(r["leftClosed"], 0, "закрытая панель должна уехать за левый край")
@@ -383,7 +383,7 @@ class SidebarHeaderTest(unittest.TestCase):
         self.check(390)
 
 
-# Телефон: нажатие кнопки выдвигает панель на 85% ширины окна, второе нажатие её прячет
+# Телефон: нажатие кнопки выдвигает панель на 80% ширины окна, второе нажатие её прячет
 PHONE_BUTTON = """(function(){
 function wait(ms){var t0=performance.now();return new Promise(function(res){(function f(){
   if(performance.now()-t0>=ms)res();else requestAnimationFrame(f);})();});}
