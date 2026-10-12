@@ -421,12 +421,11 @@ def render_sidebar(
     html_parts.append('</div>') # sidebar-nav
     return "\n".join(html_parts)
 
-def _index_link(index: Article, text: str, rel_root: str, current: Optional[Article],
-                css_class: str = "index-link") -> str:
-    """Ссылка на заглавную страницу каталога (сайдбар — index-link, хлебные крошки — crumb-link)."""
+def _index_link(index: Article, text: str, rel_root: str, current: Optional[Article]) -> str:
+    """Ссылка на заглавную страницу каталога в сайдбаре."""
     if current is index:
-        return f'<a href="{rel_root}{index.rel_output_path}" class="{css_class} active" aria-current="page">{text}</a>'
-    return f'<a href="{rel_root}{index.rel_output_path}" class="{css_class}">{text}</a>'
+        return f'<a href="{rel_root}{index.rel_output_path}" class="index-link active" aria-current="page">{text}</a>'
+    return f'<a href="{rel_root}{index.rel_output_path}" class="index-link">{text}</a>'
 
 
 def render_index_children(article: Article, rel_root: str) -> str:
@@ -445,29 +444,6 @@ def render_index_children(article: Article, rel_root: str) -> str:
     return '\n<ul class="index-children">\n' + "\n".join(items) + '\n</ul>\n'
 
 
-def render_breadcrumbs(article: Article, rel_root: str, config: BookConfig) -> str:
-    """Хлебные крошки над статьей."""
-    crumbs = [
-        f'<li class="crumb-item"><a href="{rel_root}index.html" class="crumb-link">{config.t("breadcrumbs.home")}</a></li>'
-    ]
-    crumbs.append('<li class="crumb-sep" aria-hidden="true">/</li>')
-    mod_text = html.escape(article.module_name)
-    if article.module_index is not None and article.module_index is not article:
-        mod_text = _index_link(article.module_index, mod_text, rel_root, article, "crumb-link")
-    crumbs.append(f'<li class="crumb-item crumb-module">{mod_text}</li>')
-    
-    if article.subsection_name:
-        sub_text = html.escape(article.subsection_name)
-        if article.section_index is not None and article.section_index is not article:
-            sub_text = _index_link(article.section_index, sub_text, rel_root, article, "crumb-link")
-        crumbs.append('<li class="crumb-sep" aria-hidden="true">/</li>')
-        crumbs.append(f'<li class="crumb-item crumb-sub">{sub_text}</li>')
-
-    crumbs.append('<li class="crumb-sep" aria-hidden="true">/</li>')
-    crumbs.append(f'<li class="crumb-item crumb-current" aria-current="page">{html.escape(article.title)}</li>')
-
-    return f'<nav class="breadcrumbs" aria-label="{config.t("breadcrumbs.aria")}"><ol class="breadcrumbs-list">{" ".join(crumbs)}</ol></nav>'
-
 def render_article_page(
     article: Article,
     article_html: str,
@@ -482,7 +458,6 @@ def render_article_page(
     rel_root = get_rel_root(article.rel_output_path)
     hybrid = config.navigation.mode == "hybrid"
     sidebar_html = render_sidebar(modules_tree, article, rel_root, hybrid, config.navigation.static_module_list)
-    breadcrumbs_html = render_breadcrumbs(article, rel_root, config)
 
     # Предыдущая и следующая статья
     prev_link_html = ""
@@ -627,7 +602,7 @@ def render_article_page(
         <button type="button" class="btn-toggle-sidebar" id="toggle-sidebar" title="{config.t("sidebar.menu_toggle_title")}" aria-label="{config.t("sidebar.menu_toggle_aria")}" aria-expanded="false" aria-controls="app-sidebar">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
         </button>
-        {breadcrumbs_html}{toc_toggle_html}
+        {toc_toggle_html}
       </header>
 
       <main class="content-wrapper" id="main-content">

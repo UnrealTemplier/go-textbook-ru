@@ -131,9 +131,9 @@ class IndexBookTest(unittest.TestCase):
         self.assertNotIn("<h1>Вторая задача</h1>", body)                 # H1 убран из тела
         self.assertIn('<h1 class="article-title">Вторая задача</h1>', page)
         self.assertIn('<span class="meta-tag position-tag">2 из 3</span>', page)
-        self.assertIn('<li class="crumb-item crumb-module"><a href="../../../docs/01-glava/000-o-glave.html" class="crumb-link">Глава</a></li>', page)
-        self.assertIn('class="crumb-link">01. Раздел</a>', page)          # крошка раздела — ссылка
-        self.assertIn('class="index-link">01. Раздел</a>', page)          # и узел раздела в сайдбаре
+        self.assertNotIn("breadcrumb", page)                             # хлебных крошек в разметке нет
+        self.assertNotIn("crumb", page)
+        self.assertIn('class="index-link">01. Раздел</a>', page)          # узел раздела — в сайдбаре
 
     def test_index_page(self):
         _, page = self.render(self.arts[0])

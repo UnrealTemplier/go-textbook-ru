@@ -323,26 +323,18 @@ class SidebarTouchTest(unittest.TestCase):
 
 HEADER = """(function(){
 window.addEventListener('load',function(){setTimeout(function(){
-  var h=document.querySelector('.content-header').getBoundingClientRect(),c=document.querySelector('.breadcrumbs').getBoundingClientRect();
-  var b=document.getElementById('toggle-sidebar').getBoundingClientRect(),first=document.querySelector('.breadcrumbs a');
-  var f=first.getBoundingClientRect(),el=document.elementFromPoint(f.left+f.width/2,f.top+f.height/2);
-  send({headerL:h.left,headerR:h.right,crumbL:c.left,crumbR:c.right,btnR:b.right,
-        topAtFirstCrumb:el&&el.closest('a')?el.closest('a').getAttribute('href'):null});
+  var h=document.querySelector('.content-header').getBoundingClientRect(),b=document.getElementById('toggle-sidebar').getBoundingClientRect();
+  var t=document.getElementById('toc-toggle'),tr=t?t.getBoundingClientRect():null;
+  send({crumbs:document.querySelectorAll('.breadcrumbs').length,headerL:h.left,headerR:h.right,btnL:b.left,btnR:b.right,
+        tocL:tr?tr.left:null,tocR:tr?tr.right:null});
 },300);});
 })();"""
 
-
-PHONE_HEADER = """(function(){
-window.addEventListener('load',function(){setTimeout(function(){
-  var c=document.querySelector('.breadcrumbs'),b=document.getElementById('toggle-sidebar').getBoundingClientRect();
-  send({display:getComputedStyle(c).display,btnW:b.width});
-},300);});
-})();"""
 
 @unittest.skipUnless(HAS_DEMO, "демо-книги нет: это книга, а не репозиторий движка")
 @unittest.skipUnless(BROWSER, "нет Firefox (PATH или MERMAID_BROWSER)")
 class SidebarHeaderTest(unittest.TestCase):
-    """Хлебные крошки — по центру ширины окна; «Главная» нажимается; кнопка слева их не перекрывает."""
+    """Шапка статьи: кнопка сайдбара слева, значок оглавления справа, хлебных крошек нет."""
 
     @classmethod
     def setUpClass(cls):
@@ -356,20 +348,17 @@ class SidebarHeaderTest(unittest.TestCase):
     def check(self, width):
         r = probe(self.path, lambda h: h, HEADER, timeout=90, frame_width=width)
         self.assertIsNotNone(r, f"нет результата при ширине {width}")
-        centre_header = (r["headerL"] + r["headerR"]) / 2
-        centre_crumbs = (r["crumbL"] + r["crumbR"]) / 2
-        self.assertAlmostEqual(centre_crumbs, centre_header, delta=1, msg="крошки не по центру окна")
-        self.assertGreaterEqual(r["crumbL"], r["btnR"], "крошки налезают на кнопку меню")
-        self.assertEqual(r["topAtFirstCrumb"], "../../index.html", "под первой крошкой «Главная» — не её ссылка")
+        self.assertEqual(r["crumbs"], 0, "хлебные крошки должны быть удалены из шапки")
+        self.assertLess(r["btnL"] - r["headerL"], 60, "кнопка сайдбара — не слева")
+        if r["tocL"] is not None:
+            self.assertLess(r["headerR"] - r["tocR"], 60, "значок оглавления — не справа")
+            self.assertGreaterEqual(r["tocL"], r["btnR"], "значок оглавления налезает на кнопку сайдбара")
 
     def test_desktop(self):
         self.check(1440)
 
-    def test_phone_hides_breadcrumbs_and_keeps_button(self):
-        r = probe(self.path, lambda h: h, PHONE_HEADER, timeout=90, frame_width=390)
-        self.assertIsNotNone(r, "страница не отправила результат в Firefox")
-        self.assertEqual(r["display"], "none", "на телефоне хлебные крошки скрыты")
-        self.assertGreater(r["btnW"], 0, "кнопка меню на телефоне остаётся")
+    def test_phone(self):
+        self.check(390)
 
 
 # Телефон: нажатие кнопки выдвигает панель на 70% ширины окна, второе нажатие её прячет
