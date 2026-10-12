@@ -208,10 +208,6 @@ class MarkdownConverter:
             wrapped_html = f"""
 <figure class="mermaid-wrapper" role="figure" aria-label="{self.config.t("mermaid.title")}">
   <figcaption class="mermaid-header">
-    <div class="mermaid-title">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-      <span>{self.config.t("mermaid.title")}</span>
-    </div>
     <button type="button" class="btn-mermaid-fullscreen" data-action="mermaid-fullscreen" title="{self.config.t("mermaid.fullscreen_title")}" aria-label="{self.config.t("mermaid.fullscreen_aria")}">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
       <span>{self.config.t("mermaid.fullscreen_text")}</span>
