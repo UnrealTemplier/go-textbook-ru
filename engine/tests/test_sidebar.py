@@ -2,7 +2,7 @@
 
 Разметка и CSS — без браузера. Поведение и раскладка — в headless Firefox на собранной демо-книге:
 синтетические mousemove, click и keydown; ширина окна задаётся iframe (firefox.probe, frame_width).
-Зона отклика сайдбара — 5% ширины окна; без Firefox поведенческие тесты пропускаются.
+Зона открытия сайдбара — 2% ширины окна, закрытие — дальше 5%; без Firefox поведенческие тесты пропускаются.
 """
 import os
 import tempfile
@@ -28,7 +28,7 @@ function state(){var cs=getComputedStyle(sb()),r=sb().getBoundingClientRect(),a=
   return {open:sb().classList.contains('is-open'),expanded:btn().getAttribute('aria-expanded'),opacity:parseFloat(cs.opacity),
   visibility:cs.visibility,width:r.width,article:[a.left,a.right]};}
 window.addEventListener('load',function(){setTimeout(async function(){
-  var out={},W=innerWidth,R=W*0.05,s;
+  var out={},W=innerWidth,R=W*0.02,C=W*0.05,s;
   await wait(300);
   out.initial=state();
   document.dispatchEvent(new PointerEvent('pointermove',{clientX:R*0.5,clientY:300,pointerType:'touch',bubbles:true}));
@@ -37,8 +37,9 @@ window.addEventListener('load',function(){setTimeout(async function(){
   await wait(300); out.compatMouseInZone=state();
   mv(R*0.5,300); out.openTransitions=transitions(); await wait(300); out.inZone=state();
   s=sb().getBoundingClientRect(); mv(s.right-2,300); await wait(300); out.insideSidebar=state();
-  mv(s.right+0.8*R,300); await wait(300); out.nearEdge=state();
-  mv(s.right+1.3*R,300); out.closeTransitions=transitions(); await wait(300); out.far=state();
+  mv(s.right+0.8*C,300); await wait(300); out.nearEdge=state();
+  mv(s.right+1.3*C,300); out.closeTransitions=transitions(); await wait(300); out.far=state();
+  mv(R*1.5,300); await wait(300); out.beyondOpenZone=state();
   mv(R*0.5,300); await wait(300); out.reopened=state();
   mv(W*0.5,300); await wait(300); out.centreLeaves=state();
   btn().click(); await wait(300); out.buttonOpen=state();
@@ -184,7 +185,10 @@ class SidebarBehaviourTest(unittest.TestCase):
         self.assertTrue(self.r["nearEdge"]["open"], "курсор в 0.8 радиуса от панели — панель не прячется")
 
     def test_leaves_beyond_zone(self):
-        self.assertFalse(self.r["far"]["open"], "курсор в 1.3 радиуса от панели — панель прячется")
+        self.assertFalse(self.r["far"]["open"], "курсор дальше 5% ширины окна от панели — панель прячется")
+
+    def test_no_opening_just_outside_the_2_percent_zone(self):
+        self.assertFalse(self.r["beyondOpenZone"]["open"], "курсор в 3% ширины окна — панель не открывается")
 
     def test_reopens_from_strip(self):
         self.assertTrue(self.r["reopened"]["open"])
@@ -252,9 +256,14 @@ class SidebarLayoutTest(unittest.TestCase):
                 r = self.measure(width)
                 self.assertAlmostEqual(r["sbWidth"], 0.3 * r["win"], delta=0.5, msg="сайдбар — не 30% окна")
 
-    def test_phone_drawer_is_70_percent_of_window(self):
+    def test_phone_drawer_is_85_percent_of_window(self):
         r = self.measure(390)
-        self.assertAlmostEqual(r["sbWidth"], 0.7 * r["win"], delta=0.5, msg="на телефоне панель — не 70% окна")
+        self.assertAlmostEqual(r["sbWidth"], 0.85 * r["win"], delta=0.5, msg="на телефоне панель — не 85% окна")
+
+    def test_phone_toc_is_85_percent_of_window(self):
+        r = self.measure(390)
+        self.assertIsNotNone(r["tocL"], "в демо-книге должно быть оглавление")
+        self.assertAlmostEqual(r["tocR"] - r["tocL"], 0.85 * r["win"], delta=0.5, msg="на телефоне оглавление — не 85% окна")
 
 
 
@@ -305,11 +314,11 @@ class SidebarTouchTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def test_button_slides_out_70_percent_and_hides_again(self):
+    def test_button_slides_out_85_percent_and_hides_again(self):
         r = probe(self.path, lambda h: h, PHONE_BUTTON, timeout=90, frame_width=390)
         self.assertIsNotNone(r, "страница не отправила результат в Firefox")
         self.assertTrue(r["openAfterClick"])
-        self.assertAlmostEqual(r["widthOpen"], 0.7 * r["win"], delta=0.5, msg="панель — не 70% окна")
+        self.assertAlmostEqual(r["widthOpen"], 0.85 * r["win"], delta=0.5, msg="панель — не 85% окна")
         self.assertEqual(r["leftOpen"], 0)
         self.assertFalse(r["openAfterSecondClick"])
         self.assertLess(r["leftClosed"], 0, "закрытая панель должна уехать за левый край")
@@ -322,11 +331,14 @@ class SidebarTouchTest(unittest.TestCase):
 
 
 HEADER = """(function(){
+function look(el){if(!el)return null;var r=el.getBoundingClientRect(),cs=getComputedStyle(el),ic=el.querySelector('svg').getBoundingClientRect();
+  return {w:r.width,h:r.height,color:cs.color,opacity:cs.opacity,iconW:ic.width,iconH:ic.height};}
 window.addEventListener('load',function(){setTimeout(function(){
   var h=document.querySelector('.content-header').getBoundingClientRect(),b=document.getElementById('toggle-sidebar').getBoundingClientRect();
   var t=document.getElementById('toc-toggle'),tr=t?t.getBoundingClientRect():null;
   send({crumbs:document.querySelectorAll('.breadcrumbs').length,headerL:h.left,headerR:h.right,btnL:b.left,btnR:b.right,
-        tocL:tr?tr.left:null,tocR:tr?tr.right:null});
+        tocL:tr?tr.left:null,tocR:tr?tr.right:null,
+        btn:look(document.getElementById('toggle-sidebar')),toc:look(t)});
 },300);});
 })();"""
 
@@ -354,6 +366,16 @@ class SidebarHeaderTest(unittest.TestCase):
             self.assertLess(r["headerR"] - r["tocR"], 60, "значок оглавления — не справа")
             self.assertGreaterEqual(r["tocL"], r["btnR"], "значок оглавления налезает на кнопку сайдбара")
 
+    def test_header_buttons_match(self):
+        """Кнопка сайдбара и значок оглавления — одного размера, цвета, яркости и размера иконки."""
+        for width in (1440, 390):
+            with self.subTest(width=width):
+                r = probe(self.path, lambda h: h, HEADER, timeout=90, frame_width=width)
+                self.assertIsNotNone(r, f"нет результата при ширине {width}")
+                self.assertIsNotNone(r["toc"], "в демо-книге должен быть значок оглавления")
+                for key in ("w", "h", "color", "opacity", "iconW", "iconH"):
+                    self.assertEqual(r["btn"][key], r["toc"][key], f"кнопки отличаются по «{key}»")
+
     def test_desktop(self):
         self.check(1440)
 
@@ -361,7 +383,7 @@ class SidebarHeaderTest(unittest.TestCase):
         self.check(390)
 
 
-# Телефон: нажатие кнопки выдвигает панель на 70% ширины окна, второе нажатие её прячет
+# Телефон: нажатие кнопки выдвигает панель на 85% ширины окна, второе нажатие её прячет
 PHONE_BUTTON = """(function(){
 function wait(ms){var t0=performance.now();return new Promise(function(res){(function f(){
   if(performance.now()-t0>=ms)res();else requestAnimationFrame(f);})();});}

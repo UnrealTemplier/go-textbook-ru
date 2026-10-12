@@ -493,7 +493,7 @@
 
   // -------------------------------------------------------------------------
   // 7. Сайдбар-оверлей: скрыт по умолчанию, поверх контента (не в потоке). Курсор у левого края окна
-  //    (зона 5% ширины окна, как у оглавления) открывает его; уход курсора дальше зоны от сайдбара прячет.
+  //    (зона 2% ширины окна) открывает его; уход курсора дальше 5% ширины окна от сайдбара прячет.
   //    Кнопка в шапке открывает и закрывает его (клавиатура, касание). Пока фокус внутри сайдбара, не прячем.
   // -------------------------------------------------------------------------
   // Расстояние от точки до прямоугольника (0, если точка внутри); общее для сайдбара и оглавления (11)
@@ -591,13 +591,14 @@
       // Узкий экран (≤768px): наведения нет, панель открывает и закрывает только кнопка. Иначе курсор
       // у кнопки (она в левой зоне) открывал бы панель, и клик по кнопке сразу её закрывал бы.
       if (window.matchMedia('(max-width: 768px)').matches) return;
-      const radius = window.innerWidth * 0.05;
+      const openZone = window.innerWidth * 0.02;
+      const closeDistance = window.innerWidth * 0.05;
       if (isOpen()) {
         const focusInside = sidebar.contains(document.activeElement);
-        if (!focusInside && distanceToRect(e.clientX, e.clientY, sidebar.getBoundingClientRect()) > radius) {
+        if (!focusInside && distanceToRect(e.clientX, e.clientY, sidebar.getBoundingClientRect()) > closeDistance) {
           setOpen(false);
         }
-      } else if (e.clientX > radius) {
+      } else if (e.clientX > openZone) {
         closedByButton = false;
       } else if (!closedByButton) {
         setOpen(true);
