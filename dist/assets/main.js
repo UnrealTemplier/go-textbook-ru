@@ -392,6 +392,28 @@
   // -------------------------------------------------------------------------
   let currentMermaidZoom = 1.0;
 
+  // Размер SVG в px: по умолчанию вписан в видимую область окна (без ограничения по натуральному размеру),
+  // зум умножает этот размер. Без transform: прокрутка и центрирование считаются по реальному размеру.
+  function sizeMermaidSvg(svg) {
+    const vb = svg.viewBox && svg.viewBox.baseVal;
+    const container = svg.parentElement;
+    if (!vb || !vb.width || !vb.height || !container) return;
+
+    const cs = getComputedStyle(container);
+    const availW = container.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const availH = container.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const fit = Math.min(availW / vb.width, availH / vb.height);
+    const scale = fit * currentMermaidZoom;
+
+    svg.style.width = `${vb.width * scale}px`;
+    svg.style.height = `${vb.height * scale}px`;
+  }
+
+  function sizeMermaidModalSvg() {
+    const svg = document.querySelector('#mermaid-modal-content svg');
+    if (svg) sizeMermaidSvg(svg);
+  }
+
   window.toggleMermaidModal = function (btn) {
     const wrapper = btn.closest('.mermaid-wrapper');
     if (!wrapper) return;
@@ -403,15 +425,14 @@
     if (!modal || !container) return;
 
     container.innerHTML = '';
-    const clonedSvg = svgEl.cloneNode(true);
-    container.appendChild(clonedSvg);
+    container.appendChild(svgEl.cloneNode(true));
 
     currentMermaidZoom = 1.0;
-    clonedSvg.style.transform = `scale(${currentMermaidZoom})`;
-
     modal.classList.add('active');
     modal.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
+    // После показа модалки: до этого контейнер имеет нулевой размер.
+    sizeMermaidModalSvg();
   };
 
   window.closeMermaidModal = function () {
@@ -422,25 +443,21 @@
     document.body.style.overflow = '';
   };
 
+  // «1:1» возвращает вид «вписано в окно»: без зума диаграмма целиком видна в блоке.
   window.zoomMermaid = function (delta) {
-    const container = document.getElementById('mermaid-modal-content');
-    if (!container) return;
-    const svg = container.querySelector('svg');
-    if (!svg) return;
-
     currentMermaidZoom = Math.max(0.3, Math.min(3.5, currentMermaidZoom + delta));
-    svg.style.transform = `scale(${currentMermaidZoom})`;
+    sizeMermaidModalSvg();
   };
 
   window.resetMermaidZoom = function () {
-    const container = document.getElementById('mermaid-modal-content');
-    if (!container) return;
-    const svg = container.querySelector('svg');
-    if (!svg) return;
-
     currentMermaidZoom = 1.0;
-    svg.style.transform = `scale(1.0)`;
+    sizeMermaidModalSvg();
   };
+
+  window.addEventListener('resize', function () {
+    const modal = document.getElementById('mermaid-modal');
+    if (modal && modal.classList.contains('active')) sizeMermaidModalSvg();
+  });
 
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
