@@ -68,12 +68,12 @@ window.addEventListener('load',()=>setTimeout(async()=>{const r={name:%(name)s};
    Object.defineProperty(navigator,'clipboard',{value:{writeText:t=>{copied=t;return Promise.resolve();}}});
    document.querySelector('[data-action="copy-code"]').click();await sleep(100);r.copied=(copied||'').length;}
  if(%(action)s==='modal'){const m=document.getElementById('mermaid-modal');
-   const scale=()=>{const s=m.querySelector('svg');return s?s.style.transform:null;};
+   const scale=()=>{const s=m.querySelector('svg');return s?parseFloat(s.style.width):null;};
    const click=a=>document.querySelector('#mermaid-modal [data-action="'+a+'"]').click();
    document.querySelector('[data-action="mermaid-fullscreen"]').click();await sleep(100);
    r.opened=m.classList.contains('active');r.hidden=m.getAttribute('aria-hidden');r.svg=!!m.querySelector('svg');
    click('zoom-mermaid-in');click('zoom-mermaid-in');r.zoomIn=scale();click('zoom-mermaid-out');r.zoomOut=scale();
-   click('zoom-mermaid-reset');r.zoomReset=scale();click('close-mermaid-modal');r.closedByButton=!m.classList.contains('active');
+   click('zoom-mermaid-reset');r.zoomReset=scale();{const cr=document.getElementById('mermaid-modal-content').getBoundingClientRect(),sr=m.querySelector('svg').getBoundingClientRect();r.fitInside=sr.top>=cr.top&&sr.bottom<=cr.bottom&&sr.left>=cr.left&&sr.right<=cr.right;}click('close-mermaid-modal');r.closedByButton=!m.classList.contains('active');
    document.querySelector('[data-action="mermaid-fullscreen"]').click();await sleep(100);
    document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));r.closedByEsc=!m.classList.contains('active');}
  if(%(action)s==='nomodal'){r.modal=!!document.getElementById('mermaid-modal');
@@ -203,7 +203,10 @@ class BookRuntimeTest(unittest.TestCase):
         self.assertTrue(res["opened"])
         self.assertEqual(res["hidden"], "false")
         self.assertTrue(res["svg"])
-        self.assertEqual((res["zoomIn"], res["zoomOut"], res["zoomReset"]), ("scale(1.4)", "scale(1.2)", "scale(1)"))
+        self.assertTrue(res["fitInside"])                     # 1:1 — диаграмма целиком в блоке, без обрезки
+        self.assertGreater(res["zoomIn"], res["zoomReset"])   # зум меняет реальный размер (px), не transform
+        self.assertGreater(res["zoomIn"], res["zoomOut"])
+        self.assertGreater(res["zoomOut"], res["zoomReset"])
         self.assertTrue(res["closedByButton"])
         self.assertTrue(res["closedByEsc"])
 
