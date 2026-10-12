@@ -52,11 +52,10 @@ def mermaid_modal_html(config: BookConfig) -> str:
     Возвращает блок с хвостовым отступом под следующий элемент страницы.
     """
     return f"""<!-- Полноэкранный модальный просмотр Mermaid диаграмм -->
-  <div class="mermaid-modal" id="mermaid-modal" role="dialog" aria-modal="true" aria-labelledby="mermaid-modal-title" aria-hidden="true">
+  <div class="mermaid-modal" id="mermaid-modal" role="dialog" aria-modal="true" aria-label="{config.t("mermaid.modal_title")}" aria-hidden="true">
     <div class="modal-backdrop" data-action="close-mermaid-modal" aria-hidden="true"></div>
     <div class="modal-dialog" role="document">
       <header class="modal-header">
-        <h2 class="modal-title" id="mermaid-modal-title">{config.t("mermaid.modal_title")}</h2>
         <div class="modal-actions">
           <button type="button" class="btn-modal-action" data-action="zoom-mermaid-in" title="{config.t("mermaid.zoom_in")}" aria-label="{config.t("mermaid.zoom_in")}">+</button>
           <button type="button" class="btn-modal-action" data-action="zoom-mermaid-out" title="{config.t("mermaid.zoom_out")}" aria-label="{config.t("mermaid.zoom_out")}">-</button>
