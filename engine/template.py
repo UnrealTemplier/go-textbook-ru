@@ -236,6 +236,25 @@ _THEME_ICON_PATHS = {
         '<line x1="7" y1="12" x2="17" y2="12"></line>',
         '<line x1="7" y1="16" x2="13" y2="16"></line>',
     ],
+    "sunset": [
+        '<path d="M5 17 A7 7 0 0 1 19 17"></path>',
+        '<line x1="2" y1="17" x2="22" y2="17"></line>',
+        '<line x1="6" y1="21" x2="18" y2="21"></line>',
+        '<line x1="12" y1="3" x2="12" y2="6"></line>',
+    ],
+    "bolt": [
+        '<path d="M13 2 L4 14 H11 L10 22 L20 9 H13 Z"></path>',
+    ],
+    "chip": [
+        '<rect x="6" y="6" width="12" height="12" rx="1"></rect>',
+        '<path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"></path>',
+    ],
+    "gamepad": [
+        '<rect x="2" y="7" width="20" height="11" rx="4"></rect>',
+        '<path d="M7 10v5M4.5 12.5h5"></path>',
+        '<circle cx="15.5" cy="11.5" r="1"></circle>',
+        '<circle cx="18" cy="14" r="1"></circle>',
+    ],
 }
 
 

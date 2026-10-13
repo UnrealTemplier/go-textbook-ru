@@ -34,9 +34,9 @@ def contrast(a, b):
     return (hi + 0.05) / (lo + 0.05)
 
 
-ALL_THEMES = ("light", "paper", "slate", "mirage", "night", "groove", "amber", "vintage", "retro-manual", "modern-manual")
+ALL_THEMES = ("light", "paper", "slate", "mirage", "night", "groove", "amber", "vintage", "retro-manual", "modern-manual", "synthwave", "cyberpunk", "retro-green", "retro-amber", "retro-gaming")
 # Базовые темы paper, light и amber проверены вручную (рефы), здесь — остальные
-DESIGNED = ("slate", "mirage", "night", "groove", "vintage", "modern-manual", "retro-manual")
+DESIGNED = ("slate", "mirage", "night", "groove", "vintage", "modern-manual", "retro-manual", "synthwave", "cyberpunk", "retro-green", "retro-amber", "retro-gaming")
 LIGHT_THEMES = ("vintage", "modern-manual", "retro-manual")  # остальные — тёмные
 
 
@@ -66,13 +66,22 @@ class ThemeAssetsTest(unittest.TestCase):
     def test_all_theme_assets_copied(self):
         with tempfile.TemporaryDirectory() as out:
             copy_theme_assets(ASSETS_DIR, out, build_themed_css(ASSETS_DIR, out))
-            self.assertTrue(os.path.isfile(os.path.join(out, "themes", "vintage", "fonts", "Bitter-Variable.ttf")))
-            self.assertTrue(os.path.isfile(os.path.join(out, "themes", "modern-manual", "fonts", "Jost-Variable.ttf")))
+            self.assertTrue(os.path.isfile(os.path.join(out, "themes", "vintage", "fonts", "Bitter-Variable.woff2")))
+            self.assertTrue(os.path.isfile(os.path.join(out, "themes", "modern-manual", "fonts", "Jost-Variable.woff2")))
+
+    def test_font_face_files_exist_and_are_woff2(self):
+        for key in ("vintage", "retro-manual", "modern-manual"):
+            with open(os.path.join(ASSETS_DIR, "themes", f"{key}.css"), encoding="utf-8") as fp:
+                urls = re.findall(r'@font-face[^}]*?url\("([^"]+)"\)', fp.read())
+            self.assertTrue(urls, key)
+            for url in urls:
+                self.assertTrue(os.path.isfile(os.path.join(ASSETS_DIR, url)), f"{key}: нет файла {url}")
+                self.assertTrue(url.endswith(".woff2"), f"{key}: шрифт не сжат в woff2: {url}")
 
     def test_assets_from_reuses_other_folder(self):
         with tempfile.TemporaryDirectory() as out:
             copy_theme_assets(ASSETS_DIR, out, build_themed_css(ASSETS_DIR, out))
-            self.assertTrue(os.path.isfile(os.path.join(out, "themes", "vintage", "fonts", "CourierPrime-Regular.ttf")))
+            self.assertTrue(os.path.isfile(os.path.join(out, "themes", "vintage", "fonts", "CourierPrime-Regular.woff2")))
             self.assertFalse(os.path.exists(os.path.join(out, "themes", "retro-manual")))
 
 

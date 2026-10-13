@@ -71,8 +71,8 @@ class ThemeMenuBehaviourTest(unittest.TestCase):
         self.assertFalse(s["open"])
         self.assertEqual(s["expanded"], "false")
         self.assertEqual(s["visibility"], "hidden")
-        self.assertEqual(s["items"], 10)
-        self.assertEqual(s["icons"], 10)
+        self.assertEqual(s["items"], 15)
+        self.assertEqual(s["icons"], 15)
 
     def test_click_on_icon_opens_list_with_current_theme_marked(self):
         s = self.r["opened"]
