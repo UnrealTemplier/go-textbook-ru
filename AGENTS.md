@@ -81,7 +81,7 @@ go-textbook/
 │   ├── hooks.py           # Хуки книги из book/hooks.py: transform_markdown, render_callout, page_context, extra_audit_checks
 │   ├── checksums.py       # Контрольные суммы ядра; engine/.checksums.json — суммы выпуска, сборка сверяет их
 │   ├── sync.py            # python3 -m engine.sync --from <каталог | git-URL | .tar.gz>: обновление ядра из репозитория движка
-│   ├── VERSION / CHANGELOG.md  # Версия ядра (сейчас 1.13.8) и журнал с пометкой «меняет вывод»
+│   ├── VERSION / CHANGELOG.md  # Версия ядра (сейчас 1.14.0) и журнал с пометкой «меняет вывод»
 │   ├── strings/ru.toml    # Строки интерфейса движка (подписи, aria-label, заголовки выносок); книга переопределяет их в book.toml [strings]
 │   ├── scanner.py         # Рекурсивный обход sources/ любой глубины (ошибки вместо тихих потерь файлов), индексные файлы каталогов, title_source, slugify, граф wikilinks
 │   ├── converter/         # Конвертер Markdown → семантический HTML (пакет)
