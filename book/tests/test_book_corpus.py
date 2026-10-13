@@ -1,4 +1,4 @@
-"""Книжный тест go-textbook: генератор воспроизводит закоммиченный dist/ побайтно.
+"""Книжный тест go-textbook: генератор воспроизводит локальный dist/ побайтно.
 
 Рендерит каждую страницу в памяти тем же кодом, что и сборка, и сравнивает с файлом
 в dist/. Санитайзер Mermaid на всех диаграммах корпуса сверяется со снимком.
@@ -32,7 +32,7 @@ class BookCorpusTest(unittest.TestCase):
         cls.articles = cls.scanner.scan()
         cls.conv = MarkdownConverter(cls.scanner, cls.config)
         cls.version = get_book_version(cls.config)
-        set_asset_versions(DIST, VERSIONED_ASSETS)            # ?v= — хэши ассетов закоммиченного dist/
+        set_asset_versions(DIST, VERSIONED_ASSETS)            # ?v= — хэши ассетов локального dist/
 
     def test_article_pages_match_dist(self):
         mismatched = []

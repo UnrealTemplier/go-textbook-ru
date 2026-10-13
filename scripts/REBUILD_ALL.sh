@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # REBUILD_ALL — полная проверка и пересборка go-textbook одним запуском: зависимости, чистая пересборка
 # dist/ (строго), строгий аудит с рантаймом KaTeX и Mermaid в Firefox, тесты ядра и книги, реестр
-# двойных H1 и сверка dist/ с закоммиченным. Двойной щелчок открывает окно терминала
+# двойных H1. Двойной щелчок открывает окно терминала
 # и оставляет его открытым после работы, пока вы его не закроете.
 SELF=$(readlink -f "$0")
 
@@ -76,14 +76,6 @@ tests_all() {
   $PY -m unittest discover -s engine/tests -t . && $PY -m unittest discover -s book/tests
 }
 
-# dist/ коммитится в git: после пересборки он должен совпадать с закоммиченным.
-dist_matches_head() {
-  if [ -n "$(git status --porcelain -- dist 2>/dev/null)" ]; then
-    note "dist/ отличается от закоммиченного: если правили sources/, закоммитьте пересобранный dist/"
-  fi
-  return 0
-}
-
 step "Зависимости (requirements.txt)" $PY -m pip install -q -r requirements.txt
 step "Версия движка" engine_version
 if step "Чистая пересборка dist/ (строгая)" build_clean; then
@@ -95,7 +87,6 @@ else
 fi
 step "Реестр двойных H1 (fact-checks/title-duplicates.md)" \
   $PY -m engine.tools.title_duplicates --book book.toml --out fact-checks/title-duplicates.md --check
-step "Сверка dist/ с закоммиченным" dist_matches_head
 
 echo
 echo "==== Итог"

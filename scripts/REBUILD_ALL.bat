@@ -2,14 +2,13 @@
 chcp 65001 >nul
 title go-textbook: REBUILD_ALL
 rem REBUILD_ALL - полная проверка и пересборка go-textbook одним запуском: зависимости, версия движка, чистая пересборка dist/ (строго),
-rem строгий аудит с рантаймом KaTeX и Mermaid в Firefox, тесты ядра и книги, реестр двойных H1 и сверка dist/ с git.
+rem строгий аудит с рантаймом KaTeX и Mermaid в Firefox, тесты ядра и книги, реестр двойных H1.
 rem Двойной щелчок оставляет окно открытым до закрытия пользователем.
 cd /d "%~dp0.."
 set "PY=py -3"
 where py >nul 2>nul || set "PY=python"
 set "FAILED=0"
 set "NOTE_VER="
-set "NOTE_DIST="
 
 echo.
 echo ==== 1/6 Зависимости (requirements.txt)
@@ -46,10 +45,9 @@ if "%R3%"=="OK" (
 )
 
 echo.
-echo ==== 6/6 Реестр двойных H1 и сверка dist/ с git
+echo ==== 6/6 Реестр двойных H1
 %PY% -m engine.tools.title_duplicates --book book.toml --out fact-checks\title-duplicates.md --check
 if errorlevel 1 (set "R6=ОШИБКА" & set "FAILED=1") else (set "R6=OK")
-for /f "delims=" %%i in ('git status --porcelain -- dist 2^>nul') do set "NOTE_DIST=dist/ отличается от закоммиченного: если правили sources/, закоммитьте пересобранный dist/"
 
 echo.
 echo ==== Итог
@@ -60,7 +58,6 @@ echo   4. Строгий аудит и рантайм: %R4%
 echo   5. Тесты ядра и книги: %R5%
 echo   6. Реестр двойных H1: %R6%
 if defined NOTE_VER echo   ВНИМАНИЕ: %NOTE_VER%
-if defined NOTE_DIST echo   ВНИМАНИЕ: %NOTE_DIST%
 if "%FAILED%"=="0" (echo Всё прошло.) else (echo Есть ошибки - см. вывод шагов выше.)
 
 echo.

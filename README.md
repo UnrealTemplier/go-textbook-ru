@@ -150,8 +150,8 @@ go-textbook/
 ├── fact-checks/         # Отчёты фактчека по модулям (1/ … 22/) и реестр двойных H1
 ├── engine-extraction/   # Выделение движка html-textbook-engine: обзор README.md (начинать с него), итоговый анализ, технический план, дорожная карта
 ├── requirements.txt     # markdown>=3.10,<3.11 — единственная зависимость сборки
-├── .github/workflows/   # pages.yml: публикация dist/ на GitHub Pages при push в main
-├── dist/                # Готовый скомпилированный сайт (1414 HTML страниц + ассеты)
+├── .github/workflows/   # pages.yml: сборка, аудит и публикация на GitHub Pages при push в main
+├── dist/                # Локальная сборка сайта (в .gitignore; в Git не хранится)
 ├── AGENTS.md            # Архитектурный регламент и канонический источник версии (SSOT для build)
 ├── favicon.ico / .svg   # Иконки портала
 └── README.md            # Публичное руководство и витрина проекта
@@ -195,7 +195,7 @@ python3 -m http.server 8080 -d dist
 
 #### Вариант 4: Собственный хостинг
 Директория `dist/` готова к развертыванию на любой статической платформе:
-* **GitHub Pages:** автоматический деплой каталога `/dist` через GitHub Actions;
+* **GitHub Pages:** CI собирает сайт, проверяет его аудитом и публикует (`dist/` в репозитории не хранится);
 * **Nginx:** конфигурация `root /path/to/go-textbook-ru/dist; index index.html;`.
 
 ---
@@ -236,14 +236,12 @@ python3 -m pip install markdown   # единственная сторонняя 
    python3 -m engine.audit
    ```
    Аудит обязан завершиться вердиктом `🎉 АУДИТ ПРОЙДЕН УСПЕШНО!` (0 broken links, 0 missing anchors, 0 mermaid errors, 0 filesystem errors).
-4. **Фиксация изменений** — исходники и пересобранный сайт отдельными коммитами:
+4. **Фиксация изменений** — только исходники (`dist/` в Git не хранится):
    ```bash
    git add sources/
    git commit -m "fix(module-NN): описание изменений"
-   git add dist/
-   git commit -m "chore(dist): rebuild site"
    ```
-5. **Публикация:** после push в `main` workflow `.github/workflows/pages.yml` выкладывает закоммиченный `dist/` на GitHub Pages. CI сайт не пересобирает и аудит не запускает, поэтому шаги 2–3 обязательны до push.
+5. **Публикация:** после push в `main` workflow `.github/workflows/pages.yml` собирает сайт (`--strict`), запускает аудит и выкладывает `dist/` на GitHub Pages. Pull request проходит сборку и аудит без публикации. Шаги 2–3 локально остаются обязательными: CI аудит без рантайм-разбора Mermaid.
 
 ---
 
