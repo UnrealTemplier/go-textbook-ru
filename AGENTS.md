@@ -125,11 +125,12 @@ go-textbook/
 ├── README.md              # Публичная витрина проекта
 ├── scripts/               # REBUILD_ALL.sh / REBUILD_ALL.bat — полная проверка и пересборка; linux/<имя>.sh, windows/<имя>.bat — отдельные команды, меню, scripts/README.md
 ├── requirements.txt       # Зависимость сборки: markdown>=3.10,<3.11
+├── CLAUDE.md / GEMINI.md # Одна строка `@AGENTS.md`: ссылка на регламент для Claude Code и Gemini CLI
 └── AGENTS.md              # Архитектурный регламент и операционные инструкции для AI-агентов
 ```
 
 ### Гигиена репозитория:
-Корень репозитория поддерживается в абсолютной чистоте. В корне разрешены только служебные системные файлы проекта (`sources/`, `engine/`, `book/`, `book.toml`, `dist/`, `fact-checks/`, `engine-extraction/`, `.github/`, `scripts/`, `AGENTS.md`, `README.md`, `requirements.txt`, `favicon.ico`, `favicon.svg`, `.gitignore`). Категорически запрещено коммитить в корень отладочные скрипты, временные дампы, черновики планов или скриншоты.
+Корень репозитория поддерживается в абсолютной чистоте. В корне разрешены только служебные системные файлы проекта (`sources/`, `engine/`, `book/`, `book.toml`, `dist/`, `fact-checks/`, `engine-extraction/`, `.github/`, `scripts/`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `README.md`, `requirements.txt`, `favicon.ico`, `favicon.svg`, `.gitignore`). Категорически запрещено коммитить в корень отладочные скрипты, временные дампы, черновики планов или скриншоты.
 
 Отчёты фактчека всех модулей лежат в `fact-checks/{N}/` (номер модуля без нулей и префиксов); в корень их не класть.
 
