@@ -346,6 +346,19 @@ def _first_page(mod: Dict[str, Any]) -> Optional[Article]:
     return None
 
 
+def _first_in_dir(node: Dict[str, Any]) -> Optional[Article]:
+    """Первая страница каталога: заглавная, первая статья или первая страница подкаталогов."""
+    if node.get("index"):
+        return node["index"]
+    if node["articles"]:
+        return node["articles"][0]
+    for sub in node.get("dirs", []):
+        found = _first_in_dir(sub)
+        if found is not None:
+            return found
+    return None
+
+
 def render_sidebar(
     modules_tree: List[Dict[str, Any]],
     current_article: Optional[Article],
@@ -447,15 +460,16 @@ def _index_link(index: Article, text: str, rel_root: str, current: Optional[Arti
 
 
 def render_index_children(article: Article, rel_root: str) -> str:
-    """Список дочерних страниц под текстом заглавной страницы каталога (U22)."""
+    """Список дочерних страниц под текстом заглавной страницы каталога (U22): страницы каталога,
+    затем его прямые подкаталоги (ссылка на заглавную или первую страницу подкаталога)."""
     node = article.index_of or {}
     items = []
     for art in node.get("articles", []):
         items.append(f'<li><a href="{rel_root}{art.rel_output_path}">{html.escape(art.title)}</a></li>')
-    for sub in node.get("subsections", []):
-        target = sub["index"] or (sub["articles"][0] if sub["articles"] else None)
+    for sub in node.get("dirs", []):
+        target = _first_in_dir(sub)
         if target is not None:
-            title = sub["index"].title if sub["index"] else sub["name"]
+            title = sub["index"].title if sub["index"] else sub["dir_name"]
             items.append(f'<li><a href="{rel_root}{target.rel_output_path}">{html.escape(title)}</a></li>')
     if not items:
         return ""

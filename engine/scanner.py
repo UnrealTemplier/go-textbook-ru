@@ -192,6 +192,8 @@ class KnowledgeBaseScanner:
         Модуль — каталог верхнего уровня с номером («N. Название»). Внутри модуля каталоги любой
         глубины; для шаблонов дерево отдаётся в виде «модуль → подразделы», где путь глубоких
         каталогов склеивается через « / ». Порядок страниц: файлы каталога, затем подкаталоги.
+        Кроме того, у каждого узла есть "dirs" — узлы прямых подкаталогов (для списка дочерних
+        страниц на заглавной странице каталога), в том числе каталогов без своих страниц.
         Ситуации, в которых раньше файлы терялись молча, — ошибки сборки (ScanError).
         """
         entries = sorted(os.listdir(self.sources_dir), key=natural_sort_key)
@@ -224,6 +226,7 @@ class KnowledgeBaseScanner:
                 "subsections": [],
                 "articles": [],
                 "index": None,
+                "dirs": [],
             }
             self._walk(os.path.join(self.sources_dir, top_dir), module_node, [], [])
             modules_tree.append(module_node)
@@ -250,8 +253,9 @@ class KnowledgeBaseScanner:
         self._build_wikilink_index()
         return self.articles
 
-    def _walk(self, dir_path: str, module_node: Dict[str, Any], names: List[str], slugs: List[str]) -> None:
-        """Каталог модуля (names пуст) или вложенный каталог любой глубины."""
+    def _walk(self, dir_path: str, module_node: Dict[str, Any], names: List[str], slugs: List[str],
+              parent: Optional[Dict[str, Any]] = None) -> None:
+        """Каталог модуля (names пуст) или вложенный каталог любой глубины; parent — узел каталога выше."""
         entries = sorted(os.listdir(dir_path), key=natural_sort_key)
         subdirs = [e for e in entries if os.path.isdir(os.path.join(dir_path, e))]
         files = [e for e in entries if os.path.isfile(os.path.join(dir_path, e)) and e.endswith(".md")]
@@ -259,12 +263,17 @@ class KnowledgeBaseScanner:
 
         if names and subdirs:
             pages = [f for f in files if not (index_re and re.match(index_re, f))]
-            if pages:
-                raise ScanError(f"{dir_path}: статьи рядом с подкаталогами были бы потеряны: {pages} "
-                                f"(рядом с подкаталогами допустим только индексный файл)")
+            if pages and not self.config.content.pages_beside_subdirs:
+                raise ScanError(f"{dir_path}: статьи рядом с подкаталогами: {pages} (рядом с подкаталогами "
+                                f"допустим только индексный файл; разрешить — [content] pages_beside_subdirs = true)")
+            if pages and entries.index(pages[-1]) > entries.index(subdirs[0]):
+                raise ScanError(f"{dir_path}: статья {pages[-1]} стоит по номеру после подкаталога {subdirs[0]}, "
+                                f"а на сайте страницы каталога идут раньше его подкаталогов: перенумеруйте")
 
         if names:
-            node = {"name": " / ".join(names), "slug": "/".join(slugs), "articles": [], "index": None}
+            node = {"name": " / ".join(names), "dir_name": names[-1], "slug": "/".join(slugs),
+                    "articles": [], "index": None, "dirs": []}
+            parent["dirs"].append(node)
             if files:
                 module_node["subsections"].append(node)
         else:
@@ -309,7 +318,7 @@ class KnowledgeBaseScanner:
                 seg = slugify(sd, self.slug.subsection[0] if has_children else self.slug.section)
             else:
                 seg = slugify(sd, self.slug.subsection[1])
-            self._walk(sd_path, module_node, names + [sd], slugs + [seg])
+            self._walk(sd_path, module_node, names + [sd], slugs + [seg], node)
 
     @staticmethod
     def _title_from_h1(path: str) -> str:

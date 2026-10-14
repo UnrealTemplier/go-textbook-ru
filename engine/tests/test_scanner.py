@@ -42,6 +42,13 @@ class StructureErrorsTest(unittest.TestCase):
         with self.assertRaisesRegex(ScanError, "рядом с подкаталогами"):
             self.scan({"1. М/Раздел/a.md": "", "1. М/Раздел/Глубже/b.md": ""})
 
+    def test_pages_beside_subdirs_out_of_order(self):
+        cfg = BookConfig(content=ContentConfig(pages_beside_subdirs=True))
+        arts = self.scan({"1. М/Р/01. a.md": "", "1. М/Р/02. Папка/01. b.md": ""}, cfg)
+        self.assertEqual(len(arts), 2)
+        with self.assertRaisesRegex(ScanError, "перенумеруйте"):
+            self.scan({"1. М/Р/03. a.md": "", "1. М/Р/02. Папка/01. b.md": ""}, cfg)
+
     def test_index_file_next_to_subdirs_is_allowed(self):
         cfg = BookConfig(content=ContentConfig(index_file=r"^0+\. "))
         arts = self.scan({"1. М/Раздел/00. О разделе.md": "", "1. М/Раздел/Глубже/b.md": ""}, cfg)
@@ -152,6 +159,74 @@ class IndexBookTest(unittest.TestCase):
         with open(os.path.join(dist, "index.html"), encoding="utf-8") as fp:
             index = fp.read()
         self.assertIn("2 статей", index)
+
+
+class PagesBesideSubdirsTest(unittest.TestCase):
+    """[content] pages_beside_subdirs: страницы каталога рядом с его подкаталогами; заглавные страницы
+    вложенных каталогов перечисляют свои страницы и прямые подкаталоги."""
+
+    FILES = {
+        "0. Модуль/00. О модуле.md": "# М0 — Модуль\n",
+        "0. Модуль/13. Исходники/00. О подразделе.md": "# М0.13 — Исходники\n",
+        "0. Модуль/13. Исходники/01. Первый.md": "# Первый урок\n",
+        "0. Модуль/13. Исходники/02. Второй.md": "# Второй урок\n",
+        "0. Модуль/13. Исходники/04. Проекты/00. О разделе.md": "# Проекты эмуляции\n",
+        "0. Модуль/13. Исходники/04. Проекты/01. MAME.md": "# MAME\n",
+        "0. Модуль/13. Исходники/05. Без заглавной/01. Глубже/01. Лист.md": "# Лист\n",
+    }
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        make_tree(self.tmp.name, self.FILES)
+        self.cfg = BookConfig(project=ProjectConfig(version="1.0.0"),
+                              content=ContentConfig(title_source="h1", index_file=r"^0+\. ",
+                                                    pages_beside_subdirs=True),
+                              root_dir=self.tmp.name)
+        self.sc = KnowledgeBaseScanner(self.tmp.name, self.cfg)
+        self.arts = self.sc.scan()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def render(self, art):
+        body, toc = MarkdownConverter(self.sc, self.cfg).convert_article(art)
+        return render_article_page(art, body, toc, self.sc.modules_tree, total_articles=self.sc.content_count,
+                                   version="1.0.0", config=self.cfg, show_position=True)
+
+    def children(self, art):
+        page = self.render(art)
+        block = re.search(r'<ul class="index-children">(.*?)</ul>', page, re.S).group(1)
+        return re.findall(r'<a href="([^"]+)">([^<]+)</a>', block)
+
+    def test_order_and_sections(self):
+        self.assertEqual([a.title for a in self.arts], [
+            "М0 — Модуль", "М0.13 — Исходники", "Первый урок", "Второй урок",
+            "Проекты эмуляции", "MAME", "Лист",
+        ])
+        self.assertEqual([s["name"] for s in self.sc.modules_tree[0]["subsections"]], [
+            "13. Исходники",
+            "13. Исходники / 04. Проекты",
+            "13. Исходники / 05. Без заглавной / 01. Глубже",
+        ])
+        self.assertEqual(self.arts[2].subsection_name, "13. Исходники")
+        self.assertEqual(self.sc.content_count, 4)
+
+    def test_index_children_are_direct(self):
+        self.assertEqual([t for _, t in self.children(self.arts[0])], ["М0.13 — Исходники"])
+        kids = self.children(self.arts[1])
+        self.assertEqual([t for _, t in kids], ["Первый урок", "Второй урок", "Проекты эмуляции", "05. Без заглавной"])
+        self.assertTrue(kids[3][0].endswith("05-bez-zaglavnoy/01-glubzhe/01-list.html"), kids[3][0])
+
+    def test_sidebar_shows_pages_before_subdir(self):
+        page = self.render(self.arts[2])
+        self.assertLess(page.index('class="nav-submodule active-submodule"'), page.index(">Первый урок</a>"))
+        self.assertLess(page.index(">Второй урок</a>"), page.index(">MAME</a>"))
+
+    def test_full_build(self):
+        dist = os.path.join(self.tmp.name, "dist")
+        with contextlib.redirect_stdout(io.StringIO()):
+            build(self.cfg, sources_dir=self.tmp.name, dist_dir=dist, is_pilot=False, strict=True)
+        self.assertTrue(os.path.exists(os.path.join(dist, "docs/00-modul/13-iskhodniki/01-pervyy.html")))
 
 
 class DuplicateH1Test(unittest.TestCase):
