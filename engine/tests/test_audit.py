@@ -102,6 +102,9 @@ class AuditChecksTest(unittest.TestCase):
         self.assertTrue(ok)                                    # предупреждение, не ошибка
         self.assertEqual(len(a.mermaid_warnings), 1)
         self.assertIn("':::process' внутри метки", a.mermaid_warnings[0]["reason"])
+        strict = SiteAuditor(self.dist, self.root, mermaid_runtime=False, strict=True)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertFalse(strict.run_audit())               # --strict: замечание — ошибка
 
 
 class MermaidClassIssuesTest(unittest.TestCase):

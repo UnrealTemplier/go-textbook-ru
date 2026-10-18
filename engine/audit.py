@@ -13,7 +13,8 @@ engine/audit.py
    (внешние <a href> в тексте допустимы).
 9. Мёртвые wikilinks и ошибки рантайма KaTeX/Mermaid относительно базы книги (audit.baseline):
    рост или новые места — ошибка (--write-baseline перезаписывает базу).
-10. --strict: предупреждения сборки (неоднозначные wikilinks, неизвестные выноски) — ошибки.
+10. --strict: предупреждения сборки (неоднозначные wikilinks, неизвестные выноски) и замечания
+    по диаграммам Mermaid (классы узлов: ':::класс' в метке, класс без classDef) — ошибки.
 11. --katex-runtime: рантайм-проекция в headless Firefox (.katex-error, ошибки Mermaid, JS).
 """
 
@@ -321,7 +322,11 @@ class SiteAuditor:
                 print(f"  В файле: {os.path.relpath(item['source'], self.dist_dir)} -> {item['raw_href']}")
 
         if self.mermaid_warnings:
-            print(f"\n⚠️ Замечания по диаграммам Mermaid: {len(self.mermaid_warnings)} штук.")
+            if self.strict:
+                success = False
+                print(f"\n❌ ЗАМЕЧАНИЯ ПО ДИАГРАММАМ MERMAID (--strict): {len(self.mermaid_warnings)}")
+            else:
+                print(f"\n⚠️ Замечания по диаграммам Mermaid: {len(self.mermaid_warnings)} штук.")
             for w in self.mermaid_warnings[:15]:
                 print(f"  В файле: {os.path.relpath(w['file'], self.dist_dir)}")
                 print(f"  Причина: {w['reason']}")
@@ -787,7 +792,8 @@ def main():
                         help="Не запускать рантайм-разбор диаграмм Mermaid в headless Firefox")
     parser.add_argument("--book", default=None, help="Путь к book.toml (по умолчанию ./book.toml): хук extra_audit_checks")
     parser.add_argument("--strict", action="store_true",
-                        help="Предупреждения сборки (неоднозначные wikilinks, неизвестные выноски) — ошибки")
+                        help="Предупреждения сборки (неоднозначные wikilinks, неизвестные выноски) "
+                             "и замечания по диаграммам Mermaid — ошибки")
     parser.add_argument("--katex-runtime", action="store_true",
                         help="Рантайм-проекция в headless Firefox: ошибки KaTeX/Mermaid не сверх базы, 0 ошибок JS (~100 с)")
     parser.add_argument("--write-baseline", action="store_true",
