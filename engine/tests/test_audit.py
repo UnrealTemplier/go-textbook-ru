@@ -6,7 +6,7 @@ import os
 import tempfile
 import unittest
 
-from engine.audit import SiteAuditor
+from engine.audit import SiteAuditor, mermaid_class_issues
 from engine.config import AuditConfig, BookConfig
 
 PAGE = """<!doctype html><html><head>
@@ -94,6 +94,41 @@ class AuditChecksTest(unittest.TestCase):
         self.assertEqual(len(a.baseline_issues), 2)            # новая ссылка и рост общего числа
         ok, _ = self.audit(baseline={"unresolved_wikilinks": {"index.html": ["Старая"]}})
         self.assertTrue(ok)                                    # стало меньше — не ошибка
+
+    def test_mermaid_class_warnings(self):
+        write(self.dist, "assets/style.css", ".mermaid svg .node.process > rect{fill:red}\n")
+        pre = '<pre class="mermaid">flowchart TD\n    A[&quot;Текст:::process&lt;br&gt;ещё&quot;] --&gt; B[&quot;x&quot;]:::process\n</pre>'
+        ok, a = self.audit(body=pre)
+        self.assertTrue(ok)                                    # предупреждение, не ошибка
+        self.assertEqual(len(a.mermaid_warnings), 1)
+        self.assertIn("':::process' внутри метки", a.mermaid_warnings[0]["reason"])
+
+
+class MermaidClassIssuesTest(unittest.TestCase):
+    def test_class_inside_label(self):
+        for code in ('flowchart TD\n    A["Текст:::entry"]',              # перед "] — ловилось и раньше
+                     'flowchart TD\n    G1["Sender:::accent<br>ch <- data"] --> P',
+                     'flowchart TD\n    S1["1. socket():::network\n    создать сокет"]',
+                     'flowchart TD\n    A -->|"вызов f():::entry"| B'):
+            issues = mermaid_class_issues(code, {"entry", "accent", "network"})
+            self.assertEqual(len(issues), 1, code)
+            self.assertIn("внутри метки", issues[0])
+
+    def test_class_outside_label_is_fine(self):
+        code = ('flowchart TD\n    A["Текст"]:::entry --> B("x"):::own\n    C:::entry-->D\n'
+                '    classDef own fill:#fff;\n    class C,D own;\n    class E default;')
+        self.assertEqual(mermaid_class_issues(code, {"entry"}), [])
+
+    def test_undefined_class(self):
+        code = ('flowchart TD\n    A["Входящий []"]:::processbyte --> B\n'
+                '    classDef ok fill:#0f0;\n    class B,C proc;')
+        issues = mermaid_class_issues(code, {"process"})
+        self.assertEqual([i.split("'")[1] for i in issues], ["processbyte", "proc"])
+        self.assertTrue(all("не объявлен" in i for i in issues))
+
+    def test_class_diagram_class_keyword(self):
+        code = 'classDiagram\n    class Shape <<interface>>\n    class Animal\n    Animal <|-- Dog\n    class Dog:::entry'
+        self.assertEqual(mermaid_class_issues(code, {"entry"}), [])
 
 
 if __name__ == "__main__":
