@@ -20,7 +20,7 @@ SOURCES = os.path.join(ROOT, "sources")
 DIST = os.path.join(ROOT, "dist")
 
 # Снимок санитайзера: sha256 конкатенации очищенного кода всех диаграмм корпуса (в порядке сканирования).
-MERMAID_SNAPSHOT = {"count": 2486, "sha256": "362ae1a2162256dfd2c24f814b815a0f078ffd86871496f3ee55cd5e5e914ab3"}
+MERMAID_SNAPSHOT = {"count": 2486, "sha256": "6e9505481abe445ef3dc78b026e9d6fd9cf33d7bd6bb9aadc16b90ae63ca44eb"}
 
 
 @unittest.skipUnless(os.path.isdir(SOURCES) and os.path.isdir(DIST), "нет sources/ или dist/")
