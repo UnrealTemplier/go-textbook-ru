@@ -4,10 +4,12 @@ engine/converter/__init__.py
 Обработка Callouts, Mermaid диаграмм, Prism.js подсветки, Wikilinks и TOC.
 """
 
+import os
 import re
 import html
 import textwrap
 from typing import Tuple, Dict, Any, List, Optional
+from urllib.parse import unquote
 import markdown
 from ..config import BookConfig
 from ..scanner import slugify, Article, KnowledgeBaseScanner, find_first_h1, duplicate_h1
@@ -18,6 +20,7 @@ from .code_mask import UnifiedCodeLineMask, INLINE_CODE_RE
 from .callouts import CalloutExtractor
 from .headings import HeadingIdsExtension, escape_trailing_hashes
 from ..hooks import load_hooks
+from .. import media as media_mod
 
 CALLOUT_CONFIG = {
     "tip": {
@@ -62,6 +65,13 @@ CALLOUT_CONFIG = {
     }
 }
 
+# Абзац только из картинок (переводы строк nl2br между ними) или отдельная картинка
+_MEDIA_RE = re.compile(r"(?P<p><p>(?P<inner>(?:\s*<img\b[^>]*>\s*(?:<br\s*/?>)?)+)\s*</p>)|(?P<img><img\b[^>]*>)")
+_IMG_RE = re.compile(r"<img\b[^>]*>")
+_ATTR_RE = re.compile(r'([A-Za-z_:][-\w:.]*)="([^"]*)"')
+_EXTERNAL_SRC_RE = re.compile(r"^(?:[a-z][a-z0-9+.-]*:|//|/|#)", re.I)
+
+
 def unique_slug(slug: str, used: set) -> str:
     """Первое вхождение сохраняет slug, повторы получают -2, -3, … (без совпадения с занятыми)."""
     if slug not in used:
@@ -89,6 +99,8 @@ class MarkdownConverter:
         if self.config.math.protect:
             extensions.append(MathProtectExtension(self.config.math.delimiters, self.config.math.protect))
         self.md = markdown.Markdown(extensions=extensions)
+        # [media]: файл медиа → страницы, где он показан (для страницы «Иллюстрации и лицензии»)
+        self.media_usage: Dict[Any, List[Article]] = {}
 
     def convert_article(self, article: Article) -> Tuple[str, List[Dict[str, Any]]]:
         """
@@ -146,6 +158,10 @@ class MarkdownConverter:
             html_content = html_content.replace(ph, m_code)
         for ph, box in callout_placeholders.items():
             html_content = html_content.replace(ph, box)
+
+        # 7б. [media]: картинки из папок медиа — размеры, подпись, атрибуция, <figure> и галереи
+        if media_mod.library_for(self.scanner) is not None:
+            html_content = self._process_media(html_content, article)
 
         # 8. Оборачивание таблиц в адаптивный контейнер
         html_content = self._wrap_tables(html_content)
@@ -453,6 +469,8 @@ class MarkdownConverter:
                     return f'<a href="{href}" class="wikilink"><code>{html.escape(display_text)}</code></a>'
             return match.group(0)
 
+        library = media_mod.library_for(self.scanner)
+
         def transform_line(line):
             # Что начинается раньше, то и разбирается: ссылка [[…]] (в том числе с `кодом` внутри)
             # или inline-код (правило U20 для `[[…]]`).
@@ -465,8 +483,15 @@ class MarkdownConverter:
                 if link is None and code is None:
                     break
                 if code is None or (link is not None and link.start() < code.start()):
-                    out.append(line[pos:link.start()])
-                    out.append(repl(link))
+                    embed = None
+                    if library is not None and link.start() - 1 >= pos and line[link.start() - 1] == "!":
+                        embed = self._embed_media(library, link.group(1).strip(), current_article)
+                    if embed is not None:          # ![[файл.webp|Подпись]] — встраивание изображения
+                        out.append(line[pos:link.start() - 1])
+                        out.append(embed)
+                    else:
+                        out.append(line[pos:link.start()])
+                        out.append(repl(link))
                     pos = link.end()
                 else:
                     out.append(line[pos:code.start()])
@@ -478,6 +503,73 @@ class MarkdownConverter:
         lines = text.split("\n")
         return "\n".join(line if (mask is not None and mask.is_line_in_code(i)) else transform_line(line)
                          for i, line in enumerate(lines))
+
+    def _embed_media(self, library, raw: str, article: Article) -> Optional[str]:
+        """![[файл|Подпись]] → <img> с путём от каталога страницы; None — не изображение (это wikilink).
+
+        Файл ищется в media/ страницы, затем по всей книге; неоднозначность и отсутствие — предупреждения.
+        Ненайденный файл выводится путём media/<файл>: аудит покажет его в «ОТСУТСТВУЮЩИХ АССЕТАХ».
+        """
+        target, _, text = raw.partition("|")
+        target, text = target.strip(), text.strip()
+        if os.path.splitext(target)[1].lower().lstrip(".") not in self.config.media.extensions:
+            return None
+        page_dir = os.path.dirname(article.source_path)
+        found = library.find_embed(target, page_dir)
+        if len(found) > 1:
+            self.warn(f"неоднозначное встраивание ![[{raw}]]: подходят {', '.join(f.rel_path for f in found)}")
+        if found:
+            src = os.path.relpath(found[0].src_path, page_dir).replace(os.sep, "/")
+        else:
+            self.warn(f"встраивание ![[{raw}]]: файла нет ни в {self.config.media.dir_name}/ страницы, ни в книге")
+            src = f"{self.config.media.dir_name}/{target}"
+        title = f' title="{html.escape(text)}"' if text else ""
+        return f'<img alt="{html.escape(text)}" src="{html.escape(src)}"{title} />'
+
+    def _media_file(self, tag: str, article: Article):
+        """(атрибуты <img>, файл медиа) или (атрибуты, None) — внешняя ссылка или файл не из папок медиа."""
+        attrs = {k: html.unescape(v) for k, v in _ATTR_RE.findall(tag)}
+        src = attrs.get("src", "")
+        if not src or _EXTERNAL_SRC_RE.match(src):
+            return attrs, None
+        path = os.path.join(os.path.dirname(article.source_path), unquote(src.split("#", 1)[0].split("?", 1)[0]))
+        return attrs, media_mod.library_for(self.scanner).lookup(path)
+
+    def _use_media(self, f, article: Article) -> None:
+        pages = self.media_usage.setdefault(f, [])
+        if article not in pages:
+            pages.append(article)
+
+    def _process_media(self, html_text: str, article: Article) -> str:
+        """Картинки из папок медиа: отдельный абзац → <figure> (несколько подряд — галерея .md-gallery),
+        картинка в тексте — строчная <img>. Путь пересчитывается к файлу в dist/, остальные <img> не трогаются."""
+        cfg = self.config
+
+        def inline(tag):
+            attrs, f = self._media_file(tag, article)
+            if f is None:
+                return tag
+            self._use_media(f, article)
+            _, alt = media_mod.caption_and_alt(f, attrs.get("alt", ""), attrs.get("title", ""))
+            return media_mod.img_tag(f, article.rel_output_path, alt, cfg, title=attrs.get("title", ""))
+
+        def repl(m):
+            if m.group("img"):
+                return inline(m.group("img"))
+            tags = _IMG_RE.findall(m.group("inner"))
+            found = [self._media_file(t, article) for t in tags]
+            if not cfg.media.figures or any(f is None for _, f in found):
+                return _IMG_RE.sub(lambda t: inline(t.group(0)), m.group("p"))
+            figures = []
+            for attrs, f in found:
+                self._use_media(f, article)
+                figures.append(media_mod.figure_html(f, article.rel_output_path, attrs.get("alt", ""),
+                                                     attrs.get("title", ""), cfg))
+            if len(figures) == 1:
+                return figures[0]
+            return '<div class="md-gallery">\n' + "\n".join(figures) + "\n</div>"
+
+        return _MEDIA_RE.sub(repl, html_text)
 
     def _process_headings(self, text: str) -> Tuple[str, List[Dict[str, Any]]]:
         """Добавление id в заголовки H2..H4 и формирование оглавления (TOC).

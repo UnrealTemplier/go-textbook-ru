@@ -16,6 +16,11 @@ engine/audit.py
 10. --strict: предупреждения сборки (неоднозначные wikilinks, неизвестные выноски) и замечания
     по диаграммам Mermaid (классы узлов: ':::класс' в метке, класс без classDef) — ошибки.
 11. --katex-runtime: рантайм-проекция в headless Firefox (.katex-error, ошибки Mermaid, JS).
+12. [media] enabled: изображения из папок медиа — пустой alt (require_alt), запись в credits.toml
+    (require_credit), лицензия из allowed_licenses, суммарный объём (budget_mb) — ошибки; файл больше
+    max_file_kb, сторона больше max_dimension_px, неразобранный размер, неиспользуемый файл, имя не
+    латиницей, файл с расширением не из extensions, запись credits.toml без файла — предупреждения
+    (--strict — ошибки).
 """
 
 import os
@@ -68,6 +73,9 @@ MERMAID_CLASS_USE_RE = re.compile(r":::(\w+)")
 MERMAID_CLASSDEF_RE = re.compile(r"^\s*classDef\s+([\w,-]+)", re.M)
 MERMAID_CLASS_STMT_RE = re.compile(r"^\s*class\s+[^\n;]+?\s(\w+)\s*;?\s*$", re.M)
 CSS_NODE_CLASS_RE = re.compile(r"\.node\.([\w-]+)")
+IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.I)
+ATTR_RE = re.compile(r'([A-Za-z_:][-\w:.]*)="([^"]*)"')
+MEDIA_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def code_mask(text: str) -> bytearray:
@@ -174,6 +182,10 @@ class SiteAuditor:
         self.scanned_sources_count = 0
         self.scanned_dirs_count = 0
         self.scanned_files_count = 0
+        self.media_imgs: List[Tuple[str, str]] = []           # (страница, тег <img>) — для проверок [media]
+        self.media_errors: List[str] = []
+        self.media_warnings: List[str] = []
+        self.media_summary = ""
 
     def run_audit(self) -> bool:
         print("=====================================================================")
@@ -223,6 +235,8 @@ class SiteAuditor:
             self._audit_single_page(page_path, file_ids_cache)
 
         self._audit_css_files()
+        if self.config is not None and self.config.media.enabled:
+            self._audit_media()
 
         # 3b. Реальный разбор диаграмм рантаймом Mermaid (ловит ошибки, невидимые статическому анализу)
         if self.mermaid_runtime:
@@ -260,6 +274,9 @@ class SiteAuditor:
             print(f"      Предупреждений сборки (--strict): {len(self.strict_issues)}")
         if self.katex_runtime:
             print(f"      Ошибок рантайм-проекции (--katex-runtime): {len(self.runtime_issues)}")
+        if self.media_summary:
+            print(f"      Медиа: {self.media_summary}")
+            print(f"      Ошибок по изображениям: {len(self.media_errors)}; предупреждений: {len(self.media_warnings)}")
 
         success = True
 
@@ -295,6 +312,7 @@ class SiteAuditor:
             ("МЁРТВЫЕ WIKILINKS СВЕРХ БАЗЫ", self.baseline_issues),
             ("ПРЕДУПРЕЖДЕНИЯ СБОРКИ (--strict)", self.strict_issues),
             ("РАНТАЙМ-ПРОЕКЦИЯ (--katex-runtime)", self.runtime_issues),
+            ("ИЗОБРАЖЕНИЯ ([media])", self.media_errors),
         ]
         for title, items in groups:
             if items:
@@ -332,6 +350,17 @@ class SiteAuditor:
                 print(f"  Причина: {w['reason']}")
             if len(self.mermaid_warnings) > 15:
                 print(f"  ... и еще {len(self.mermaid_warnings) - 15}.")
+
+        if self.media_warnings:
+            if self.strict:
+                success = False
+                print(f"\n❌ ЗАМЕЧАНИЯ ПО ИЗОБРАЖЕНИЯМ (--strict): {len(self.media_warnings)}")
+            else:
+                print(f"\n⚠️ Замечания по изображениям: {len(self.media_warnings)} штук.")
+            for w in self.media_warnings[:15]:
+                print(f"  {w}")
+            if len(self.media_warnings) > 15:
+                print(f"  ... и еще {len(self.media_warnings) - 15}.")
 
         if self.mermaid_errors:
             success = False
@@ -454,6 +483,8 @@ class SiteAuditor:
                 self.duplicate_ids.append((page_path, dup_id, n))
 
         self._audit_resources(page_path, content)
+        if self.config is not None and self.config.media.enabled:
+            self.media_imgs.extend((page_path, tag) for tag in IMG_TAG_RE.findall(content))
         for css in STYLE_BLOCK_RE.findall(content):
             self._audit_css_text(page_path, css)
         found = [html.unescape(re.sub(r"<[^>]+>", "", t)) for t in UNRESOLVED_RE.findall(content)]
@@ -579,6 +610,79 @@ class SiteAuditor:
         for url in CSS_IMPORT_RE.findall(css):
             if EXTERNAL_RE.match(url):
                 self.offline_issues.append((where, f"CSS @import из внешней сети: {url}"))
+
+    def _audit_media(self):
+        """Изображения из папок медиа ([media]): исходники — библиотека сканера, использование — <img> в dist/."""
+        from .scanner import KnowledgeBaseScanner, ScanError
+        from .media import MediaError, library_for, license_allowed, is_own
+        cfg, m = self.config, self.config.media
+        scanner = KnowledgeBaseScanner(cfg.path(cfg.content.root), cfg)
+        try:
+            scanner.scan()
+            lib = library_for(scanner)
+        except (MediaError, ScanError) as e:
+            self.media_errors.append(str(e))
+            return
+        key = lambda p: os.path.normcase(os.path.normpath(p))
+        by_dist = {key(os.path.join(self.dist_dir, f.dist_rel)): f for f in lib.files}
+        service = key(os.path.join(self.dist_dir, m.credits_page)) if m.credits_page else None
+        used = set()
+        for page, tag in self.media_imgs:
+            if key(page) == service:
+                continue                  # превью на странице «Иллюстрации и лицензии» — не использование
+            attrs = {k.lower(): html.unescape(v) for k, v in ATTR_RE.findall(tag)}
+            src = attrs.get("src", "")
+            if not src or EXTERNAL_RE.match(src) or src.startswith(("data:", "#")):
+                continue
+            f = by_dist.get(key(os.path.join(os.path.dirname(page), unquote(src.split("#", 1)[0].split("?", 1)[0]))))
+            if f is None:
+                continue
+            used.add(f)
+            if m.require_alt and not attrs.get("alt", "").strip():
+                self.media_errors.append(f"{os.path.relpath(page, self.dist_dir)}: {f.rel_path}: пустой alt "
+                                         f"(текст в ![…], подпись или alt в {m.credits_file})")
+        for f in lib.files:
+            credit = f.credit
+            if m.require_credit:
+                if credit is None:
+                    self.media_errors.append(f"{f.rel_path}: нет записи [\"{f.name}\"] в {m.credits_file}")
+                elif not credit.get("license"):
+                    self.media_errors.append(f"{f.rel_path}: в {m.credits_file} нет license")
+                elif not is_own(credit):
+                    missing = [k for k in ("author", "source") if not credit.get(k)]
+                    if missing:
+                        self.media_errors.append(f"{f.rel_path}: в {m.credits_file} нет {', '.join(missing)} "
+                                                 f"(обязательны для чужих изображений; без них — только license = \"own\")")
+            if credit and credit.get("license") and m.allowed_licenses \
+                    and not license_allowed(str(credit["license"]), m.allowed_licenses):
+                self.media_errors.append(f"{f.rel_path}: лицензия «{credit['license']}» не из allowed_licenses "
+                                         f"{m.allowed_licenses}")
+            if m.max_file_kb and f.size_bytes > m.max_file_kb * 1024:
+                self.media_warnings.append(f"{f.rel_path}: {f.size_bytes / 1024:.0f} КБ — больше max_file_kb = {m.max_file_kb}")
+            if f.size is None:
+                self.media_warnings.append(f"{f.rel_path}: размер из заголовка файла не прочитан "
+                                           f"(без width/height страница сдвигается при загрузке)")
+            elif m.max_dimension_px and max(f.size) > m.max_dimension_px:
+                self.media_warnings.append(f"{f.rel_path}: {f.size[0]}×{f.size[1]} px — сторона больше "
+                                           f"max_dimension_px = {m.max_dimension_px}")
+            if not MEDIA_NAME_RE.match(f.name):
+                self.media_warnings.append(f"{f.rel_path}: имя файла не латиницей (допустимы A–Z, a–z, 0–9, '.', '_', '-')")
+            if f not in used:
+                self.media_warnings.append(f"{f.rel_path}: не используется ни на одной странице")
+        for folder in lib.folders:
+            rel = os.path.relpath(folder.src_dir, lib.sources_dir).replace(os.sep, "/")
+            for path in folder.skipped:
+                self.media_warnings.append(f"{os.path.relpath(path, lib.sources_dir)}: расширение не из "
+                                           f"media.extensions — файл не попадает на сайт")
+            names = {f.name for f in folder.files}
+            for name in folder.credits:
+                if name not in names:
+                    self.media_warnings.append(f"{rel}/{m.credits_file}: запись [\"{name}\"] без файла")
+        total = lib.total_bytes
+        self.media_summary = (f"файлов {len(lib.files)}, {total / 1048576:.2f} МБ"
+                              + (f" из бюджета {m.budget_mb} МБ" if m.budget_mb else ""))
+        if m.budget_mb and total > m.budget_mb * 1048576:
+            self.media_errors.append(f"суммарный объём медиа {total / 1048576:.1f} МБ больше budget_mb = {m.budget_mb}")
 
     def _collect_mermaid_styled_classes(self):
         """Классы узлов Mermaid, которые окрашивает CSS сайта (темы движка, extra.css книги)."""

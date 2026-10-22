@@ -129,6 +129,33 @@ class LayoutConfig:
     extra_assets_dir: str = "book/assets"     # extra.css и extra.js подключаются после ассетов движка
 
 
+def _default_media_extensions() -> List[str]:
+    return ["webp", "png", "jpg", "jpeg", "gif", "svg", "avif"]
+
+
+def _default_licenses() -> List[str]:
+    return ["PD", "CC0", "CC BY", "CC BY-SA", "own"]
+
+
+@dataclass
+class MediaConfig:
+    # Изображения уроков: папка dir_name рядом со страницами копируется в dist/ (README, «Изображения»)
+    enabled: bool = False
+    dir_name: str = "media"                 # не раздел и не страница: сканер её не обходит
+    extensions: List[str] = field(default_factory=_default_media_extensions)   # без точки; прочие не копируются
+    credits_file: str = "credits.toml"      # атрибуция внутри каждой папки dir_name, в dist/ не копируется
+    figures: bool = True                    # картинка отдельным абзацем → <figure> с <figcaption>
+    lightbox: bool = True                   # увеличение по клику
+    credits_page: str = ""                  # путь служебной страницы в dist/, например "illustrations.html"; "" — нет
+    # Проверки аудита; 0 у пределов — без проверки
+    require_alt: bool = True
+    require_credit: bool = True
+    allowed_licenses: List[str] = field(default_factory=_default_licenses)    # PD, CC BY …: имя или имя + версия
+    max_file_kb: int = 500
+    max_dimension_px: int = 2000
+    budget_mb: int = 700                    # суммарный объём медиа в dist/
+
+
 @dataclass
 class BrandingConfig:
     # Пути — относительно каталога book.toml; SVG вставляются в страницу как есть
@@ -180,6 +207,7 @@ class BookConfig:
     layout: LayoutConfig = field(default_factory=LayoutConfig)
     features: FeaturesConfig = field(default_factory=FeaturesConfig)
     audit: AuditConfig = field(default_factory=AuditConfig)
+    media: MediaConfig = field(default_factory=MediaConfig)
     branding: BrandingConfig = field(default_factory=BrandingConfig)
     article_page: ArticlePageConfig = field(default_factory=ArticlePageConfig)
     index_page: IndexPageConfig = field(default_factory=IndexPageConfig)
@@ -319,6 +347,30 @@ def _validate(cfg: BookConfig) -> None:
         raise ConfigError("navigation.mode: допустимо 'static' или 'hybrid'")
     if cfg.navigation.reading_time.method != "bytes":
         raise ConfigError("navigation.reading_time.method: поддерживается только 'bytes'")
+    _validate_media(cfg.media)
+
+
+def _validate_media(m: "MediaConfig") -> None:
+    for name in ("dir_name", "credits_file"):
+        value = getattr(m, name)
+        if not isinstance(value, str) or not value or "/" in value or "\\" in value or value in (".", ".."):
+            raise ConfigError(f"media.{name}: ожидается имя без '/' (например, {getattr(MediaConfig, name)!r})")
+    if not isinstance(m.extensions, list) or not all(isinstance(e, str) and e.strip(".") for e in m.extensions):
+        raise ConfigError("media.extensions: ожидается список расширений, например [\"webp\", \"png\"]")
+    m.extensions = [e.strip().lstrip(".").lower() for e in m.extensions]
+    if not isinstance(m.allowed_licenses, list) or not all(isinstance(x, str) for x in m.allowed_licenses):
+        raise ConfigError("media.allowed_licenses: ожидается список строк")
+    for name in ("max_file_kb", "max_dimension_px", "budget_mb"):
+        value = getattr(m, name)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ConfigError(f"media.{name}: ожидается целое число ≥ 0 (0 — без проверки)")
+    page = m.credits_page
+    if page:
+        parts = page.split("/")
+        if (not page.endswith(".html") or page.startswith("/") or "\\" in page or ".." in parts
+                or "" in parts or page == "index.html"):
+            raise ConfigError("media.credits_page: ожидается относительный путь страницы в dist/, "
+                              "например \"illustrations.html\" (не index.html, без '..')")
 
 
 def load_config(path: Optional[str] = None) -> BookConfig:

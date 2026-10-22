@@ -34,15 +34,19 @@ def page_needs(article_html: str, config: BookConfig) -> Dict[str, bool]:
 
     KaTeX — консервативно: любой левый разделитель из [math].delimiters в тексте вне кода.
     Лишнее подключение безопасно, пропуск стоил бы формул (сверяется рантайм-проекцией).
-    Без features.conditional_scripts нужно всё.
+    Без features.conditional_scripts нужно всё. Окно увеличения изображений ([media] lightbox) — только на
+    страницах с img.md-zoom, независимо от conditional_scripts (media.css подключается на всех страницах книги
+    с [media]: там же стиль ссылки «Иллюстрации и лицензии» в подвале).
     """
+    lightbox = config.media.enabled and config.media.lightbox and 'class="md-media md-zoom' in article_html
     if not config.features.conditional_scripts:
-        return {"mermaid": True, "prism": True, "katex": True}
+        return {"mermaid": True, "prism": True, "katex": True, "lightbox": lightbox}
     text = _CODE_LIKE_RE.sub("", article_html)
     return {
         "mermaid": '<pre class="mermaid">' in article_html,
         "prism": 'class="code-block"' in article_html,
         "katex": any(d["left"] in text for d in config.math.delimiters),
+        "lightbox": lightbox,
     }
 
 
@@ -68,6 +72,38 @@ def mermaid_modal_html(config: BookConfig) -> str:
   </div>
 
   """
+
+
+def lightbox_modal_html(config: BookConfig) -> str:
+    """Разметка окна увеличения изображений ([media] lightbox): только на страницах с img.md-zoom (media.js)."""
+    t = config.t
+    return f"""<!-- Окно увеличения изображений -->
+  <div class="md-lightbox" id="md-lightbox" role="dialog" aria-modal="true" aria-label="{t("media.lightbox_aria")}" aria-hidden="true">
+    <div class="modal-backdrop" data-action="lightbox-close" aria-hidden="true"></div>
+    <div class="modal-dialog" role="document">
+      <header class="modal-header">
+        <span class="md-lightbox-counter" id="md-lightbox-counter" aria-live="polite"></span>
+        <div class="modal-actions">
+          <button type="button" class="btn-modal-action" data-action="lightbox-prev" title="{t("media.lightbox_prev")}" aria-label="{t("media.lightbox_prev")}">&lsaquo;</button>
+          <button type="button" class="btn-modal-action" data-action="lightbox-next" title="{t("media.lightbox_next")}" aria-label="{t("media.lightbox_next")}">&rsaquo;</button>
+          <button type="button" class="btn-modal-action" data-action="lightbox-fit" title="{t("media.lightbox_fit_title")}" aria-label="{t("media.lightbox_fit_aria")}">1:1</button>
+          <button type="button" class="btn-modal-action btn-modal-close" data-action="lightbox-close" title="{t("media.lightbox_close_title")}" aria-label="{t("media.lightbox_close_aria")}">&times;</button>
+        </div>
+      </header>
+      <div class="md-lightbox-body" id="md-lightbox-body" role="region" aria-label="{t("media.lightbox_viewport_aria")}"><img id="md-lightbox-img" alt=""></div>
+      <div class="md-lightbox-caption" id="md-lightbox-caption" hidden></div>
+    </div>
+  </div>
+
+  """
+
+
+def credits_link_html(config: BookConfig, rel_root: str) -> str:
+    """Абзац подвала со ссылкой на страницу «Иллюстрации и лицензии» ([media] credits_page) или пустая строка."""
+    m = config.media
+    if not (m.enabled and m.credits_page):
+        return ""
+    return f'<p class="md-credits-link"><a href="{rel_root}{m.credits_page}">{config.t("media.credits_link")}</a></p>'
 
 
 def extra_asset_tags(config: BookConfig, rel_root: str, kind: str) -> str:
@@ -185,7 +221,8 @@ def make_anti_flicker_script(config: BookConfig) -> str:
 # Версии ассетов для кэш-бастинга ?v=: первые 10 символов sha256 файла, уже записанного в dist/
 ASSET_VERSIONS: Dict[str, str] = {}
 VERSIONED_ASSETS = ["assets/style.css", "assets/main.js", "assets/search-data.js",
-                    "assets/nav-data.js", "assets/extra.css", "assets/extra.js"]
+                    "assets/nav-data.js", "assets/extra.css", "assets/extra.js",
+                    "assets/media.css", "assets/media.js"]
 
 
 def set_asset_versions(dist_dir: str, rel_paths: List[str]) -> None:
@@ -484,9 +521,11 @@ def render_article_page(
     total_articles: int,
     version: str,
     config: BookConfig,
-    show_position: bool = False
+    show_position: bool = False,
+    module_tag: Optional[str] = None
 ) -> str:
-    """Генерация полной HTML-страницы статьи. show_position — счётчик «N из M» (книги с индексными файлами)."""
+    """Генерация полной HTML-страницы статьи. show_position — счётчик «N из M» (книги с индексными файлами);
+    module_tag — текст первой метки шапки вместо «Модуль N» (служебные страницы)."""
     rel_root = get_rel_root(article.rel_output_path)
     hybrid = config.navigation.mode == "hybrid"
     sidebar_html = render_sidebar(modules_tree, article, rel_root, hybrid, config.navigation.static_module_list)
@@ -546,7 +585,8 @@ def render_article_page(
     reading_time = max(rt.min, int(article.size_bytes / rt.divisor))
     ap = config.article_page
     br = config.branding
-    footer_html = "\n        ".join(f"<p>{line}</p>" for line in ap.footer_html)
+    credits_link = credits_link_html(config, rel_root)
+    footer_html = "\n        ".join([f"<p>{line}</p>" for line in ap.footer_html] + ([credits_link] if credits_link else []))
     position_html = ""
     if show_position and not article.is_index:
         position_html = f'\n              <span class="meta-tag position-tag">{config.t("article.position", n=article.position, m=total_articles)}</span>'
@@ -555,9 +595,12 @@ def render_article_page(
     needs = page_needs(article_html, config)
     icon_sprite = f"\n  {ICON_SPRITE}" if needs["prism"] else ""
     mermaid_modal = mermaid_modal_html(config) if needs["mermaid"] else ""
+    mermaid_modal += lightbox_modal_html(config) if needs["lightbox"] else ""
     head_lines = []
     if needs["katex"]:
         head_lines.append(f'  <link rel="stylesheet" href="{rel_root}assets/vendor/katex/katex.min.css">')
+    if config.media.enabled:
+        head_lines.append(f'  <link rel="stylesheet" href="{asset_url(rel_root, "assets/media.css")}">')
     extra_css = extra_asset_tags(config, rel_root, "css")
     if extra_css:
         head_lines.append(extra_css.lstrip("\n"))
@@ -569,6 +612,7 @@ def render_article_page(
             ("prism-bundle.min.js", needs["prism"]), ("mermaid.min.js", needs["mermaid"]),
             ("katex/katex.min.js", needs["katex"]), ("katex/contrib/auto-render.min.js", needs["katex"]))
         if need)
+    media_script = f'\n  <script src="{asset_url(rel_root, "assets/media.js")}"></script>' if needs["lightbox"] else ""
     mermaid_tag = (f'<span class="meta-tag mermaid-tag">{config.t("article.mermaid_count", n=article.mermaid_count)}</span>'
                    if article.mermaid_count > 0 else '')
     ctx = {
@@ -578,7 +622,7 @@ def render_article_page(
         "logo_title": read_text_asset(config, br.logo_title_svg_file),
         "logo_title_text": br.logo_title_text,
         "logo_sub": br.logo_sub,
-        "module_tag": config.t("article.module_tag", n=article.module_num),
+        "module_tag": module_tag if module_tag is not None else config.t("article.module_tag", n=article.module_num),
         "reading_time": config.t("article.reading_time", n=reading_time),
         "mermaid_tag": mermaid_tag,
         "position": position_html,
@@ -669,7 +713,7 @@ def render_article_page(
   {theme_switcher_html(config)}
 
   <!-- Скрипты -->
-{vendor_scripts}  <script src="{asset_url(rel_root, 'assets/main.js')}"></script>{extra_asset_tags(config, rel_root, "js")}
+{vendor_scripts}  <script src="{asset_url(rel_root, 'assets/main.js')}"></script>{media_script}{extra_asset_tags(config, rel_root, "js")}
 </body>
 </html>
 """
@@ -687,7 +731,10 @@ def render_index_page(
     counts = {"modules": len(modules_tree), "articles": total_articles,
               "articles_grouped": f"{total_articles:,}".replace(",", " "), "mermaid": total_mermaid}
     fc = lambda text: fill_counts(text, counts)
-    index_footer_html = "\n      ".join(f"<p>{line}</p>" for line in ip.footer_html)
+    media_css = (f'\n  <link rel="stylesheet" href="{asset_url(rel_root, "assets/media.css")}">'
+                 if config.media.enabled else "")
+    credits_link = credits_link_html(config, rel_root)
+    index_footer_html = "\n      ".join([f"<p>{line}</p>" for line in ip.footer_html] + ([credits_link] if credits_link else []))
     stats_html = "\n".join(
         f"""        <div class="stat-box">
           <span class="stat-number">{fc(st['value'])}</span>
@@ -759,7 +806,7 @@ def render_index_page(
   <meta name="description" content="{fc(ip.meta_description_html)}">
   {render_favicon_links(config, rel_root)}
   {make_anti_flicker_script(config)}
-  <link rel="stylesheet" href="{asset_url(rel_root, 'assets/style.css')}">{extra_asset_tags(config, rel_root, "css")}
+  <link rel="stylesheet" href="{asset_url(rel_root, 'assets/style.css')}">{media_css}{extra_asset_tags(config, rel_root, "css")}
 </head>
 <body class="index-page">
   <main class="index-container" id="main-content">

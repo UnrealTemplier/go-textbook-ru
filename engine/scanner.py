@@ -185,6 +185,17 @@ class KnowledgeBaseScanner:
         self.articles_by_path: Dict[str, Article] = {}
         self.wikilink_index: Dict[str, Article] = {}
         self.modules_tree: List[Dict[str, Any]] = []
+        # [media] enabled: каталоги со страницами (абсолютный путь, путь в dist/) — там ищутся папки media/
+        self.media_dirs: List[Tuple[str, str]] = []
+        self.media = None                 # MediaLibrary — создаёт engine.media.library_for
+
+    def _media_dir_name(self) -> Optional[str]:
+        return self.config.media.dir_name if self.config.media.enabled else None
+
+    def _listdir(self, path: str) -> List[str]:
+        """Содержимое каталога без папки медиа ([media] dir_name): она не раздел и не страница."""
+        skip = self._media_dir_name()
+        return [e for e in os.listdir(path) if not (skip and e == skip and os.path.isdir(os.path.join(path, e)))]
 
     def scan(self) -> List[Article]:
         """Обход дерева sources/ произвольной глубины и построение графа связей.
@@ -196,7 +207,9 @@ class KnowledgeBaseScanner:
         страниц на заглавной странице каталога), в том числе каталогов без своих страниц.
         Ситуации, в которых раньше файлы терялись молча, — ошибки сборки (ScanError).
         """
-        entries = sorted(os.listdir(self.sources_dir), key=natural_sort_key)
+        entries = sorted(self._listdir(self.sources_dir), key=natural_sort_key)
+        if self._media_dir_name():
+            self.media_dirs.append((self.sources_dir, "docs"))
         stray = [e for e in entries if os.path.isfile(os.path.join(self.sources_dir, e)) and e.endswith(".md")]
         if stray:
             raise ScanError(f"{self.sources_dir}: .md в корне не входят ни в один модуль: {stray}")
@@ -256,7 +269,7 @@ class KnowledgeBaseScanner:
     def _walk(self, dir_path: str, module_node: Dict[str, Any], names: List[str], slugs: List[str],
               parent: Optional[Dict[str, Any]] = None) -> None:
         """Каталог модуля (names пуст) или вложенный каталог любой глубины; parent — узел каталога выше."""
-        entries = sorted(os.listdir(dir_path), key=natural_sort_key)
+        entries = sorted(self._listdir(dir_path), key=natural_sort_key)
         subdirs = [e for e in entries if os.path.isdir(os.path.join(dir_path, e))]
         files = [e for e in entries if os.path.isfile(os.path.join(dir_path, e)) and e.endswith(".md")]
         index_re = self.config.content.index_file
@@ -280,6 +293,8 @@ class KnowledgeBaseScanner:
             node = module_node
         sub_name = node["name"] if names else ""
         out_dir = "/".join(["docs", module_node["slug"]] + slugs)
+        if self._media_dir_name():
+            self.media_dirs.append((dir_path, out_dir))
 
         for f in files:
             self._order += 1
@@ -314,7 +329,7 @@ class KnowledgeBaseScanner:
         for sd in subdirs:
             sd_path = os.path.join(dir_path, sd)
             if not names:
-                has_children = any(os.path.isdir(os.path.join(sd_path, e)) for e in os.listdir(sd_path))
+                has_children = any(os.path.isdir(os.path.join(sd_path, e)) for e in self._listdir(sd_path))
                 seg = slugify(sd, self.slug.subsection[0] if has_children else self.slug.section)
             else:
                 seg = slugify(sd, self.slug.subsection[1])

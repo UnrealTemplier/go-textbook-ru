@@ -12,11 +12,15 @@ from pathlib import Path
 from typing import List, Optional
 
 from .scanner import KnowledgeBaseScanner, Article
+from .media import library_for, credits_page_html
 from .converter import MarkdownConverter
 from .checksums import verify as verify_checksums
 from .config import BookConfig, load_config
 from .template import (render_article_page, render_index_page, get_book_version, set_asset_versions,
                        VERSIONED_ASSETS)
+
+# Ассеты изображений ([media]): копируются только у книг с media.enabled, иначе dist/ книги не меняется
+MEDIA_ASSETS = ("media.css", "media.js")
 
 def copy_assets(engine_assets_dir: str, dist_assets_dir: str):
     """Копирование статических ассетов (CSS, JS, Vendor) в dist/assets/."""
@@ -32,8 +36,8 @@ def copy_assets(engine_assets_dir: str, dist_assets_dir: str):
         target_dir = os.path.join(dist_assets_dir, rel) if rel != "." else dist_assets_dir
         os.makedirs(target_dir, exist_ok=True)
         for f in files:
-            # style.css обрабатывается build_themed_css
-            if f == "style.css":
+            # style.css обрабатывается build_themed_css; ассеты [media] — copy_media_assets
+            if f == "style.css" or (rel == "." and f in MEDIA_ASSETS):
                 continue
             src_f = os.path.join(root, f)
             dst_f = os.path.join(target_dir, f)
@@ -112,6 +116,32 @@ def apply_book_assets(config: BookConfig, dist_assets_dir: str) -> None:
             shutil.copy2(src, os.path.join(dist_assets_dir, name))
 
 
+def copy_media_assets(engine_assets_dir: str, dist_assets_dir: str) -> None:
+    """media.css и media.js — только для книг с [media] enabled = true."""
+    for name in MEDIA_ASSETS:
+        shutil.copy2(os.path.join(engine_assets_dir, name), os.path.join(dist_assets_dir, name))
+
+
+def write_credits_page(config: BookConfig, scanner: KnowledgeBaseScanner, converter: MarkdownConverter,
+                       dist_dir: str, version: str) -> str:
+    """Служебная страница «Иллюстрации и лицензии» ([media] credits_page): все изображения книги."""
+    rel = config.media.credits_page
+    if rel in scanner.articles_by_path:
+        raise BuildError(f"media.credits_page: путь {rel} занят страницей {scanner.articles_by_path[rel].source_path}")
+    body = credits_page_html(scanner.media, converter.media_usage, rel, config)
+    page = Article(title=config.t("media.credits_title"), source_path="", rel_output_path=rel,
+                   module_num=0, module_name="")
+    page.size_bytes = len(body.encode("utf-8"))
+    html_text = render_article_page(article=page, article_html=body, toc=[], modules_tree=scanner.modules_tree,
+                                    total_articles=scanner.content_count, version=version, config=config,
+                                    module_tag=config.t("media.credits_tag"))
+    path = os.path.join(dist_dir, rel)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fp:
+        fp.write(html_text)
+    return path
+
+
 def generate_nav_data_js(modules_tree, content_count: int, dist_dir: str) -> None:
     """Дерево навигации для гибридного сайдбара: assets/nav-data.js (подключается через <script defer>).
 
@@ -182,6 +212,10 @@ def build(
     all_articles = scanner.scan()
     print(f"      Всего обнаружено статей: {len(all_articles)}")
     print(f"      Всего модулей: {len(scanner.modules_tree)}")
+    media = library_for(scanner)        # [media]: папки media/ и credits.toml (ошибка в credits.toml — MediaError)
+    if media is not None:
+        print(f"      Изображений в папках {config.media.dir_name}/: {len(media.files)} "
+              f"({media.total_bytes / 1048576:.1f} МБ)")
     module_nums = {m["num"] for m in scanner.modules_tree}
     for ov in config.overlays:
         missing = [n for n in ov["modules"] if n not in module_nums]
@@ -210,7 +244,11 @@ def build(
     copy_assets(engine_assets, dist_assets)
     themes_list = build_themed_css(engine_assets, dist_assets)
     copy_theme_assets(engine_assets, dist_assets, themes_list)
+    if media is not None:
+        copy_media_assets(engine_assets, dist_assets)
     apply_book_assets(config, dist_assets)
+    if media is not None:
+        media.copy_to(dist_dir)
     generate_search_data_js(all_articles, dist_dir)
     if config.navigation.mode == "hybrid":
         generate_nav_data_js(scanner.modules_tree, scanner.content_count, dist_dir)
@@ -257,6 +295,10 @@ def build(
 
         if i % 10 == 0 or i == len(articles_to_build):
             print(f"      Собрано: [{i:4d}/{len(articles_to_build)}] {art.title[:45]}...")
+
+    if media is not None and config.media.credits_page:
+        write_credits_page(config, scanner, converter, dist_dir, project_version)
+        print(f"      Страница изображений и лицензий: {config.media.credits_page}")
 
     # 4. Генерация главной страницы (index.html)
     print("\n[4/4] 🏠 Генерация главной страницы (index.html)...")
